@@ -31,10 +31,15 @@
 #include <vector>
 
 #ifndef ONX_SUBSCRIPTIONS_TEST
+#include "onx_runtime_diagnostics.h"
+#define ONX_SUBS_TRACE(name, entity) onx_runtime::record(name, entity)
 #include "esphome/core/hal.h"
 #include "esphome/core/log.h"
 #include "esphome/core/string_ref.h"
 #include "esphome/components/api/api_server.h"
+#endif
+#ifndef ONX_SUBS_TRACE
+#define ONX_SUBS_TRACE(name, entity) ((void) 0)
 #endif
 
 namespace onx_subs {
@@ -267,6 +272,7 @@ class Registry {
   template<typename Api> void register_(Api *api, Entry &entry) {
 #ifdef USE_API_HOMEASSISTANT_STATES
     if (api == nullptr) return;
+    ONX_SUBS_TRACE("subs_register", entry.entity);
     Entry *target = &entry;
     Registry *self = this;
     api->subscribe_home_assistant_state(entry.entity, esphome::optional<std::string>(entry.attribute),
@@ -292,6 +298,7 @@ class Registry {
     size_t sent = 0;
     while (!this->announce_queue_.empty() && sent < ANNOUNCE_BUDGET) {
       const auto &item = this->announce_queue_.front();
+      ONX_SUBS_TRACE("subs_announce", item.entity);
       esphome::api::SubscribeHomeAssistantStateResponse request;
       request.entity_id = esphome::StringRef(item.entity);
       request.attribute = esphome::StringRef(item.attribute);
@@ -310,6 +317,7 @@ class Registry {
   }
 
   template<typename Api> void compact_(Api *api, uint32_t now, bool force) {
+    ONX_SUBS_TRACE("subs_compact", std::string());
     std::vector<const char *> tokens;
     bool still_dirty = false;
     for (auto it = this->entries_.begin(); it != this->entries_.end();) {
@@ -348,6 +356,7 @@ class Registry {
     // APIServer exposes its table read-only; the vector itself is a mutable
     // member, so modifying it here is well-defined. This runs from the main loop,
     // never while ESPHome iterates the table.
+    ONX_SUBS_TRACE("subs_erase", std::string());
     using Rows = typename std::remove_const<typename std::remove_reference<decltype(api->get_state_subs())>::type>::type;
     auto &rows = const_cast<Rows &>(api->get_state_subs());
     rows.erase(std::remove_if(rows.begin(), rows.end(),

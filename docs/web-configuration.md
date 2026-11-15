@@ -170,6 +170,14 @@ time of day or person, and switch between them without restarting the knob.
 3. Click **Apply** on a preset to switch to it. **Update** replaces a preset with
    the current controls; **Rename** and **Delete** manage the list.
 
+### Build a preset without applying it
+
+In **Display & actions**, the list above the slots chooses what you are editing:
+**On the knob** (the controls in use) or one of your presets. Choose a preset to
+change its slots, or click **+** to start a new, empty preset and give it a name.
+While a preset is selected, **Save slot** and **Save all** store the preset only;
+the knob keeps its current controls until you apply the preset.
+
 Presets store saved controls only, so save slot changes first. Applying a preset
 replaces unsaved slot changes. Only the slots that differ are rewritten, and
 controls you no longer use are released from memory. Up to **8** presets fit on
@@ -232,7 +240,9 @@ Presets with the same name are replaced; other presets on the knob are kept.
 Restoring presets does not change the current controls.
 
 **Download diagnostics** provides firmware, uptime and connection information
-for troubleshooting, without entity names, addresses or credentials. Wireless
+for troubleshooting, without entity names, addresses or credentials. After a
+crash, its `last_event_before_boot` entry is named `panic` and lists the crash
+address and backtrace, even if the knob returned to its previous firmware. Wireless
 updates are available through the **Firmware Update** entity in Home Assistant.
 
 ## Display orientation

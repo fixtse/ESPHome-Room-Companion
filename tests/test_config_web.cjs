@@ -70,8 +70,9 @@ const { chromium } = require('playwright');
      if(op==='preset_save'){if(found)found.controls=slots.filter(s=>s.entity).length;else presetStore.presets.push({name,controls:slots.filter(s=>s.entity).length,bytes:900});presetStore.active=name}
      else if(op==='preset_apply'){if(!found)result={error:'Preset not found'};else presetStore.active=name}
      else if(op==='preset_rename'){found.name=values.get('q');if(presetStore.active===name)presetStore.active=found.name}
+     else if(op==='preset_get'&&presetStore.docs?.[name]){result={name,slots:presetStore.docs[name]}}
      else if(op==='preset_get'){result=found?{name,slots:Array.from({length:20},(_,i)=>({entity:i===0?'sensor.living_room_temperature':'',name:i===0?'Temp':''}))}:{error:'Preset not found'}}
-     else if(op==='preset_put'){const upload=presetStore.upload=values.get('offset')==='0'?'':presetStore.upload;presetStore.upload=upload+values.get('data');if(presetStore.upload.length===Number(values.get('total'))){const doc=JSON.parse(presetStore.upload);assert.equal(doc.slots.length,20);if(!found)presetStore.presets.push({name,controls:doc.slots.filter(s=>s.entity).length,bytes:presetStore.upload.length});presetStore.upload=''}else result={received:presetStore.upload.length}}
+     else if(op==='preset_put'){const upload=presetStore.upload=values.get('offset')==='0'?'':presetStore.upload;presetStore.upload=upload+values.get('data');if(presetStore.upload.length===Number(values.get('total'))){const doc=JSON.parse(presetStore.upload);assert.equal(doc.slots.length,20);if(!found)presetStore.presets.push({name,controls:doc.slots.filter(s=>s.entity).length,bytes:presetStore.upload.length});presetStore.docs=presetStore.docs||{};presetStore.docs[name]=doc.slots;presetStore.upload=''}else result={received:presetStore.upload.length}}
      else if(op==='preset_delete'){presetStore.presets=presetStore.presets.filter(p=>p.name!==name);if(presetStore.active===name)presetStore.active=''}
      result=result||JSON.parse(JSON.stringify(presetStore));
     }else if(values.get('op')==='refresh'||values.get('op')==='search')throw Error('Catalogue must stay in browser');else result={ok:true};
@@ -238,6 +239,29 @@ const { chromium } = require('playwright');
   await page.getByRole('button',{name:'Delete preset Night',exact:true}).click();
   await page.getByRole('status').filter({hasText:'Deleted preset “Night”.'}).waitFor();
   assert.equal(presetStore.presets.length,0);
-  console.log('Configuration UI passed: search, pairing, save, no-action, failure retry, draft preservation, manual IDs, presets, preset backup, mobile layout');
+  // Edit presets from Display & actions without applying them.
+  await page.setViewportSize({width:1100,height:850});
+  await page.getByRole('button',{name:'Display & actions',exact:true}).click();
+  const savesBefore=saved.length;
+  page.removeAllListeners('dialog');
+  page.on('dialog',dialog=>dialog.type()==='prompt'?dialog.accept('Guests'):dialog.accept());
+  await page.getByRole('button',{name:'New preset',exact:true}).click();
+  await page.getByRole('status').filter({hasText:'New preset “Guests”'}).waitFor();
+  assert.equal(await page.locator('#preset-target').inputValue(),'Guests');
+  assert.match(await page.locator('#slot-title').textContent(),/Slot 1 · Guests/);
+  await page.locator('#choose-entity').click();
+  await page.locator('#results').getByRole('button',{name:'Office fan',exact:false}).click();
+  if(await page.locator('#entity-picker').isVisible())await page.locator('#close-picker').click();
+  await page.locator('#save-all').click();
+  await page.getByRole('status').filter({hasText:'Preset “Guests” saved'}).waitFor();
+  assert.equal(saved.length,savesBefore,'Saving a preset must not save knob slots');
+  assert.equal(presetStore.docs.Guests[0].entity,'fan.office');
+  assert.ok(!presetOps.some(o=>o.op==='preset_apply'&&o.name==='Guests'),'Saving a preset must not apply it');
+  await page.locator('#preset-target').selectOption('');
+  await page.getByRole('status').filter({hasText:'Editing the controls on the knob.'}).waitFor();
+  await page.locator('#preset-target').selectOption('Guests');
+  await page.getByRole('status').filter({hasText:'Editing preset “Guests”'}).waitFor();
+  assert.match(await page.locator('#slots').textContent(),/Office fan|fan\.office/);
+  console.log('Configuration UI passed: search, pairing, save, no-action, failure retry, draft preservation, manual IDs, presets, preset backup, preset editor, mobile layout');
  }finally{await browser.close()}
 })().catch(error=>{console.error(error);process.exit(1)});

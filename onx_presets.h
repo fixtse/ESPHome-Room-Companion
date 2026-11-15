@@ -20,6 +20,8 @@
 #include <vector>
 
 #ifndef ONX_PRESETS_TEST
+#include "onx_runtime_diagnostics.h"
+#define ONX_PRESET_TRACE(name, entity) onx_runtime::record(name, entity)
 #include "onx_entity_config.h"
 #include "esphome/components/onx_config_web/onx_config_web.h"
 #include "esphome/components/select/select.h"
@@ -28,6 +30,10 @@
 #include "nvs.h"
 #else
 #include <map>
+#endif
+
+#ifndef ONX_PRESET_TRACE
+#define ONX_PRESET_TRACE(name, entity) ((void) 0)
 #endif
 
 namespace onx_presets {
@@ -141,6 +147,7 @@ inline void publish_select() {
 // valid until the next rebuild, which replaces them in the same call.
 inline void refresh_select() {
   if (selector == nullptr) return;
+  ONX_PRESET_TRACE("preset_select", std::string());
   std::vector<std::string> next;
   next.reserve(summaries.size() + 1);
   next.emplace_back(CUSTOM);
@@ -274,6 +281,7 @@ inline std::string store_document(const std::string &raw_name, JsonDocument &doc
     while (std::any_of(summaries.begin(), summaries.end(), [key](const Summary &s) { return s.key == key; })) ++key;
   }
   if (!doc["slots"].is<JsonArrayConst>()) return "A preset needs a list of slots";
+  ONX_PRESET_TRACE("preset_store", name);
   doc["name"] = name;
   if (doc.overflowed()) return "Not enough memory for this preset";
   const uint8_t configured = configured_count(doc["slots"].as<JsonArrayConst>());
@@ -303,6 +311,7 @@ inline std::string store_document(const std::string &raw_name, JsonDocument &doc
 }
 
 inline std::string save_current(const std::string &raw_name) {
+  ONX_PRESET_TRACE("preset_capture", raw_name);
   auto doc = custom_logic::make_psram_json_document();
   encode_current(doc["slots"].to<JsonArray>());
   if (doc.overflowed()) return "Not enough memory to capture the current controls";
@@ -418,6 +427,7 @@ inline std::string apply(const std::string &raw_name) {
   if (summary == nullptr) return "Preset not found";
   if (web == nullptr) return "Presets are not ready yet";
   const std::string name = summary->name;
+  ONX_PRESET_TRACE("preset_apply", name);
   std::string raw;
   if (!store_read(key_name(summary->key), raw)) return "Could not read the preset";
   auto stored = custom_logic::make_psram_json_document();

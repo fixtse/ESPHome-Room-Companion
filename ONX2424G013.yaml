@@ -32,6 +32,10 @@ preferences:
   flash_write_interval: 5s
 
 esphome:
+  # Crash PC and backtrace go into the diagnostics breadcrumb (onx_crash_capture.h).
+  platformio_options:
+    build_flags:
+      - -Wl,--wrap=panic_arch_fill_info,--wrap=panic_soc_fill_info
   includes:
     - onx_power_state.h
     - onx_light_state.h
@@ -41,6 +45,7 @@ esphome:
     - onx_notification.h
     - onx_gesture.h
     - onx_runtime_diagnostics.h
+    - onx_crash_capture.h
     - onx_config_rules.h
     - onx_timer_state.h
     - onx_control_state.h

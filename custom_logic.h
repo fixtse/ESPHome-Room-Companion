@@ -605,6 +605,7 @@ inline void process_pending_api_client_refresh() {
 
   // The connection is about to end, so rows nobody uses can go now; the next
   // connection replays only what the slots still need.
+  onx_runtime::record("api_refresh");
   onx_subs::registry.compact_now(api_server);
   ESP_LOGI(TAG, "HA API client refresh disconnect begin: client_count=%u",
            static_cast<unsigned>(client_count));
