@@ -64,22 +64,36 @@ inline std::vector<std::string> option_storage;
 inline std::function<void()> on_options_changed;
 
 // ---- storage -------------------------------------------------------------
+// Preset documents (up to 32 KB) live in PSRAM: plain std::string uses internal
+// RAM only, which is far too fragmented for them and aborts on failure.
+using Blob = custom_logic::PsramString;
+inline const char *blob_text(const Blob &blob) { return blob.c_str(); }
+// Serializes a document straight into a PSRAM buffer.
+inline bool serialize_blob(const JsonDocument &doc, Blob &out) {
+  const size_t size = measureJson(doc);
+  out.clear();
+  out.resize(size + 1);
+  if (out.size() != size + 1) return false;
+  serializeJson(doc, &out[0], size + 1);
+  out.resize(size);
+  return true;
+}
 inline std::string key_name(uint8_t key) { return "p" + std::to_string(key); }
 #ifdef USE_ESP32
-inline bool store_read(const std::string &key, std::string &out) {
+template<typename S> inline bool store_read(const std::string &key, S &out) {
   nvs_handle_t handle;
   if (nvs_open(NAMESPACE, NVS_READONLY, &handle) != ESP_OK) return false;
   size_t size = 0;
   bool ok = nvs_get_blob(handle, key.c_str(), nullptr, &size) == ESP_OK && size <= MAX_BYTES + 64;
   if (ok) {
     out.assign(size, '\0');
-    ok = nvs_get_blob(handle, key.c_str(), out.data(), &size) == ESP_OK;
+    ok = out.size() == size && nvs_get_blob(handle, key.c_str(), &out[0], &size) == ESP_OK;
     out.resize(ok ? size : 0);
   }
   nvs_close(handle);
   return ok;
 }
-inline bool store_write(const std::string &key, const std::string &value) {
+template<typename S> inline bool store_write(const std::string &key, const S &value) {
   nvs_handle_t handle;
   if (nvs_open(NAMESPACE, NVS_READWRITE, &handle) != ESP_OK) return false;
   esp_err_t err = nvs_set_blob(handle, key.c_str(), value.data(), value.size());
@@ -99,13 +113,16 @@ inline bool store_erase(const std::string &key) {
 }
 #else
 inline std::map<std::string, std::string> memory_store;
-inline bool store_read(const std::string &key, std::string &out) {
+template<typename S> inline bool store_read(const std::string &key, S &out) {
   auto it = memory_store.find(key);
   if (it == memory_store.end()) return false;
-  out = it->second;
+  out.assign(it->second.data(), it->second.size());
   return true;
 }
-inline bool store_write(const std::string &key, const std::string &value) { memory_store[key] = value; return true; }
+template<typename S> inline bool store_write(const std::string &key, const S &value) {
+  memory_store[key] = std::string(value.data(), value.size());
+  return true;
+}
 inline bool store_erase(const std::string &key) { memory_store.erase(key); return true; }
 #endif
 
@@ -183,10 +200,10 @@ inline void load() {
   loaded = true;
   summaries.clear();
   for (uint8_t key = 0; key < MAX_PRESETS; ++key) {
-    std::string raw;
+    Blob raw;
     if (!store_read(key_name(key), raw)) continue;
     auto doc = custom_logic::make_psram_json_document();
-    if (deserializeJson(doc, raw) || !doc["slots"].is<JsonArrayConst>()) {
+    if (deserializeJson(doc, blob_text(raw), raw.size()) || !doc["slots"].is<JsonArrayConst>()) {
       ESP_LOGW(TAG, "Ignoring unreadable preset %s", key_name(key).c_str());
       continue;
     }
@@ -285,8 +302,8 @@ inline std::string store_document(const std::string &raw_name, JsonDocument &doc
   doc["name"] = name;
   if (doc.overflowed()) return "Not enough memory for this preset";
   const uint8_t configured = configured_count(doc["slots"].as<JsonArrayConst>());
-  std::string raw;
-  serializeJson(doc, raw);
+  Blob raw;
+  if (!serialize_blob(doc, raw)) return "Not enough memory to store this preset";
   if (raw.size() > MAX_BYTES) return "These controls are too large to store as a preset";
   if (!store_write(key_name(key), raw)) return "Could not store the preset; device storage may be full";
   if (existing != nullptr) {
@@ -318,18 +335,28 @@ inline std::string save_current(const std::string &raw_name) {
   return store_document(raw_name, doc, true);
 }
 
-// The stored preset ({"name":...,"slots":[...]}) for backups.
-inline std::string export_preset(const std::string &raw_name, std::string &out) {
+// The stored preset ({"name":...,"slots":[...]}) for backups, in chunks so no
+// response needs a preset-sized buffer in internal RAM.
+constexpr size_t EXPORT_CHUNK = 3072;
+inline std::string export_chunk(const std::string &raw_name, size_t offset) {
   load();
   const Summary *summary = find(trim(raw_name));
-  if (summary == nullptr) return "Preset not found";
-  if (!store_read(key_name(summary->key), out)) return "Could not read the preset";
-  return "";
+  if (summary == nullptr) return "";
+  Blob raw;
+  if (!store_read(key_name(summary->key), raw) || offset > raw.size()) return "";
+  const size_t length = std::min(EXPORT_CHUNK, raw.size() - offset);
+  return onx_entity_config::build_json([&](JsonObject root) {
+    root["name"] = summary->name;
+    root["total"] = raw.size();
+    root["offset"] = offset;
+    root["data"] = std::string(raw.data() + offset, length);
+  });
 }
 
 // Restoring a preset from a backup arrives in sequential chunks, because one
 // configuration request is limited to 8 KB.
-inline std::string upload_name, upload_buffer;
+inline std::string upload_name;
+inline Blob upload_buffer;
 inline size_t upload_total{0};
 inline std::string import_chunk(const std::string &raw_name, size_t offset, size_t total, const std::string &data,
                                 bool &complete) {
@@ -337,7 +364,7 @@ inline std::string import_chunk(const std::string &raw_name, size_t offset, size
   const std::string name = trim(raw_name);
   if (offset == 0) {
     upload_name.clear();
-    std::string().swap(upload_buffer);
+    Blob().swap(upload_buffer);
     if (!valid_name(name)) return "Use a preset name of 1-32 characters other than \"Custom\"";
     if (total == 0 || total > MAX_BYTES) return "This preset is too large to store";
     if (find(name) == nullptr && summaries.size() >= MAX_PRESETS) return "All 8 presets are in use; delete one first";
@@ -348,14 +375,14 @@ inline std::string import_chunk(const std::string &raw_name, size_t offset, size
     return "Preset upload was interrupted; import it again";
   }
   if (upload_buffer.size() + data.size() > upload_total) return "Preset upload is larger than announced";
-  upload_buffer += data;
+  upload_buffer.append(data.data(), data.size());
   if (upload_buffer.size() < upload_total) return "";
   complete = true;
-  std::string raw;
+  Blob raw;
   raw.swap(upload_buffer);
   upload_name.clear();
   auto doc = custom_logic::make_psram_json_document();
-  if (deserializeJson(doc, raw) || !doc["slots"].is<JsonArray>()) return "The preset in this backup is unreadable";
+  if (deserializeJson(doc, blob_text(raw), raw.size()) || !doc["slots"].is<JsonArray>()) return "The preset in this backup is unreadable";
   JsonArray slots = doc["slots"].as<JsonArray>();
   if (slots.size() > SLOT_COUNT) return "The preset in this backup has too many slots";
   for (size_t i = 0; i < slots.size(); ++i) {
@@ -389,14 +416,13 @@ inline std::string rename_preset(const std::string &raw_from, const std::string 
   if (!valid_name(to)) return "Use a preset name of 1-32 characters other than \"Custom\"";
   const Summary *clash = find(to);
   if (clash != nullptr && clash->key != existing->key) return "Another preset already uses that name";
-  std::string raw;
+  Blob raw;
   if (!store_read(key_name(existing->key), raw)) return "Could not read the preset";
   auto doc = custom_logic::make_psram_json_document();
-  if (deserializeJson(doc, raw)) return "The stored preset is unreadable";
+  if (deserializeJson(doc, blob_text(raw), raw.size())) return "The stored preset is unreadable";
   const std::string from = existing->name;
   doc["name"] = to;
-  raw.clear();
-  serializeJson(doc, raw);
+  if (!serialize_blob(doc, raw)) return "Not enough memory to store the preset";
   if (!store_write(key_name(existing->key), raw)) return "Could not store the preset";
   for (auto &item : summaries)
     if (item.key == existing->key) { item.name = to; item.bytes = raw.size(); }
@@ -428,10 +454,10 @@ inline std::string apply(const std::string &raw_name) {
   if (web == nullptr) return "Presets are not ready yet";
   const std::string name = summary->name;
   ONX_PRESET_TRACE("preset_apply", name);
-  std::string raw;
+  Blob raw;
   if (!store_read(key_name(summary->key), raw)) return "Could not read the preset";
   auto stored = custom_logic::make_psram_json_document();
-  if (deserializeJson(stored, raw) || !stored["slots"].is<JsonArrayConst>()) return "The stored preset is unreadable";
+  if (deserializeJson(stored, blob_text(raw), raw.size()) || !stored["slots"].is<JsonArrayConst>()) return "The stored preset is unreadable";
   raw.clear();
   raw.shrink_to_fit();
   JsonArrayConst slots = stored["slots"].as<JsonArrayConst>();

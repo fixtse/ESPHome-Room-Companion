@@ -282,9 +282,8 @@ onx_config_web:
       return onx_presets::list_json();
     }
     if (query.op == "preset_get") {
-      std::string raw;
-      const auto error = onx_presets::export_preset(query.name, raw);
-      return error.empty() ? raw : onx_entity_config::error(error.c_str());
+      const auto chunk = onx_presets::export_chunk(query.name, query.offset);
+      return chunk.empty() ? onx_entity_config::error("Preset not found") : chunk;
     }
     if (query.op == "preset_put") {
       size_t total = 0;

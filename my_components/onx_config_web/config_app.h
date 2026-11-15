@@ -335,7 +335,8 @@ async function refreshStatus(){if(statusBusy||busy||!initialized)return;statusBu
 $('check-status').onclick=refreshStatus;
 $('retry-states').onclick=async()=>{if(busy)return;$('retry-states').disabled=true;try{await rpc({op:'retry'});message('Entity state refresh queued. Waiting for Home Assistant…');await refreshStatus()}catch(error){message(error.message,true)}finally{$('retry-states').disabled=false}};
 function download(name,value){const url=URL.createObjectURL(new Blob([JSON.stringify(value,null,2)],{type:'application/json'})),a=element('a','');a.href=url;a.download=name;document.body.append(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),1000)}
-async function exportPresets(){const list=await rpc({op:'presets'}),out=[];for(const item of list.presets||[]){const preset=await rpc({op:'preset_get',name:item.name});out.push({name:preset.name,slots:preset.slots})}return out}
+async function getPreset(name){let text='',total=1;while(text.length<total){const part=await rpc({op:'preset_get',name,offset:text.length});total=part.total;if(!part.data)break;text+=part.data}const preset=JSON.parse(text);return {name:preset.name||name,slots:preset.slots}}
+async function exportPresets(){const list=await rpc({op:'presets'}),out=[];for(const item of list.presets||[])out.push(await getPreset(item.name));return out}
 $('export').onclick=async()=>{let presetList=[],knobSlots=saved;try{if(editTarget)knobSlots=validateSlots((await rpc({op:'state'})).slots);presetList=await exportPresets()}catch(error){if(!confirm('Presets could not be read ('+error.message+'). Download the configuration without presets?'))return}download('onx2424g013-config.json',{schema:2,model:'ONX2424G013',exported_at:new Date().toISOString(),slots:knobSlots,settings:savedSettings,presets:presetList});message('Configuration downloaded'+(presetList.length?' with '+presetList.length+' preset'+(presetList.length===1?'':'s'):'')+'.')};
 function validatePresets(input){if(input===undefined)return [];if(!Array.isArray(input)||input.length>8)throw Error('A backup can contain up to 8 presets.');const names=new Set();return input.map(p=>{const name=typeof p?.name==='string'?p.name.trim():'';if(!name||name.length>32||/[\u0000-\u001f\u007f]/.test(name)||name.toLowerCase()==='custom'||names.has(name.toLowerCase()))throw Error('Invalid or duplicate preset name in backup.');names.add(name.toLowerCase());return {name,slots:validateSlots(p.slots)}})}
 async function putPreset(name,list){const body=JSON.stringify({slots:list});for(let offset=0;offset<body.length;offset+=2000)await rpc({op:'preset_put',name,offset,total:body.length,data:body.slice(offset,offset+2000)})}
@@ -380,7 +381,7 @@ async function switchTarget(name,isNew=false){
  try{
   if(!name){device=await rpc({op:'state'});slots=validateSlots(device.slots);editTarget=null}
   else if(isNew){slots=Array.from({length:MAX_SLOTS},empty);editTarget={name,isNew:true}}
-  else{const preset=await rpc({op:'preset_get',name});slots=fullSlots(preset.slots);editTarget={name:preset.name,isNew:false}}
+  else{const preset=await getPreset(name);slots=fullSlots(preset.slots);editTarget={name:preset.name,isNew:false}}
   saved=copy(slots);active=0;visibleSlots=1;slotTab='display';
   message(!editTarget?'Editing the controls on the knob.':editTarget.isNew?'New preset “'+name+'”. Add controls, then Save all to store it. The knob is unchanged.':'Editing preset “'+editTarget.name+'”. Saving stores the preset without changing the knob.');
  }catch(error){message(error.message,true)}

@@ -70,8 +70,7 @@ const { chromium } = require('playwright');
      if(op==='preset_save'){if(found)found.controls=slots.filter(s=>s.entity).length;else presetStore.presets.push({name,controls:slots.filter(s=>s.entity).length,bytes:900});presetStore.active=name}
      else if(op==='preset_apply'){if(!found)result={error:'Preset not found'};else presetStore.active=name}
      else if(op==='preset_rename'){found.name=values.get('q');if(presetStore.active===name)presetStore.active=found.name}
-     else if(op==='preset_get'&&presetStore.docs?.[name]){result={name,slots:presetStore.docs[name]}}
-     else if(op==='preset_get'){result=found?{name,slots:Array.from({length:20},(_,i)=>({entity:i===0?'sensor.living_room_temperature':'',name:i===0?'Temp':''}))}:{error:'Preset not found'}}
+     else if(op==='preset_get'){if(!found)result={error:'Preset not found'};else{const text=JSON.stringify({name,slots:presetStore.docs?.[name]||Array.from({length:20},(_,i)=>({entity:i===0?'sensor.living_room_temperature':'',name:i===0?'Temp':''}))}),offset=Number(values.get('offset')||0);result={name,total:text.length,offset,data:text.slice(offset,offset+200)};presetStore.chunks=(presetStore.chunks||0)+1}}
      else if(op==='preset_put'){const upload=presetStore.upload=values.get('offset')==='0'?'':presetStore.upload;presetStore.upload=upload+values.get('data');if(presetStore.upload.length===Number(values.get('total'))){const doc=JSON.parse(presetStore.upload);assert.equal(doc.slots.length,20);if(!found)presetStore.presets.push({name,controls:doc.slots.filter(s=>s.entity).length,bytes:presetStore.upload.length});presetStore.docs=presetStore.docs||{};presetStore.docs[name]=doc.slots;presetStore.upload=''}else result={received:presetStore.upload.length}}
      else if(op==='preset_delete'){presetStore.presets=presetStore.presets.filter(p=>p.name!==name);if(presetStore.active===name)presetStore.active=''}
      result=result||JSON.parse(JSON.stringify(presetStore));
@@ -225,6 +224,7 @@ const { chromium } = require('playwright');
   await page.getByRole('button',{name:'Backup & diagnostics',exact:true}).click();
   const [download]=await Promise.all([page.waitForEvent('download'),page.locator('#export').click()]);
   const backup=JSON.parse(fs.readFileSync(await download.path(),'utf8'));
+  assert.ok(presetStore.chunks>1,'Presets download in chunks');
   assert.equal(backup.presets.length,1);assert.equal(backup.presets[0].name,'Evening');assert.equal(backup.presets[0].slots[0].entity,'sensor.living_room_temperature');
   backup.presets.push({name:'Weekend',slots:backup.presets[0].slots.map(slot=>({...slot,name:'x'.repeat(150)}))});
   await page.locator('#import-file').setInputFiles({name:'backup.json',mimeType:'application/json',buffer:Buffer.from(JSON.stringify(backup))});
