@@ -33,6 +33,7 @@ namespace custom_logic { constexpr size_t CONFIGURABLE_DEVICE_SLOT_COUNT = 10; }
 #define ESP_LOGW(...) ((void)0)
 #define ESP_LOGI(...) ((void)0)
 #define USE_API_HOMEASSISTANT_SERVICES
+namespace esphome::onx_storage { constexpr int RGB_TICK_DEGREES = 5; constexpr int RGB_TICKS = 72; }
 namespace esphome {
 // Mirror ESPHome 2026.10's explicit construction so implicit assignments fail here too.
 struct StringRef {

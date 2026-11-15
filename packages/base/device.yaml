@@ -44,6 +44,10 @@ esphome:
                                                         &id(standby_weather_temperature),
                                                         &id(standby_weather_temperature_unit),
                                                         &id(standby_weather_humidity));
+          // Presets reuse the configuration page's save handler. A changed preset
+          // list reconnects HA so it reads the select's new options.
+          onx_presets::attach(id(entity_config_web), id(preset_select),
+                              []() { custom_logic::disconnect_all_clients_for_refresh(id(api_server)); });
           apply_device1_type_options(id(device1_type));
           apply_device2_type_options(id(device2_type));
           apply_device3_type_options(id(device3_type));

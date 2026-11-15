@@ -111,7 +111,8 @@ struct TransportFeedback {
     return entity == selected && action != Overlay::NONE && elapsed < 1000 ? 1000 - elapsed : 0;
   }
   Overlay view(const std::string &selected, const std::string &state, uint32_t now) const {
-    if (!has_playback(state)) return Overlay::NONE;
+    // Next/previous show for one second even if the player reports idle or
+    // buffering while it changes track.
     if (remaining_ms(selected, now)) return action;
     return state == "paused" ? Overlay::PAUSE : Overlay::NONE;
   }

@@ -159,6 +159,49 @@ the screen is deliberately off. Only the latest message is kept.
 
 [Create a reminder or calendar popup](display-notifications.md)
 
+## Presets
+
+A preset is a named set of controls: every slot's entity, display name, icon,
+press and turn actions, playlists and sensor choices. Keep one for each room,
+time of day or person, and switch between them without restarting the knob.
+
+1. Set up and **save** the slots the way you want them.
+2. Open **Presets**, enter a name such as `Evening` and click **Save current controls**.
+3. Click **Apply** on a preset to switch to it. **Update** replaces a preset with
+   the current controls; **Rename** and **Delete** manage the list.
+
+Presets store saved controls only, so save slot changes first. Applying a preset
+replaces unsaved slot changes. Only the slots that differ are rewritten, and
+controls you no longer use are released from memory. Up to **8** presets fit on
+the knob. Editing a slot by hand after applying a preset marks the controls as
+**Custom** until you apply or update a preset again.
+
+### Switch presets from Home Assistant
+
+The knob adds a **Preset** select to its Home Assistant device. Choose an option
+to switch, or use it in automations and dashboards:
+
+```yaml
+action: select.select_option
+target:
+  entity_id: select.onx2424g013_dbbc54_preset
+data:
+  option: Evening
+```
+
+The knob also provides three actions. Replace the device prefix with yours:
+
+```yaml
+action: esphome.onx2424g013_dbbc54_apply_preset
+data:
+  name: Evening
+```
+
+`save_preset` saves the current controls under `name` (replacing a preset with
+the same name) and `delete_preset` removes one. The select shows **Custom** when
+the controls match no saved preset. When the list of presets changes, Home
+Assistant reconnects to the knob briefly so the select shows the new options.
+
 ## Home Assistant connection
 
 The **Home Assistant** section lets your browser sign in to search entities and
@@ -177,11 +220,16 @@ states** asks for fresh readings without restarting or replaying old commands.
 
 In **Backup & diagnostics**, click **Download saved configuration** before making
 large changes. Backups include saved controls, names, press/turn actions,
-playlists, sensor display choices and device settings. They exclude credentials.
+playlists, sensor display choices, saved presets and device settings. They
+exclude credentials.
 
 **Import configuration** opens a backup as an unsaved draft. Review it, then save
 slots and device settings separately to apply it. Importing alone does not change
 the knob. Older supported backups receive defaults for newer settings.
+
+When a backup contains presets, the knob offers to restore them right away.
+Presets with the same name are replaced; other presets on the knob are kept.
+Restoring presets does not change the current controls.
 
 **Download diagnostics** provides firmware, uptime and connection information
 for troubleshooting, without entity names, addresses or credentials. Wireless

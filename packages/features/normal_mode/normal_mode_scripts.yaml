@@ -1031,7 +1031,7 @@ script:
           }
           if (show_rgb_bar) {
             int value_pct = (int) detail_slot.light().rgb_tick;
-            value_pct = std::clamp(value_pct, 0, 35);
+            value_pct = std::clamp(value_pct, 0, esphome::onx_storage::RGB_TICKS - 1);
             id(normal_light_rgb_value_pct) = value_pct;
             lv_arc_set_value(id(normal_light_rgb_value_arc), value_pct);
           }
@@ -2143,7 +2143,7 @@ script:
             int cct_value_pct = (int) light_state.color_temperature_step();
             id(normal_light_cct_value_pct) = std::clamp(cct_value_pct, 0, 100);
             int rgb_value_pct = (int) light_state.rgb_tick;
-            id(normal_light_rgb_value_pct) = std::clamp(rgb_value_pct, 0, 35);
+            id(normal_light_rgb_value_pct) = std::clamp(rgb_value_pct, 0, esphome::onx_storage::RGB_TICKS - 1);
             id(normal_clear_wifi_allowed) = true;
             ESP_LOGI("normal_mode", "light detail opened for index=%d", detail_index);
             lv_scr_load(id(normal_light_page)->obj);
@@ -2346,8 +2346,8 @@ script:
           int index = detail_index;
           if (index < 0) index = 0;
           if (index > 19) index = 19;
-          int rgb_tick = std::clamp(rgb_value_pct, 0, 35);
-          int hue = (rgb_tick * 10) % 360;
+          int rgb_tick = std::clamp(rgb_value_pct, 0, esphome::onx_storage::RGB_TICKS - 1);
+          int hue = (rgb_tick * esphome::onx_storage::RGB_TICK_DEGREES) % 360;
           int saturation = 100;
           ESP_LOGI("normal_mode", "light direct control rgb: index=%d hue=%d saturation=%d",
                    index, hue, saturation);
@@ -2365,8 +2365,8 @@ script:
                   entity_id: "{{ target_entity_id }}"
                   hs_color: !lambda |-
                     static char hs_buf[32];
-                    int rgb_tick = std::clamp(rgb_value_pct, 0, 35);
-                    int hue = (rgb_tick * 10) % 360;
+                    int rgb_tick = std::clamp(rgb_value_pct, 0, esphome::onx_storage::RGB_TICKS - 1);
+                    int hue = (rgb_tick * esphome::onx_storage::RGB_TICK_DEGREES) % 360;
                     int saturation = 100;
                     sprintf(hs_buf, "[%d,%d]", hue, saturation);
                     return hs_buf;
@@ -3017,7 +3017,8 @@ script:
           const bool active = id(normal_device_detail_active) &&
               id(normal_device_detail_kind) == NORMAL_DEVICE_DETAIL_KIND_AUTOMATION &&
               entity.rfind("media_player.", 0) == 0 && detail != nullptr && detail->available &&
-              onx_media::has_playback(detail->state) && id(normal_ha_api_connected) &&
+              (onx_media::has_playback(detail->state) || onx_media::transport.remaining_ms(entity, millis()) > 0) &&
+              id(normal_ha_api_connected) &&
               id(normal_device_detail_online) && !id(screen_off_state) &&
               id(ui_presenter)->is_normal_mode_active() && !id(ui_presenter)->is_standby_active() &&
               !onx_playlist::browser.open &&
@@ -3123,9 +3124,10 @@ script:
               material?id(fonts_MiSans_Medium_14)->get_lv_font():id(fonts_MiSans_Medium_18)->get_lv_font(),0);
           lv_obj_set_style_text_font(id(normal_automation_detail_title),
               material?id(fonts_MiSans_Medium_14)->get_lv_font():id(fonts_MiSans_Medium_16)->get_lv_font(),0);
-          // The pause/transport icon is centered; there is no playback-state label.
+          // The pause/next/previous icon is centered in the artwork area above the
+          // track details (classic: over the cover; full-screen art: above the title).
           lv_obj_set_x(id(normal_media_transport_overlay),0);
-          lv_obj_set_y(id(normal_media_transport_overlay),material?96:44);
+          lv_obj_set_y(id(normal_media_transport_overlay),material?56:44);
           if(material) {
             auto backing=[&](lv_obj_t *label,int maximum) {
               const auto *font=lv_obj_get_style_text_font(label,LV_PART_MAIN);
@@ -3251,13 +3253,11 @@ script:
                       service: media_player.media_previous_track
                       data:
                         entity_id: !lambda return id(ui_presenter)->get_normal_device_entity_id(detail_index);
-                  - script.execute: show_normal_action_sent
                 else:
                   - homeassistant.service:
                       service: media_player.media_next_track
                       data:
                         entity_id: !lambda return id(ui_presenter)->get_normal_device_entity_id(detail_index);
-                  - script.execute: show_normal_action_sent
             - lambda: |-
                 onx_media::transport.show(id(ui_presenter)->get_normal_device_entity_id(detail_index), previous, millis());
             - script.execute: refresh_normal_media_overlay

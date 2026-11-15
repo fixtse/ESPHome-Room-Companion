@@ -370,7 +370,7 @@ uint16_t NormalLightState::kelvin_from_color_temperature_step(uint8_t step) cons
       std::clamp(max_kelvin - (normalized_step * span + 50) / 100, (int) min_kelvin, (int) max_kelvin));
 }
 
-uint16_t NormalLightState::hue_degrees() const { return static_cast<uint16_t>((this->rgb_tick % 36) * 10); }
+uint16_t NormalLightState::hue_degrees() const { return static_cast<uint16_t>((this->rgb_tick % RGB_TICKS) * RGB_TICK_DEGREES); }
 
 NormalDeviceSlot::NormalDeviceSlot(OnxStorage *storage, size_t index) : storage_(storage), index_(index) {}
 
@@ -814,7 +814,7 @@ NormalLightState OnxStorage::get_normal_light_state(size_t index) const {
   light.min_color_temperature_kelvin = state.extra_u16[0];
   light.max_color_temperature_kelvin = state.extra_u16[1];
   normalize_kelvin_range(&light.min_color_temperature_kelvin, &light.max_color_temperature_kelvin);
-  light.rgb_tick = static_cast<uint8_t>(std::clamp<uint32_t>(state.extra_u32[1], 0, 35));
+  light.rgb_tick = static_cast<uint8_t>(std::clamp<uint32_t>(state.extra_u32[1], 0, RGB_TICKS - 1));
   light.capability_mask = normalize_light_capability_mask(state.extra_u32[0]);
   light.custom_capability_mask = state.reserved1 == 0 ? 0xF : normalize_light_capability_mask(state.reserved1);
   return light;
@@ -854,7 +854,7 @@ bool OnxStorage::update_normal_light_state(size_t index, const NormalLightStateP
   }
   if (patch.has_rgb_tick) {
     state.flags |= NORMAL_UI_DEVICE_STATE_FLAG_EXTRA1;
-    state.extra_u32[1] = std::clamp<int>(patch.rgb_tick, 0, 35);
+    state.extra_u32[1] = std::clamp<int>(patch.rgb_tick, 0, RGB_TICKS - 1);
   }
   if (patch.has_capability_mask) {
     state.flags |= NORMAL_UI_DEVICE_STATE_FLAG_EXTRA0;

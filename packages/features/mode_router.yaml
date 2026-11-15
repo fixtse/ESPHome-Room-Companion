@@ -273,6 +273,34 @@ onx_config_web:
       custom_logic_entity_sub::subscribe_standby_weather_entity(id(api_server), query.entity, &id(standby_weather_entity_id), &id(standby_weather_state), &id(standby_weather_temperature), &id(standby_weather_temperature_unit), &id(standby_weather_humidity));
       return std::string("{\"ok\":true}");
     }
+    if (query.op == "presets") return onx_presets::list_json();
+    if (query.op == "preset_save" || query.op == "preset_apply" || query.op == "preset_delete" || query.op == "preset_rename") {
+      const auto error = query.op == "preset_save" ? onx_presets::save_current(query.name) :
+          query.op == "preset_apply" ? onx_presets::apply(query.name) :
+          query.op == "preset_delete" ? onx_presets::remove_preset(query.name) : onx_presets::rename_preset(query.name, query.search);
+      if (!error.empty()) return onx_entity_config::error(error.c_str());
+      return onx_presets::list_json();
+    }
+    if (query.op == "preset_get") {
+      std::string raw;
+      const auto error = onx_presets::export_preset(query.name, raw);
+      return error.empty() ? raw : onx_entity_config::error(error.c_str());
+    }
+    if (query.op == "preset_put") {
+      size_t total = 0;
+      for (char ch : query.total) total = (ch >= '0' && ch <= '9' && total <= onx_presets::MAX_BYTES) ? total * 10 + (ch - '0') : SIZE_MAX;
+      if (query.total.empty() || total == 0 || total > onx_presets::MAX_BYTES)
+        return onx_entity_config::error("Invalid preset upload");
+      bool complete = false;
+      const auto error = onx_presets::import_chunk(query.name, query.offset, total, query.data, complete);
+      if (!error.empty()) return onx_entity_config::error(error.c_str());
+      return complete ? onx_presets::list_json() : std::string("{\"received\":") + std::to_string(query.offset + query.data.size()) + "}";
+    }
+    if (query.op == "preset_done") {
+      if (query.ticket != 0) return onx_entity_config::error("Unknown configuration request");
+      onx_presets::finish(query.name);
+      return std::string("{\"ok\":true}");
+    }
     if (query.op != "save" || query.slot < 0 || query.slot >= 20)
       return onx_entity_config::error("Unknown configuration request");
     if ((!query.entity.empty() && ((!onx_config::valid_entity(query.entity) && !custom_logic::is_local_hmi_gpio_switch_preset_option(query.entity)) ||
@@ -347,8 +375,11 @@ onx_config_web:
     id(normal_device_detail_kind) = NORMAL_DEVICE_DETAIL_KIND_NONE;
     id(normal_page_index) = 0;
     id(normal_device_selected_index) = 0;
-    if (!query.entity.empty()) custom_logic_entity_sub::subscribe_entity(id(api_server), query.slot, query.entity);
+    // Subscribes the new entity and releases what the slot followed before
+    // (an empty entity releases everything). New pairs are announced to the
+    // live HA connection, so no reconnect or reboot is needed.
+    custom_logic_entity_sub::subscribe_entity(id(api_server), query.slot, query.entity);
+    if (query.ticket != 0) onx_presets::mark_custom();
     id(show_normal_device_entry_page).execute(0);
     id(refresh_normal_device_page).execute();
-    custom_logic::disconnect_all_clients_for_refresh(id(api_server));
     return std::string("{\"ok\":true}");

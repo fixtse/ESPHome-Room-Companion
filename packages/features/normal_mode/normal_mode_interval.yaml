@@ -13,6 +13,7 @@ interval:
                               id(ui_presenter)->is_normal_mode_active() && !id(ui_presenter)->is_standby_active();
           const auto entity = active ? id(ui_presenter)->get_normal_device_entity_id(id(normal_device_detail_index)) : std::string("");
           onx_controls::tick(id(api_server), entity, id(normal_ha_api_connected));
+          custom_logic_entity_sub::tick_subscriptions(id(api_server));
           custom_logic_entity_sub::recover_entity_states(id(api_server), id(normal_ha_api_connected));
   - interval: 1s
     then:

@@ -49,6 +49,7 @@ esphome:
     - onx_playlist.h
     - onx_media_state.h
     - onx_registry_queue.h
+    - onx_subscriptions.h
     - custom_logic.h
     - onx_sensor_view.h
     - custom_logic_entity_sub.h
@@ -57,4 +58,5 @@ esphome:
     - onx_sensor_graph.h
     - onx_display_settings.h
     - onx_entity_config.h
+    - onx_presets.h
   name: ${project_name}

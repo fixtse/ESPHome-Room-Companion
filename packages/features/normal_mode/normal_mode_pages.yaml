@@ -2217,7 +2217,7 @@ lvgl:
                   adjustable: true
                   clickable: false
                   min_value: 0
-                  max_value: 36
+                  max_value: 72  # esphome::onx_storage::RGB_TICKS (5° per knob step)
                   value: 0
                   start_angle: 0
                   end_angle: 360

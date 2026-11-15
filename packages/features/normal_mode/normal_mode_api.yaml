@@ -26,6 +26,29 @@ api:
         - lambda: |-
             onx_notification::current.show(title,message,timeout_seconds,image_url);
             id(refresh_normal_message_popup).execute();
+    - action: apply_preset
+      description: Switch the knob's controls to a saved preset by name.
+      variables:
+        name: string
+      then:
+        - lambda: |-
+            onx_presets::request(name);
+    - action: save_preset
+      description: Save the knob's current controls as a preset, replacing a preset with the same name.
+      variables:
+        name: string
+      then:
+        - lambda: |-
+            const auto error = onx_presets::save_current(name);
+            if (!error.empty()) ESP_LOGW("onx_presets", "save_preset \"%s\": %s", name.c_str(), error.c_str());
+    - action: delete_preset
+      description: Delete a saved preset by name. The knob's current controls do not change.
+      variables:
+        name: string
+      then:
+        - lambda: |-
+            const auto error = onx_presets::remove_preset(name);
+            if (!error.empty()) ESP_LOGW("onx_presets", "delete_preset \"%s\": %s", name.c_str(), error.c_str());
     - action: dismiss_message
       description: Dismiss the current or pending display reminder.
       then:

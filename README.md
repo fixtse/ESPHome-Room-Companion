@@ -28,6 +28,7 @@ Made by [fixtSE](https://fixtse.com/).
 ## Make it yours
 
 - **Up to 20 controls.** Start with the ones you use most, then add more. Search by name or room, rename, reorder and duplicate them.
+- **Presets.** Save sets of controls by name and switch between them from the knob's web page or Home Assistant's **Preset** select—no restart needed. [Presets guide](docs/web-configuration.md#presets)
 - **Easy to find your place.** Icons follow the lower curve of the screen, with the current page centered.
 - **A quieter display.** Keep hidden timers working in the background. Choose the clock when idle, or show an actively playing media player with a clock fallback.
 - **Your look and routine.** Choose display orientation, brightness, dial sensitivity, date and clock formats, media style, progress-ring color, standby weather and scheduled sleep.

@@ -1107,9 +1107,9 @@ sensor:
                           - lambda: |-
                               int rgb_value_pct = id(normal_light_rgb_value_pct);
                               if (rgb_value_pct < 0) rgb_value_pct = 0;
-                              if (rgb_value_pct > 35) rgb_value_pct = 35;
+                              if (rgb_value_pct > esphome::onx_storage::RGB_TICKS - 1) rgb_value_pct = esphome::onx_storage::RGB_TICKS - 1;
                               rgb_value_pct += 1;
-                              if (rgb_value_pct > 35) rgb_value_pct = 0;
+                              if (rgb_value_pct > esphome::onx_storage::RGB_TICKS - 1) rgb_value_pct = 0;
                               id(normal_light_rgb_value_pct) = rgb_value_pct;
                               int detail_index = id(normal_device_detail_index);
                               if (detail_index < 0) detail_index = 0;
@@ -1126,7 +1126,7 @@ sensor:
                               }
                               id(normal_device_detail_is_on) = true;
                               id(hmi_switch_state) = true;
-                              int hue = (rgb_value_pct * 10) % 360;
+                              int hue = (rgb_value_pct * esphome::onx_storage::RGB_TICK_DEGREES) % 360;
                               if(auto *detail=custom_logic_entity_sub::entity_detail(id(ui_presenter)->get_normal_device_entity_id(detail_index))) {
                                 detail->light_hue=hue;detail->light_saturation=100;detail->light_temperature=false;
                               }
@@ -1550,9 +1550,9 @@ sensor:
                           - lambda: |-
                               int rgb_value_pct = id(normal_light_rgb_value_pct);
                               if (rgb_value_pct < 0) rgb_value_pct = 0;
-                              if (rgb_value_pct > 35) rgb_value_pct = 35;
+                              if (rgb_value_pct > esphome::onx_storage::RGB_TICKS - 1) rgb_value_pct = esphome::onx_storage::RGB_TICKS - 1;
                               rgb_value_pct -= 1;
-                              if (rgb_value_pct < 0) rgb_value_pct = 35;
+                              if (rgb_value_pct < 0) rgb_value_pct = esphome::onx_storage::RGB_TICKS - 1;
                               id(normal_light_rgb_value_pct) = rgb_value_pct;
                               int detail_index = id(normal_device_detail_index);
                               if (detail_index < 0) detail_index = 0;
@@ -1569,7 +1569,7 @@ sensor:
                               }
                               id(normal_device_detail_is_on) = true;
                               id(hmi_switch_state) = true;
-                              int hue = (rgb_value_pct * 10) % 360;
+                              int hue = (rgb_value_pct * esphome::onx_storage::RGB_TICK_DEGREES) % 360;
                               if(auto *detail=custom_logic_entity_sub::entity_detail(id(ui_presenter)->get_normal_device_entity_id(detail_index))) {
                                 detail->light_hue=hue;detail->light_saturation=100;detail->light_temperature=false;
                               }

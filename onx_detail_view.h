@@ -227,7 +227,7 @@ template<typename Light> inline View light_view(const std::string &entity,const 
   v.icon.clear();v.value.y=100;v.badge.x=0;
   if(mode==2) {
     v.badge.text="RGB";v.value.text=onx_light::rgb_text(v.accent);v.value.size=24;
-    v.selector_value=int(state.rgb_tick)*1000/36;
+    v.selector_value=int(state.rgb_tick)*1000/esphome::onx_storage::RGB_TICKS;
   } else if(mode==1) {
     v.badge.text="Color temperature";v.value.text=std::to_string(state.color_temperature_kelvin)+" K";
     v.selector_value=int(state.color_temperature_step())*10;
@@ -241,7 +241,11 @@ template<typename Light> inline View light_view(const std::string &entity,const 
 inline View carousel(const std::string &entity, const std::string &name) {
   using namespace custom_logic_entity_sub;
   auto v = build(entity, name); v.layout = "carousel"; v.value_ring = -1;
-  if(entity.rfind("switch.",0)==0)v.name.text=onx_media::display_text(name);
+  if(entity.rfind("switch.",0)==0) {
+    v.name.text=onx_media::display_text(name);
+    // A power graph clears the detail icon; the main page still shows one.
+    if(v.icon.empty()) {v.icon=onx_icon_state::selected_icon(entity);if(v.icon.empty())v.icon="mdi:"+onx_icon_state::fallback(entity);}
+  }
   const auto badge = v.badge.text;
   v.badge.text.clear(); v.context.text.clear(); v.hint.text.clear();
   v.icon_x = 0; v.icon_y = 34; v.icon_size = 40;

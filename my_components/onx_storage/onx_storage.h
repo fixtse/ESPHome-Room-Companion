@@ -41,6 +41,10 @@ enum NormalUiDeviceStateFlag : uint8_t {
   NORMAL_UI_DEVICE_STATE_FLAG_EXTRA3 = 1 << 7,
 };
 
+// RGB mode turns the hue wheel in fixed steps; one knob detent moves one step.
+constexpr int RGB_TICK_DEGREES = 5;
+constexpr int RGB_TICKS = 360 / RGB_TICK_DEGREES;
+
 struct NormalLightState {
   bool is_on{false};
   uint8_t brightness_pct{0};

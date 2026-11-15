@@ -156,6 +156,20 @@ http_request:
   timeout: 30s
 
 select:
+  # Switch the whole set of controls from Home Assistant. Options are the
+  # presets saved on the knob; "Custom" means the slots match no stored preset.
+  - platform: template
+    id: preset_select
+    name: Preset
+    icon: mdi:view-carousel-outline
+    options:
+      - Custom
+    initial_option: Custom
+    optimistic: false
+    restore_value: false
+    set_action:
+      - lambda: |-
+          onx_presets::request(x);
   - id: device1_config
     name: 10. Device1
     platform: template

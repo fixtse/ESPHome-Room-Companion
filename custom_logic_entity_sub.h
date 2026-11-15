@@ -19,6 +19,7 @@
 #include "onx_icon_state.h"
 #include "onx_media_state.h"
 #include "onx_recovery_state.h"
+#include "onx_subscriptions.h"
 #include <set>
 #include "esphome.h"
 #include "esphome/components/api/api_server.h"
@@ -92,7 +93,7 @@ inline void begin_normal_light_feedback_window(size_t ui_slot, uint8_t target_ma
     window.pending_color_temperature_value.clear();
   }
   if ((target_mask & custom_logic::NORMAL_LIGHT_FEEDBACK_RGB) != 0) {
-    window.target_rgb_tick = std::clamp(target_value, 0, 35);
+    window.target_rgb_tick = std::clamp(target_value, 0, esphome::onx_storage::RGB_TICKS - 1);
     window.pending_rgb = false;
     window.pending_hs_color_value.clear();
   }
@@ -838,7 +839,7 @@ class DeviceSlotStateUpdater {
         if (hs.size() >= 2) {
           int hue = static_cast<int>(hs[0].as<float>() + 0.5f);
           if (hue < 0) hue = 0;
-          rgb_tick = ((hue % 360 + 5) / 10) % 36;
+          rgb_tick = ((hue % 360 + esphome::onx_storage::RGB_TICK_DEGREES / 2) / esphome::onx_storage::RGB_TICK_DEGREES) % esphome::onx_storage::RGB_TICKS;
         }
       }
       if ((window.target_mask & custom_logic::NORMAL_LIGHT_FEEDBACK_RGB) != 0 &&
@@ -983,7 +984,7 @@ class DeviceSlotStateUpdater {
       hue %= 360;
     }
     saturation = std::clamp(saturation, 0, 100);
-    const int rgb_tick = ((hue + 5) / 10) % 36;
+    const int rgb_tick = ((hue + esphome::onx_storage::RGB_TICK_DEGREES / 2) / esphome::onx_storage::RGB_TICK_DEGREES) % esphome::onx_storage::RGB_TICKS;
     const size_t ui_slot = this->ui_slot_();
     if (ui_slot == static_cast<size_t>(-1)) {
       return;
@@ -1101,11 +1102,8 @@ inline void subscribe_field(esphome::api::APIServer *api_server, size_t slot, co
     ESP_LOGI(TAG, "%s has no valid HA entity subscription", custom_logic::device_slot_label(slot).c_str());
     return;
   }
-  static std::array<std::set<std::string>, custom_logic::CONFIGURABLE_DEVICE_SLOT_COUNT> registered;
-  const std::string key = entity_id + "\n" + attribute;
-  if (slot >= registered.size() || !registered[slot].insert(key).second) return;
-  api_server->subscribe_home_assistant_state(
-      entity_id, esphome::optional<std::string>(attribute),
+  if (slot >= custom_logic::CONFIGURABLE_DEVICE_SLOT_COUNT) return;
+  onx_subs::registry.acquire(api_server, onx_subs::owner(onx_subs::Kind::PRIMARY, slot), entity_id, attribute,
       [slot, entity_id, field](esphome::StringRef value) {
         DeviceSlotStateUpdater(slot, entity_id).on_state_changed(field, value);
       });
@@ -1117,14 +1115,14 @@ inline void subscribe_field(esphome::api::APIServer *api_server, size_t slot, co
 
 inline void subscribe_secondary(esphome::api::APIServer *api_server,size_t slot,const std::string &primary) {
 #ifdef USE_API_HOMEASSISTANT_STATES
-  if(!api_server || slot>=20)return;
+  if(slot>=20)return;
+  const auto who=onx_subs::owner(onx_subs::Kind::SECONDARY,slot);
   const auto &config=onx_sensor_view::configs[slot];
-  if(primary!=config.primary || !config.secondary[0])return;
+  if(!api_server || primary.empty() || primary!=config.primary || !config.secondary[0]) {onx_subs::registry.release(who);return;}
   const std::string secondary=config.secondary;
-  static std::array<std::set<std::string>,20> registered;
-  if(!registered[slot].insert(primary+"\n"+secondary).second)return;
+  onx_subs::registry.release(who,&secondary);
   for(const std::string attribute : {std::string(""),std::string("unit_of_measurement")}) {
-    api_server->subscribe_home_assistant_state(secondary, esphome::optional<std::string>(attribute),
+    onx_subs::registry.acquire(api_server,who,secondary,attribute,
       [slot,primary,secondary,attribute](esphome::StringRef raw) {
         const auto &c=onx_sensor_view::configs[slot];
         if(primary!=c.primary || secondary!=c.secondary || custom_logic::cached_device_entity_id(slot)!=primary)return;
@@ -1153,26 +1151,18 @@ inline void sample_sensor_history(time_t now) {
 
 inline void subscribe_gesture_feedback(esphome::api::APIServer *api,size_t slot,const std::string &primary) {
 #ifdef USE_API_HOMEASSISTANT_STATES
-  if(!api || slot>=20 || primary!=onx_gesture::configs[slot].entity)return;
+  if(slot>=20)return;
+  const auto who=onx_subs::owner(onx_subs::Kind::GESTURE,slot);
   const auto &config=onx_gesture::configs[slot];
-  bool enabled=config.events || config.responses || config.feedback[0];
-  for(const auto &action:config.actions)enabled=enabled || (action[0] && std::strcmp(action,"none")!=0);
-  if(!enabled)return;
+  bool enabled=!primary.empty() && primary==config.entity && (config.events || config.responses || config.feedback[0]);
+  for(const auto &action:config.actions)enabled=enabled || (primary==config.entity && action[0] && std::strcmp(action,"none")!=0);
+  if(!api || primary.empty() || primary!=config.entity || !enabled) {onx_subs::registry.release(who);return;}
   const std::string entity=config.feedback[0]?config.feedback:primary;
-  static std::array<std::set<std::string>,20> registered;
-  if(!registered[slot].insert(primary+"\n"+entity).second) {
-    if(!onx_gesture::states[slot].received)for(const std::string attribute:{std::string(""),std::string("unit_of_measurement")}) {
-      esphome::api::SubscribeHomeAssistantStateResponse request;
-      request.entity_id=esphome::StringRef(entity);request.attribute=esphome::StringRef(attribute);request.once=true;
-      bool sent=false;
-      for(const auto &client:api->active_clients())
-        if(client && client->is_connection_setup())sent=client->send_message(request) || sent;
-      if(!sent)ESP_LOGD(TAG,"Gesture feedback refresh could not be queued");
-    }
-    return;
-  }
-  for(const std::string attribute:{std::string(""),std::string("unit_of_measurement")})
-    api->subscribe_home_assistant_state(entity,esphome::optional<std::string>(attribute),
+  if(!onx_subs::registry.owns(who,entity))onx_gesture::states[slot]=onx_gesture::State{};
+  onx_subs::registry.release(who,&entity);
+  bool existing=true;
+  for(const std::string attribute:{std::string(""),std::string("unit_of_measurement")}) {
+    const auto result=onx_subs::registry.acquire(api,who,entity,attribute,
         [slot,primary,entity,attribute](esphome::StringRef raw) {
           const std::string value=raw.str();
           const auto &current=onx_gesture::configs[slot];
@@ -1182,14 +1172,45 @@ inline void subscribe_gesture_feedback(esphome::api::APIServer *api,size_t slot,
           if(attribute.empty())onx_gesture::feedback(slot,value,state.unit,millis());
           else state.unit=onx_notification::clipped(value,24);
         });
+    existing=existing && result==onx_subs::Result::EXISTING;
+  }
+  if(existing && !onx_gesture::states[slot].received)
+    for(const std::string attribute:{std::string(""),std::string("unit_of_measurement")})
+      onx_subs::registry.refresh(entity,attribute);
 #endif
+}
+
+// Frees per-slot runtime caches when a slot stops showing an entity, so removed
+// controls release their strings, history and feedback state without a reboot.
+inline void release_slot_runtime(size_t slot,const std::string &entity_id) {
+  if(slot>=custom_logic::CONFIGURABLE_DEVICE_SLOT_COUNT)return;
+  auto &detail=entity_details[slot];
+  if(detail.entity_id!=entity_id) detail=EntityDetailState{};
+  if(onx_icon_state::metadata[slot].entity!=entity_id) onx_icon_state::metadata[slot].bind(entity_id);
+  if(slot<onx_sensor_view::states.size() && onx_sensor_view::configs[slot].primary!=entity_id)
+    onx_sensor_view::states[slot]=onx_sensor_view::State{};
+}
+
+// Releases every Home Assistant subscription a slot holds (primary entity,
+// secondary sensor and gesture feedback) along with its runtime caches.
+inline void release_slot(size_t slot) {
+  if(slot>=custom_logic::CONFIGURABLE_DEVICE_SLOT_COUNT)return;
+  for(auto kind:{onx_subs::Kind::PRIMARY,onx_subs::Kind::SECONDARY,onx_subs::Kind::GESTURE})
+    onx_subs::registry.release(onx_subs::owner(kind,slot));
+  if(slot<20) onx_gesture::states[slot]=onx_gesture::State{};
+  release_slot_runtime(slot,"");
 }
 
 inline void subscribe_entity(esphome::api::APIServer *api_server, size_t slot, const std::string &entity_id) {
   if (!is_valid_entity_id(entity_id)) {
+    release_slot(slot);
     ESP_LOGI(TAG, "%s has no valid dynamic HA entity subscription", custom_logic::device_slot_label(slot).c_str());
     return;
   }
+  // Keep listeners that already follow this entity; release anything else the
+  // slot followed before so its memory can be reclaimed.
+  onx_subs::registry.release(onx_subs::owner(onx_subs::Kind::PRIMARY, slot), &entity_id);
+  release_slot_runtime(slot, entity_id);
 
   subscribe_gesture_feedback(api_server,slot,entity_id);
   subscribe_secondary(api_server,slot,entity_id);
@@ -1238,6 +1259,15 @@ inline void subscribe_entity(esphome::api::APIServer *api_server, size_t slot, c
   }
 
   ESP_LOGI(TAG, "%s subscribed HA entity: %s", custom_logic::device_slot_label(slot).c_str(), entity_id.c_str());
+}
+
+// Main-loop subscription housekeeping: registers deferred pairs, announces new
+// pairs to a live HA session and reclaims rows no slot uses any more.
+inline void tick_subscriptions(esphome::api::APIServer *api) {
+  if (onx_subs::registry.tick(api, millis())) {
+    ESP_LOGI(TAG, "Released HA subscriptions are still forwarded; refreshing the HA connection");
+    custom_logic::disconnect_all_clients_for_refresh(api);
+  }
 }
 
 // Recovery reads use existing callbacks and one-shot Native API requests. They do not
@@ -1325,8 +1355,7 @@ inline void subscribe_standby_weather_field(esphome::api::APIServer *api_server,
     ESP_LOGI(TAG, "standby weather has no valid HA entity subscription");
     return;
   }
-  api_server->subscribe_home_assistant_state(
-      entity_id, esphome::optional<std::string>(attribute),
+  onx_subs::registry.acquire(api_server, onx_subs::owner(onx_subs::Kind::WEATHER, 0), entity_id, attribute,
       [entity_id, field, entity_id_out, state_out, temperature_out, temperature_unit_out, humidity_out](
           esphome::StringRef raw_value) {
         const std::string value = raw_value.str();
@@ -1354,10 +1383,13 @@ inline void subscribe_standby_weather_entity(esphome::api::APIServer *api_server
                                              std::string *entity_id_out, std::string *state_out,
                                              std::string *temperature_out, std::string *temperature_unit_out,
                                              std::string *humidity_out) {
+  const auto who = onx_subs::owner(onx_subs::Kind::WEATHER, 0);
   if (!is_valid_entity_id(entity_id) || !has_prefix(entity_id, "weather.")) {
+    onx_subs::registry.release(who);
     ESP_LOGI(TAG, "standby weather has no valid dynamic HA entity subscription");
     return;
   }
+  onx_subs::registry.release(who, &entity_id);
 
   subscribe_standby_weather_field(api_server, entity_id, "state", "", entity_id_out, state_out, temperature_out,
                                   temperature_unit_out, humidity_out);

@@ -13,6 +13,7 @@
 #include <ArduinoJson.h>
 #include "esphome.h"
 #include "esphome/components/api/api_server.h"
+#include "onx_subscriptions.h"
 #include "esphome/components/json/json_util.h"
 #include "esphome/core/helpers.h"
 #include "esphome/core/preferences.h"
@@ -602,6 +603,9 @@ inline void process_pending_api_client_refresh() {
     return;
   }
 
+  // The connection is about to end, so rows nobody uses can go now; the next
+  // connection replays only what the slots still need.
+  onx_subs::registry.compact_now(api_server);
   ESP_LOGI(TAG, "HA API client refresh disconnect begin: client_count=%u",
            static_cast<unsigned>(client_count));
   for (const auto &client : api_server->active_clients()) {
@@ -3003,7 +3007,7 @@ inline bool apply_device_light_feedback(size_t slot, JsonObjectConst state_obj, 
         hue %= 360;
       }
       saturation = std::clamp(saturation, 0, 100);
-      const int rgb_tick = ((hue + 5) / 10) % 36;
+      const int rgb_tick = ((hue + esphome::onx_storage::RGB_TICK_DEGREES / 2) / esphome::onx_storage::RGB_TICK_DEGREES) % esphome::onx_storage::RGB_TICKS;
       patch.has_rgb_tick = true;
       patch.rgb_tick = static_cast<uint8_t>(rgb_tick);
       changed = true;

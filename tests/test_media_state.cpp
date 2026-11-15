@@ -34,6 +34,9 @@ int main() {
   feedback.show("media_player.room",true,2000);
   assert(feedback.view("media_player.room","playing",2000)==Overlay::PREVIOUS);
   assert(feedback.view("media_player.room","playing",3000)==Overlay::NONE);
+  // A skip stays visible while the player briefly reports buffering or idle.
+  feedback.show("media_player.room",false,3500);assert(feedback.view("media_player.room","idle",3600)==Overlay::NEXT);
+  assert(feedback.view("media_player.room","idle",4600)==Overlay::NONE);
   feedback.show("media_player.room",false,4000);feedback.observe("media_player.other",true);
   assert(feedback.view("media_player.room","playing",4001)==Overlay::NONE);
   feedback.show("media_player.room",false,0xffffff00u);

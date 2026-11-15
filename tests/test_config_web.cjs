@@ -21,6 +21,7 @@ const { chromium } = require('playwright');
   slots[7]={entity:'climate.calentador',name:'Calentador',action:''};
   slots[8]={entity:'media_player.bedroom',name:'Bedroom',action:''};
   const results = new Map(); let ticket=0, failSave=false, saved=[],iconUpdates=[],savedSettings=[];
+  const presetStore={presets:[],active:'',applying:'',capacity:8,remaining:0},presetOps=[];
   await page.route('http://knob.test/**',async route=>{
    const request=route.request(),url=new URL(request.url());
    if(url.pathname==='/'||url.pathname==='/knob'){await route.fulfill({contentType:'text/html',body:html});return}
@@ -63,6 +64,16 @@ const { chromium } = require('playwright');
     else if(values.get('op')==='save'){
      if(failSave)result={error:'Could not save the press action; retry'};
      else {saved.push(Object.fromEntries(values));slots[Number(values.get('slot'))]={entity:values.get('entity'),action:values.get('action'),playlists:JSON.parse(values.get('playlists')||'[]')};result={ok:true}}
+    }else if(values.get('op')?.startsWith('preset')){
+     const op=values.get('op'),name=values.get('name');presetOps.push(Object.fromEntries(values));
+     const found=presetStore.presets.find(p=>p.name===name);
+     if(op==='preset_save'){if(found)found.controls=slots.filter(s=>s.entity).length;else presetStore.presets.push({name,controls:slots.filter(s=>s.entity).length,bytes:900});presetStore.active=name}
+     else if(op==='preset_apply'){if(!found)result={error:'Preset not found'};else presetStore.active=name}
+     else if(op==='preset_rename'){found.name=values.get('q');if(presetStore.active===name)presetStore.active=found.name}
+     else if(op==='preset_get'){result=found?{name,slots:Array.from({length:20},(_,i)=>({entity:i===0?'sensor.living_room_temperature':'',name:i===0?'Temp':''}))}:{error:'Preset not found'}}
+     else if(op==='preset_put'){const upload=presetStore.upload=values.get('offset')==='0'?'':presetStore.upload;presetStore.upload=upload+values.get('data');if(presetStore.upload.length===Number(values.get('total'))){const doc=JSON.parse(presetStore.upload);assert.equal(doc.slots.length,20);if(!found)presetStore.presets.push({name,controls:doc.slots.filter(s=>s.entity).length,bytes:presetStore.upload.length});presetStore.upload=''}else result={received:presetStore.upload.length}}
+     else if(op==='preset_delete'){presetStore.presets=presetStore.presets.filter(p=>p.name!==name);if(presetStore.active===name)presetStore.active=''}
+     result=result||JSON.parse(JSON.stringify(presetStore));
     }else if(values.get('op')==='refresh'||values.get('op')==='search')throw Error('Catalogue must stay in browser');else result={ok:true};
     results.set(++ticket,result);await route.fulfill({status:202,json:{ticket}});return;
    }
@@ -199,6 +210,34 @@ const { chromium } = require('playwright');
   const overflow=await page.evaluate(()=>document.documentElement.scrollWidth>window.innerWidth);
   assert.equal(overflow,false,'Mobile page must not overflow horizontally');
   await page.screenshot({path:process.env.ONX_UI_SCREENSHOT||'/tmp/onx-config-mobile.png',fullPage:true});
-  console.log('Configuration UI passed: search, pairing, save, no-action, failure retry, draft preservation, manual IDs, mobile layout');
+  page.on('dialog',dialog=>dialog.type()==='prompt'?dialog.accept('Night'):dialog.accept());
+  await page.getByRole('button',{name:'Presets',exact:true}).click();
+  await page.locator('#preset-list').getByText('No presets yet').waitFor();
+  await page.locator('#preset-name').fill('Evening');
+  await page.locator('#preset-save').click();
+  await page.getByRole('status').filter({hasText:'Saved the current controls as “Evening”.'}).waitFor();
+  assert.equal(presetOps.at(-1).op,'preset_save');assert.equal(presetOps.at(-1).name,'Evening');
+  await page.locator('#preset-list').getByText('Active').waitFor();
+  await page.getByRole('button',{name:'Apply preset Evening',exact:true}).click();
+  await page.getByRole('status').filter({hasText:'Preset “Evening” applied.'}).waitFor();
+  assert.ok(presetOps.some(o=>o.op==='preset_apply'&&o.name==='Evening'));
+  await page.getByRole('button',{name:'Backup & diagnostics',exact:true}).click();
+  const [download]=await Promise.all([page.waitForEvent('download'),page.locator('#export').click()]);
+  const backup=JSON.parse(fs.readFileSync(await download.path(),'utf8'));
+  assert.equal(backup.presets.length,1);assert.equal(backup.presets[0].name,'Evening');assert.equal(backup.presets[0].slots[0].entity,'sensor.living_room_temperature');
+  backup.presets.push({name:'Weekend',slots:backup.presets[0].slots.map(slot=>({...slot,name:'x'.repeat(150)}))});
+  await page.locator('#import-file').setInputFiles({name:'backup.json',mimeType:'application/json',buffer:Buffer.from(JSON.stringify(backup))});
+  await page.getByRole('status').filter({hasText:'2 presets restored'}).waitFor();
+  assert.ok(presetOps.filter(o=>o.op==='preset_put'&&o.name==='Weekend').length>1,'Large presets upload in chunks');
+  assert.ok(presetOps.filter(o=>o.op==='preset_put').every(o=>o.data.length<=2000));
+  assert.ok(presetStore.presets.some(p=>p.name==='Weekend'));
+  presetStore.presets=presetStore.presets.filter(p=>p.name!=='Weekend');
+  await page.getByRole('button',{name:'Presets',exact:true}).click();
+  await page.getByRole('button',{name:'Rename preset Evening',exact:true}).click();
+  await page.getByRole('status').filter({hasText:'Renamed “Evening” to “Night”.'}).waitFor();
+  await page.getByRole('button',{name:'Delete preset Night',exact:true}).click();
+  await page.getByRole('status').filter({hasText:'Deleted preset “Night”.'}).waitFor();
+  assert.equal(presetStore.presets.length,0);
+  console.log('Configuration UI passed: search, pairing, save, no-action, failure retry, draft preservation, manual IDs, presets, preset backup, mobile layout');
  }finally{await browser.close()}
 })().catch(error=>{console.error(error);process.exit(1)});

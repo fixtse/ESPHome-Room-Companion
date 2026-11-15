@@ -432,6 +432,48 @@ inline bool save_icon(size_t slot, const std::string &entity, const std::string 
   meta.bind(entity); meta.configured = icon; meta.registry_override = override;
   return true;
 }
+// One slot as the configuration page saves it. Presets store the same shape so
+// applying one goes through the regular, validated save path.
+inline void encode_slot(size_t i, JsonObject slot) {
+  custom_logic::load_device_config_if_needed(i);
+  slot["entity"] = custom_logic::cached_device_entity_id(i);
+  auto gestures=slot["gestures"].to<JsonObject>();
+  const auto &control=onx_gesture::configs[i];
+  const bool bound=custom_logic::cached_device_entity_id(i)==control.entity;
+  const char *gesture_keys[]={"cw","ccw","holdCw","holdCcw"};
+  for(size_t j=0;j<4;++j)gestures[gesture_keys[j]]=bound?control.actions[j]:"";
+  gestures["feedback"]=bound?control.feedback:"";
+  gestures["popup"]=!bound || control.popup?"1":"0";
+  gestures["responses"]=bound && control.responses?"1":"0";
+  gestures["pressResponses"]=bound && control.press_responses?"1":"0";
+  gestures["events"]=bound && control.events?"1":"0";
+  gestures["step"]=std::to_string(bound?control.step:1);
+  slot["timerHidden"] = timer_hidden(i,custom_logic::cached_device_entity_id(i))?"1":"0";
+  JsonArray playlists=slot["playlists"].to<JsonArray>();
+  const auto &playlist=onx_playlist::configs[i];
+  if(custom_logic::cached_device_entity_id(i)==playlist.entity)
+    for(size_t j=0;j<playlist.count;++j) {
+      auto entry=playlists.add<JsonObject>();entry["name"]=playlist.entries[j].name;entry["action"]=playlist.entries[j].action;
+    }
+  const auto &sensor=onx_sensor_view::configs[i];
+  const bool same_sensor=custom_logic::cached_device_entity_id(i)==sensor.primary;
+  slot["secondary"] = same_sensor?sensor.secondary:"";
+  slot["secondaryText"] = same_sensor?sensor.text:"{value}";
+  slot["sensorGraph"] = same_sensor&&sensor.graph?"1":"0";
+  const auto &icon = onx_icon_state::metadata[i];
+  const bool same_icon_entity = icon.entity == custom_logic::cached_device_entity_id(i);
+  slot["icon"] = same_icon_entity ? icon.configured : "";
+  slot["iconOverride"] = same_icon_entity && icon.registry_override ? "1" : "0";
+  slot["name"] = custom_logic::ha_entity_title_from_registry_cache(custom_logic::cached_device_entity_id(i));
+  for (size_t j = 0; j < custom_logic::cached_ha_entities().count; ++j) {
+    const auto &entry = custom_logic::cached_ha_entities().entities[j];
+    if (custom_logic::cached_device_entity_id(i) == entry.entity_id) slot["area"] = entry.area_name;
+  }
+  slot["action"] = action_for_slot(i);
+  slot["type"] = custom_logic::cached_device_custom_type(i);
+  slot["typeOption"] = custom_logic::ha_domain_from_entity_id(custom_logic::cached_device_entity_id(i)) == "light" ? custom_logic::light_type_option_from_custom_mask(custom_logic::cached_device_custom_light_capability_mask(i)) : custom_logic::ha_domain_from_entity_id(custom_logic::cached_device_entity_id(i)) == "cover" ? (custom_logic::cached_device_custom_light_capability_mask(i) == 0 ? "Cover (Preset Off)" : "Cover (Preset On)") : custom_logic::cached_device_custom_type(i) == "plug" ? "Plug" : "";
+  slot["actionName"] = custom_logic::ha_entity_title_from_registry_cache(action_for_slot(i));
+}
 inline std::string state(const std::string &host = "", bool wifi_connected = false, bool ha_connected = false, float wifi_rssi = NAN, const std::string &artwork_error = "") {
   custom_logic::load_ha_entities_if_needed();
   load_icons();
@@ -474,47 +516,7 @@ inline std::string state(const std::string &host = "", bool wifi_connected = fal
     root["reset_reason"] = static_cast<int>(esp_reset_reason());
 #endif
     JsonArray slots = root["slots"].to<JsonArray>();
-    for (size_t i = 0; i < 20; ++i) {
-      custom_logic::load_device_config_if_needed(i);
-      auto slot = slots.add<JsonObject>();
-      slot["entity"] = custom_logic::cached_device_entity_id(i);
-      auto gestures=slot["gestures"].to<JsonObject>();
-      const auto &control=onx_gesture::configs[i];
-      const bool bound=custom_logic::cached_device_entity_id(i)==control.entity;
-      const char *gesture_keys[]={"cw","ccw","holdCw","holdCcw"};
-      for(size_t j=0;j<4;++j)gestures[gesture_keys[j]]=bound?control.actions[j]:"";
-      gestures["feedback"]=bound?control.feedback:"";
-      gestures["popup"]=!bound || control.popup?"1":"0";
-      gestures["responses"]=bound && control.responses?"1":"0";
-      gestures["pressResponses"]=bound && control.press_responses?"1":"0";
-      gestures["events"]=bound && control.events?"1":"0";
-      gestures["step"]=std::to_string(bound?control.step:1);
-      slot["timerHidden"] = timer_hidden(i,custom_logic::cached_device_entity_id(i))?"1":"0";
-      JsonArray playlists=slot["playlists"].to<JsonArray>();
-      const auto &playlist=onx_playlist::configs[i];
-      if(custom_logic::cached_device_entity_id(i)==playlist.entity)
-        for(size_t j=0;j<playlist.count;++j) {
-          auto entry=playlists.add<JsonObject>();entry["name"]=playlist.entries[j].name;entry["action"]=playlist.entries[j].action;
-        }
-      const auto &sensor=onx_sensor_view::configs[i];
-      const bool same_sensor=custom_logic::cached_device_entity_id(i)==sensor.primary;
-      slot["secondary"] = same_sensor?sensor.secondary:"";
-      slot["secondaryText"] = same_sensor?sensor.text:"{value}";
-      slot["sensorGraph"] = same_sensor&&sensor.graph?"1":"0";
-      const auto &icon = onx_icon_state::metadata[i];
-      const bool same_icon_entity = icon.entity == custom_logic::cached_device_entity_id(i);
-      slot["icon"] = same_icon_entity ? icon.configured : "";
-      slot["iconOverride"] = same_icon_entity && icon.registry_override ? "1" : "0";
-      slot["name"] = custom_logic::ha_entity_title_from_registry_cache(custom_logic::cached_device_entity_id(i));
-      for (size_t j = 0; j < custom_logic::cached_ha_entities().count; ++j) {
-        const auto &entry = custom_logic::cached_ha_entities().entities[j];
-        if (custom_logic::cached_device_entity_id(i) == entry.entity_id) slot["area"] = entry.area_name;
-      }
-      slot["action"] = action_for_slot(i);
-      slot["type"] = custom_logic::cached_device_custom_type(i);
-      slot["typeOption"] = custom_logic::ha_domain_from_entity_id(custom_logic::cached_device_entity_id(i)) == "light" ? custom_logic::light_type_option_from_custom_mask(custom_logic::cached_device_custom_light_capability_mask(i)) : custom_logic::ha_domain_from_entity_id(custom_logic::cached_device_entity_id(i)) == "cover" ? (custom_logic::cached_device_custom_light_capability_mask(i) == 0 ? "Cover (Preset Off)" : "Cover (Preset On)") : custom_logic::cached_device_custom_type(i) == "plug" ? "Plug" : "";
-      slot["actionName"] = custom_logic::ha_entity_title_from_registry_cache(action_for_slot(i));
-    }
+    for (size_t i = 0; i < 20; ++i) encode_slot(i, slots.add<JsonObject>());
   });
 }
 inline bool save_selected_metadata(const esphome::onx_config_web::Query &query) {

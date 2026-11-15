@@ -1,6 +1,7 @@
 #include "../my_components/onx_config_web/onx_config_web.h"
 #include <cassert>
 #include <iostream>
+#include <vector>
 
 using esphome::onx_config_web::ConfigWeb;
 using esphome::onx_config_web::Query;
@@ -58,5 +59,17 @@ int main() {
   auto method=request(token);method.method_=HTTP_GET;web.handleRequest(&method);assert(method.code()==405);
   for(int i=0;i<4;++i) {auto queued=request(token);web.handleRequest(&queued);assert(queued.code()==202);}
   auto busy=request(token);web.handleRequest(&busy);assert(busy.code()==429);
-  std::cout<<"HTTP regression passed: refresh acceptance, deferred execution, result polling, origin/token, size, method, validation, backpressure\n";
+  // Device-initiated (preset) requests share the handler, run one per loop and
+  // interleave with queued web requests instead of starving them.
+  std::vector<std::string> order;std::vector<std::string> internal_results;
+  web.set_handler([&](const Query &query) {order.push_back(query.op+":"+std::to_string(query.ticket));return std::string("{\"ok\":true}");});
+  web.set_internal_result([&](const Query &query,const std::string &result){internal_results.push_back(query.op+result);});
+  for(const char *op:{"save","save","preset_done"}){Query q;q.op=op;q.ticket=99;web.enqueue_internal(q);}
+  assert(web.internal_pending()==3);
+  web.loop();
+  assert(order.size()==2&&order[0]=="save:0"&&order[1].rfind("refresh:",0)==0);
+  web.clear_internal();assert(web.internal_pending()==0);
+  web.loop();assert(order.size()==3&&order[2].rfind("refresh:",0)==0);
+  assert(internal_results.size()==1&&internal_results[0]=="save{\"ok\":true}");
+  std::cout<<"HTTP regression passed: refresh acceptance, deferred execution, result polling, origin/token, size, method, validation, backpressure, internal queue\n";
 }
