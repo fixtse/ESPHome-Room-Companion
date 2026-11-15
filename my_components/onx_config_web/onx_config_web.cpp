@@ -1,3 +1,4 @@
+#include <algorithm>
 #include "onx_config_web.h"
 #include "config_page.h"
 #include "branding_assets.h"
@@ -28,8 +29,8 @@ bool ConfigWeb::canHandle(AsyncWebServerRequest *request) const {
   if (wifi::global_wifi_component != nullptr && wifi::global_wifi_component->is_connected()) return true;
   return url == "/knob/favicon.svg" || url == "/knob/fixtse-logo.png" || url == "/knob" || url == "/knob/" || url == "/knob/api" || url == "/knob/result" || url == "/knob/ha.js" || url == "/knob/app.js";
 }
-void ConfigWeb::respond_(AsyncWebServerRequest *request, int code, const std::string &body) {
-  auto *response = request->beginResponse(code, "application/json", reinterpret_cast<const uint8_t *>(body.data()), body.size());
+void ConfigWeb::respond_(AsyncWebServerRequest *request, int code, const char *data, size_t size) {
+  auto *response = request->beginResponse(code, "application/json", reinterpret_cast<const uint8_t *>(data), size);
   response->addHeader("Cache-Control", "no-store");
   // ESPHome 2026.10's IDF wrapper defaults unsupported status codes to 500.
   // Preserve our asynchronous protocol and meaningful client error responses.
@@ -83,7 +84,7 @@ void ConfigWeb::handleRequest(AsyncWebServerRequest *request) {
     if (!number(request->arg("ticket"), ticket)) { respond_(request, 400, "{\"error\":\"Invalid ticket\"}"); return; }
     LockGuard lock(mutex_);
     for (const auto &result : results_)
-      if (result.first == ticket) { respond_(request, 200, result.second); return; }
+      if (result.first == ticket) { respond_(request, 200, result.second.data(), result.second.size()); return; }
     respond_(request, 202, "{\"pending\":true}");
     return;
   }
@@ -142,8 +143,9 @@ void ConfigWeb::loop() {
   // page can poll progress while a preset applies.
   if (!internal_.empty() && handler_) {
     Query internal = std::move(internal_.front()); internal_.pop_front();
-    std::string result = handler_(internal);
-    if (internal_result_) internal_result_(internal, result);
+    Body body = take_result_(handler_(internal));
+    // Internal requests (preset slot saves) return short status objects.
+    if (internal_result_) internal_result_(internal, std::string(body.data(), std::min<size_t>(body.size(), 512)));
   }
   {
     LockGuard lock(mutex_);
@@ -151,9 +153,17 @@ void ConfigWeb::loop() {
     query = std::move(pending_.front()); pending_.pop_front();
   }
   // NVS, entity subscriptions, and LVGL always run in the ESPHome main task.
-  std::string result = handler_(query);
+  Body body = take_result_(handler_(query));
   LockGuard lock(mutex_);
-  results_.emplace_back(query.ticket, std::move(result));
+  results_.emplace_back(query.ticket, std::move(body));
   while (results_.size() > 4) results_.pop_front();
+}
+Body ConfigWeb::take_result_(std::string &&result) {
+  if (result == LARGE_BODY_MARKER) {
+    Body body;
+    body.swap(large_body());
+    return body;
+  }
+  return Body(result.data(), result.size());
 }
 }  // namespace esphome::onx_config_web

@@ -4,6 +4,7 @@
 #include <mutex>
 #include <string>
 namespace esphome {
+template<typename T> using RAMAllocator = std::allocator<T>;
 using Mutex = std::mutex;
 using LockGuard = std::lock_guard<Mutex>;
 inline uint32_t random_uint32() { return 123; }

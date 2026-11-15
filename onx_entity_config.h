@@ -20,9 +20,17 @@ template<typename F> inline std::string build_json(F &&fill) {
   if (doc.overflowed()) return "{\"error\":\"Not enough memory to build configuration response\"}";
   const size_t size = measureJson(doc);
   if (size > 65536) return "{\"error\":\"Configuration response exceeds size limit\"}";
-  std::string result; result.reserve(size);
-  serializeJson(doc, result);
-  return result;
+  // Serialize into the PSRAM response buffer; ConfigWeb sends it without a copy.
+  auto &body = esphome::onx_config_web::large_body();
+  body.clear();
+  body.resize(size + 1);
+  if (body.size() != size + 1) {
+    esphome::onx_config_web::Body().swap(body);
+    return "{\"error\":\"Not enough memory to build configuration response\"}";
+  }
+  serializeJson(doc, &body[0], size + 1);
+  body.resize(size);
+  return esphome::onx_config_web::LARGE_BODY_MARKER;
 }
 
 inline esphome::ESPPreferenceObject behavior_preference;

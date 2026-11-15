@@ -7,6 +7,16 @@
 #include <string>
 
 namespace esphome::onx_config_web {
+// Response bodies live in PSRAM when available: internal RAM is fragmented and a
+// failed std::string allocation aborts the firmware.
+using Body = std::basic_string<char, std::char_traits<char>, RAMAllocator<char>>;
+// A handler that builds a large body (onx_entity_config::build_json) stores it
+// here and returns LARGE_BODY_MARKER instead of copying it into a std::string.
+inline Body &large_body() {
+  static Body body;
+  return body;
+}
+inline const char *const LARGE_BODY_MARKER = "\x01onx-large-body";
 struct Query {
   std::string playlists;
   std::string op, entity, action, search, domain, name, area, action_name, type, icon, icon_override;
@@ -33,14 +43,18 @@ class ConfigWeb : public Component, public AsyncWebHandler {
   size_t internal_pending() const { return internal_.size(); }
   void set_internal_result(InternalResult callback) { internal_result_ = std::move(callback); }
  protected:
-  void respond_(AsyncWebServerRequest *request, int code, const std::string &body);
+  void respond_(AsyncWebServerRequest *request, int code, const std::string &body) {
+    respond_(request, code, body.data(), body.size());
+  }
+  void respond_(AsyncWebServerRequest *request, int code, const char *data, size_t size);
+  Body take_result_(std::string &&result);
   std::function<std::string(const Query &)> handler_;
   std::string nonce_;
   Mutex mutex_;
   std::deque<Query> pending_;
   std::deque<Query> internal_;
   InternalResult internal_result_;
-  std::deque<std::pair<uint32_t, std::string>> results_;
+  std::deque<std::pair<uint32_t, Body>> results_;
   uint32_t next_ticket_{0};
 };
 }  // namespace esphome::onx_config_web

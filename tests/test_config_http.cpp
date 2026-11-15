@@ -51,6 +51,13 @@ int main() {
   auto big=request(token);web.handleRequest(&big);web.loop();
   AsyncWebServerRequest big_result;big_result.url="/knob/result";big_result.method_=HTTP_GET;big_result.args={{"ticket","2"}};
   web.handleRequest(&big_result);assert(big_result.body==large_json&&big_result.copied_response_bytes==0);
+  // Large bodies built in PSRAM are handed over without an internal-RAM string.
+  web.set_handler([&](const Query &){
+    esphome::onx_config_web::large_body().assign(large_json.data(),large_json.size());
+    return std::string(esphome::onx_config_web::LARGE_BODY_MARKER);});
+  auto psram=request(token);web.handleRequest(&psram);web.loop();
+  AsyncWebServerRequest psram_result;psram_result.url="/knob/result";psram_result.method_=HTTP_GET;psram_result.args={{"ticket","3"}};
+  web.handleRequest(&psram_result);assert(psram_result.body==large_json&&esphome::onx_config_web::large_body().empty());
   web.set_handler([&](const Query &query) {assert(query.op=="refresh"); ++refreshes; return std::string("{\"ok\":true}");});
   auto forbidden=request("wrong");web.handleRequest(&forbidden);assert(forbidden.code()==403);
   auto cross_origin=request(token);cross_origin.headers["Origin"]="http://another-host";web.handleRequest(&cross_origin);assert(cross_origin.code()==403);
