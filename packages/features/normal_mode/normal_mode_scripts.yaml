@@ -2712,10 +2712,18 @@ script:
               onx_render::image(id(normal_message_image),id(notification_image)->get_lv_image_dsc());
               lv_obj_clear_flag(id(normal_message_image),LV_OBJ_FLAG_HIDDEN);
             } else lv_obj_add_flag(id(normal_message_image),LV_OBJ_FLAG_HIDDEN);
+            auto *body=id(normal_message_body);
+            const int old_y=lv_obj_get_scroll_y(body),old_total=old_y+lv_obj_get_scroll_bottom(body);
+            const bool keep=message.appended && message.held(now_ms) && rendered_revision!=0;
             onx_render::label(id(normal_message_title),message.title.c_str());
             onx_render::label(id(normal_message_text),message.body.c_str());
-            lv_obj_update_layout(id(normal_message_body));
-            lv_obj_scroll_to_y(id(normal_message_body),0,LV_ANIM_OFF);
+            lv_obj_update_layout(body);
+            // Newest lines are on top. While the user is reading, keep their place
+            // as new lines arrive above; otherwise show the newest message.
+            const int new_total=lv_obj_get_scroll_y(body)+lv_obj_get_scroll_bottom(body);
+            lv_obj_scroll_to_y(body,keep?std::max(0,old_y+new_total-old_total):0,LV_ANIM_OFF);
+            if(!keep)id(expand_normal_message).execute(false);
+            else if(onx_notification::expanded) {onx_notification::expanded=false;id(expand_normal_message).execute(true);}
             rendered_revision=message.revision;rendered_image=with_image;
           }
           if(id(key_btn).state) {
@@ -2736,10 +2744,33 @@ script:
     then:
       - lambda: |-
           if(!onx_notification::current.visible)return;
+          onx_notification::current.interact(millis());
           auto *body=id(normal_message_body);
           const int maximum=std::max(0,static_cast<int>(lv_obj_get_scroll_y(body)+lv_obj_get_scroll_bottom(body)));
-          lv_obj_scroll_to_y(body,std::clamp(static_cast<int>(lv_obj_get_scroll_y(body))+direction*32,0,maximum),LV_ANIM_ON);
+          const int target=std::clamp(static_cast<int>(lv_obj_get_scroll_y(body))+direction*32,0,maximum);
+          // Scrolling a long message hides the title and picture for more text.
+          if(maximum>0)id(expand_normal_message).execute(target>0);
+          lv_obj_scroll_to_y(body,target,LV_ANIM_ON);
           id(ui_presenter)->notify_user_activity();
+
+  - id: expand_normal_message
+    parameters:
+      expanded: bool
+    then:
+      - lambda: |-
+          if(onx_notification::expanded==expanded)return;
+          onx_notification::expanded=expanded;
+          const bool with_image=onx_notification::image.ready;
+          auto *body=id(normal_message_body);
+          if(expanded) {
+            lv_obj_add_flag(id(normal_message_title),LV_OBJ_FLAG_HIDDEN);
+            lv_obj_add_flag(id(normal_message_image),LV_OBJ_FLAG_HIDDEN);
+            lv_obj_set_y(body,40);lv_obj_set_height(body,with_image?162:164);
+          } else {
+            lv_obj_clear_flag(id(normal_message_title),LV_OBJ_FLAG_HIDDEN);
+            if(with_image)lv_obj_clear_flag(id(normal_message_image),LV_OBJ_FLAG_HIDDEN);
+            lv_obj_set_y(body,with_image?138:94);lv_obj_set_height(body,with_image?64:110);
+          }
 
   - id: check_normal_idle_media_popup
     then:

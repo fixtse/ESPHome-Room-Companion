@@ -73,20 +73,43 @@ inline std::string plain_text(const std::string &source,size_t limit) {
   while(!out.empty() && (out.back()=='\n' || out.back()==' '))out.pop_back();
   return clipped(out,limit);
 }
+// Newest-first lines: an update that appends to the shown text (for example a
+// Telegram notification gathering messages) puts the new lines on top.
+inline std::string reversed_lines(const std::string &text) {
+  std::string out;
+  size_t end=text.size();
+  while(end>0) {
+    const size_t start=text.rfind('\n',end-1);
+    const size_t from=start==std::string::npos?0:start+1;
+    if(end>from) {if(!out.empty())out+='\n';out.append(text,from,end-from);}
+    if(start==std::string::npos)break;
+    end=start;
+  }
+  return out;
+}
+// Interaction (turning or scrolling) pauses the timeout; it resumes after this.
+constexpr uint32_t INTERACTION_HOLD_MS=6000;
 struct Message {
-  std::string title,body,image_url;
-  bool pending{false},visible{false};
-  uint32_t remaining_ms{60000},total_ms{60000},shown_ms{0},revision{0};
+  std::string title,body,image_url,source;
+  bool pending{false},visible{false},appended{false};
+  uint32_t remaining_ms{60000},total_ms{60000},shown_ms{0},revision{0},held_until{0};
   void dismiss() {pending=false;visible=false;}
   bool show(const std::string &heading,const std::string &text,int seconds,const std::string &image="") {
     if(text.empty())return false;
-    title=plain_text(heading.empty()?"Reminder":heading,96);
-    for(char &ch:title)if(ch=='\r' || ch=='\n')ch=' ';
-    body=plain_text(text,768);
+    auto next_title=plain_text(heading.empty()?"Reminder":heading,96);
+    for(char &ch:next_title)if(ch=='\r' || ch=='\n')ch=' ';
+    const auto next=plain_text(text,2048);
+    appended=pending && next_title==title && next.size()>source.size() && next.compare(0,source.size(),source)==0;
+    if(appended) {
+      size_t from=source.size();
+      while(from<next.size() && (next[from]=='\n' || next[from]==' '))++from;
+      body=clipped(reversed_lines(next.substr(from))+"\n"+body,768);
+    } else body=clipped(next,768);
+    source=next;title=next_title;
     image_url=image.size()<=1024 && (image.rfind("http://",0)==0 || image.rfind("https://",0)==0) ? image : "";
     remaining_ms=static_cast<uint32_t>(seconds<0?60:std::min(seconds,3600))*1000;
     total_ms=remaining_ms;
-    pending=true;visible=false;++revision;return true;
+    pending=true;if(!appended)visible=false;++revision;return true;
   }
   int countdown(uint32_t now) const {
     if(!total_ms)return -1;
@@ -102,9 +125,17 @@ struct Message {
     }
     visible=false;
   }
+  // Freeze the countdown while the user interacts, then resume it.
+  void interact(uint32_t now) {
+    if(!visible)return;
+    if(remaining_ms) {const uint32_t elapsed=now-shown_ms;remaining_ms=elapsed>=remaining_ms?1000:remaining_ms-elapsed;}
+    shown_ms=now;held_until=now+INTERACTION_HOLD_MS;
+  }
+  bool held(uint32_t now) const {return static_cast<int32_t>(held_until-now)>0;}
   bool display(uint32_t now) {
     if(!pending)return false;
     if(!visible) {visible=true;shown_ms=now;}
+    if(held(now))shown_ms=now;
     if(remaining_ms && now-shown_ms>=remaining_ms) {dismiss();return false;}
     return true;
   }
@@ -117,4 +148,6 @@ struct ImageState {
 };
 inline ImageState image;
 inline bool press_consumed{false};
+// Title and picture hidden while a long message is scrolled.
+inline bool expanded{false};
 }  // namespace onx_notification
