@@ -344,11 +344,14 @@ inline std::string export_chunk(const std::string &raw_name, size_t offset) {
   if (summary == nullptr) return "";
   Blob raw;
   if (!store_read(key_name(summary->key), raw) || offset > raw.size()) return "";
-  const size_t length = std::min(EXPORT_CHUNK, raw.size() - offset);
+  size_t length = std::min(EXPORT_CHUNK, raw.size() - offset);
+  // Never split a UTF-8 sequence: end before a continuation byte.
+  while (length > 0 && offset + length < raw.size() && (static_cast<uint8_t>(raw[offset + length]) & 0xC0) == 0x80) --length;
   return onx_entity_config::build_json([&](JsonObject root) {
     root["name"] = summary->name;
     root["total"] = raw.size();
     root["offset"] = offset;
+    root["next"] = offset + length;
     root["data"] = std::string(raw.data() + offset, length);
   });
 }

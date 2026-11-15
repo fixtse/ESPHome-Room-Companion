@@ -96,6 +96,10 @@ esp32:
       # TLS records/certificates exhausted fragmented internal RAM on live units.
       # This board has 8 MB PSRAM; keep task stacks and DMA in internal memory.
       CONFIG_MBEDTLS_EXTERNAL_MEM_ALLOC: "y"
+      # ESPHome's IDF web server rejects POST bodies above this size. The
+      # configuration page sends up to 8 KB (slots with playlists and gestures,
+      # preset restore chunks); ESP-IDF 5.5 grows its buffer on demand.
+      CONFIG_HTTPD_MAX_REQ_HDR_LEN: "8192"
     components:
       - espressif/esp_websocket_client^1.7.0
     advanced:
