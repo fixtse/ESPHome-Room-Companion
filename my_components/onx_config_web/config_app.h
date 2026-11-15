@@ -18,6 +18,22 @@ function dirtySlot(i){return JSON.stringify(slots[i])!==JSON.stringify(saved[i])
 function dirtySettings(){return JSON.stringify(settings)!==JSON.stringify(savedSettings)}
 function hasChanges(){return slots.some((_,i)=>dirtySlot(i))||dirtySettings()}
 function persistDraft(){if(!initialized||editTarget)return;if(recovery&&hasChanges()){recovery=null;$('draft-notice').hidden=true}if(recovery)return;try{if(hasChanges())sessionStorage.setItem(DRAFT,JSON.stringify({schema:2,slots,settings}));else sessionStorage.removeItem(DRAFT)}catch{message('This browser could not store a recovery draft. Save your changes before closing.',true)}}
+// In-page alert dialog in the style of shadcn/ui AlertDialog. Resolves to true/false,
+// or to the entered text (null when cancelled) when `input` is given.
+function ask({title,text='',ok='Continue',cancel='Cancel',danger=false,input=null}){
+ const dialog=$('ask'),field=$('ask-input'),error=$('ask-error'),okButton=$('ask-ok');
+ $('ask-title').textContent=title;$('ask-text').textContent=text;$('ask-text').hidden=!text;
+ okButton.textContent=ok;$('ask-cancel').textContent=cancel;okButton.classList.toggle('danger-action',danger);okButton.classList.toggle('primary',!danger);
+ $('ask-field').hidden=!input;error.hidden=true;error.textContent='';
+ if(input){$('ask-label').textContent=input.label||'Name';field.value=input.value||'';field.placeholder=input.placeholder||''}
+ return new Promise(resolve=>{
+  const finish=value=>{dialog.onclose=null;$('ask-form').onsubmit=null;$('ask-cancel').onclick=null;if(dialog.open)dialog.close();resolve(value)};
+  $('ask-cancel').onclick=()=>finish(input?null:false);
+  dialog.onclose=()=>finish(input?null:false);
+  dialog.oncancel=event=>{event.preventDefault();finish(input?null:false)};
+  $('ask-form').onsubmit=event=>{event.preventDefault();if(!input){finish(true);return}const value=field.value.trim(),problem=input.validate?.(value);if(problem){error.textContent=problem;error.hidden=false;field.focus();return}finish(value)};
+  dialog.showModal();(input?field:okButton).focus();if(input)field.select()})}
+function presetNameProblem(value,except=''){if(!value)return 'Enter a name.';if(value.length>32||/[\u0000-\u001f\u007f]/.test(value))return 'Use 1-32 characters.';if(value.toLowerCase()==='custom')return '“Custom” is reserved for controls that match no preset.';if(value.toLowerCase()!==except.toLowerCase()&&(presets.presets||[]).some(item=>item.name.toLowerCase()===value.toLowerCase()))return 'A preset with this name already exists.';return ''}
 function actionLabel(action){return !action?'Device default':action==='none'?'No action':action==='open_playlists'?'Open playlists':action.startsWith('script.')?'Run script':'Run automation'}
 function nativePress(entity){return /^(fan|number|input_number|select|input_select|scene|button|input_button)\./.test(entity)}
 function choices(slot){const d=slot.entity.split('.')[0];return d==='light'?['Light (On/Off)','Dimmable Light','Color Temperature Light','RGB Light']:d==='switch'?['Switch','Plug']:d==='cover'?['Cover (Preset Off)','Cover (Preset On)']:['Automatic']}
@@ -201,7 +217,7 @@ function render(){
  const s=slots[active],restricted=nativePress(s.entity),count=slots.filter((_,i)=>dirtySlot(i)).length;
  $('slot-title').textContent='Slot '+(active+1)+(editTarget?' · '+editTarget.name:'');$('unsaved-count').textContent=count?count+' unsaved slot'+(count===1?'':'s'):'';
  $('action-binding').querySelector('h3').textContent=s.entity.startsWith('media_player.')?'When idle':'When pressed';
- renderEditorTabs();renderPlaylists();renderGestures();presetTargetOptions();
+ renderEditorTabs();renderPlaylists();renderGestures();renderPresetCard();
  $('timer-options').hidden=!(s.entity.startsWith('timer.')||s.entity.startsWith('sensor.'));$('timer-hidden').checked=s.timerHidden==='1';
  const switchPower=s.entity.startsWith('switch.');$('sensor-options').hidden=!(s.entity.startsWith('sensor.')||switchPower);$('secondary-heading').textContent=switchPower?'Power & energy':'Secondary reading';$('choose-secondary').textContent=switchPower?'Choose power or energy sensor':'Choose secondary entity';$('secondary-help').textContent=switchPower?'Choose a power sensor in W or energy sensor in kWh. Its reading appears beside On/Off on the main view; opening the switch shows its 12-hour graph.':'Replaces the sensor name below the value. Use {value}, {unit}, {relative}, {time}, {date}, or {datetime}.';$('sensor-presentation').closest('label').hidden=switchPower;$('secondary-text').closest('label').hidden=switchPower;$('secondary-entity').value=s.secondary;$('secondary-text').value=s.secondaryText;$('sensor-presentation').value=s.sensorGraph;
  $('entity-name').textContent=s.name||s.entity||'Empty slot';$('entity-id').textContent=s.entity;$('display-name').value=s.name;
@@ -290,9 +306,9 @@ function validateSlots(input){if(!Array.isArray(input)||![10,MAX_SLOTS].includes
 function isSupported(value){return /^\[Local\] HMI IO(10|11|17|18)$/.test(value)||/^(sensor|binary_sensor|light|switch|climate|media_player|timer|weather|cover|automation|script|fan|number|input_number|select|input_select|scene|button|input_button)\.[a-z0-9_]+$/.test(value)}
 function validateSettings(value){if(!value||typeof value!=='object')throw Error('Device settings are missing.');value={clock_seconds_ring:'0',notifications_cover_timers:'1',orientation:'0',media_view:'classic',idle_view:'clock',media_color:'#62B0FF',standby_scope:'main',date_format:'dd-mm',hour_format:'24',show_ampm:'1',...value};const result={};for(const key of ['clock_seconds_ring','notifications_cover_timers','orientation','media_view','idle_view','show_ampm','date_format','hour_format','media_color','standby_scope','brightness','standby','sensitivity','sleep_enabled','sleep_start','sleep_end','sleep_timeout','weather']){if(typeof value[key]!=='string')throw Error('Invalid device setting: '+key);result[key]=value[key]}if(!['0','1'].includes(result.clock_seconds_ring))throw Error('Choose a valid clock seconds option.');if(!['0','1'].includes(result.notifications_cover_timers))throw Error('Choose a valid notification priority.');if(!['0','90','180','270'].includes(result.orientation))throw Error('Choose a hardware display orientation.');if(!['classic','material'].includes(result.media_view))throw Error('Choose a valid media player view.');if(!['clock','media'].includes(result.idle_view))throw Error('Choose a valid idle screen.');if(!/^#[0-9a-f]{6}$/i.test(result.media_color)||!['main','all','never'].includes(result.standby_scope))throw Error('Choose a valid progress color and weather timeout behavior.');if(!['0','1'].includes(result.show_ampm)||!['dd-mm','mm-dd','yyyy-mm-dd','dd-mmm','mmm-dd','yyyy-mmm-dd'].includes(result.date_format)||!['12','24'].includes(result.hour_format))throw Error('Choose a valid date and clock format.');result.media_color=result.media_color.toUpperCase();for(const [key,min,max] of [['brightness',10,100],['standby',1,900],['sleep_timeout',1,3600]])if(!/^\d+$/.test(result[key])||+result[key]<min||+result[key]>max)throw Error('Invalid value for '+key);if(!['1','2','4'].includes(result.sensitivity)||!['0','1'].includes(result.sleep_enabled)||!/^([01]\d|2[0-3]):[0-5]\d$/.test(result.sleep_start)||!/^([01]\d|2[0-3]):[0-5]\d$/.test(result.sleep_end)||result.weather&&!/^weather\.[a-z0-9_]+$/.test(result.weather))throw Error('Invalid sleep, sensitivity, or weather setting.');return result}
 function validateDocument(value){if(![1,2].includes(value?.schema))throw Error('Unsupported configuration version.');return {slots:validateSlots(value.slots),settings:validateSettings(value.settings)}}
-async function saveSlots(indices){if(busy||!initialized)return;busy=true;render();search();let completed=0;const pendingPreset=new Map();try{for(const i of indices){const snapshot=copy(slots[i]),item=ha.items.find(item=>item.entity===snapshot.entity);if(item&&Object.hasOwn(item,'icon')){snapshot.icon=item.icon||'';snapshot.iconOverride=item.iconOverride||'0';slots[i].icon=snapshot.icon;slots[i].iconOverride=snapshot.iconOverride;}validateSlots([snapshot,...Array.from({length:MAX_SLOTS-1},empty)]);if(nativePress(snapshot.entity)&&snapshot.action)throw Error('Choose Default for the press action on slot '+(i+1)+'.');if(item?.types&&snapshot.typeOption&&!item.types.includes(snapshot.typeOption))throw Error('Slot '+(i+1)+' uses an unsupported control type. Choose a type detected by Home Assistant.');if(editTarget){pendingPreset.set(i,snapshot);continue}message('Saving slot '+(i+1)+'…');await rpc(slotPayload(i,snapshot));saved[i]=snapshot;completed++;persistDraft()}if(editTarget){message('Saving preset “'+editTarget.name+'”…');await putPreset(editTarget.name,saved.map((s,i)=>pendingPreset.get(i)||s));for(const [i,snapshot] of pendingPreset)saved[i]=snapshot;completed=pendingPreset.size;editTarget.isNew=false;await loadPresets();message('Preset “'+editTarget.name+'” saved ('+completed+' slot'+(completed===1?'':'s')+' changed). The knob is unchanged.');return}message(completed+' slot'+(completed===1?'':'s')+' saved.')}catch(error){message(error.message+' '+completed+' slots saved; remaining changes are still marked unsaved.',true)}finally{busy=false;persistDraft();render();search()}}
+async function saveSlots(indices){if(busy||!initialized)return;busy=true;render();search();let completed=0;const pendingPreset=new Map();try{for(const i of indices){const snapshot=copy(slots[i]),item=ha.items.find(item=>item.entity===snapshot.entity);if(item&&Object.hasOwn(item,'icon')){snapshot.icon=item.icon||'';snapshot.iconOverride=item.iconOverride||'0';slots[i].icon=snapshot.icon;slots[i].iconOverride=snapshot.iconOverride;}validateSlots([snapshot,...Array.from({length:MAX_SLOTS-1},empty)]);if(nativePress(snapshot.entity)&&snapshot.action)throw Error('Choose Default for the press action on slot '+(i+1)+'.');if(item?.types&&snapshot.typeOption&&!item.types.includes(snapshot.typeOption))throw Error('Slot '+(i+1)+' uses an unsupported control type. Choose a type detected by Home Assistant.');if(editTarget){pendingPreset.set(i,snapshot);continue}message('Saving slot '+(i+1)+'…');await rpc(slotPayload(i,snapshot));saved[i]=snapshot;completed++;persistDraft()}if(editTarget){message('Saving preset “'+editTarget.name+'”…');await putPreset(editTarget.name,saved.map((s,i)=>pendingPreset.get(i)||s));for(const [i,snapshot] of pendingPreset)saved[i]=snapshot;completed=pendingPreset.size;const created=editTarget.isNew;editTarget.isNew=false;await loadPresets();message(created?'Preset “'+editTarget.name+'” created. The knob is unchanged.':'Preset “'+editTarget.name+'” saved ('+completed+' slot'+(completed===1?'':'s')+' changed). The knob is unchanged.');return}message(completed+' slot'+(completed===1?'':'s')+' saved.')}catch(error){message(error.message+' '+completed+' slots saved; remaining changes are still marked unsaved.',true)}finally{busy=false;persistDraft();render();search()}}
 $('save').onclick=()=>saveSlots([active]);$('save-all').onclick=()=>saveSlots(slots.map((_,i)=>i).filter(i=>dirtySlot(i)||editTarget?.isNew));
-$('discard').onclick=()=>{if(!confirm('Discard all unsaved slot changes?'))return;slots=copy(saved);changed();search();message('Unsaved slot changes discarded.')};
+$('discard').onclick=async()=>{if(!await ask({title:'Discard unsaved changes?',text:'All slot changes that are not saved will be lost.',ok:'Discard changes',danger:true}))return;slots=copy(saved);changed();search();message('Unsaved slot changes discarded.')};
 $('choose-secondary').onclick=()=>selectMode('secondary');
 $('choose-entity').onclick=()=>selectMode('entity');$('choose-action').onclick=()=>selectMode('action');$('open-playlists').onclick=()=>{if(!slots[active].entity.startsWith('media_player.'))return;slots[active].action='open_playlists';slots[active].actionName='';changed()};$('default').onclick=()=>{slots[active].action='';slots[active].actionName='';changed()};$('none').onclick=()=>{slots[active].action='none';slots[active].actionName='';changed()};$('clear').onclick=()=>{slots[active]=empty();changed();search()};
 $('display-name').oninput=()=>{slots[active].name=$('display-name').value;persistDraft();$('save').disabled=busy||!dirtySlot(active);$('save-all').disabled=busy||!slots.some((_,i)=>dirtySlot(i));$('discard').disabled=!slots.some((_,i)=>dirtySlot(i));$('unsaved-count').textContent='Unsaved changes';preview();message('Display name not saved.')};$('display-name').onchange=()=>render();
@@ -337,62 +353,83 @@ $('retry-states').onclick=async()=>{if(busy)return;$('retry-states').disabled=tr
 function download(name,value){const url=URL.createObjectURL(new Blob([JSON.stringify(value,null,2)],{type:'application/json'})),a=element('a','');a.href=url;a.download=name;document.body.append(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),1000)}
 async function getPreset(name){let text='',total=1;while(text.length<total){const part=await rpc({op:'preset_get',name,offset:text.length});total=part.total;if(!part.data)break;text+=part.data}const preset=JSON.parse(text);return {name:preset.name||name,slots:preset.slots}}
 async function exportPresets(){const list=await rpc({op:'presets'}),out=[];for(const item of list.presets||[])out.push(await getPreset(item.name));return out}
-$('export').onclick=async()=>{let presetList=[],knobSlots=saved;try{if(editTarget)knobSlots=validateSlots((await rpc({op:'state'})).slots);presetList=await exportPresets()}catch(error){if(!confirm('Presets could not be read ('+error.message+'). Download the configuration without presets?'))return}download('onx2424g013-config.json',{schema:2,model:'ONX2424G013',exported_at:new Date().toISOString(),slots:knobSlots,settings:savedSettings,presets:presetList});message('Configuration downloaded'+(presetList.length?' with '+presetList.length+' preset'+(presetList.length===1?'':'s'):'')+'.')};
+$('export').onclick=async()=>{let presetList=[],knobSlots=saved;try{if(editTarget)knobSlots=validateSlots((await rpc({op:'state'})).slots);presetList=await exportPresets()}catch(error){if(!await ask({title:'Presets could not be read',text:error.message+' Download the configuration without presets?',ok:'Download without presets'}))return}download('onx2424g013-config.json',{schema:2,model:'ONX2424G013',exported_at:new Date().toISOString(),slots:knobSlots,settings:savedSettings,presets:presetList});message('Configuration downloaded'+(presetList.length?' with '+presetList.length+' preset'+(presetList.length===1?'':'s'):'')+'.')};
 function validatePresets(input){if(input===undefined)return [];if(!Array.isArray(input)||input.length>8)throw Error('A backup can contain up to 8 presets.');const names=new Set();return input.map(p=>{const name=typeof p?.name==='string'?p.name.trim():'';if(!name||name.length>32||/[\u0000-\u001f\u007f]/.test(name)||name.toLowerCase()==='custom'||names.has(name.toLowerCase()))throw Error('Invalid or duplicate preset name in backup.');names.add(name.toLowerCase());return {name,slots:validateSlots(p.slots)}})}
 async function putPreset(name,list){const body=JSON.stringify({slots:list});for(let offset=0;offset<body.length;offset+=2000)await rpc({op:'preset_put',name,offset,total:body.length,data:body.slice(offset,offset+2000)})}
 async function importPresets(list){let done=0;for(const preset of list){message('Restoring preset “'+preset.name+'”…');await putPreset(preset.name,preset.slots);done++}await loadPresets();return done}
 $('diagnostics').onclick=async()=>{try{const icons=await rpc({op:'icon_status'});download('onx2424g013-diagnostics.json',{model:'ONX2424G013',firmware:device.firmware||'unknown',uptime_ms:device.uptime_ms,reset_reason:device.reset_reason,reset_reason_text:device.reset_reason_text,internal_heap_free:device.internal_heap_free,internal_heap_minimum:device.internal_heap_minimum,internal_heap_largest_block:device.internal_heap_largest_block,psram_free:device.psram_free,artwork_status:device.artwork_status,artwork_error:device.artwork_error,wifi_rssi_dbm:device.wifi_rssi_dbm,wifi_disconnects_since_boot:device.wifi_disconnects_since_boot,last_wifi_disconnect_ms:device.last_wifi_disconnect_ms,last_event_before_boot:device.last_event_before_boot,wifi_connected:device.wifi_connected,ha_connected:device.ha_connected,browser_catalogue_ready:ha.ready,captured_at:new Date().toISOString(),icons:icons.slots||[]});}catch(error){message('Could not load icon diagnostics: '+error.message,true)}};
-$('import').onclick=()=>{if(editTarget){message('Choose “On the knob” in Display & actions before importing a configuration.',true);return}$('import-file').click()};$('import-file').onchange=async()=>{const file=$('import-file').files[0];try{if(!file)return;if(file.size>1048576)throw Error('Configuration file is too large (maximum 1 MB).');const value=JSON.parse(await file.text());if(value.model!=='ONX2424G013')throw Error('This configuration belongs to a different device model.');const draft=validateDocument(value),presetList=validatePresets(value.presets);if(hasChanges()&&!confirm('Replace your unsaved draft with this imported configuration?'))return;slots=draft.slots;settings=draft.settings;settingsForm();changed();search();page('entities');let restored=0;if(presetList.length&&confirm('Restore '+presetList.length+' preset'+(presetList.length===1?'':'s')+' from this backup to the knob now? Presets with the same name are replaced.'))restored=await importPresets(presetList);message('Configuration imported as a draft'+(restored?' and '+restored+' preset'+(restored===1?'':'s')+' restored':'')+'. Review and save the slots and device settings to apply.')}catch(error){message('Import failed: '+error.message,true)}finally{$('import-file').value=''}};
+$('import').onclick=()=>{if(editTarget){message('Choose “On the knob” in Display & actions before importing a configuration.',true);return}$('import-file').click()};$('import-file').onchange=async()=>{const file=$('import-file').files[0];try{if(!file)return;if(file.size>1048576)throw Error('Configuration file is too large (maximum 1 MB).');const value=JSON.parse(await file.text());if(value.model!=='ONX2424G013')throw Error('This configuration belongs to a different device model.');const draft=validateDocument(value),presetList=validatePresets(value.presets);if(hasChanges()&&!await ask({title:'Replace your unsaved draft?',text:'The imported configuration replaces the changes you have not saved yet.',ok:'Replace draft',danger:true}))return;slots=draft.slots;settings=draft.settings;settingsForm();changed();search();page('entities');let restored=0;if(presetList.length&&await ask({title:'Restore presets from this backup?',text:presetList.length+' preset'+(presetList.length===1?'':'s')+' will be stored on the knob now. Presets with the same name are replaced; the knob keeps its current controls.',ok:'Restore presets',cancel:'Skip'}))restored=await importPresets(presetList);message('Configuration imported as a draft'+(restored?' and '+restored+' preset'+(restored===1?'':'s')+' restored':'')+'. Review and save the slots and device settings to apply.')}catch(error){message('Import failed: '+error.message,true)}finally{$('import-file').value=''}};
 let presets={presets:[],active:'',applying:'',capacity:8},presetBusy=false;
-function renderPresets(){
- const list=$('preset-list'),items=presets.presets||[],locked=presetBusy||busy||!initialized||!!presets.applying;
- list.replaceChildren(...items.map(item=>{
-  const li=element('li',''),info=element('div',''),actions=element('div','','row'),current=item.name===presets.active,pending=item.name===presets.applying;
-  info.append(element('strong',item.name));if(current||pending)info.append(element('span',pending?'Applying…':'Active','tag'));info.append(element('small',' '+item.controls+' control'+(item.controls===1?'':'s')));
-  const button=(text,handler,label,cls)=>{const b=element('button',text,cls);b.type='button';b.disabled=locked;b.setAttribute('aria-label',label+' '+item.name);b.onclick=handler;return b};
-  actions.append(button('Apply',()=>applyPreset(item.name),'Apply preset',current?'':'primary'),button('Update',()=>updatePreset(item.name),'Replace with current controls:'),button('Rename',()=>renamePreset(item.name),'Rename preset'),button('Delete',()=>deletePreset(item.name),'Delete preset','danger'));
-  li.append(info,actions);return li}));
- if(!items.length)list.append(element('li','No presets yet. Save the current controls to create the first one.','hint'));
- $('preset-summary').textContent=presets.applying?'Applying “'+presets.applying+'”: '+(presets.remaining||0)+' step'+(presets.remaining===1?'':'s')+' left.':items.length+' of '+(presets.capacity||8)+' presets used'+(presets.active?' · active: '+presets.active:' · current controls are not a saved preset')+'.';
- presetTargetOptions();$('preset-save').disabled=locked||items.length>=(presets.capacity||8)&&!items.some(item=>item.name.toLowerCase()===$('preset-name').value.trim().toLowerCase());$('preset-name').disabled=locked}
-async function loadPresets(){if(!initialized)return;try{presets=await rpc({op:'presets'});renderPresets()}catch(error){message('Could not load presets: '+error.message,true)}}
-async function presetOp(values,done){if(presetBusy||busy||!initialized)return false;presetBusy=true;renderPresets();try{presets=await rpc(values);message(done);return true}catch(error){message(error.message,true);return false}finally{presetBusy=false;renderPresets()}}
-function savedOnlyWarning(){return !slots.some((_,i)=>dirtySlot(i))||confirm('Presets store saved controls only. Your unsaved slot changes will not be included. Continue?')}
-async function savePresetAs(name){if(!savedOnlyWarning())return;if(await presetOp({op:'preset_save',name},'Saved the current controls as “'+name+'”.'))$('preset-name').value=''}
-$('preset-save').onclick=()=>{const name=$('preset-name').value.trim();if(!name){message('Enter a name for the preset.',true);$('preset-name').focus();return}if((presets.presets||[]).some(item=>item.name.toLowerCase()===name.toLowerCase())&&!confirm('Replace preset “'+name+'” with the current controls?'))return;savePresetAs(name)};
-$('preset-name').oninput=renderPresets;$('preset-name').onkeydown=event=>{if(event.key==='Enter')$('preset-save').click()};
-function updatePreset(name){if(confirm('Replace preset “'+name+'” with the current controls?'))savePresetAs(name)}
-async function renamePreset(name){const to=(prompt('New name for “'+name+'”',name)||'').trim();if(!to||to===name)return;if(await presetOp({op:'preset_rename',name,q:to},'Renamed “'+name+'” to “'+to+'”.')&&editTarget?.name===name){editTarget.name=to;render();presetTargetOptions()}}
-async function deletePreset(name){if(!confirm('Delete preset “'+name+'”? The knob keeps its current controls.'))return;if(await presetOp({op:'preset_delete',name},'Deleted preset “'+name+'”.')&&editTarget?.name===name){slots=copy(saved);await switchTarget('')}}
-async function applyPreset(name){
- if(slots.some((_,i)=>dirtySlot(i))&&!confirm('Applying “'+name+'” replaces your unsaved slot changes. Continue?'))return;
- if(!await presetOp({op:'preset_apply',name},'Applying “'+name+'”…'))return;
- presetBusy=true;renderPresets();
- try{for(let i=0;i<240&&presets.applying;i++){await new Promise(resolve=>setTimeout(resolve,500));presets=await rpc({op:'presets'});renderPresets()}
-  device=await rpc({op:'state'});if(!editTarget){slots=validateSlots(device.slots);saved=copy(slots);persistDraft();render();search()}
-  message(presets.active===name?'Preset “'+name+'” applied.':'Preset “'+name+'” was applied with errors; check the slots and the device log.',presets.active!==name)}
- catch(error){message('Could not confirm the preset: '+error.message,true)}finally{presetBusy=false;renderPresets()}}
-function presetTargetOptions(){const select=$('preset-target'),names=(presets.presets||[]).map(item=>item.name);if(editTarget?.isNew&&!names.includes(editTarget.name))names.push(editTarget.name);const knob=element('option','On the knob');knob.value='';select.replaceChildren(knob,...names.map(name=>{const o=element('option','Preset: '+name+(editTarget?.isNew&&editTarget.name===name?' (new, unsaved)':''));o.value=name;return o}));select.value=editTarget?editTarget.name:'';select.disabled=busy||presetBusy||!initialized;$('preset-new').disabled=select.disabled||names.length>=(presets.capacity||8)}
+const dirtyAny=()=>slots.some((_,i)=>dirtySlot(i));
+// The Preset card: what the slot editor below is editing, and what can be done with it.
+function renderPresetCard(){
+ const select=$('preset-target'),items=presets.presets||[],names=items.map(item=>item.name),locked=busy||presetBusy||!initialized||!!presets.applying;
+ if(editTarget?.isNew&&!names.includes(editTarget.name))names.push(editTarget.name);
+ const knob=element('option','On the knob (live)');knob.value='';
+ const group=document.createElement('optgroup');group.label=names.length?'Saved presets':'No saved presets yet';
+ group.append(...names.map(name=>{const o=element('option',name+(name===presets.active?' · active':'')+(editTarget?.isNew&&editTarget.name===name?' · new':''));o.value=name;return o}));
+ select.replaceChildren(knob,group);select.value=editTarget?editTarget.name:'';select.disabled=locked;
+ const full=names.length>=(presets.capacity||8);
+ $('preset-new').disabled=locked||full;$('preset-new').title=full?'All '+(presets.capacity||8)+' presets are in use':'New preset';
+ const badge=$('preset-badge'),mode=!editTarget?'live':editTarget.isNew?'new':editTarget.name===presets.active?'active':'preset';
+ badge.dataset.mode=mode;badge.textContent={live:'Live',new:'New',active:'Active',preset:'Saved'}[mode];
+ $('preset-summary').textContent=editTarget?editTarget.name:'On the knob';
+ $('preset-mode').textContent=presets.applying?'Applying “'+presets.applying+'” to the knob… '+(presets.remaining||0)+' step'+(presets.remaining===1?'':'s')+' left.':
+  !editTarget?'Slots below are on the knob now. Saving a slot changes the knob right away.'+(presets.active?' They match the “'+presets.active+'” preset.':''):
+  editTarget.isNew?'New preset. Add controls below, then Save all to create it. The knob does not change.':
+  'Editing this preset. Saving stores the preset only; the knob changes when you apply it.';
+ $('preset-save-as').hidden=!!editTarget;$('preset-apply').hidden=!editTarget;$('preset-rename').hidden=!editTarget||editTarget.isNew;$('preset-delete').hidden=!editTarget||editTarget.isNew;
+ for(const id of ['preset-save-as','preset-rename','preset-delete'])$(id).disabled=locked;
+ const applyBlocked=editTarget&&(editTarget.isNew||dirtyAny());
+ $('preset-apply').disabled=locked||applyBlocked;$('preset-apply').title=applyBlocked?'Save the preset before applying it':'Replace the knob’s controls with this preset';
+ $('preset-save-as').disabled=locked||full&&!presets.active}
+async function loadPresets(){if(!initialized)return;try{presets=await rpc({op:'presets'});renderPresetCard()}catch(error){message('Could not load presets: '+error.message,true)}}
+async function presetOp(values,done){if(presetBusy||busy||!initialized)return false;presetBusy=true;renderPresetCard();try{presets=await rpc(values);message(done);return true}catch(error){message(error.message,true);return false}finally{presetBusy=false;renderPresetCard()}}
 function fullSlots(list){const out=(Array.isArray(list)?list:[]).slice(0,MAX_SLOTS);while(out.length<MAX_SLOTS)out.push(empty());return validateSlots(out)}
-async function switchTarget(name,isNew=false){
- if(slots.some((_,i)=>dirtySlot(i))&&!confirm('Discard unsaved slot changes?')){presetTargetOptions();return}
- if(busy||!initialized){presetTargetOptions();return}
- busy=true;render();presetTargetOptions();
+async function switchTarget(name,isNew=false,force=false){
+ if(!force&&dirtyAny()&&!await ask({title:'Discard unsaved changes?',text:'Switching loses the slot changes you have not saved.',ok:'Discard changes',danger:true})){renderPresetCard();return}
+ if(busy||!initialized){renderPresetCard();return}
+ busy=true;render();
  try{
   if(!name){device=await rpc({op:'state'});slots=validateSlots(device.slots);editTarget=null}
   else if(isNew){slots=Array.from({length:MAX_SLOTS},empty);editTarget={name,isNew:true}}
   else{const preset=await getPreset(name);slots=fullSlots(preset.slots);editTarget={name:preset.name,isNew:false}}
   saved=copy(slots);active=0;visibleSlots=1;slotTab='display';
-  message(!editTarget?'Editing the controls on the knob.':editTarget.isNew?'New preset “'+name+'”. Add controls, then Save all to store it. The knob is unchanged.':'Editing preset “'+editTarget.name+'”. Saving stores the preset without changing the knob.');
+  message(!editTarget?'Showing the controls on the knob.':editTarget.isNew?'New preset “'+name+'”. Add controls, then Save all to create it.':'Editing preset “'+editTarget.name+'”. The knob does not change until you apply it.');
  }catch(error){message(error.message,true)}
- finally{busy=false;render();search();presetTargetOptions();refreshPreview()}}
+ finally{busy=false;render();search();refreshPreview()}}
 $('preset-target').onchange=()=>switchTarget($('preset-target').value);
-$('preset-new').onclick=()=>{
- const name=(prompt('Name for the new preset')||'').trim();if(!name)return;
- if(name.length>32||/[\u0000-\u001f\u007f]/.test(name)||name.toLowerCase()==='custom'){message('Use a preset name of 1-32 characters other than “Custom”.',true);return}
- if((presets.presets||[]).some(item=>item.name.toLowerCase()===name.toLowerCase())){message('A preset named “'+name+'” already exists. Choose it from the list to edit it.',true);return}
- switchTarget(name,true)};
-document.querySelector('[data-page=presets]').addEventListener('click',loadPresets);
+// Collapsed by default; the choice is remembered in this browser only.
+function setPresetExpanded(open){$('preset-toggle').setAttribute('aria-expanded',String(open));$('preset-body').hidden=!open;try{localStorage.setItem('onx.presets.expanded',open?'1':'0')}catch{}}
+$('preset-toggle').onclick=()=>setPresetExpanded($('preset-toggle').getAttribute('aria-expanded')!=='true');
+try{setPresetExpanded(localStorage.getItem('onx.presets.expanded')==='1')}catch{setPresetExpanded(false)}
+$('preset-new').onclick=async()=>{
+ const name=await ask({title:'New preset',text:'Starts empty. Add controls, then Save all to create it. The knob keeps its current controls.',ok:'Create',input:{label:'Preset name',placeholder:'Evening',validate:value=>presetNameProblem(value)}});
+ if(name)switchTarget(name,true)};
+$('preset-save-as').onclick=async()=>{
+ const name=await ask({title:'Save as preset',text:'Stores the controls on the knob under a name, so you can switch back to them later.'+(dirtyAny()?' Unsaved slot changes are not included.':''),ok:'Save preset',input:{label:'Preset name',value:presets.active||'',placeholder:'Evening',validate:value=>{const problem=presetNameProblem(value,value);return problem||(!(presets.presets||[]).some(item=>item.name.toLowerCase()===value.toLowerCase())&&(presets.presets||[]).length>=(presets.capacity||8)?'All '+(presets.capacity||8)+' presets are in use; delete one first.':'')}}});
+ if(!name)return;
+ if((presets.presets||[]).some(item=>item.name.toLowerCase()===name.toLowerCase())&&!await ask({title:'Replace “'+name+'”?',text:'The preset’s controls are replaced with the controls on the knob.',ok:'Replace preset',danger:true}))return;
+ await presetOp({op:'preset_save',name},'Saved the knob’s controls as “'+name+'”.')};
+$('preset-rename').onclick=async()=>{
+ const name=editTarget?.name;if(!name)return;
+ const to=await ask({title:'Rename preset',text:'Home Assistant shows the new name in the knob’s Preset select.',ok:'Rename',input:{label:'Preset name',value:name,validate:value=>presetNameProblem(value,name)}});
+ if(!to||to===name)return;
+ if(await presetOp({op:'preset_rename',name,q:to},'Renamed “'+name+'” to “'+to+'”.')){editTarget.name=to;render()}};
+$('preset-delete').onclick=async()=>{
+ const name=editTarget?.name;if(!name)return;
+ if(!await ask({title:'Delete preset “'+name+'”?',text:'This cannot be undone. The knob keeps its current controls.',ok:'Delete preset',danger:true}))return;
+ if(await presetOp({op:'preset_delete',name},'Deleted preset “'+name+'”.'))await switchTarget('',false,true)};
+$('preset-apply').onclick=async()=>{
+ const name=editTarget?.name;if(!name||editTarget.isNew||dirtyAny())return;
+ if(!await ask({title:'Apply “'+name+'” to the knob?',text:'The knob’s controls are replaced with this preset. Only slots that differ are rewritten.',ok:'Apply preset'}))return;
+ if(!await presetOp({op:'preset_apply',name},'Applying “'+name+'”…'))return;
+ presetBusy=true;renderPresetCard();
+ try{for(let i=0;i<240&&presets.applying;i++){await new Promise(resolve=>setTimeout(resolve,500));presets=await rpc({op:'presets'});renderPresetCard()}}
+ catch(error){message('Could not confirm the preset: '+error.message,true)}
+ finally{presetBusy=false}
+ await switchTarget('',false,true);
+ message(presets.active===name?'Preset “'+name+'” applied. Showing the knob’s controls.':'Preset “'+name+'” was applied with errors; check the slots and the device log.',presets.active!==name)};
 $('restore-draft').onclick=()=>{if(!recovery)return;if(editTarget){message('Choose “On the knob” in Display & actions before restoring the draft.',true);return}slots=recovery.slots;settings=recovery.settings;recovery=null;$('draft-notice').hidden=true;settingsForm();changed();search();message('Draft restored. Review and save to apply it to the knob.')};$('dismiss-draft').onclick=()=>{recovery=null;$('draft-notice').hidden=true;try{sessionStorage.removeItem(DRAFT)}catch{}};
 window.addEventListener('beforeunload',event=>{if(hasChanges()||busy){event.preventDefault();event.returnValue=''}});
 try{const theme=localStorage.getItem('onx.theme')||'system';$('theme').value=['light','dark','system'].includes(theme)?theme:'system';if($('theme').value!=='system')document.documentElement.dataset.theme=$('theme').value}catch{}

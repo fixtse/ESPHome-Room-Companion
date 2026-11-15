@@ -165,24 +165,24 @@ A preset is a named set of controls: every slot's entity, display name, icon,
 press and turn actions, playlists and sensor choices. Keep one for each room,
 time of day or person, and switch between them without restarting the knob.
 
-1. Set up and **save** the slots the way you want them.
-2. Open **Presets**, enter a name such as `Evening` and click **Save current controls**.
-3. Click **Apply** on a preset to switch to it. **Update** replaces a preset with
-   the current controls; **Rename** and **Delete** manage the list.
+Presets live in the **Preset** card above the slot list in **Display & actions**.
+It starts collapsed and shows what you are editing: **On the knob** (marked
+**Live**) or a preset's name. Click it to expand; the knob page remembers your
+choice in this browser.
 
-### Build a preset without applying it
+- **Save as preset** (while editing the knob) stores the knob's saved controls
+  under a name. Unsaved slot changes are not included.
+- **+** starts a new, empty preset. Add controls, then **Save all** to create it.
+- Choose a preset from the list to edit its slots. While a preset is selected,
+  **Save slot** and **Save all** store the preset only; the knob does not change.
+- **▶ Apply** replaces the knob's controls with the selected preset. Only the
+  slots that differ are rewritten, and controls you no longer use are released
+  from memory. Save the preset's changes before applying it.
+- The pencil and bin buttons rename and delete the selected preset.
 
-In **Display & actions**, the list above the slots chooses what you are editing:
-**On the knob** (the controls in use) or one of your presets. Choose a preset to
-change its slots, or click **+** to start a new, empty preset and give it a name.
-While a preset is selected, **Save slot** and **Save all** store the preset only;
-the knob keeps its current controls until you apply the preset.
-
-Presets store saved controls only, so save slot changes first. Applying a preset
-replaces unsaved slot changes. Only the slots that differ are rewritten, and
-controls you no longer use are released from memory. Up to **8** presets fit on
-the knob. Editing a slot by hand after applying a preset marks the controls as
-**Custom** until you apply or update a preset again.
+Up to **8** presets fit on the knob. **Active** marks the preset the knob's
+controls currently match. Editing a slot on the knob by hand afterwards marks the
+controls as **Custom** until you apply or save a preset again.
 
 ### Switch presets from Home Assistant
 
