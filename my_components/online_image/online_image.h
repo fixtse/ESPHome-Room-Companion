@@ -23,12 +23,15 @@ class OnlineImage final : public PollingComponent,
   bool is_busy() const { return busy_; }
   void set_source_pixel_limit(uint32_t pixels) { source_pixel_limit_=pixels; }
   static bool memory_ready();
+  // Opt-in: let the worker stack fall back to PSRAM when internal RAM is fragmented.
+  static void set_psram_fallback(bool enabled) { psram_fallback_=enabled; }
+  static bool psram_fallback() { return psram_fallback_; }
   const std::string &last_error() const { return last_error_; }
   // Diagnostics for the most recent fetch (start heap is sampled in update()).
   struct FetchStats {
     uint32_t attempts{0}, open_ms{0}, read_ms{0}, bytes{0};
     uint32_t heap_free_start{0}, heap_largest_start{0}, heap_free_after_open{0};
-    bool https{false};
+    bool https{false}, stack_psram{false};
     std::string host;
   };
   const FetchStats &last_stats() const { return stats_; }
@@ -58,6 +61,9 @@ class OnlineImage final : public PollingComponent,
   CallbackManager<void()> failed_;
   Mutex mutex_;
   bool busy_{false}, completed_{false};
+  void *worker_{nullptr};  // WithCaps task; loop() deletes it once suspended
+  void reap_worker_();
+  static inline bool psram_fallback_{false};
   uint32_t generation_{0}, completed_generation_{0};
   uint8_t *completed_data_{nullptr};
   size_t completed_size_{0};

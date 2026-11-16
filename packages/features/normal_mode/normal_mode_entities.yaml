@@ -474,6 +474,19 @@ select:
     icon: mdi:weather-partly-cloudy
 
 switch:
+  # Diagnostics option: allow the artwork worker stack to fall back to PSRAM
+  # when internal RAM is fragmented (slower TLS, but the fetch can still run).
+  - platform: template
+    id: artwork_psram_fallback
+    name: "Artwork PSRAM stack fallback"
+    icon: mdi:memory
+    entity_category: config
+    optimistic: true
+    restore_mode: RESTORE_DEFAULT_OFF
+    on_turn_on:
+      - lambda: esphome::online_image::OnlineImage::set_psram_fallback(true); onx_media::psram_fallback = true;
+    on_turn_off:
+      - lambda: esphome::online_image::OnlineImage::set_psram_fallback(false); onx_media::psram_fallback = false;
   - platform: gpio
     id: normal_gpio_io10
     name: "HMI IO10"
@@ -1414,7 +1427,7 @@ image:
             onx_media::stat_end(true, millis());
             { const auto &f = id(media_cover_image)->last_stats(); auto &d = onx_media::last_fetch;
               d.attempts=f.attempts; d.open_ms=f.open_ms; d.read_ms=f.read_ms; d.bytes=f.bytes; d.heap_free_start=f.heap_free_start;
-              d.heap_largest_start=f.heap_largest_start; d.heap_free_after_open=f.heap_free_after_open; d.https=f.https; d.host=f.host; }
+              d.heap_largest_start=f.heap_largest_start; d.heap_free_after_open=f.heap_free_after_open; d.https=f.https; d.stack_psram=f.stack_psram; d.host=f.host; }
             onx_media::downloading = false;
             id(entity_icon_downloader)->set_artwork_busy(false);
             onx_media::last_artwork_end_ms = millis();
@@ -1433,7 +1446,7 @@ image:
             onx_media::stat_end(false, millis());
             { const auto &f = id(media_cover_image)->last_stats(); auto &d = onx_media::last_fetch;
               d.attempts=f.attempts; d.open_ms=f.open_ms; d.read_ms=f.read_ms; d.bytes=f.bytes; d.heap_free_start=f.heap_free_start;
-              d.heap_largest_start=f.heap_largest_start; d.heap_free_after_open=f.heap_free_after_open; d.https=f.https; d.host=f.host; }
+              d.heap_largest_start=f.heap_largest_start; d.heap_free_after_open=f.heap_free_after_open; d.https=f.https; d.stack_psram=f.stack_psram; d.host=f.host; }
             onx_media::stat_last_failure = id(media_cover_image)->last_error();
             onx_media::requested_ms = millis() - 50000;
             onx_media::artwork_refresh_pending = true;

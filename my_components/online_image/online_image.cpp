@@ -77,7 +77,8 @@ bool OnlineImage::memory_ready() {
   // Artwork has a 12 KB worker, unlike the icon rasterizer's 16 KB worker.
   // Compressed data, decoded pixels, JPEG workspace and TLS use PSRAM.
   return heap_caps_get_free_size(MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT)>=32*1024 &&
-      heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT)>=WORKER_STACK_BYTES+2048;
+      heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT)>=
+          (psram_fallback_?8*1024:WORKER_STACK_BYTES+2048);
 }
 OnlineImage::OnlineImage(const std::string &url,int width,int height,runtime_image::ImageFormat format,
                          image::ImageType type,image::Transparency transparency,image::Image *placeholder,
@@ -94,7 +95,9 @@ bool OnlineImage::cancelled_(uint32_t generation) {
   return generation!=generation_;
 }
 void OnlineImage::update() {
+  reap_worker_();
   if(busy_ || is_decoding()) return;
+  if(worker_) {last_error_="Previous artwork worker still exiting";failed_.call();return;}
   last_error_.clear();
   if(!memory_ready()) {last_error_="Waiting for artwork worker memory";failed_.call();return;}
   if(!validate_url_(url_)) { last_error_="Invalid artwork URL";failed_.call(); return; }
@@ -112,9 +115,24 @@ void OnlineImage::update() {
   for(auto &header:request_headers_) work->headers.push_back({header.first,header.second.value()});
   busy_=true;
   // All DNS, TCP, TLS, redirects and body reads happen off the ESPHome/UI task.
-  if(xTaskCreate(fetch_task_,"onx_artwork",WORKER_STACK_BYTES,work,1,nullptr)!=pdPASS) {
-    busy_=false;delete work;last_error_="Worker allocation failed";failed_.call();
+  // Default: internal stack (TLS is slower on a PSRAM stack). With the fallback
+  // enabled, use PSRAM when the internal heap is too fragmented for 12 KB plus headroom.
+  const bool want_internal=!psram_fallback_ ||
+      heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT)>=WORKER_STACK_BYTES+16*1024;
+  TaskHandle_t handle=nullptr;
+  BaseType_t created=pdFAIL;
+  work->stats.stack_psram=false;  // set before the task can read it
+  if(want_internal)
+    created=xTaskCreatePinnedToCoreWithCaps(fetch_task_,"onx_artwork",WORKER_STACK_BYTES,work,1,&handle,tskNO_AFFINITY,
+                                            MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
+  if(created!=pdPASS && psram_fallback_) {
+    work->stats.stack_psram=true;
+    created=xTaskCreatePinnedToCoreWithCaps(fetch_task_,"onx_artwork",WORKER_STACK_BYTES,work,1,&handle,tskNO_AFFINITY,
+                                            MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
   }
+  if(created!=pdPASS) {
+    busy_=false;delete work;last_error_="Worker allocation failed";failed_.call();
+  } else worker_=handle;
 }
 void OnlineImage::fetch_task_(void *arg) {
   std::unique_ptr<Work> work(static_cast<Work *>(arg));
@@ -204,9 +222,18 @@ void OnlineImage::fetch_task_(void *arg) {
     work->owner->completed_=true;
   }
   work.reset();
-  vTaskDelete(nullptr);
+  // A WithCaps task cannot free its own stack; loop() deletes it once suspended.
+  vTaskSuspend(nullptr);
+}
+void OnlineImage::reap_worker_() {
+  if(!worker_) return;
+  auto handle=static_cast<TaskHandle_t>(worker_);
+  if(eTaskGetState(handle)!=eSuspended) return;
+  vTaskDeleteWithCaps(handle);
+  worker_=nullptr;
 }
 void OnlineImage::loop() {
+  reap_worker_();
   uint8_t *data;
   size_t size;
   uint32_t generation;

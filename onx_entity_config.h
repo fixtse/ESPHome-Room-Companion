@@ -530,8 +530,9 @@ inline std::string state(const std::string &host = "", bool wifi_connected = fal
     art["attempts"]=onx_media::stat_attempts;art["ok"]=onx_media::stat_ok;art["failed"]=onx_media::stat_failed;
     art["timeouts"]=onx_media::stat_timeouts;art["last_ms"]=onx_media::stat_last_ms;art["slowest_ms"]=onx_media::stat_slowest_ms;
     art["last_failure"]=onx_media::stat_last_failure;
+    art["psram_fallback"]=onx_media::psram_fallback;
     auto fetch=art["last_fetch"].to<JsonObject>();const auto &f=onx_media::last_fetch;
-    fetch["host"]=f.host;fetch["https"]=f.https;fetch["connect_attempts"]=f.attempts;fetch["open_ms"]=f.open_ms;
+    fetch["host"]=f.host;fetch["https"]=f.https;fetch["stack_psram"]=f.stack_psram;fetch["connect_attempts"]=f.attempts;fetch["open_ms"]=f.open_ms;
     fetch["read_ms"]=f.read_ms;fetch["bytes"]=f.bytes;fetch["heap_free_start"]=f.heap_free_start;
     fetch["heap_largest_start"]=f.heap_largest_start;fetch["heap_free_after_open"]=f.heap_free_after_open;
     root["artwork_status"]=onx_media::downloading?"downloading":!onx_media::ready_url.empty()?"ready":onx_media::artwork_wait_reason.empty()?"not_loaded":onx_media::artwork_wait_reason.c_str();
