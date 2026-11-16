@@ -31,8 +31,9 @@ class IconDownloader : public Component {
     explicit Bitmap(uint8_t *p);
     ~Bitmap();
   };
-  struct Work { IconDownloader *owner; std::string icon; };
   static void download_task_(void *arg);
+  void *worker_{nullptr};  // TaskHandle_t of the persistent download worker.
+  std::string requested_icon_;
   void request_(const std::string &icon);
   std::map<std::string, std::shared_ptr<Bitmap>> cache_;
   struct Binding {

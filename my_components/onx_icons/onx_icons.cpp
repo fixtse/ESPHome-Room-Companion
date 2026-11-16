@@ -8,6 +8,7 @@
 #include "esp_heap_caps.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
+#include "freertos/idf_additions.h"
 #include "src/misc/cache/instance/lv_image_cache.h"
 #include "src/misc/cache/instance/lv_image_header_cache.h"
 #include <algorithm>
@@ -121,26 +122,35 @@ IconDownloader::Bitmap::~Bitmap() {
   lv_image_header_cache_drop(image.get_lv_image_dsc());
   heap_caps_free(pixels);
 }
+// One long-lived worker whose 16 KB stack lives in PSRAM. Internal RAM is
+// often fragmented below 20 KB blocks, which used to leave icons waiting.
 void IconDownloader::download_task_(void *arg) {
-  std::unique_ptr<Work> work(static_cast<Work *>(arg));
-  std::string error;
-  auto *pixels = fetch_bitmap(work->icon, error);
-  {
-    LockGuard lock(work->owner->mutex_);
-    work->owner->completed_icon_ = work->icon;
-    work->owner->completed_error_ = std::move(error);
-    work->owner->completed_pixels_ = pixels;
-    work->owner->completed_ = true;
+  auto *owner = static_cast<IconDownloader *>(arg);
+  for (;;) {
+    ulTaskNotifyTake(pdTRUE, portMAX_DELAY);
+    std::string icon;
+    {
+      LockGuard lock(owner->mutex_);
+      icon = std::move(owner->requested_icon_);
+      owner->requested_icon_.clear();
+    }
+    if (icon.empty()) continue;
+    std::string error;
+    auto *pixels = fetch_bitmap(icon, error);
+    LockGuard lock(owner->mutex_);
+    owner->completed_icon_ = std::move(icon);
+    owner->completed_error_ = std::move(error);
+    owner->completed_pixels_ = pixels;
+    owner->completed_ = true;
   }
-  work.reset();
-  vTaskDelete(nullptr);
 }
 bool IconDownloader::memory_ready() {
 #ifdef USE_ESP32
   // The worker needs a 16 KB stack, not a single 32 KB allocation. Real boards
   // can have ample total free heap while their largest block is only 28 KB.
-  return heap_caps_get_free_size(MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT) >= 48 * 1024 &&
-         heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT) >= 20 * 1024;
+  // The worker stack and TLS buffers are in PSRAM; keep headroom for lwIP.
+  return heap_caps_get_free_size(MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT) >= 32 * 1024 &&
+         heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT) >= 8 * 1024;
 #else
   return true;
 #endif
@@ -164,13 +174,22 @@ void IconDownloader::request_(const std::string &icon) {
   auto failed = failures_.find(icon);
   if (failed != failures_.end() && !failed->second.due(millis())) return;
   if (!memory_ready()) return;
-  auto *work = new (std::nothrow) Work{this, icon};
-  if (!work) return;
+  if (worker_ == nullptr) {
+    TaskHandle_t handle = nullptr;
+    if (xTaskCreatePinnedToCoreWithCaps(download_task_, "onx_icon", 16384, this, 1, &handle, tskNO_AFFINITY,
+                                        MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT) != pdPASS) {
+      failures_[icon].fail(millis());
+      return;
+    }
+    worker_ = handle;
+  }
+  {
+    LockGuard lock(mutex_);
+    requested_icon_ = icon;
+  }
   busy_ = true;
   ESP_LOGI(TAG, "Downloading %s", icon.c_str());
-  if (xTaskCreate(download_task_, "onx_icon", 16384, work, 1, nullptr) != pdPASS) {
-    busy_ = false; delete work; failures_[icon].fail(millis());
-  }
+  xTaskNotifyGive(static_cast<TaskHandle_t>(worker_));
 }
 void IconDownloader::loop() {
   std::string icon, error;

@@ -11,15 +11,18 @@
 #include <vector>
 #include <utility>
 namespace onx_sensor_view {
-// Keep axis labels compact without rounding distinct bounds to the same text.
+// Axis labels are whole numbers; large bounds use k/M (442900 -> "443k").
+inline std::string axis_label(float value) {
+  char out[24];
+  const double v=std::isfinite(value)?static_cast<double>(value):0.0,mag=std::fabs(v);
+  if(mag>=999500000.0)snprintf(out,sizeof(out),"%.0fG",v/1e9);
+  else if(mag>=999500.0)snprintf(out,sizeof(out),"%.0fM",v/1e6);
+  else if(mag>=10000.0)snprintf(out,sizeof(out),"%.0fk",v/1e3);
+  else snprintf(out,sizeof(out),"%.0f",v);
+  return std::string(out)=="-0"?"0":out;
+}
 inline std::pair<std::string,std::string> axis_labels(float low,float high) {
-  char bottom[24],top[24];
-  for(int precision=4;precision<=7;++precision) {
-    snprintf(bottom,sizeof(bottom),"%.*g",precision,static_cast<double>(low==0?0:low));
-    snprintf(top,sizeof(top),"%.*g",precision,static_cast<double>(high==0?0:high));
-    if(low==high || std::string(bottom)!=top)break;
-  }
-  return {bottom,top};
+  return {axis_label(low),axis_label(high)};
 }
 struct Config {
   char primary[129]{}, secondary[129]{}, text[161]{"{value}"};

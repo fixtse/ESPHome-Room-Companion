@@ -113,7 +113,7 @@ struct Message {
   }
   int countdown(uint32_t now) const {
     if(!total_ms)return -1;
-    const uint32_t elapsed=visible?now-shown_ms:0;
+    const uint32_t elapsed=visible && !held(now)?now-shown_ms:0;
     const uint32_t left=elapsed>=remaining_ms?0:remaining_ms-elapsed;
     return static_cast<int>(static_cast<uint64_t>(left)*1000/total_ms);
   }
@@ -128,7 +128,7 @@ struct Message {
   // Freeze the countdown while the user interacts, then resume it.
   void interact(uint32_t now) {
     if(!visible)return;
-    if(remaining_ms) {const uint32_t elapsed=now-shown_ms;remaining_ms=elapsed>=remaining_ms?1000:remaining_ms-elapsed;}
+    if(remaining_ms && !held(now)) {const uint32_t elapsed=now-shown_ms;remaining_ms=elapsed>=remaining_ms?1000:remaining_ms-elapsed;}
     shown_ms=now;held_until=now+INTERACTION_HOLD_MS;
   }
   bool held(uint32_t now) const {return static_cast<int32_t>(held_until-now)>0;}
