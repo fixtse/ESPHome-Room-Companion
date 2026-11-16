@@ -5,6 +5,9 @@ This retains ordinary English text while adding accented Latin letters used in
 European and American languages, including `Beyoncé`, `Mañana`, `München`, and
 `São Paulo`. Large clock fonts retain their smaller original character set.
 
+All text sizes also explicitly include the right arrow (`→`, U+2192) and bullet
+(`●`) from MiSans. Large clock fonts keep their original character set.
+
 Text fonts also include a bounded set of monochrome emoji from Noto Emoji:
 
 ❤ ☀ ☁ ☂ ☕ ❄ ⚡ ✅ ❌ ⭐ 🌙 🌞 🌧 🌡 🌈 🎵 🎶 🎧 🎤 🎸 🎹 🎷 🎺 🎻 🥁 📻 💿 📀
