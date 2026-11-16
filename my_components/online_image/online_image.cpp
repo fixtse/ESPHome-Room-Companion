@@ -105,10 +105,18 @@ void OnlineImage::update() {
   for(auto &header:request_headers_) work->headers.push_back({header.first,header.second.value()});
   busy_=true;
   // All DNS, TCP, TLS, redirects and body reads happen off the ESPHome/UI task.
-  // A PSRAM stack avoids carving 12 KB out of the fragmented internal heap per fetch.
+  // Prefer a fast internal stack (TLS handshakes are slower on a PSRAM stack),
+  // but fall back to PSRAM when the internal heap is too fragmented for 12 KB.
   TaskHandle_t handle=nullptr;
-  if(xTaskCreatePinnedToCoreWithCaps(fetch_task_,"onx_artwork",WORKER_STACK_BYTES,work,1,&handle,tskNO_AFFINITY,
-                                     MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT)!=pdPASS) {
+  const bool internal=heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT)>=WORKER_STACK_BYTES+16*1024;
+  const uint32_t caps=internal?(MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT):(MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
+  BaseType_t created=xTaskCreatePinnedToCoreWithCaps(fetch_task_,"onx_artwork",WORKER_STACK_BYTES,work,1,&handle,tskNO_AFFINITY,caps);
+  bool on_internal=internal && created==pdPASS;
+  if(created!=pdPASS && internal)
+    created=xTaskCreatePinnedToCoreWithCaps(fetch_task_,"onx_artwork",WORKER_STACK_BYTES,work,1,&handle,tskNO_AFFINITY,
+                                            MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
+  ESP_LOGD(TAG,"Artwork worker stack in %s",on_internal?"internal RAM":"PSRAM");
+  if(created!=pdPASS) {
     busy_=false;delete work;last_error_="Worker allocation failed";failed_.call();
   } else worker_=handle;
 }

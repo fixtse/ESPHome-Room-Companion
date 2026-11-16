@@ -49,7 +49,7 @@ class OnlineImage final : public PollingComponent,
   CallbackManager<void()> failed_;
   Mutex mutex_;
   bool busy_{false}, completed_{false};
-  void *worker_{nullptr};  // PSRAM-stack task, deleted by loop() once suspended
+  void *worker_{nullptr};  // WithCaps task, deleted by loop() once suspended
   void reap_worker_();
   uint32_t generation_{0}, completed_generation_{0};
   uint8_t *completed_data_{nullptr};
