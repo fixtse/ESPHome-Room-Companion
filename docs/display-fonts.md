@@ -39,3 +39,9 @@ Regenerate with `python scripts/generate_color_emoji.py /path/to/NotoColorEmoji.
 needed during ESPHome compilation. Run `g++ -std=c++17 -Itests/emoji_stubs
 tests/test_emoji.cpp -o /tmp/test-emoji && /tmp/test-emoji` for sequence and atlas
 integrity tests.
+
+Sequence lookup narrows sorted UTF-8 prefixes with binary searches rather than
+scanning the atlas for every character. Identical pixel buffers are shared by
+multiple sequence keys. First use decodes and scales a glyph into PSRAM; later
+uses share that cached image. The atlas uses 32-color RGBA palettes to preserve
+colored artwork while keeping the firmware within the OTA flash partition.

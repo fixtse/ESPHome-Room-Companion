@@ -70,8 +70,8 @@ for index, sequence in enumerate(sequences):
     buffer_index = buffers[key]
     literal = ''.join(f'\\x{v:02x}' for v in sequence.encode())
     entries.append((sequence, f'{{"{literal}",pixels_{buffer_index},{len(encoded)}}}'))
-# Longest match first, including optional emoji selectors handled at runtime.
-entries.sort(key=lambda entry: (-len(entry[0].encode()), entry[0]))
+# Sorted UTF-8 keys support binary prefix lookup at runtime.
+entries.sort(key=lambda entry: entry[0].encode())
 lines.append('inline const Glyph GLYPHS[] = {' + ',\n'.join(entry for _, entry in entries) + '};\n}')
 Path('onx_emoji_pixels.h').write_text('\n'.join(lines)+'\n')
 print(f'{len(entries)} glyphs; {sum(len(line) for line in lines)} source bytes')

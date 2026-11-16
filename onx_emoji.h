@@ -1,11 +1,14 @@
 #pragma once
 #include "lvgl.h"
+#include "src/misc/cache/instance/lv_image_cache.h"
 #include "esp_heap_caps.h"
 #include "onx_emoji_pixels.h"
 #include <vector>
 #include <deque>
 #include <cstring>
 #include <string>
+#include <string_view>
+#include <algorithm>
 
 namespace onx_emoji {
 struct CachedGlyph { uint32_t code; uint16_t size; lv_image_dsc_t image; };
@@ -23,25 +26,35 @@ inline std::string encode(const char *text) {
   }
   std::string result;
   for (size_t at = 0; at < normalized.size();) {
-    size_t index = 0;
     bool matched = false;
-    if (static_cast<unsigned char>(normalized[at]) >= 0x80 ||
-        normalized[at] == '#' || normalized[at] == '*' ||
-        (normalized[at] >= '0' && normalized[at] <= '9')) {
-      for (const auto &glyph : GLYPHS) {
-        const size_t length = std::strlen(glyph.sequence);
-        if (normalized.compare(at, length, glyph.sequence) == 0) {
-          uint32_t code = FIRST_GLYPH + index;
-          result += static_cast<char>(0xF0 | (code >> 18));
-          result += static_cast<char>(0x80 | ((code >> 12) & 63));
-          result += static_cast<char>(0x80 | ((code >> 6) & 63));
-          result += static_cast<char>(0x80 | (code & 63));
-          at += length;
-          matched = true;
-          break;
-        }
-        ++index;
+    size_t matched_length = 0, matched_index = 0;
+    const auto *begin = std::begin(GLYPHS);
+    const auto *end = std::end(GLYPHS);
+    // Narrow the candidate range as UTF-8 bytes arrive; stop as soon as no
+    // glyph has this prefix. Ordinary text usually needs only one lookup.
+    for (size_t length = 1; at + length <= normalized.size(); ++length) {
+      const std::string_view prefix(normalized.data() + at, length);
+      const auto *candidate = std::lower_bound(begin, end, prefix,
+        [](const Glyph &glyph, std::string_view key) {
+          return std::string_view(glyph.sequence) < key;
+        });
+      if (candidate == end) break;
+      const std::string_view sequence(candidate->sequence);
+      if (sequence.substr(0, length) != prefix) break;
+      begin = candidate;
+      if (sequence.size() == length) {
+        matched_length = length;
+        matched_index = candidate - std::begin(GLYPHS);
       }
+    }
+    if (matched_length) {
+      const uint32_t code = FIRST_GLYPH + matched_index;
+      result += static_cast<char>(0xF0 | (code >> 18));
+      result += static_cast<char>(0x80 | ((code >> 12) & 63));
+      result += static_cast<char>(0x80 | ((code >> 6) & 63));
+      result += static_cast<char>(0x80 | (code & 63));
+      at += matched_length;
+      matched = true;
     }
     if (!matched) result += normalized[at++];
   }
