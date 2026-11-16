@@ -474,19 +474,6 @@ select:
     icon: mdi:weather-partly-cloudy
 
 switch:
-  # Diagnostics option: allow the artwork worker stack to fall back to PSRAM
-  # when internal RAM is fragmented (slower TLS, but the fetch can still run).
-  - platform: template
-    id: artwork_psram_fallback
-    name: "Artwork PSRAM stack fallback"
-    icon: mdi:memory
-    entity_category: config
-    optimistic: true
-    restore_mode: RESTORE_DEFAULT_OFF
-    on_turn_on:
-      - lambda: esphome::online_image::OnlineImage::set_psram_fallback(true); onx_media::psram_fallback = true;
-    on_turn_off:
-      - lambda: esphome::online_image::OnlineImage::set_psram_fallback(false); onx_media::psram_fallback = false;
   - platform: gpio
     id: normal_gpio_io10
     name: "HMI IO10"

@@ -74,11 +74,10 @@ class PsramJpegDecoder final : public runtime_image::JpegDecoder {
 };
 #endif
 bool OnlineImage::memory_ready() {
-  // Artwork has a 12 KB worker, unlike the icon rasterizer's 16 KB worker.
-  // Compressed data, decoded pixels, JPEG workspace and TLS use PSRAM.
+  // The 12 KB worker stack falls back to PSRAM, so only require headroom for
+  // lwIP/Wi-Fi. Compressed data, decoded pixels, JPEG workspace and TLS use PSRAM.
   return heap_caps_get_free_size(MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT)>=32*1024 &&
-      heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT)>=
-          (psram_fallback_?8*1024:WORKER_STACK_BYTES+2048);
+      heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT)>=8*1024;
 }
 OnlineImage::OnlineImage(const std::string &url,int width,int height,runtime_image::ImageFormat format,
                          image::ImageType type,image::Transparency transparency,image::Image *placeholder,
@@ -115,17 +114,17 @@ void OnlineImage::update() {
   for(auto &header:request_headers_) work->headers.push_back({header.first,header.second.value()});
   busy_=true;
   // All DNS, TCP, TLS, redirects and body reads happen off the ESPHome/UI task.
-  // Default: internal stack (TLS is slower on a PSRAM stack). With the fallback
-  // enabled, use PSRAM when the internal heap is too fragmented for 12 KB plus headroom.
-  const bool want_internal=!psram_fallback_ ||
-      heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT)>=WORKER_STACK_BYTES+16*1024;
+  // Prefer an internal stack (TLS is slower on a PSRAM stack). Fall back to PSRAM
+  // only when internal RAM is too fragmented, where the fetch used to just wait.
+  const bool want_internal=
+      heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT)>=WORKER_STACK_BYTES+2048;
   TaskHandle_t handle=nullptr;
   BaseType_t created=pdFAIL;
   work->stats.stack_psram=false;  // set before the task can read it
   if(want_internal)
     created=xTaskCreatePinnedToCoreWithCaps(fetch_task_,"onx_artwork",WORKER_STACK_BYTES,work,1,&handle,tskNO_AFFINITY,
                                             MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
-  if(created!=pdPASS && psram_fallback_) {
+  if(created!=pdPASS) {
     work->stats.stack_psram=true;
     created=xTaskCreatePinnedToCoreWithCaps(fetch_task_,"onx_artwork",WORKER_STACK_BYTES,work,1,&handle,tskNO_AFFINITY,
                                             MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);

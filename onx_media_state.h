@@ -121,7 +121,6 @@ inline std::string stat_last_failure;
 // Copied from OnlineImage::last_stats() when a fetch ends.
 struct LastFetch { uint32_t attempts{0}, open_ms{0}, read_ms{0}, bytes{0}, heap_free_start{0}, heap_largest_start{0}, heap_free_after_open{0}; bool https{false}, stack_psram{false}; std::string host; };
 inline LastFetch last_fetch;
-inline bool psram_fallback{false};  // mirrors the Artwork PSRAM stack fallback switch
 inline void stat_end(bool ok, uint32_t now) {
   const uint32_t took = now - requested_ms;
   stat_last_ms = took; if (took > stat_slowest_ms) stat_slowest_ms = took;
