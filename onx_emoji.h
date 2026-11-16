@@ -60,7 +60,10 @@ inline std::string encode(const char *text) {
   }
   return result;
 }
-inline const void *source(const lv_font_t *font, uint32_t code, uint32_t, int32_t *, void *) {
+inline const void *source(const lv_font_t *font, uint32_t code, uint32_t, int32_t *offset_y, void *) {
+  // LVGL: top = line_top + line_height - base_line - image_height - offset_y.
+  // Full-line images need to include the descent to stay inside the label.
+  if (offset_y) *offset_y = -static_cast<int32_t>(font->base_line);
   const uint16_t size = font->line_height;
   for (const auto &entry : cache) {
     if (entry.code == code && entry.size == size) {

@@ -17,6 +17,21 @@ int main() {
     free(const_cast<uint8_t *>(image->data));
     onx_emoji::cache.clear(); onx_emoji::cache_bytes = 0;
   }
+  // Exercise both newly decoded and cached images with real text descents.
+  for (uint16_t height : {14, 16, 24, 32}) {
+    for (uint16_t descent : {3, 5, 7}) {
+      lv_font_t text_font{height, descent, nullptr};
+      for (int repeat = 0; repeat < 2; ++repeat) {
+        int32_t offset = 999;
+        const auto *image = static_cast<const lv_image_dsc_t *>(onx_emoji::source(
+            &text_font, onx_emoji::FIRST_GLYPH, 0, &offset, nullptr));
+        assert(image);
+        const int top = height - descent - image->header.h - offset;
+        assert(top == 0);
+        assert(top + image->header.h == height);
+      }
+    }
+  }
   for (unsigned i = 0; i < 240; ++i)
     assert(onx_emoji::source(&font, onx_emoji::FIRST_GLYPH + i, 0, nullptr, nullptr));
   assert(onx_emoji::cache_bytes > onx_emoji::CACHE_LIMIT);
