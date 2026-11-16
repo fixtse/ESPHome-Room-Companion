@@ -3272,6 +3272,7 @@ script:
           onx_media::downloading = true;
           id(media_cover_image)->set_url(desired);
           onx_runtime::record("artwork_start", entity);
+          ++onx_media::stat_attempts;
           id(entity_icon_downloader)->set_artwork_busy(true);
           // The local OnlineImage implementation starts only a worker here.
           id(media_cover_image)->update();

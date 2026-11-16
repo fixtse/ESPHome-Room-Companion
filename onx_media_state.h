@@ -115,6 +115,14 @@ inline std::string requested_url, ready_url;
 inline uint32_t requested_ms{0};
 // Non-zero: refresh the cover at this millis() once a retry guard expires.
 inline uint32_t retry_at_ms{0};
+// Diagnostics: cumulative cover fetch outcomes since boot.
+inline uint32_t stat_attempts{0}, stat_ok{0}, stat_failed{0}, stat_timeouts{0}, stat_last_ms{0}, stat_slowest_ms{0};
+inline std::string stat_last_failure;
+inline void stat_end(bool ok, uint32_t now) {
+  const uint32_t took = now - requested_ms;
+  stat_last_ms = took; if (took > stat_slowest_ms) stat_slowest_ms = took;
+  if (ok) ++stat_ok; else ++stat_failed;
+}
 inline bool downloading{false}, artwork_refresh_pending{false};
 inline std::string candidate_url, artwork_wait_reason;
 inline uint32_t candidate_ms{0}, last_artwork_end_ms{0};

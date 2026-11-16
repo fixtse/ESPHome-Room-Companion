@@ -74,10 +74,10 @@ class PsramJpegDecoder final : public runtime_image::JpegDecoder {
 };
 #endif
 bool OnlineImage::memory_ready() {
-  // Worker stack, compressed data, decoded pixels, JPEG workspace and TLS all
-  // use PSRAM. Keep internal headroom for lwIP/Wi-Fi, as the icon worker does.
+  // Artwork has a 12 KB worker, unlike the icon rasterizer's 16 KB worker.
+  // Compressed data, decoded pixels, JPEG workspace and TLS use PSRAM.
   return heap_caps_get_free_size(MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT)>=32*1024 &&
-      heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT)>=8*1024;
+      heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT)>=WORKER_STACK_BYTES+2048;
 }
 OnlineImage::OnlineImage(const std::string &url,int width,int height,runtime_image::ImageFormat format,
                          image::ImageType type,image::Transparency transparency,image::Image *placeholder,
@@ -94,31 +94,19 @@ bool OnlineImage::cancelled_(uint32_t generation) {
   return generation!=generation_;
 }
 void OnlineImage::update() {
-  reap_worker_();
-  if(busy_ || is_decoding() || worker_) return;
+  if(busy_ || is_decoding()) return;
   last_error_.clear();
   if(!memory_ready()) {last_error_="Waiting for artwork worker memory";failed_.call();return;}
   if(!validate_url_(url_)) { last_error_="Invalid artwork URL";failed_.call(); return; }
-  auto *work=new(std::nothrow) Work{this,url_,{},generation_,4000};
+  auto *work=new(std::nothrow) Work{this,url_,{},generation_,2500};
   if(!work) { last_error_="Request allocation failed";failed_.call(); return; }
-  if(parent_) work->timeout=std::min<uint32_t>(4000,parent_->get_timeout());
+  if(parent_) work->timeout=std::min<uint32_t>(2500,parent_->get_timeout());
   for(auto &header:request_headers_) work->headers.push_back({header.first,header.second.value()});
   busy_=true;
   // All DNS, TCP, TLS, redirects and body reads happen off the ESPHome/UI task.
-  // Prefer a fast internal stack (TLS handshakes are slower on a PSRAM stack),
-  // but fall back to PSRAM when the internal heap is too fragmented for 12 KB.
-  TaskHandle_t handle=nullptr;
-  const bool internal=heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT)>=WORKER_STACK_BYTES+16*1024;
-  const uint32_t caps=internal?(MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT):(MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
-  BaseType_t created=xTaskCreatePinnedToCoreWithCaps(fetch_task_,"onx_artwork",WORKER_STACK_BYTES,work,1,&handle,tskNO_AFFINITY,caps);
-  bool on_internal=internal && created==pdPASS;
-  if(created!=pdPASS && internal)
-    created=xTaskCreatePinnedToCoreWithCaps(fetch_task_,"onx_artwork",WORKER_STACK_BYTES,work,1,&handle,tskNO_AFFINITY,
-                                            MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
-  ESP_LOGD(TAG,"Artwork worker stack in %s",on_internal?"internal RAM":"PSRAM");
-  if(created!=pdPASS) {
+  if(xTaskCreate(fetch_task_,"onx_artwork",WORKER_STACK_BYTES,work,1,nullptr)!=pdPASS) {
     busy_=false;delete work;last_error_="Worker allocation failed";failed_.call();
-  } else worker_=handle;
+  }
 }
 void OnlineImage::fetch_task_(void *arg) {
   std::unique_ptr<Work> work(static_cast<Work *>(arg));
@@ -144,18 +132,16 @@ void OnlineImage::fetch_task_(void *arg) {
     int64_t length=-1;
     for(unsigned redirects=0;redirects<=3;++redirects) {
       if(work->owner->cancelled_(work->generation) || millis()-started>=15000) { error="Cancelled or timed out";break; }
-      // Transient DNS/TCP/TLS setup failures are common on a busy HA host.
-      // Retry the connect a few times within the 15 s budget before failing.
+      // Retry a transient DNS/TCP/TLS setup failure briefly before giving up.
       esp_err_t opened_status=ESP_FAIL;
       for(unsigned attempt=0;attempt<3;++attempt) {
         if(attempt>0) {
           esp_http_client_close(client);
-          vTaskDelay(pdMS_TO_TICKS(400*attempt));
+          vTaskDelay(pdMS_TO_TICKS(300*attempt));
           if(work->owner->cancelled_(work->generation) || millis()-started>=15000) break;
         }
         opened_status=esp_http_client_open(client,0);
         if(opened_status==ESP_OK) break;
-        ESP_LOGD(TAG,"Artwork connect attempt %u failed: %s",attempt+1,esp_err_to_name(opened_status));
       }
       if(opened_status!=ESP_OK) {error=std::string("Connection failed: ")+esp_err_to_name(opened_status);break;}
       length=esp_http_client_fetch_headers(client);
@@ -204,18 +190,9 @@ void OnlineImage::fetch_task_(void *arg) {
     work->owner->completed_=true;
   }
   work.reset();
-  // A WithCaps task cannot free its own stack; loop() deletes it once suspended.
-  vTaskSuspend(nullptr);
-}
-void OnlineImage::reap_worker_() {
-  if(!worker_) return;
-  auto handle=static_cast<TaskHandle_t>(worker_);
-  if(eTaskGetState(handle)!=eSuspended) return;
-  vTaskDeleteWithCaps(handle);
-  worker_=nullptr;
+  vTaskDelete(nullptr);
 }
 void OnlineImage::loop() {
-  reap_worker_();
   uint8_t *data;
   size_t size;
   uint32_t generation;

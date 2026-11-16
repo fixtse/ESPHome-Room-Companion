@@ -366,6 +366,7 @@ interval:
             id(entity_icon_downloader)->set_artwork_busy(false);
             onx_media::last_artwork_end_ms = millis();
             // Retry the same URL after ~10 s rather than the 60 s duplicate guard.
+            ++onx_media::stat_timeouts; onx_media::stat_last_failure = "watchdog timeout";
             onx_media::requested_ms = millis() - 50000;
             onx_media::artwork_refresh_pending = true;
             onx_runtime::record("artwork_timeout");
