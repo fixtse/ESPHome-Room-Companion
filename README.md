@@ -1,100 +1,83 @@
-# OpenNextion Knob by fixtSE
+# OpenNextion Room Companion
 
-**Your home, music and everyday shortcuts—one turn away.**
+An ESPHome touchscreen and Home Assistant Assist satellite for **ONX2432G028
+(2.8-inch, 240 × 320)** and **ONX3248G035 (3.5-inch, 320 × 480)**.
 
-Turn the **ONX2424G013** into a Home Assistant controller with a round screen and
-one simple knob. Dim a lamp, change the temperature, pick a playlist, see a useful
-reminder, or adjust your computer's volume through Home Assistant.
+This project starts from **OpenNextion Knob by fixtSE**, preserving its complete
+Git history at `6a710e2ce0258e3ced31da3177e00ed5f0b260e3`. The new rectangular
+application directly reuses the knob's notification model, control-value parsing,
+media formatting and supporting state modules. Its original source and round-knob
+entry point remain available for incremental porting. See
+[the original README](docs/room-companion/KNOB-README.md).
 
-Made by [fixtSE](https://fixtse.com/).
+## Current implementation
 
-[Get started](docs/setup.md) · [User guide](docs/web-configuration.md) · [Firmware downloads](https://github.com/fixtse/esp-ota/releases) · [简体中文](README.zh-CN.md)
+- One shared application, two small hardware profiles; separate firmware images.
+- Native LVGL Room, Music, Assist, Today and notification pages. Pages scroll on
+  the smaller screen; text and touch targets are not scaled down.
+- Home Assistant light/scene actions, temperature, media title/artist, playback,
+  next track and volume; entity IDs are configurable through substitutions.
+- Tap-to-talk Assist with PDM microphone input, I2S spoken responses, transcript,
+  reply text, cancel and a persistent software microphone-mute switch.
+- Optional `okay_nabu` local wake-word package, disabled on boot.
+- Knob-derived text notifications, HTML-break normalization and bounded timeouts.
+- Optional authenticated HTTP JPEG cards, plus a small companion renderer.
+- Native encrypted ESPHome API, OTA, fallback Wi-Fi setup and extension packages.
 
-## What can it do?
+This is an initial port. The knob's 20-slot web editor, presets, artwork modes,
+encoder gestures, timer overlays and complete entity catalogue are retained in
+source but are **not wired into the new rectangular entry points yet**. This
+firmware does not currently stream an interactive Lovelace dashboard. See
+[architecture and reference projects](docs/room-companion/architecture.md).
 
-| Make it part of your day | What you can do |
-| --- | --- |
-| Set the mood | Switch lights on, dim them, change colors and adjust color temperature. |
-| Get comfortable | Adjust heating, cooling, fans, switches, plugs and curtains. Available controls follow what your device supports. |
-| Enjoy your music | Change volume, play or pause, skip tracks, and choose your own playlists or radio stations. Choose a classic player or full-screen album art, with a progress ring at the screen edge. Playlist selection follows each wheel step without scrolling animations. |
-| Keep an eye on things | See sensor readings, add a second piece of information, or open a 12-hour graph. Browse current weather and forecasts. |
-| Keep timers nearby | Active Home Assistant and supported voice/speaker timers pop up automatically. Hide their regular pages to keep your list tidy. |
-| Remember what matters | Show reminders, door alerts or calendar messages with an optional image. HTML line breaks become readable text, and longer messages scroll. Failed image downloads fall back to text. Press to dismiss. |
-| Create your own controls | Assign clockwise, counterclockwise and held turns to Home Assistant scripts or automations. Choose custom press actions on supported controls and optionally display returned values in a brief popup. |
-| Run everyday shortcuts | Use scripts, automations, scenes and buttons, or adjust number and selection helpers. Script and automation pages show clear running/idle or enabled/disabled states, and can display a configured feedback value. |
+## Set up
 
-[Learn the knob controls](docs/knob-controls.md) · [Playlist guide](docs/web-configuration.md#playlists-and-stations) · [Reminders and calendars](docs/display-notifications.md) · [Custom turns and desktop controls](docs/gesture-controls.md)
+Use ESPHome **2026.10.2**, matching the development container.
 
-## Make it yours
+1. Copy `secrets.example.yaml` to ignored `secrets.yaml`. Fill in Wi-Fi, a unique
+   API encryption key (`openssl rand -base64 32`), OTA and fallback AP passwords.
+   The example key is intentionally a placeholder, not a usable credential.
+2. Choose **ONX2432G028.yaml** or **ONX3248G035.yaml**. Set `room_name`,
+   `light_entity`, `scene_entity`, `temperature_entity` and `media_entity` under its
+   `substitutions:` block. No Home Assistant access token goes on the panel.
+3. Build and upload using that entry point in ESPHome. Hardware profiles must
+   match the actual board; the images are not interchangeable.
+4. Add the device in Home Assistant's ESPHome integration. Enable **Allow the
+   device to perform Home Assistant actions** for light/music/scene controls.
+5. Configure an Assist pipeline with speech-to-text, a conversation agent and
+   text-to-speech. Select it for the discovered satellite, attach the compatible
+   PDM microphone accessory and speaker, then open **Assist → Talk**.
 
-- **Up to 20 controls.** Start with the ones you use most, then add more. Search by name or room, rename, reorder and duplicate them.
-- **Presets.** Save sets of controls by name and switch between them from the knob's web page or Home Assistant's **Preset** select—no restart needed. [Presets guide](docs/web-configuration.md#presets)
-- **Easy to find your place.** Icons follow the lower curve of the screen, with the current page centered.
-- **A quieter display.** Keep hidden timers working in the background. Choose the clock when idle, or show an actively playing media player with a clock fallback.
-- **Your look and routine.** Choose display orientation, brightness, dial sensitivity, date and clock formats, media style, progress-ring color, standby weather and scheduled sleep.
-- **Set up from your phone or computer.** The knob has its own configuration webpage, with entity icons beside slot names, live previews, help links, light/dark themes and configuration backups.
-- **Keep familiar icons.** Use your Home Assistant entity icons, with built-in alternatives when an icon cannot be downloaded.
-- **Stay up to date.** Install wireless updates through the knob's **Firmware Update** entity in Home Assistant.
+The microphone and speaker sockets require attached accessories; board support
+alone does not mean a microphone/speaker is fitted. Do not use USB-Serial-JTAG on
+GPIO19/20 while they serve the microphone. The board's CH340 USB-to-UART uses
+GPIO43/44 and remains available.
 
-## Get started
+[Hardware and Assist setup](docs/room-companion/hardware-and-assist.md) ·
+[Adding extensions](docs/room-companion/extensions.md) ·
+[Optional renderer](docs/room-companion/renderer.md) ·
+[Validation record](docs/room-companion/validation.md)
 
-1. [Install the firmware and connect to Wi-Fi](docs/setup.md). Bluetooth setup shows when to press the knob to allow pairing.
-2. Add the knob through Home Assistant's **ESPHome** integration and enable **Allow the device to perform Home Assistant actions**.
-3. Open **Visit** from the device page, or the web address shown on the knob. Sign in to browse your Home Assistant devices, choose a control and **Save slot**.
+## Development
 
-No Home Assistant access token needs to be pasted into the knob. Computer controls
-need an existing Home Assistant connection or action for your computer; the knob
-does not install desktop software.
+Follow `/home/fixt/AGENTS.md`: installations, compilation, tests and services run
+on **devserv**, with a task lease and an isolated checkout. Local source editing
+is supported. The pinned `.devcontainer` provides the ESPHome environment.
 
-## Send a notification
+Inside the container on devserv:
 
-Use the single **show_message** action for both image and text-only messages:
-
-```yaml
-action: esphome.onx2424g013_dbbc54_show_message
-data:
-  title: Reminder
-  message: Take the washing out.<br/>The cycle has finished.
-  image_url: ""
-  timeout_seconds: 60
+```sh
+bash scripts/validate-room-companion.sh           # both models + optional packages
+bash scripts/validate-room-companion.sh --compile # additionally compile all three
 ```
 
-Replace the device prefix with yours. Set `image_url` to a reachable HTTP or HTTPS
-image URL, or leave it empty for text only. Include all four fields; use
-`timeout_seconds: 0` to wait for dismissal. **dismiss_message** clears it remotely.
-
-Image notifications reserve space for the picture and at least three text lines.
-Downloads have size and time limits, and a newer message cancels the previous
-image request. The knob converts HTML breaks and entities into plain text rather
-than displaying markup. [Notification examples and image limits](docs/display-notifications.md).
-
-## Show action results
-
-In a slot's **Press action** tab, enable **Show the returned value after pressing**
-for a script that returns `value` and optional `unit`. Automations can send a value
-back through the knob's feedback action. This setting is separate from gesture
-feedback, and the brief popup does not consume wheel input.
-[Press and gesture response examples](docs/gesture-controls.md#press-action-results).
-
-## Find your guide
-
-| I want to… | Guide |
-| --- | --- |
-| Connect Wi-Fi or get started | [Setup and connection help](docs/setup.md) |
-| Add controls, change the display or make a backup | [Web configuration](docs/web-configuration.md) |
-| Learn turning, pressing and playlist selection | [Using the knob](docs/knob-controls.md) |
-| Assign turns, customize a press or show returned values | [Custom actions and feedback](docs/gesture-controls.md) |
-| Display messages, images or calendar events | [Display notifications](docs/display-notifications.md) |
-| Understand icons and album art | [Icons and media](docs/icons-and-media.md) |
-
-**Starting over?** A separate **10-second hold** in normal mode clears Wi-Fi and
-device configuration. Read the [reset instructions](docs/knob-controls.md#reset-wi-fi-and-device-configuration)
-before using it. Pressing to dismiss a reminder does not reset your knob.
+The script creates temporary, non-production secrets only if `secrets.yaml` is
+absent, and removes only the file it created. It never uploads firmware. Build
+outputs live under `.esphome/build/` and are ignored.
 
 ## License
 
-This project is licensed under **AGPL-3.0-only**. See [LICENSE](LICENSE).
-It builds on OpenNextion's MIT-licensed example; its copyright and permission
-notice are preserved in [LICENSES/OpenNextion-MIT.txt](LICENSES/OpenNextion-MIT.txt).
-Third-party code, fonts and assets retain their own terms; see
-[THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
+AGPL-3.0-only, inherited from the knob project. Original copyright, upstream MIT
+notices, fonts and other third-party notices remain in `COPYRIGHT`, `LICENSES/`
+and `THIRD_PARTY_NOTICES.md`. Reference projects are linked in the architecture
+document; no source from crow-ha or RemoteWebView has been incorporated.

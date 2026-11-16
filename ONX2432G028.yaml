@@ -1,0 +1,8 @@
+# Shared knob-derived application; only the hardware profile differs.
+substitutions:
+  device_name: room-companion-28
+  friendly_name: Room Companion 2.8
+
+packages:
+  board: !include packages/room_companion/boards/onx2432g028.yaml
+  application: !include packages/room_companion/application.yaml

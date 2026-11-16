@@ -1,0 +1,11 @@
+substitutions:
+  device_model: ONX3248G035
+  display_width: "320"
+  display_height: "480"
+  display_model: ST7796
+  title_font: montserrat_24
+  card_width: "288"
+  card_height: "288"
+
+packages:
+  hardware: !include common.yaml

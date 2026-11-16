@@ -1,0 +1,39 @@
+# Reuse the knob's bounded, UTF-8-aware notification model and timeout rules.
+api:
+  actions:
+    - action: show_message
+      variables:
+        title: string
+        message: string
+        timeout_seconds: int
+      then:
+        - lambda: |-
+            onx_notification::current.show(title, message, timeout_seconds);
+        - lvgl.label.update:
+            id: notification_title
+            text: !lambda 'return onx_notification::current.title;'
+        - lvgl.label.update:
+            id: notification_body
+            text: !lambda 'return onx_notification::current.body;'
+        - lvgl.page.show: notification_page
+    - action: dismiss_message
+      then:
+        - script.execute: dismiss_notification
+
+script:
+  - id: dismiss_notification
+    then:
+      - lambda: 'onx_notification::current.dismiss();'
+      - lvgl.page.show: room_page
+
+interval:
+  - interval: 250ms
+    then:
+      - if:
+          condition:
+            lambda: |-
+              auto &message = onx_notification::current;
+              if (!message.pending) return false;
+              return !message.display(millis());
+          then:
+            - lvgl.page.show: room_page

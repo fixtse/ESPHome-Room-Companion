@@ -1,6 +1,14 @@
 {
-  "name": "ONX ESPHome 2026.10.2",
+  "name": "Room Companion \u00b7 ESPHome 2026.10.2",
   "image": "ghcr.io/esphome/esphome:2026.10.2",
   "overrideCommand": true,
-  "remoteUser": "root"
+  "remoteUser": "root",
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "redhat.vscode-yaml",
+        "esphome.esphome-vscode"
+      ]
+    }
+  }
 }

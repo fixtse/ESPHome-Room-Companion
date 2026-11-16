@@ -1,0 +1,55 @@
+# Optional JPEG card renderer. No HTTP request until Today/Refresh is tapped.
+http_request:
+  id: renderer_http
+  timeout: 5s
+  verify_ssl: true
+
+image:
+  - platform: online_image
+    id: glance_image
+    http_request_id: renderer_http
+    url: ${renderer_base_url}/panel/${device_model}.jpg
+    request_headers:
+      Authorization: !secret renderer_authorization
+    format: JPEG
+    type: RGB565
+    resize: ${card_width}x${card_height}
+    buffer_size: 16384
+    update_interval: never
+    on_download_finished:
+      - lvgl.image.update:
+          id: glance_widget
+          src: glance_image
+      - lvgl.label.update:
+          id: glance_status_label
+          text: Updated just now
+      - script.execute: mark_glance_stale
+    on_error:
+      - script.stop: mark_glance_stale
+      - lvgl.label.update:
+          id: glance_status_label
+          text: Renderer unavailable - tap Refresh
+
+script:
+  - id: refresh_glance
+    mode: single
+    then:
+      - if:
+          condition:
+            voice_assistant.is_running:
+          then:
+            - lvgl.label.update:
+                id: glance_status_label
+                text: Finish Assist before refreshing
+          else:
+            - lvgl.label.update:
+                id: glance_status_label
+                text: Loading...
+            - component.update: glance_image
+  - id: mark_glance_stale
+    mode: restart
+    then:
+      - delay: 90s
+      - lvgl.label.update:
+          id: glance_status_label
+          text: Older than 90 seconds - tap Refresh

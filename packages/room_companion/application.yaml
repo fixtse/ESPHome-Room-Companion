@@ -1,0 +1,16 @@
+substitutions:
+  room_name: My room
+  firmware_version: 0.1.0
+  light_entity: light.room
+  scene_entity: scene.room_relax
+  temperature_entity: sensor.room_temperature
+  media_entity: media_player.room
+  renderer_base_url: http://192.0.2.1:8099
+
+packages:
+  platform: !include platform.yaml
+  home_assistant: !include features/home_assistant.yaml
+  interface: !include features/interface.yaml
+  assist: !include features/assist.yaml
+  notifications: !include features/notifications.yaml
+  glance: !include features/glance.yaml

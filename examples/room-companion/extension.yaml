@@ -1,0 +1,14 @@
+# Merge this into a root device YAML's packages: block using !include.
+# Stock ESPHome components and your own external_components remain supported.
+sensor:
+  - platform: homeassistant
+    id: desk_power
+    entity_id: sensor.desk_power
+    name: Desk power
+
+button:
+  - platform: template
+    name: My custom action
+    on_press:
+      - homeassistant.action:
+          action: script.my_custom_action

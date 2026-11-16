@@ -1,0 +1,11 @@
+services:
+  renderer:
+    build: .
+    ports:
+      - "${RENDERER_BIND_ADDRESS:-127.0.0.1}:8099:8099"
+    environment:
+      RENDERER_TOKEN: ${RENDERER_TOKEN:?Set RENDERER_TOKEN}
+      HA_URL: ${HA_URL:-}
+      HA_TOKEN: ${HA_TOKEN:-}
+      HA_ENTITIES: ${HA_ENTITIES:-}
+    restart: unless-stopped

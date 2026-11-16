@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Run in the repository's GitHub Codespace; retain failures while checking every group.
+# Run on devserv or in its devcontainer; retain failures while checking every group.
 set -uo pipefail
 cd "$(dirname "$0")/.."
 output_dir="$(mktemp -d /tmp/onx-controls-tests.XXXXXX)"

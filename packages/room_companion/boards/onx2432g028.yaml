@@ -1,0 +1,11 @@
+substitutions:
+  device_model: ONX2432G028
+  display_width: "240"
+  display_height: "320"
+  display_model: ST7789V
+  title_font: montserrat_20
+  card_width: "208"
+  card_height: "144"
+
+packages:
+  hardware: !include common.yaml

@@ -1,10 +1,10 @@
 #include "../onx_media_state.h"
 #include <cassert>
 int main() {
-  assert(!onx_playlist::medium_press(499));
-  assert(onx_playlist::medium_press(500));
-  assert(onx_playlist::medium_press(1499));
-  assert(!onx_playlist::medium_press(1500));
+  assert(!onx_playlist::medium_press(799));
+  assert(onx_playlist::medium_press(800));
+  assert(onx_playlist::medium_press(1999));
+  assert(!onx_playlist::medium_press(2000));
   assert(onx_playlist::action_valid("script.jazz"));
   assert(onx_playlist::action_valid("automation.radio"));
   assert(!onx_playlist::action_valid("light.radio"));

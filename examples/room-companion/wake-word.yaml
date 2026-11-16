@@ -1,0 +1,48 @@
+# Optional local wake word. Import only after tap-to-talk audio is verified.
+# Start explicitly with the exposed switch; disabled on every boot.
+micro_wake_word:
+  id: local_wake_word
+  microphone:
+    microphone: panel_microphone
+    channels: 0
+  models:
+    - model: okay_nabu
+  on_wake_word_detected:
+    - if:
+        condition:
+          lambda: 'return id(assist_ready) && !id(microphone_muted).state;'
+        then:
+          - script.execute: toggle_assist
+
+switch:
+  - platform: template
+    name: Wake word enabled
+    id: wake_word_enabled
+    optimistic: true
+    restore_mode: ALWAYS_OFF
+    turn_on_action:
+      - if:
+          condition:
+            lambda: 'return id(assist_ready) && !id(microphone_muted).state;'
+          then:
+            - micro_wake_word.start:
+          else:
+            - switch.turn_off: wake_word_enabled
+    turn_off_action:
+      - micro_wake_word.stop:
+  - id: !extend microphone_muted
+    turn_on_action:
+      - switch.turn_off: wake_word_enabled
+
+voice_assistant:
+  micro_wake_word: local_wake_word
+  on_start:
+    - micro_wake_word.stop:
+  on_idle:
+    - if:
+        condition:
+          lambda: 'return id(wake_word_enabled).state && id(assist_ready) && !id(microphone_muted).state;'
+        then:
+          - micro_wake_word.start:
+  on_client_disconnected:
+    - switch.turn_off: wake_word_enabled

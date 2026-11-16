@@ -1,0 +1,109 @@
+# Tap once to talk; tap again to cancel. No always-listening microphone by default.
+globals:
+  - id: assist_ready
+    type: bool
+    initial_value: 'false'
+
+switch:
+  - platform: template
+    id: microphone_muted
+    name: Microphone muted
+    icon: mdi:microphone-off
+    optimistic: true
+    restore_mode: RESTORE_DEFAULT_OFF
+    turn_on_action:
+      - voice_assistant.stop:
+      - lvgl.label.update:
+          id: assist_status_label
+          text: Microphone muted
+    turn_off_action:
+      - lvgl.label.update:
+          id: assist_status_label
+          text: Tap to talk
+
+voice_assistant:
+  id: assist
+  microphone:
+    microphone: panel_microphone
+    channels: 0
+    gain_factor: 2
+  speaker: panel_speaker
+  use_wake_word: false
+  noise_suppression_level: 2
+  auto_gain: 15dBFS
+  volume_multiplier: 1.0
+  on_client_connected:
+    - globals.set:
+        id: assist_ready
+        value: 'true'
+    - lvgl.label.update:
+        id: connection_label
+        text: Home Assistant connected
+  on_client_disconnected:
+    - globals.set:
+        id: assist_ready
+        value: 'false'
+    - voice_assistant.stop:
+    - lvgl.label.update:
+        id: connection_label
+        text: Connect Home Assistant
+    - lvgl.label.update:
+        id: assist_status_label
+        text: Assist disconnected
+  on_listening:
+    - lvgl.label.update:
+        id: assist_status_label
+        text: Listening...
+  on_stt_end:
+    - lvgl.label.update:
+        id: transcript_label
+        text: !lambda 'return onx_notification::plain_text(x, 384);'
+    - lvgl.label.update:
+        id: assist_status_label
+        text: Thinking...
+  on_tts_start:
+    - lvgl.label.update:
+        id: response_label
+        text: !lambda 'return onx_notification::plain_text(x, 512);'
+  on_tts_stream_start:
+    - lvgl.label.update:
+        id: assist_status_label
+        text: Speaking...
+  on_idle:
+    - lvgl.label.update:
+        id: assist_status_label
+        text: !lambda |-
+          if (id(microphone_muted).state) return std::string("Microphone muted");
+          return std::string(id(assist_ready) ? "Tap to talk" : "Assist disconnected");
+  on_error:
+    - lvgl.label.update:
+        id: assist_status_label
+        text: !lambda 'return onx_notification::clipped(code + ": " + message, 128);'
+
+script:
+  - id: toggle_assist
+    then:
+      - lvgl.page.show: assist_page
+      - if:
+          condition:
+            voice_assistant.is_running:
+          then:
+            - voice_assistant.stop:
+            - speaker.stop: panel_speaker
+          else:
+            - if:
+                condition:
+                  lambda: 'return id(assist_ready) && !id(microphone_muted).state;'
+                then:
+                  - lvgl.label.update:
+                      id: transcript_label
+                      text: ""
+                  - lvgl.label.update:
+                      id: response_label
+                      text: ""
+                  - voice_assistant.start:
+                else:
+                  - lvgl.label.update:
+                      id: assist_status_label
+                      text: !lambda |-
+                        return std::string(id(microphone_muted).state ? "Microphone muted" : "Connect Assist in Home Assistant");

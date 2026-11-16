@@ -1,0 +1,109 @@
+# Pin map verified against the official examples for both models.
+# PCF8574 pin numbers here are ZERO-based (vendor examples use one-based enums).
+i2c:
+  id: board_i2c
+  sda: GPIO8
+  scl: GPIO7
+  frequency: 100kHz
+  scan: true
+
+pcf8574:
+  - id: board_expander
+    i2c_id: board_i2c
+    address: 0x38
+
+spi:
+  id: display_spi
+  clk_pin: GPIO5
+  mosi_pin: GPIO1
+
+output:
+  - platform: ledc
+    id: backlight_pwm
+    pin: GPIO6
+    frequency: 10000Hz
+
+light:
+  - platform: monochromatic
+    id: backlight
+    name: Display backlight
+    output: backlight_pwm
+    restore_mode: ALWAYS_ON
+    default_transition_length: 0s
+
+# The amplifier is NS4168, enabled by EXIO0, not an I2C audio codec.
+switch:
+  - platform: gpio
+    id: speaker_amplifier
+    internal: true
+    pin:
+      pcf8574: board_expander
+      number: 0
+      mode: OUTPUT
+    restore_mode: ALWAYS_ON
+
+display:
+  - platform: mipi_spi
+    id: panel_display
+    model: ${display_model}
+    spi_id: display_spi
+    cs_pin: GPIO2
+    dc_pin: GPIO3
+    reset_pin:
+      pcf8574: board_expander
+      number: 5
+      mode: OUTPUT
+    dimensions:
+      width: ${display_width}
+      height: ${display_height}
+    data_rate: 40MHz
+    color_order: BGR
+    invert_colors: true
+    auto_clear_enabled: false
+    update_interval: never
+
+# CST826 is supported by ESPHome's cst816 family driver. Polling avoids using
+# an expander input as an interrupt (touch INT is EXIO4).
+touchscreen:
+  - platform: cst816
+    id: panel_touch
+    i2c_id: board_i2c
+    display: panel_display
+    address: 0x15
+    update_interval: 20ms
+    calibration:
+      x_min: 0
+      x_max: ${display_width}
+      y_min: 0
+      y_max: ${display_height}
+
+# PDM RX must get I2S0 on ESP32-S3. Keep this bus FIRST; speaker uses I2S1.
+i2s_audio:
+  - id: microphone_bus
+    i2s_lrclk_pin: GPIO19
+  - id: speaker_bus
+    i2s_bclk_pin: GPIO14
+    i2s_lrclk_pin: GPIO16
+
+microphone:
+  - platform: i2s_audio
+    id: panel_microphone
+    i2s_audio_id: microphone_bus
+    adc_type: external
+    i2s_din_pin: GPIO20
+    pdm: true
+    sample_rate: 16000
+    bits_per_sample: 16bit
+    channel: left
+
+speaker:
+  - platform: i2s_audio
+    id: panel_speaker
+    i2s_audio_id: speaker_bus
+    dac_type: external
+    i2s_dout_pin: GPIO15
+    sample_rate: 16000
+    bits_per_sample: 16bit
+    channel: mono
+    i2s_comm_fmt: stand_msb
+    buffer_duration: 100ms

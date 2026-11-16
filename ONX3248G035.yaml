@@ -1,0 +1,8 @@
+# Shared knob-derived application; only the hardware profile differs.
+substitutions:
+  device_name: room-companion-35
+  friendly_name: Room Companion 3.5
+
+packages:
+  board: !include packages/room_companion/boards/onx3248g035.yaml
+  application: !include packages/room_companion/application.yaml

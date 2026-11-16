@@ -8,3 +8,10 @@ __pycache__/
 /firmware/
 
 /tests/artifacts/
+**/.esphome/
+.env
+.env.*
+!.env.example
+*.log
+room-companion-build/
+.validation-wake-word.yaml
