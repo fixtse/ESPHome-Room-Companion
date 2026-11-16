@@ -383,7 +383,8 @@ binary_sensor:
                     - lambda: |-
                         const uint32_t held_ms = id(key_btn).event_time_ms() - id(key_press_started_ms);
                         const int kind = id(normal_device_detail_kind);
-                        const bool quick_actions = onx_entity_config::playlists_for_ui(id(normal_device_detail_index),
+                        const bool quick_actions = id(normal_device_detail_online) && id(normal_ha_api_connected) &&
+                            onx_entity_config::playlists_for_ui(id(normal_device_detail_index),
                             id(ui_presenter)->get_normal_device_entity_id(id(normal_device_detail_index))) != nullptr;
                         if (kind == NORMAL_DEVICE_DETAIL_KIND_SWITCH || kind == NORMAL_DEVICE_DETAIL_KIND_PLUG) {
                           if (held_ms < (quick_actions ? onx_playlist::CUE_MS : 688u)) {
@@ -396,7 +397,8 @@ binary_sensor:
                           }
                         } else if (kind == NORMAL_DEVICE_DETAIL_KIND_AUTOMATION) {
                           const auto entity = id(ui_presenter)->get_normal_device_entity_id(id(normal_device_detail_index));
-                          const auto *list = onx_entity_config::playlists_for_ui(id(normal_device_detail_index), entity);
+                          const auto *list = id(normal_device_detail_online) && id(normal_ha_api_connected) ?
+                              onx_entity_config::playlists_for_ui(id(normal_device_detail_index), entity) : nullptr;
                           if (list != nullptr && held_ms >= onx_playlist::BACK_MS) {
                             id(normal_detail_exit_switch_ready) = true;
                             id(normal_detail_exit_light_ready) = false;

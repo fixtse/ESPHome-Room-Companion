@@ -1083,7 +1083,9 @@ script:
           const int kind = id(normal_device_detail_kind);
           // With quick actions, a medium hold opens the list, so exit needs longer.
           const auto exit_entity = id(ui_presenter)->get_normal_device_entity_id(id(normal_device_detail_index));
-          const uint32_t exit_ms = onx_entity_config::playlists_for_ui(id(normal_device_detail_index), exit_entity) != nullptr ?
+          // An offline entity cannot open its list, so it closes at the normal time.
+          const uint32_t exit_ms = id(normal_device_detail_online) && id(normal_ha_api_connected) &&
+              onx_entity_config::playlists_for_ui(id(normal_device_detail_index), exit_entity) != nullptr ?
               onx_playlist::BACK_MS : 688u;
           if (kind == NORMAL_DEVICE_DETAIL_KIND_SWITCH || kind == NORMAL_DEVICE_DETAIL_KIND_PLUG || kind == NORMAL_DEVICE_DETAIL_KIND_AUTOMATION) {
             id(normal_detail_exit_switch_ready) = held_ms >= exit_ms;
