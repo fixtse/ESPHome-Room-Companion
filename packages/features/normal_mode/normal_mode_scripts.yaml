@@ -370,10 +370,10 @@ script:
             }
             lv_obj_set_style_text_align(w.title, LV_TEXT_ALIGN_CENTER, 0);
             lv_obj_align(w.title, LV_ALIGN_TOP_MID, 0, settings_entry ? 151 : onx_detail_view::carousel(entity, device_title).name.y);
-            if(settings_entry) lv_label_set_text(w.title, device_title.c_str());
+            if(settings_entry) onx_render::label(w.title, device_title.c_str());
             else {
               const auto view=onx_detail_view::carousel(entity,device_title);
-              lv_label_set_text(w.title,view.name.text.c_str());
+              onx_render::label(w.title,view.name.text.c_str());
               lv_obj_set_style_text_font(w.title,view.name.size==14?id(fonts_MiSans_Medium_14)->get_lv_font():id(fonts_MiSans_Medium_16)->get_lv_font(),0);
               lv_obj_set_width(w.title,view.name.width);lv_obj_set_height(w.title,40);
             }
@@ -592,7 +592,7 @@ script:
           }
 
           lv_label_set_text(id(normal_switch_detail_state), state_text.c_str());
-          lv_label_set_text(id(normal_switch_detail_title), device_title.c_str());
+          onx_render::label(id(normal_switch_detail_title), device_title.c_str());
           lv_obj_t *sw = id(hmi_gui_switch);
           if (is_on) {
             lv_obj_add_state(sw, LV_STATE_CHECKED);
@@ -926,7 +926,7 @@ script:
           set_hidden(id(normal_light_device_detail_light_off), is_on);
 
           lv_label_set_text(id(normal_light_detail_state), state_text.c_str());
-          lv_label_set_text(id(normal_light_detail_title), device_title.c_str());
+          onx_render::label(id(normal_light_detail_title), device_title.c_str());
           const bool is_light = id(normal_device_detail_kind) == NORMAL_DEVICE_DETAIL_KIND_LIGHT;
           auto is_mode_enabled = [&](int mode) -> bool {
             if (mode == 0) {
@@ -1253,7 +1253,7 @@ script:
           }
 
           lv_label_set_text(id(normal_curtain_detail_state), state_text.c_str());
-          lv_label_set_text(id(normal_curtain_detail_title), device_title.c_str());
+          onx_render::label(id(normal_curtain_detail_title), device_title.c_str());
           const bool is_online = (detail_index >= 0 && detail_index < 20)
                                      ? ((id(normal_device_online_mask) & (1 << detail_index)) != 0)
                                      : true;

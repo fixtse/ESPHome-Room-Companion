@@ -53,3 +53,5 @@ it does not claim that every bundled asset has received a complete rights audit.
 When distributing compiled firmware, provide its corresponding source and
 required build/install information under the applicable GPL/AGPL terms. Modified
 versions supporting remote network interaction must meet AGPL section 13.
+
+The generated color emoji atlas in `onx_emoji_pixels.h` is derived from Noto Color Emoji (Google), licensed under SIL Open Font License 1.1; see `fonts/OFL-NotoEmoji.txt`.
