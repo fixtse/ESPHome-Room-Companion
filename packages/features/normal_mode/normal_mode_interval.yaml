@@ -355,7 +355,8 @@ interval:
     then:
       - script.execute: refresh_normal_timer_detail
       - lambda: |-
-          if (onx_media::downloading && millis() - onx_media::requested_ms >= 15000) {
+          // The worker has its own 15 s network budget plus decode time; only catch hangs.
+          if (onx_media::downloading && millis() - onx_media::requested_ms >= 25000) {
             lv_obj_add_flag(id(normal_media_cover), LV_OBJ_FLAG_HIDDEN);
             onx_render::image(id(normal_media_cover), id(fallback_music_note_img)->get_lv_image_dsc());
             lv_image_cache_drop(id(media_cover_image)->get_lv_image_dsc());
@@ -364,8 +365,14 @@ interval:
             onx_media::downloading = false; onx_media::ready_url.clear();
             id(entity_icon_downloader)->set_artwork_busy(false);
             onx_media::last_artwork_end_ms = millis();
+            // Retry the same URL after ~10 s rather than the 60 s duplicate guard.
+            onx_media::requested_ms = millis() - 50000;
             onx_media::artwork_refresh_pending = true;
             onx_runtime::record("artwork_timeout");
+          }
+          if (onx_media::retry_at_ms != 0 && static_cast<int32_t>(millis() - onx_media::retry_at_ms) >= 0) {
+            onx_media::retry_at_ms = 0;
+            onx_media::artwork_refresh_pending = true;
           }
           if (onx_media::artwork_refresh_pending) {
             onx_media::artwork_refresh_pending = false;

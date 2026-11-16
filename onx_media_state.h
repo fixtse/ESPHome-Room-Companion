@@ -113,6 +113,8 @@ struct TransportFeedback {
 inline TransportFeedback transport;
 inline std::string requested_url, ready_url;
 inline uint32_t requested_ms{0};
+// Non-zero: refresh the cover at this millis() once a retry guard expires.
+inline uint32_t retry_at_ms{0};
 inline bool downloading{false}, artwork_refresh_pending{false};
 inline std::string candidate_url, artwork_wait_reason;
 inline uint32_t candidate_ms{0}, last_artwork_end_ms{0};

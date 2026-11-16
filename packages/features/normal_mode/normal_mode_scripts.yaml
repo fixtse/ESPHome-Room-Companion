@@ -3226,6 +3226,8 @@ script:
             lv_image_header_cache_drop(id(media_cover_image)->get_lv_image_dsc());
             id(media_cover_image)->release();
             onx_media::downloading = false; onx_media::ready_url.clear();
+            // Nothing was shown; let the same URL start again as soon as it is wanted.
+            onx_media::requested_url.clear();
             id(entity_icon_downloader)->set_artwork_busy(false);
             onx_media::last_artwork_end_ms = millis();
             onx_runtime::record("artwork_cancelled", entity);
@@ -3244,12 +3246,22 @@ script:
           // Wait for a stable URL and keep concurrent TLS clients off the small
           // internal heap. Cosmetic artwork must not crowd out API/Wi-Fi buffers.
           if (id(media_cover_image)->is_busy() || id(key_btn).state || millis() - onx_media::candidate_ms < 750 ||
-              millis() - onx_media::last_artwork_end_ms < 1000 || id(entity_icon_downloader)->busy()) return;
-          if (!id(media_cover_image)->memory_ready()) {
-            onx_media::artwork_wait_reason = "waiting_for_memory";
+              millis() - onx_media::last_artwork_end_ms < 1000 || id(entity_icon_downloader)->busy()) {
+            onx_media::retry_at_ms = millis() + 1000; if (onx_media::retry_at_ms == 0) onx_media::retry_at_ms = 1;
             return;
           }
-          if (desired == onx_media::requested_url && millis() - onx_media::requested_ms < 60000) return;
+          if (!id(media_cover_image)->memory_ready()) {
+            onx_media::artwork_wait_reason = "waiting_for_memory";
+            onx_media::retry_at_ms = millis() + 1000; if (onx_media::retry_at_ms == 0) onx_media::retry_at_ms = 1;
+            return;
+          }
+          if (desired == onx_media::requested_url && millis() - onx_media::requested_ms < 60000) {
+            // No HA update may arrive before the song ends; wake up when the guard expires.
+            onx_media::retry_at_ms = onx_media::requested_ms + 60000;
+            if (onx_media::retry_at_ms == 0) onx_media::retry_at_ms = 1;
+            return;
+          }
+          onx_media::retry_at_ms = 0;
           // Hidden LVGL widgets still retain their source. Detach it explicitly.
           onx_render::image(id(normal_media_cover), id(fallback_music_note_img)->get_lv_image_dsc());
           lv_image_cache_drop(id(media_cover_image)->get_lv_image_dsc());
