@@ -101,6 +101,14 @@ void OnlineImage::update() {
   auto *work=new(std::nothrow) Work{this,url_,{},generation_,2500};
   if(!work) { last_error_="Request allocation failed";failed_.call(); return; }
   if(parent_) work->timeout=std::min<uint32_t>(2500,parent_->get_timeout());
+  work->stats.heap_free_start=heap_caps_get_free_size(MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
+  work->stats.heap_largest_start=heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
+  work->stats.https=url_.rfind("https://",0)==0;
+  {
+    const size_t begin=url_.find("://")+3;
+    const size_t end=url_.find_first_of(":/?",begin);
+    work->stats.host=url_.substr(begin,std::min<size_t>(end==std::string::npos?url_.size()-begin:end-begin,64));
+  }
   for(auto &header:request_headers_) work->headers.push_back({header.first,header.second.value()});
   busy_=true;
   // All DNS, TCP, TLS, redirects and body reads happen off the ESPHome/UI task.
@@ -140,9 +148,12 @@ void OnlineImage::fetch_task_(void *arg) {
           vTaskDelay(pdMS_TO_TICKS(300*attempt));
           if(work->owner->cancelled_(work->generation) || millis()-started>=15000) break;
         }
+        work->stats.attempts++;
         opened_status=esp_http_client_open(client,0);
         if(opened_status==ESP_OK) break;
       }
+      work->stats.open_ms=millis()-started;
+      work->stats.heap_free_after_open=heap_caps_get_free_size(MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
       if(opened_status!=ESP_OK) {error=std::string("Connection failed: ")+esp_err_to_name(opened_status);break;}
       length=esp_http_client_fetch_headers(client);
       const int status=esp_http_client_get_status_code(client);
@@ -173,6 +184,8 @@ void OnlineImage::fetch_task_(void *arg) {
             vTaskDelay(1);
           }
           if(!okay && error.empty()) error="Artwork cancelled or timed out";
+          work->stats.read_ms=millis()-started-work->stats.open_ms;
+          work->stats.bytes=used;
         }
       }
     }
@@ -187,6 +200,7 @@ void OnlineImage::fetch_task_(void *arg) {
     work->owner->completed_data_=data;
     work->owner->completed_size_=used;
     work->owner->completed_error_=std::move(error);
+    work->owner->completed_stats_=work->stats;
     work->owner->completed_=true;
   }
   work.reset();
@@ -202,6 +216,7 @@ void OnlineImage::loop() {
     if(!completed_) return;
     data=completed_data_;size=completed_size_;generation=completed_generation_;
     error=std::move(completed_error_);
+    stats_=completed_stats_;
     completed_data_=nullptr;completed_=false;
   }
   busy_=false;

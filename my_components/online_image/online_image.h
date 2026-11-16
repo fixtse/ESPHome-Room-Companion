@@ -24,6 +24,14 @@ class OnlineImage final : public PollingComponent,
   void set_source_pixel_limit(uint32_t pixels) { source_pixel_limit_=pixels; }
   static bool memory_ready();
   const std::string &last_error() const { return last_error_; }
+  // Diagnostics for the most recent fetch (start heap is sampled in update()).
+  struct FetchStats {
+    uint32_t attempts{0}, open_ms{0}, read_ms{0}, bytes{0};
+    uint32_t heap_free_start{0}, heap_largest_start{0}, heap_free_after_open{0};
+    bool https{false};
+    std::string host;
+  };
+  const FetchStats &last_stats() const { return stats_; }
   template<typename V> void add_request_header(const std::string &header,V value) {
     request_headers_.emplace_back(header,value);
   }
@@ -39,6 +47,7 @@ class OnlineImage final : public PollingComponent,
     std::string url;
     std::vector<http_request::Header> headers;
     uint32_t generation, timeout;
+    FetchStats stats;
   };
   static void fetch_task_(void *arg);
   bool validate_url_(const std::string &url);
@@ -54,5 +63,6 @@ class OnlineImage final : public PollingComponent,
   size_t completed_size_{0};
   uint32_t source_pixel_limit_{0};
   std::string completed_error_, last_error_;
+  FetchStats stats_, completed_stats_;
 };
 }
