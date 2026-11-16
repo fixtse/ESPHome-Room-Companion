@@ -6,7 +6,9 @@
 
 namespace onx_playlist {
 constexpr size_t MAX_ENTRIES = 8;
-constexpr uint32_t OPEN_MS = 500, BACK_MS = 1500;
+// Quick actions: the hold cue appears after CUE_MS (a normal press is shorter),
+// releasing between OPEN_MS and BACK_MS opens or closes the list.
+constexpr uint32_t CUE_MS = 350, OPEN_MS = 800, BACK_MS = 2000;
 struct Entry { char name[49]{}, action[129]{}; };
 struct Config {
   uint32_t magic{0x4F4E5851};

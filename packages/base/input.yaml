@@ -48,7 +48,7 @@ binary_sensor:
                       !id(ui_presenter)->is_standby_active() &&
                       !(id(mode_manager)->is_provisioning_mode_enabled() || !id(normal_ha_added)) &&
                       id(normal_device_detail_active) &&
-                      id(normal_device_detail_kind) == NORMAL_DEVICE_DETAIL_KIND_LIGHT &&
+                      id(normal_device_detail_kind) == NORMAL_DEVICE_DETAIL_KIND_LIGHT && !onx_playlist::browser.open &&
                       id(normal_detail_light_mode_count) > 0 &&
                       id(normal_device_detail_online)) {
                     id(normal_detail_light_mode_adjusting) = false;
@@ -64,7 +64,7 @@ binary_sensor:
                              !id(ui_presenter)->is_standby_active() &&
                              !(id(mode_manager)->is_provisioning_mode_enabled() || !id(normal_ha_added)) &&
                              id(normal_device_detail_active) &&
-                             id(normal_device_detail_kind) == NORMAL_DEVICE_DETAIL_KIND_LIGHT &&
+                             id(normal_device_detail_kind) == NORMAL_DEVICE_DETAIL_KIND_LIGHT && !onx_playlist::browser.open &&
                              id(normal_detail_light_mode_count) > 0 &&
                              id(normal_device_detail_online);
                   then:
@@ -215,7 +215,7 @@ binary_sensor:
                       id(normal_device_detail_index) >= 0 && id(normal_ha_api_connected) &&
                       pressed_entity.rfind("climate.", 0) != 0 &&
                       !onx_entity_config::action_for_ui(id(normal_device_detail_index)).empty()) {
-                    const bool adjustable_light = id(normal_device_detail_kind) == NORMAL_DEVICE_DETAIL_KIND_LIGHT &&
+                    const bool adjustable_light = id(normal_device_detail_kind) == NORMAL_DEVICE_DETAIL_KIND_LIGHT && !onx_playlist::browser.open &&
                                                   id(normal_detail_light_mode_count) > 0;
                     if (held_ms < (adjustable_light ? 300u : 688u)) {
                       id(emit_configured_press_action).execute(id(normal_device_detail_index));
@@ -239,7 +239,7 @@ binary_sensor:
                              !id(detail_long_press_exit_fired) &&
                              (!id(key_long_press_handled) || id(normal_device_detail_curtain_adjust_active)) &&
                              id(normal_device_detail_active) &&
-                             id(normal_device_detail_kind) == NORMAL_DEVICE_DETAIL_KIND_CURTAIN &&
+                             id(normal_device_detail_kind) == NORMAL_DEVICE_DETAIL_KIND_CURTAIN && !onx_playlist::browser.open &&
                              (id(normal_device_detail_online) || (id(key_btn).event_time_ms() - id(key_press_started_ms)) >= 688);
                   then:
                     - if:
@@ -383,9 +383,13 @@ binary_sensor:
                     - lambda: |-
                         const uint32_t held_ms = id(key_btn).event_time_ms() - id(key_press_started_ms);
                         const int kind = id(normal_device_detail_kind);
+                        const bool quick_actions = onx_entity_config::playlists_for_ui(id(normal_device_detail_index),
+                            id(ui_presenter)->get_normal_device_entity_id(id(normal_device_detail_index))) != nullptr;
                         if (kind == NORMAL_DEVICE_DETAIL_KIND_SWITCH || kind == NORMAL_DEVICE_DETAIL_KIND_PLUG) {
-                          if (held_ms < 688) {
+                          if (held_ms < (quick_actions ? onx_playlist::CUE_MS : 688u)) {
                             id(emit_normal_switch_control_event).execute();
+                          } else if (quick_actions && held_ms < onx_playlist::BACK_MS) {
+                            // Released before the list opened: do nothing.
                           } else {
                             id(normal_detail_exit_switch_ready) = true;
                             id(normal_detail_exit_light_ready) = false;
@@ -396,7 +400,7 @@ binary_sensor:
                           if (list != nullptr && held_ms >= onx_playlist::BACK_MS) {
                             id(normal_detail_exit_switch_ready) = true;
                             id(normal_detail_exit_light_ready) = false;
-                          } else if (list != nullptr && held_ms >= onx_playlist::OPEN_MS) {
+                          } else if (list != nullptr && held_ms >= onx_playlist::CUE_MS) {
                             // The release handler above owns the medium gesture.
                           } else if (held_ms < 688) {
                             id(emit_normal_automation_control_event).execute(id(normal_device_detail_index));
@@ -408,7 +412,7 @@ binary_sensor:
                           const bool has_adjustable_light_mode = id(normal_detail_light_mode_count) > 0;
                           if (held_ms < 300 || (held_ms < 688 && !has_adjustable_light_mode)) {
                             id(emit_normal_switch_control_event).execute();
-                          } else if (held_ms < 688) {
+                          } else if (held_ms < 688 || (quick_actions && held_ms < onx_playlist::BACK_MS)) {
                             id(normal_detail_light_mode_adjusting) = false;
                             id(normal_clear_wifi_allowed) = true;
                           } else {
@@ -770,7 +774,7 @@ interval:
                         id(normal_device_detail_kind) == NORMAL_DEVICE_DETAIL_KIND_SETTINGS_KNOB ||
                         id(normal_device_detail_kind) == NORMAL_DEVICE_DETAIL_KIND_SETTINGS_CONNECTION ||
                         id(normal_device_detail_kind) == NORMAL_DEVICE_DETAIL_KIND_AUTOMATION) &&
-                     !(id(normal_device_detail_kind) == NORMAL_DEVICE_DETAIL_KIND_CURTAIN && id(normal_device_detail_curtain_adjust_active)) &&
+                     !(id(normal_device_detail_kind) == NORMAL_DEVICE_DETAIL_KIND_CURTAIN && !onx_playlist::browser.open && id(normal_device_detail_curtain_adjust_active)) &&
                      (millis() - id(key_press_started_ms) < 10000);
           then:
             - script.execute: update_normal_detail_exit_ready_flags
@@ -930,7 +934,7 @@ sensor:
                           lambda: |-
                             return id(normal_knob_event_pass) &&
                                    !id(screen_off_state) && id(ui_presenter)->is_normal_mode_active() && !id(ui_presenter)->is_standby_active() && !id(standby_wakeup_pending) &&
-                                   id(normal_device_detail_active) && id(normal_device_detail_kind) == NORMAL_DEVICE_DETAIL_KIND_CURTAIN &&
+                                   id(normal_device_detail_active) && id(normal_device_detail_kind) == NORMAL_DEVICE_DETAIL_KIND_CURTAIN && !onx_playlist::browser.open &&
                                    id(normal_device_detail_online) &&
                                    !id(key_btn).state;
                         then:
@@ -960,7 +964,7 @@ sensor:
                             return id(normal_knob_event_pass) &&
                                    !id(screen_off_state) && id(ui_presenter)->is_normal_mode_active() && !id(ui_presenter)->is_standby_active() && !id(standby_wakeup_pending) &&
                                    id(normal_device_detail_active) &&
-                                   id(normal_device_detail_kind) == NORMAL_DEVICE_DETAIL_KIND_CURTAIN &&
+                                   id(normal_device_detail_kind) == NORMAL_DEVICE_DETAIL_KIND_CURTAIN && !onx_playlist::browser.open &&
                                    id(normal_device_detail_online) &&
                                    id(key_btn).state &&
                                    (millis() - id(key_press_started_ms) < 610) &&
@@ -990,7 +994,7 @@ sensor:
                             return id(normal_knob_event_pass) &&
                                    !id(screen_off_state) && id(ui_presenter)->is_normal_mode_active() && !id(ui_presenter)->is_standby_active() && !id(standby_wakeup_pending) &&
                                     id(normal_device_detail_active) &&
-                                   id(normal_device_detail_kind) == NORMAL_DEVICE_DETAIL_KIND_CURTAIN &&
+                                   id(normal_device_detail_kind) == NORMAL_DEVICE_DETAIL_KIND_CURTAIN && !onx_playlist::browser.open &&
                                    id(normal_device_detail_online) &&
                                    id(normal_device_detail_curtain_adjust_active) &&
                                    !id(normal_device_detail_curtain_adjust_pending) &&
@@ -1012,7 +1016,7 @@ sensor:
                             return id(normal_knob_event_pass) &&
                                    !id(screen_off_state) && id(ui_presenter)->is_normal_mode_active() && !id(ui_presenter)->is_standby_active() && !id(standby_wakeup_pending) &&
                                    id(normal_device_detail_active) &&
-                                   id(normal_device_detail_kind) == NORMAL_DEVICE_DETAIL_KIND_LIGHT &&
+                                   id(normal_device_detail_kind) == NORMAL_DEVICE_DETAIL_KIND_LIGHT && !onx_playlist::browser.open &&
                                    id(normal_device_detail_online) &&
                                    id(normal_detail_light_mode_count) > 0 &&
                                    id(key_btn).state &&
@@ -1049,7 +1053,7 @@ sensor:
                             return id(normal_knob_event_pass) &&
                                    !id(screen_off_state) && id(ui_presenter)->is_normal_mode_active() && !id(ui_presenter)->is_standby_active() && !id(standby_wakeup_pending) &&
                                    id(normal_device_detail_active) &&
-                                   id(normal_device_detail_kind) == NORMAL_DEVICE_DETAIL_KIND_LIGHT &&
+                                   id(normal_device_detail_kind) == NORMAL_DEVICE_DETAIL_KIND_LIGHT && !onx_playlist::browser.open &&
                                    id(normal_device_detail_online) &&
                                    id(normal_detail_light_mode) == 1 &&
                                    !id(key_btn).state &&
@@ -1098,7 +1102,7 @@ sensor:
                             return id(normal_knob_event_pass) &&
                                    !id(screen_off_state) && id(ui_presenter)->is_normal_mode_active() && !id(ui_presenter)->is_standby_active() && !id(standby_wakeup_pending) &&
                                    id(normal_device_detail_active) &&
-                                   id(normal_device_detail_kind) == NORMAL_DEVICE_DETAIL_KIND_LIGHT &&
+                                   id(normal_device_detail_kind) == NORMAL_DEVICE_DETAIL_KIND_LIGHT && !onx_playlist::browser.open &&
                                    id(normal_device_detail_online) &&
                                    id(normal_detail_light_mode) == 2 &&
                                    !id(key_btn).state &&
@@ -1141,7 +1145,7 @@ sensor:
                             return id(normal_knob_event_pass) &&
                                    !id(screen_off_state) && id(ui_presenter)->is_normal_mode_active() && !id(ui_presenter)->is_standby_active() && !id(standby_wakeup_pending) &&
                                    id(normal_device_detail_active) &&
-                                   id(normal_device_detail_kind) == NORMAL_DEVICE_DETAIL_KIND_LIGHT &&
+                                   id(normal_device_detail_kind) == NORMAL_DEVICE_DETAIL_KIND_LIGHT && !onx_playlist::browser.open &&
                                    id(normal_device_detail_online) &&
                                    id(normal_detail_light_mode) == 0 &&
                                    !id(key_btn).state &&
@@ -1374,7 +1378,7 @@ sensor:
                           lambda: |-
                             return id(normal_knob_event_pass) &&
                                    !id(screen_off_state) && id(ui_presenter)->is_normal_mode_active() && !id(ui_presenter)->is_standby_active() && !id(standby_wakeup_pending) &&
-                                   id(normal_device_detail_active) && id(normal_device_detail_kind) == NORMAL_DEVICE_DETAIL_KIND_CURTAIN &&
+                                   id(normal_device_detail_active) && id(normal_device_detail_kind) == NORMAL_DEVICE_DETAIL_KIND_CURTAIN && !onx_playlist::browser.open &&
                                    id(normal_device_detail_online) &&
                                    !id(key_btn).state;
                         then:
@@ -1404,7 +1408,7 @@ sensor:
                             return id(normal_knob_event_pass) &&
                                    !id(screen_off_state) && id(ui_presenter)->is_normal_mode_active() && !id(ui_presenter)->is_standby_active() && !id(standby_wakeup_pending) &&
                                    id(normal_device_detail_active) &&
-                                   id(normal_device_detail_kind) == NORMAL_DEVICE_DETAIL_KIND_CURTAIN &&
+                                   id(normal_device_detail_kind) == NORMAL_DEVICE_DETAIL_KIND_CURTAIN && !onx_playlist::browser.open &&
                                    id(normal_device_detail_online) &&
                                    id(key_btn).state &&
                                    (millis() - id(key_press_started_ms) < 610) &&
@@ -1434,7 +1438,7 @@ sensor:
                             return id(normal_knob_event_pass) &&
                                    !id(screen_off_state) && id(ui_presenter)->is_normal_mode_active() && !id(ui_presenter)->is_standby_active() && !id(standby_wakeup_pending) &&
                                     id(normal_device_detail_active) &&
-                                   id(normal_device_detail_kind) == NORMAL_DEVICE_DETAIL_KIND_CURTAIN &&
+                                   id(normal_device_detail_kind) == NORMAL_DEVICE_DETAIL_KIND_CURTAIN && !onx_playlist::browser.open &&
                                    id(normal_device_detail_online) &&
                                    id(normal_device_detail_curtain_adjust_active) &&
                                    !id(normal_device_detail_curtain_adjust_pending) &&
@@ -1455,7 +1459,7 @@ sensor:
                             return id(normal_knob_event_pass) &&
                                    !id(screen_off_state) && id(ui_presenter)->is_normal_mode_active() && !id(ui_presenter)->is_standby_active() && !id(standby_wakeup_pending) &&
                                    id(normal_device_detail_active) &&
-                                   id(normal_device_detail_kind) == NORMAL_DEVICE_DETAIL_KIND_LIGHT &&
+                                   id(normal_device_detail_kind) == NORMAL_DEVICE_DETAIL_KIND_LIGHT && !onx_playlist::browser.open &&
                                    id(normal_device_detail_online) &&
                                    id(normal_detail_light_mode_count) > 0 &&
                                    id(key_btn).state &&
@@ -1492,7 +1496,7 @@ sensor:
                             return id(normal_knob_event_pass) &&
                                    !id(screen_off_state) && id(ui_presenter)->is_normal_mode_active() && !id(ui_presenter)->is_standby_active() && !id(standby_wakeup_pending) &&
                                    id(normal_device_detail_active) &&
-                                   id(normal_device_detail_kind) == NORMAL_DEVICE_DETAIL_KIND_LIGHT &&
+                                   id(normal_device_detail_kind) == NORMAL_DEVICE_DETAIL_KIND_LIGHT && !onx_playlist::browser.open &&
                                    id(normal_device_detail_online) &&
                                    id(normal_detail_light_mode) == 1 &&
                                    !id(key_btn).state &&
@@ -1541,7 +1545,7 @@ sensor:
                             return id(normal_knob_event_pass) &&
                                    !id(screen_off_state) && id(ui_presenter)->is_normal_mode_active() && !id(ui_presenter)->is_standby_active() && !id(standby_wakeup_pending) &&
                                    id(normal_device_detail_active) &&
-                                   id(normal_device_detail_kind) == NORMAL_DEVICE_DETAIL_KIND_LIGHT &&
+                                   id(normal_device_detail_kind) == NORMAL_DEVICE_DETAIL_KIND_LIGHT && !onx_playlist::browser.open &&
                                    id(normal_device_detail_online) &&
                                    id(normal_detail_light_mode) == 2 &&
                                    !id(key_btn).state &&
@@ -1584,7 +1588,7 @@ sensor:
                             return id(normal_knob_event_pass) &&
                                    !id(screen_off_state) && id(ui_presenter)->is_normal_mode_active() && !id(ui_presenter)->is_standby_active() && !id(standby_wakeup_pending) &&
                                    id(normal_device_detail_active) &&
-                                   id(normal_device_detail_kind) == NORMAL_DEVICE_DETAIL_KIND_LIGHT &&
+                                   id(normal_device_detail_kind) == NORMAL_DEVICE_DETAIL_KIND_LIGHT && !onx_playlist::browser.open &&
                                    id(normal_device_detail_online) &&
                                    id(normal_detail_light_mode) == 0 &&
                                    !id(key_btn).state &&

@@ -63,5 +63,6 @@ esphome:
     - onx_sensor_graph.h
     - onx_display_settings.h
     - onx_entity_config.h
+    - onx_clock_sensors.h
     - onx_presets.h
   name: ${project_name}

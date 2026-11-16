@@ -34,6 +34,7 @@ template<typename F> inline std::string build_json(F &&fill) {
 }
 
 inline esphome::ESPPreferenceObject behavior_preference;
+inline esphome::ESPPreferenceObject hold_cue_preference;
 inline esphome::ESPPreferenceObject display_preference;
 inline esphome::ESPPreferenceObject orientation_preference;
 inline esphome::ESPPreferenceObject idle_preference;
@@ -73,6 +74,10 @@ inline void load_display_settings() {
   onx_display_settings::BehaviorSettings notification_saved{};
   if(behavior_preference.load(&notification_saved) && notification_saved.magic==0x4F4E584E && notification_saved.cover_timers<=1 && notification_saved.clock_seconds<=1)
     onx_display_settings::behavior=notification_saved;
+  hold_cue_preference=esphome::global_preferences->make_preference<onx_display_settings::HoldCue>(esphome::fnv1_hash("onx.hold_cue.v1"));
+  onx_display_settings::HoldCue hold_saved{};
+  if(hold_cue_preference.load(&hold_saved) && hold_saved.magic==0x4F4E5848 && hold_saved.show<=1)
+    onx_display_settings::hold_cue=hold_saved;
   display_settings_loaded = true;
 }
 inline bool save_display_settings(const std::string &color, const std::string &scope, const std::string &date_format, const std::string &hour_format, bool show_ampm,const std::string &idle_view="",const std::string &media_view="",const std::string &orientation="",const std::string &notifications_cover_timers="",const std::string &clock_seconds_ring="") {
@@ -110,6 +115,16 @@ inline bool save_display_settings(const std::string &color, const std::string &s
   if (!behavior_preference.save(&notification_next) || !orientation_preference.save(&orientation_next) || !media_style_preference.save(&media_next) || !idle_preference.save(&idle_next) || !datetime_preference.save(&date_next) || !display_preference.save(&next) || !esphome::global_preferences->sync()) return false;
   onx_display_settings::behavior=notification_next;
   onx_display_settings::current = next; onx_display_settings::datetime = date_next; onx_display_settings::idle=idle_next; onx_display_settings::media_style=media_next; onx_display_settings::orientation=orientation_next; return true;
+}
+
+inline bool save_hold_cue(const std::string &value) {
+  if(value.empty())return true;
+  if(value!="0" && value!="1")return false;
+  load_display_settings();
+  auto next=onx_display_settings::hold_cue;next.show=value=="1";
+  if(next.show==onx_display_settings::hold_cue.show)return true;
+  if(!hold_cue_preference.save(&next) || !esphome::global_preferences->sync())return false;
+  onx_display_settings::hold_cue=next;return true;
 }
 
 // Keep subscriptions and compact runtime indices intact; hide only carousel entries.
@@ -212,7 +227,7 @@ inline void load_playlists() {
     onx_playlist::Config saved{};
     if(!playlist_preferences[i].load(&saved) || saved.magic!=0x4F4E5851 || saved.count>onx_playlist::MAX_ENTRIES) continue;
     saved.entity[128]=0;
-    bool valid=std::string(saved.entity).rfind("media_player.",0)==0 && onx_config::valid_entity(saved.entity);
+    bool valid=onx_config::valid_entity(saved.entity);
     for(auto &entry:saved.entries) {
       entry.name[48]=entry.action[128]=0;
     }
@@ -225,7 +240,6 @@ inline bool parse_playlists(const std::string &entity,const std::string &raw,onx
   if(raw.empty()) return true; // Old clients clear the list when saving a slot.
   auto doc=custom_logic::make_psram_json_document();
   if(deserializeJson(doc,raw) || !doc.is<JsonArray>() || doc.size()>onx_playlist::MAX_ENTRIES) return false;
-  if(doc.size() && entity.rfind("media_player.",0)!=0) return false;
   custom_logic::copy_string_to_fixed_buffer(entity,next.entity);
   for(JsonObject entry:doc.as<JsonArray>()) {
     if(!entry["name"].is<std::string>() || !entry["action"].is<std::string>()) return false;
@@ -247,7 +261,6 @@ inline bool save_playlists(size_t slot,const onx_playlist::Config &next) {
 }
 inline const onx_playlist::Config *playlists_for_ui(int ui_slot,const std::string &entity) {
   load_playlists();
-  if(entity.rfind("media_player.",0)!=0) return nullptr;
   for(size_t i=0;i<20;++i) {
     const auto &config=onx_playlist::configs[i];
     if(custom_logic::normal_ui_slot_for_device_config_slot(i)==static_cast<size_t>(ui_slot) && entity==config.entity && config.count) return &config;

@@ -28,7 +28,7 @@ inline bool valid_action(const std::string &id) {
   return id.empty() || id == "none" || (valid_entity(id) && (id.rfind("script.", 0) == 0 || id.rfind("automation.", 0) == 0));
 }
 inline bool valid_press_action(const std::string &entity,const std::string &action) {
-  return valid_action(action) || (action=="open_playlists" && entity.rfind("media_player.",0)==0);
+  return valid_action(action) || (action=="open_playlists" && !entity.empty());
 }
 inline bool binding_matches(const std::string &bound, const std::string &current) {
   return !current.empty() && bound == current;

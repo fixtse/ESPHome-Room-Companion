@@ -44,6 +44,7 @@ esphome:
                                                         &id(standby_weather_temperature),
                                                         &id(standby_weather_temperature_unit),
                                                         &id(standby_weather_humidity));
+          onx_clock_sensors::subscribe(id(api_server));
           // Presets reuse the configuration page's save handler. A changed preset
           // list reconnects HA so it reads the select's new options.
           onx_presets::attach(id(entity_config_web), id(preset_select),

@@ -3166,12 +3166,7 @@ lvgl:
             text_font: fonts_MiSans_Medium_16
             text_color: 0xFFFFFF
             text: !lambda |-
-              const std::string temperature1 = id(standby_weather_temperature);
-              const std::string unit = id(standby_weather_temperature_unit).empty() ? "°C" : id(standby_weather_temperature_unit);
-              if (temperature1.empty() || temperature1 == "unknown") {
-                return std::string("--") + unit;
-              }
-              return temperature1 + unit;
+              return onx_clock_sensors::temperature_text(id(standby_weather_temperature), id(standby_weather_temperature_unit));
         - image:
             id: standby_humidity_icon_widget
             x: 121
@@ -3187,11 +3182,7 @@ lvgl:
             text_font: fonts_MiSans_Medium_16
             text_color: 0xFFFFFF
             text: !lambda |-
-              const std::string humidity1 = id(standby_weather_humidity);
-              if (humidity1.empty() || humidity1 == "unknown") {
-                return std::string("--%");
-              }
-              return humidity1 + "%";
+              return onx_clock_sensors::humidity_text(id(standby_weather_humidity));
         - label:
             id: standby_date_widget
             x: 0

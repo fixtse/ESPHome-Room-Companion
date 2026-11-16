@@ -1081,24 +1081,25 @@ script:
       - lambda: |-
           const uint32_t held_ms = millis() - id(key_press_started_ms);
           const int kind = id(normal_device_detail_kind);
+          // With quick actions, a medium hold opens the list, so exit needs longer.
+          const auto exit_entity = id(ui_presenter)->get_normal_device_entity_id(id(normal_device_detail_index));
+          const uint32_t exit_ms = onx_entity_config::playlists_for_ui(id(normal_device_detail_index), exit_entity) != nullptr ?
+              onx_playlist::BACK_MS : 688u;
           if (kind == NORMAL_DEVICE_DETAIL_KIND_SWITCH || kind == NORMAL_DEVICE_DETAIL_KIND_PLUG || kind == NORMAL_DEVICE_DETAIL_KIND_AUTOMATION) {
-            const auto entity = id(ui_presenter)->get_normal_device_entity_id(id(normal_device_detail_index));
-            const bool playlists = kind == NORMAL_DEVICE_DETAIL_KIND_AUTOMATION &&
-                onx_entity_config::playlists_for_ui(id(normal_device_detail_index), entity) != nullptr;
-            id(normal_detail_exit_switch_ready) = held_ms >= (playlists ? onx_playlist::BACK_MS : 688u);
+            id(normal_detail_exit_switch_ready) = held_ms >= exit_ms;
             id(normal_detail_exit_light_ready) = false;
             id(normal_detail_exit_settings_ready) = false;
           } else if (kind == NORMAL_DEVICE_DETAIL_KIND_CURTAIN) {
-            id(normal_detail_exit_switch_ready) = held_ms >= 688;
+            id(normal_detail_exit_switch_ready) = held_ms >= exit_ms;
             id(normal_detail_exit_light_ready) = false;
             id(normal_detail_exit_settings_ready) = false;
           } else if (kind == NORMAL_DEVICE_DETAIL_KIND_LIGHT) {
             id(normal_detail_exit_switch_ready) = false;
-            id(normal_detail_exit_light_ready) = held_ms >= 688;
+            id(normal_detail_exit_light_ready) = held_ms >= exit_ms;
             id(normal_detail_exit_settings_ready) = false;
           } else if (kind == NORMAL_DEVICE_DETAIL_KIND_DIMMING_LIGHT) {
             id(normal_detail_exit_switch_ready) = false;
-            id(normal_detail_exit_light_ready) = held_ms >= 688;
+            id(normal_detail_exit_light_ready) = held_ms >= exit_ms;
             id(normal_detail_exit_settings_ready) = false;
           } else if (kind == NORMAL_DEVICE_DETAIL_KIND_SETTINGS || kind == NORMAL_DEVICE_DETAIL_KIND_SETTINGS_WIFI || kind == NORMAL_DEVICE_DETAIL_KIND_SETTINGS_BRIGHTNESS || kind == NORMAL_DEVICE_DETAIL_KIND_SETTINGS_KNOB || kind == NORMAL_DEVICE_DETAIL_KIND_SETTINGS_CONNECTION) {
             id(normal_detail_exit_switch_ready) = false;
@@ -2449,19 +2450,9 @@ script:
           if (!id(normal_knob_event_pass) || id(screen_off_state) ||
               !id(ui_presenter)->is_normal_mode_active() || id(ui_presenter)->is_standby_active() ||
               id(standby_wakeup_pending) || id(sleep_wakeup_pending) ||
-              !id(normal_device_detail_active) || id(normal_device_detail_kind) != NORMAL_DEVICE_DETAIL_KIND_AUTOMATION || !id(normal_device_detail_online) ||
+              !id(normal_device_detail_active) || !id(normal_device_detail_online) ||
               !id(normal_ha_api_connected) || id(detail_long_press_exit_fired)) return;
           const auto entity = id(ui_presenter)->get_normal_device_entity_id(id(normal_device_detail_index));
-          if (entity.rfind("weather.", 0) == 0) {
-            auto *d = custom_logic_entity_sub::entity_detail(entity);
-            if (!d) return;
-            const int count = 3 + d->forecast_count;
-            d->weather_page = (d->weather_page + (direction < 0 ? -1 : 1) + count) % count;
-            if (id(key_btn).state) { id(key_long_press_handled) = true; id(normal_clear_wifi_allowed) = false; }
-            id(ui_presenter)->notify_user_activity();
-            id(refresh_normal_automation_detail_page).execute();
-            return;
-          }
           if (onx_playlist::browser.open && onx_playlist::browser.entity == entity) {
             const auto *list = onx_entity_config::playlists_for_ui(id(normal_device_detail_index), entity);
             if (list != nullptr) {
@@ -2472,6 +2463,17 @@ script:
               id(refresh_normal_playlist).execute();
               return;
             }
+          }
+          if (id(normal_device_detail_kind) != NORMAL_DEVICE_DETAIL_KIND_AUTOMATION) return;
+          if (entity.rfind("weather.", 0) == 0) {
+            auto *d = custom_logic_entity_sub::entity_detail(entity);
+            if (!d) return;
+            const int count = 3 + d->forecast_count;
+            d->weather_page = (d->weather_page + (direction < 0 ? -1 : 1) + count) % count;
+            if (id(key_btn).state) { id(key_long_press_handled) = true; id(normal_clear_wifi_allowed) = false; }
+            id(ui_presenter)->notify_user_activity();
+            id(refresh_normal_automation_detail_page).execute();
+            return;
           }
           if (!onx_controls::handles(entity)) return;
           if (id(key_btn).state) {
@@ -3323,23 +3325,45 @@ script:
           const auto entity = id(ui_presenter)->get_normal_device_entity_id(id(normal_device_detail_index));
           const auto *list = onx_entity_config::playlists_for_ui(id(normal_device_detail_index), entity);
           auto &browser = onx_playlist::browser;
-          const bool active = list != nullptr && id(normal_device_detail_active) &&
-              id(normal_device_detail_kind) == NORMAL_DEVICE_DETAIL_KIND_AUTOMATION &&
+          const int kind = id(normal_device_detail_kind);
+          const bool page = id(normal_device_detail_active) &&
+              (kind == NORMAL_DEVICE_DETAIL_KIND_AUTOMATION || kind == NORMAL_DEVICE_DETAIL_KIND_SWITCH ||
+               kind == NORMAL_DEVICE_DETAIL_KIND_PLUG || kind == NORMAL_DEVICE_DETAIL_KIND_LIGHT ||
+               kind == NORMAL_DEVICE_DETAIL_KIND_CURTAIN) &&
               id(ui_presenter)->is_normal_mode_active() && !id(ui_presenter)->is_standby_active() &&
-              !id(screen_off_state) && !id(sleep_mode_state) && id(normal_device_detail_online) && id(normal_ha_api_connected);
+              !id(screen_off_state) && !id(sleep_mode_state);
+          const bool active = list != nullptr && page && id(normal_device_detail_online) && id(normal_ha_api_connected);
           if (!active || (browser.open && browser.entity != entity)) browser.clear();
           const uint32_t held = millis() - id(key_press_started_ms);
-          const bool holding = active && id(key_btn).state && !id(key_long_press_handled) &&
-              !id(detail_long_press_exit_fired) && held >= 150;
-          if (!active || (!browser.open && !holding)) {
+          const bool pressing = page && id(key_btn).state && !id(key_long_press_handled) &&
+              !id(detail_long_press_exit_fired) && held >= onx_playlist::CUE_MS &&
+              !id(normal_device_detail_curtain_adjust_active);
+          const bool holding = active && pressing;
+          // Without a list the same cue counts down to closing the page.
+          const bool closing = !active && pressing && held < 688 && onx_display_settings::hold_cue.show;
+          if (!closing && (!active || (!browser.open && !holding))) {
             lv_obj_add_flag(id(normal_playlist_overlay), LV_OBJ_FLAG_HIDDEN); return;
           }
           // The menu and its hold cue own the foreground, even if playback
           // feedback changes before the next transport refresh.
           lv_obj_add_flag(id(normal_media_transport_overlay), LV_OBJ_FLAG_HIDDEN);
+          // Lives on the top layer so it also covers switch, light and cover pages.
+          if (lv_obj_get_parent(id(normal_playlist_overlay)) != lv_layer_top())
+            lv_obj_set_parent(id(normal_playlist_overlay), lv_layer_top());
           if (lv_obj_has_flag(id(normal_playlist_overlay), LV_OBJ_FLAG_HIDDEN)) {
             lv_obj_clear_flag(id(normal_playlist_overlay), LV_OBJ_FLAG_HIDDEN);
             lv_obj_move_foreground(id(normal_playlist_overlay));
+          }
+          if (closing) {
+            lv_obj_add_flag(id(normal_playlist_roller)->obj, LV_OBJ_FLAG_HIDDEN);
+            lv_obj_clear_flag(id(normal_playlist_rows), LV_OBJ_FLAG_HIDDEN);
+            onx_render::label(id(normal_playlist_heading), "Closing");
+            onx_render::label(id(normal_playlist_rows), "Hold to close");
+            lv_obj_add_flag(id(normal_playlist_hint), LV_OBJ_FLAG_HIDDEN);
+            lv_obj_clear_flag(id(normal_playlist_hold_bar), LV_OBJ_FLAG_HIDDEN);
+            lv_bar_set_value(id(normal_playlist_hold_bar), std::min<uint32_t>(100, (held - onx_playlist::CUE_MS) * 100 / (688 - onx_playlist::CUE_MS)), LV_ANIM_OFF);
+            lv_obj_set_style_bg_color(id(normal_playlist_hold_bar), lv_color_hex(0xFF8A65), LV_PART_INDICATOR);
+            return;
           }
           if (holding) lv_obj_add_flag(id(normal_playlist_roller)->obj, LV_OBJ_FLAG_HIDDEN);
           else lv_obj_clear_flag(id(normal_playlist_roller)->obj, LV_OBJ_FLAG_HIDDEN);
@@ -3348,10 +3372,13 @@ script:
             lv_obj_clear_flag(id(normal_playlist_rows), LV_OBJ_FLAG_HIDDEN);
             const bool ready = held >= onx_playlist::OPEN_MS;
             onx_render::label(id(normal_playlist_heading), ready ? "Release now" : "Keep holding");
-            onx_render::label(id(normal_playlist_rows), ready ? (browser.open ? "Return to player" : "Open playlists") : "Playlist menu");
-            onx_render::label(id(normal_playlist_hint), ready ? "Hold longer: back" : "Wait for the cue");
+            onx_render::label(id(normal_playlist_rows), ready ? (browser.open ? "Close quick actions" : "Open quick actions") : "Quick actions");
+            onx_render::label(id(normal_playlist_hint), ready ? "Keep holding to close" : "Release to cancel");
             lv_obj_clear_flag(id(normal_playlist_hold_bar), LV_OBJ_FLAG_HIDDEN);
-            lv_bar_set_value(id(normal_playlist_hold_bar), std::min<uint32_t>(100, held * 100 / onx_playlist::OPEN_MS), LV_ANIM_OFF);
+            const uint32_t progress = ready ?
+                std::min<uint32_t>(100, (held - onx_playlist::OPEN_MS) * 100 / (onx_playlist::BACK_MS - onx_playlist::OPEN_MS)) :
+                std::min<uint32_t>(100, (held - onx_playlist::CUE_MS) * 100 / (onx_playlist::OPEN_MS - onx_playlist::CUE_MS));
+            lv_bar_set_value(id(normal_playlist_hold_bar), progress, LV_ANIM_OFF);
             lv_obj_set_style_bg_color(id(normal_playlist_hold_bar), lv_color_hex(ready ? 0x62D49B : 0x62B0FF), LV_PART_INDICATOR);
           } else {
             browser.selected = std::clamp(browser.selected, 0, static_cast<int>(list->count)-1);
@@ -3370,7 +3397,7 @@ script:
             }
             if(options!=lv_roller_get_options(roller))lv_roller_set_options(roller,options.c_str(),LV_ROLLER_MODE_NORMAL);
             if(lv_roller_get_selected(roller)!=i)lv_roller_set_selected(roller,i,LV_ANIM_OFF);
-            onx_render::label(id(normal_playlist_heading), "Playlists");
+            onx_render::label(id(normal_playlist_heading), "Quick actions");
             lv_obj_add_flag(id(normal_playlist_rows), LV_OBJ_FLAG_HIDDEN);
             lv_obj_add_flag(id(normal_playlist_hint),LV_OBJ_FLAG_HIDDEN);
             lv_obj_add_flag(id(normal_playlist_hold_bar), LV_OBJ_FLAG_HIDDEN);
