@@ -3,6 +3,7 @@
 // clock view. Empty entity: use the weather entity's attributes.
 #include "custom_logic_entity_sub.h"
 #include "onx_subscriptions.h"
+#include "onx_icon_state.h"
 #include <cmath>
 #include <cstdio>
 #include <cstdlib>
@@ -13,7 +14,15 @@ struct Config {
   uint32_t magic{0x4F4E5843};
   char temperature[129]{}, humidity[129]{};
 };
-struct Reading { std::string value, unit; };
+struct Reading {
+  std::string value, unit, icon, device_class;
+  // HA icon, else one from the device class, else empty (keep the default).
+  std::string chosen_icon(const std::string &entity) const {
+    onx_icon_state::Metadata m;
+    m.entity = entity; m.runtime = icon; m.device_class = device_class;
+    return m.chosen();
+  }
+};
 inline Config config;
 inline Reading temperature, humidity;
 inline bool loaded = false;
@@ -53,6 +62,9 @@ inline void bind(esphome::api::APIServer *api, size_t slot, const std::string &e
   onx_subs::registry.acquire(api, who, entity, "", [reading](esphome::StringRef v) { reading->value = format(v.str()); });
   onx_subs::registry.acquire(api, who, entity, "unit_of_measurement",
                              [reading](esphome::StringRef v) { reading->unit = v.str(); });
+  onx_subs::registry.acquire(api, who, entity, "icon", [reading](esphome::StringRef v) { reading->icon = v.str(); });
+  onx_subs::registry.acquire(api, who, entity, "device_class",
+                             [reading](esphome::StringRef v) { reading->device_class = v.str(); });
 }
 inline void subscribe(esphome::api::APIServer *api) {
   load();
@@ -78,6 +90,8 @@ inline bool save(esphome::api::APIServer *api, const std::string &temp, const st
   subscribe(api);
   return true;
 }
+inline std::string first_icon() { return config.temperature[0] ? temperature.chosen_icon(config.temperature) : ""; }
+inline std::string second_icon() { return config.humidity[0] ? humidity.chosen_icon(config.humidity) : ""; }
 inline std::string temperature_text(const std::string &weather_value, const std::string &weather_unit) {
   if (config.temperature[0]) {
     return (temperature.value.empty() ? std::string("--") : temperature.value) + temperature.unit;

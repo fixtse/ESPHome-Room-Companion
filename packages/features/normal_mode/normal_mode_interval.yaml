@@ -183,6 +183,16 @@ interval:
             - lvgl.widget.refresh: standby_temperature_widget
             - lvgl.widget.refresh: standby_humidity_widget
             - lambda: |-
+                // Sensor icons replace the defaults once downloaded; both fit 16 px.
+                for (auto *w : {id(standby_temperature_icon_widget), id(standby_humidity_icon_widget)}) {
+                  if (lv_obj_get_width(w) != 16) {
+                    lv_obj_set_size(w, 16, 16);
+                    lv_image_set_inner_align(w, LV_IMAGE_ALIGN_CONTAIN);
+                  }
+                }
+                id(entity_icon_downloader)->bind(id(standby_temperature_icon_widget), onx_clock_sensors::first_icon(), id(standby_weather_temp_icon_img), false);
+                id(entity_icon_downloader)->bind(id(standby_humidity_icon_widget), onx_clock_sensors::second_icon(), id(standby_weather_humidity_icon_img), false);
+            - lambda: |-
                 lv_obj_add_flag(id(normal_device_wifi_online_widget), LV_OBJ_FLAG_HIDDEN);
                 lv_obj_add_flag(id(normal_device_wifi_offline_widget), LV_OBJ_FLAG_HIDDEN);
                 lv_obj_add_flag(id(normal_device_homeassistant_online_widget), LV_OBJ_FLAG_HIDDEN);

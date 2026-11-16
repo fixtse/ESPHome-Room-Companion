@@ -34,7 +34,7 @@ static void *onx_svg_realloc(void *p, size_t size) { return heap_caps_realloc(p,
 namespace esphome::onx_icons {
 static constexpr size_t SIZE = 80;
 static constexpr size_t MAX_SVG_BYTES = 32768;
-static constexpr size_t CACHE_SIZE = 12;
+static constexpr size_t CACHE_SIZE = 25;  // ~25 KB of PSRAM each.
 static const char *const TAG = "onx_icons";
 
 // Both endpoints are fixed HTTPS hosts; redirects and device credentials are never used.
