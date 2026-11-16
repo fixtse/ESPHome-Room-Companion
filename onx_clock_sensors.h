@@ -80,16 +80,14 @@ inline bool save(esphome::api::APIServer *api, const std::string &temp, const st
 }
 inline std::string temperature_text(const std::string &weather_value, const std::string &weather_unit) {
   if (config.temperature[0]) {
-    const auto unit = temperature.unit.empty() ? std::string("°C") : temperature.unit;
-    return (temperature.value.empty() ? std::string("--") : temperature.value) + unit;
+    return (temperature.value.empty() ? std::string("--") : temperature.value) + temperature.unit;
   }
   const auto unit = weather_unit.empty() ? std::string("°C") : weather_unit;
   return (weather_value.empty() || weather_value == "unknown" ? std::string("--") : weather_value) + unit;
 }
 inline std::string humidity_text(const std::string &weather_value) {
   if (config.humidity[0]) {
-    const auto unit = humidity.unit.empty() ? std::string("%") : humidity.unit;
-    return (humidity.value.empty() ? std::string("--") : humidity.value) + unit;
+    return (humidity.value.empty() ? std::string("--") : humidity.value) + humidity.unit;
   }
   return (weather_value.empty() || weather_value == "unknown" ? std::string("--") : weather_value) + "%";
 }
