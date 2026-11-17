@@ -1,9 +1,9 @@
 #pragma once
 // Rectangular-panel additions on top of the knob UI (touch panels only):
 //   - flattens the knob's round shells (radius >= half the knob width)
-//   - top-left dashboard button
-//   - media detail rearranged for a tall screen: full-width cover art, title,
-//     progress bar and previous / play-pause / next buttons
+//   - media detail rearranged for a tall screen: large cover art, title,
+//     progress bar and previous / play-pause / next buttons (no header: swipe
+//     horizontally to close, pull down from the top for notifications)
 //   - idle screen: clock (knob default), photo slideshow or dashboard stream
 // Everything is created lazily on LVGL's existing objects; the knob packages
 // are not modified.
@@ -17,23 +17,27 @@
 #include "onx_render.h"
 #include "esphome/core/hal.h"
 #include "onx_geom.h"
+#include "onx_display_settings.h"
 
 namespace onx_panel_ui {
 using onx_geom::S;
 
 inline int width = 320, height = 480;
 
+// ------------------------------------------------------------ hit testing
+inline std::vector<lv_obj_t *> touch_targets;  // Visible buttons owned by LVGL.
+
 // ------------------------------------------------------------ round shells
 // The knob draws its pages inside a 240x240 circle. On a rectangle those
-// circles show as a lighter disc: square every large rounded object.
+// circles show as a lighter disc: square every large rounded object, but keep
+// the panel's own round buttons (LV_RADIUS_CIRCLE would otherwise match).
 inline void flatten(lv_obj_t *obj) {
-  if (lv_obj_get_style_radius(obj, LV_PART_MAIN) >= S(100)) onx_render::style_radius(obj, 0, LV_PART_MAIN);
+  if (lv_obj_get_style_radius(obj, LV_PART_MAIN) >= S(100) &&
+      std::find(touch_targets.begin(), touch_targets.end(), obj) == touch_targets.end())
+    onx_render::style_radius(obj, 0, LV_PART_MAIN);
   const uint32_t n = lv_obj_get_child_count(obj);
   for (uint32_t i = 0; i < n; ++i) flatten(lv_obj_get_child(obj, i));
 }
-
-// ------------------------------------------------------------ hit testing
-inline std::vector<lv_obj_t *> touch_targets;  // Visible buttons owned by LVGL.
 inline bool hit(int x, int y) {
   for (auto *obj : touch_targets) {
     if (obj == nullptr || !lv_obj_is_visible(obj)) continue;
@@ -83,48 +87,22 @@ inline void set_width(lv_obj_t *obj, int w) {
   if (obj != nullptr && lv_obj_get_style_width(obj, LV_PART_MAIN) != w) lv_obj_set_width(obj, w);
 }
 
-// ------------------------------------------------------------ dashboard button
-inline lv_obj_t *dash_button = nullptr;
-inline std::function<void()> on_dashboard;
-inline void create_dashboard_button(const lv_image_dsc_t *icon) {
-  dash_button = lv_obj_create(lv_layer_top());
-  lv_obj_set_size(dash_button, S(40), S(40));
-  lv_obj_align(dash_button, LV_ALIGN_TOP_LEFT, S(6), S(6));
-  lv_obj_set_style_radius(dash_button, S(20), 0);
-  lv_obj_set_style_bg_color(dash_button, lv_color_hex(0x2A2F35), 0);
-  lv_obj_set_style_bg_opa(dash_button, LV_OPA_COVER, 0);
-  lv_obj_set_style_border_width(dash_button, 0, 0);
-  lv_obj_set_style_pad_all(dash_button, 0, 0);
-  lv_obj_remove_flag(dash_button, LV_OBJ_FLAG_SCROLLABLE);
-  lv_obj_add_flag(dash_button, LV_OBJ_FLAG_CLICKABLE);
-  lv_obj_set_ext_click_area(dash_button, S(8));
-  lv_obj_t *img = lv_image_create(dash_button);
-  lv_image_set_src(img, icon);
-  lv_obj_center(img);
-  lv_obj_remove_flag(img, LV_OBJ_FLAG_CLICKABLE);
-  lv_obj_add_event_cb(dash_button, [](lv_event_t *) { if (on_dashboard) on_dashboard(); }, LV_EVENT_CLICKED, nullptr);
-  show(dash_button, false);
-}
-
 // ------------------------------------------------------------ media detail
 struct Media {
   lv_obj_t *shell, *cover, *title, *artist, *arc, *transport, *icon, *playlist, *action, *room;
 };
-inline lv_obj_t *media_bar = nullptr, *media_row = nullptr, *media_play_label = nullptr;
+inline lv_obj_t *media_bar = nullptr, *media_row = nullptr, *media_play = nullptr, *media_play_label = nullptr;
 inline std::function<void(bool previous)> on_track;
-inline std::function<void()> on_play_pause, on_close;
-inline lv_obj_t *media_close = nullptr;
+inline std::function<void()> on_play_pause;
 inline std::function<bool()> is_playing;
+// Top of the artwork: there is no header on details any more.
+inline int media_top() { return S(12); }
 inline void create_media_controls(lv_obj_t *shell, const lv_font_t *font) {
-  media_close = round_button(shell, S(36), 0x2A2F35);
-  symbol(media_close, LV_SYMBOL_CLOSE, font);
-  lv_obj_align(media_close, LV_ALIGN_TOP_MID, 0, S(6));
-  lv_obj_add_event_cb(media_close, [](lv_event_t *) { if (on_close) on_close(); }, LV_EVENT_CLICKED, nullptr);
   media_bar = lv_bar_create(shell);
   lv_bar_set_range(media_bar, 0, 1000);
   lv_obj_set_style_bg_color(media_bar, lv_color_hex(0x414850), LV_PART_MAIN);
   lv_obj_set_style_bg_opa(media_bar, LV_OPA_COVER, LV_PART_MAIN);
-  lv_obj_set_style_bg_color(media_bar, lv_color_hex(0x62B0FF), LV_PART_INDICATOR);
+  lv_obj_set_style_bg_color(media_bar, lv_color_hex(onx_display_settings::accent()), LV_PART_INDICATOR);
   lv_obj_set_style_radius(media_bar, S(3), LV_PART_MAIN);
   lv_obj_set_style_radius(media_bar, S(3), LV_PART_INDICATOR);
   lv_obj_remove_flag(media_bar, LV_OBJ_FLAG_CLICKABLE);
@@ -141,9 +119,9 @@ inline void create_media_controls(lv_obj_t *shell, const lv_font_t *font) {
   lv_obj_t *prev = round_button(media_row, S(44), 0x2A2F35);
   symbol(prev, LV_SYMBOL_PREV, font);
   lv_obj_add_event_cb(prev, [](lv_event_t *) { if (on_track) on_track(true); }, LV_EVENT_CLICKED, nullptr);
-  lv_obj_t *play = round_button(media_row, S(56), 0x1F6FEB);
-  media_play_label = symbol(play, LV_SYMBOL_PLAY, font);
-  lv_obj_add_event_cb(play, [](lv_event_t *) { if (on_play_pause) on_play_pause(); }, LV_EVENT_CLICKED, nullptr);
+  media_play = round_button(media_row, S(56), onx_display_settings::accent_strong());
+  media_play_label = symbol(media_play, LV_SYMBOL_PLAY, font);
+  lv_obj_add_event_cb(media_play, [](lv_event_t *) { if (on_play_pause) on_play_pause(); }, LV_EVENT_CLICKED, nullptr);
   lv_obj_t *next = round_button(media_row, S(44), 0x2A2F35);
   symbol(next, LV_SYMBOL_NEXT, font);
   lv_obj_add_event_cb(next, [](lv_event_t *) { if (on_track) on_track(false); }, LV_EVENT_CLICKED, nullptr);
@@ -158,23 +136,25 @@ inline void sync_media(const Media &m, const lv_font_t *font) {
   }
   const bool playlist = !hidden(m.playlist);
   show(media_row, media && !playlist);
-  show(media_close, media && !playlist);
   if (!media) { show(media_bar, false); return; }
-  const int w = width, h = height;
+  const int w = width, h = height, top = media_top();
   // Square shell covering the whole screen (detail pages hide the strip).
   if (lv_obj_get_style_width(m.shell, LV_PART_MAIN) != w || lv_obj_get_style_height(m.shell, LV_PART_MAIN) != h)
     lv_obj_set_size(m.shell, w, h);
-  // Reserve transport and text space before sizing artwork for either model.
-  const int cover_size = std::max(48, std::min({w - 24, h * 40 / 100, h - 56 - S(64) - S(12) - 20 - 84}));
+  // Accent colour follows the device setting without recreating the controls.
+  onx_render::style_bg_color(media_bar, lv_color_hex(onx_display_settings::accent()), LV_PART_INDICATOR);
+  onx_render::style_bg_color(media_play, lv_color_hex(onx_display_settings::accent_strong()), 0);
+  // Reserve text (84), progress (28) and transport space; the artwork gets the rest.
+  const int cover_size = std::max(48, std::min(w - 48, h - top - 12 - 84 - 28 - S(64) - S(12)));
   lv_image_header_t header{};
   if (lv_image_decoder_get_info(lv_image_get_src(m.cover), &header) == LV_RESULT_OK && header.w && header.h) {
     const int scale = cover_size * 256 / std::max(header.w,header.h);
     if (lv_image_get_scale_x(m.cover) != scale) lv_image_set_scale(m.cover,scale);
   }
-  place(m.cover, LV_ALIGN_TOP_MID, 0, 56);
-  place(m.icon, LV_ALIGN_TOP_MID, 0, 56);
-  place(m.transport, LV_ALIGN_TOP_MID, 0, 56 + cover_size / 2);
-  const int text_y = 56 + cover_size + 12;
+  place(m.cover, LV_ALIGN_TOP_MID, 0, top);
+  place(m.icon, LV_ALIGN_TOP_MID, 0, top);
+  place(m.transport, LV_ALIGN_TOP_MID, 0, top + cover_size / 2);
+  const int text_y = top + cover_size + 12;
   place(m.title, LV_ALIGN_TOP_MID, 0, text_y);
   place(m.artist, LV_ALIGN_TOP_MID, 0, text_y + 28);
   place(m.action, LV_ALIGN_TOP_MID, 0, text_y + 52);

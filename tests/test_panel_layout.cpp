@@ -7,14 +7,15 @@ int main() {
     for(auto kind:{Kind::SINGLE,Kind::TWO_CONTROLS,Kind::CONTROL_SENSORS}) {
       auto boxes=geometry(kind,w,h);
       const int count=kind==Kind::SINGLE?1:kind==Kind::TWO_CONTROLS?2:4;
-      int bottom=56;
+      int bottom=MAIN_TOP;
       for(int i=0;i<count;++i) {
         const auto r=boxes[i];assert(r.w==w-24 && r.x==12 && r.h>0);
         assert(r.y>=bottom && r.y+r.h<=h-52);bottom=r.y+r.h;
       }
       assert(bottom>=h-55); // Every composition fills the rectangle above the dock.
     }
-    auto detail=geometry(Kind::SINGLE,w,h,true)[0];assert(detail.y+detail.h==h-12);
+    auto detail=geometry(Kind::SINGLE,w,h,true)[0];assert(detail.y==DETAIL_TOP && detail.y+detail.h==h-12);
+    assert(geometry(Kind::SINGLE,w,h)[0].y==MAIN_TOP); // Bell row only, no dashboard header.
   }
   Page p;std::strcpy(p.primary,"light.kitchen");assert(valid(p));
   p.kind=Kind::TWO_CONTROLS;assert(!valid(p));

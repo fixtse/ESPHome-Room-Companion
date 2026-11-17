@@ -1,6 +1,7 @@
 #pragma once
 // Notification centre UI for the touch panels (see onx_notification::Center).
-//   - bell in the top-right corner with the unread count (also: pull down from the top)
+//   - bell on the main carousel (top right, no background) with the unread count;
+//     every screen opens the centre by pulling down from the top edge
 //   - arrival banner at the top; tap to open
 //   - list of recent notifications: tap to open, x to dismiss, Clear all
 //   - detail view with picture, Back and Dismiss
@@ -11,6 +12,7 @@
 #include "lvgl.h"
 #include "esphome/core/hal.h"
 #include "onx_geom.h"
+#include "onx_display_settings.h"
 #include "onx_notification.h"
 
 namespace onx_notification_ui {
@@ -35,8 +37,10 @@ inline lv_obj_t *detail = nullptr, *detail_title = nullptr, *detail_age = nullpt
                 *detail_body = nullptr;
 inline uint32_t detail_id = 0, built_revision = 0;
 inline bool panel_open = false;
+inline bool bell_wanted = false;  // Only the main carousel shows the bell.
 
-constexpr uint32_t BG = 0x1A1D21, CARD = 0x272B30, ACCENT = 0x62B0FF, TEXT = 0xFFFFFF, MUTED = 0xB8B8B8;
+constexpr uint32_t BG = 0x1A1D21, CARD = 0x272B30, TEXT = 0xFFFFFF, MUTED = 0xB8B8B8;
+inline uint32_t accent() { return onx_display_settings::accent(); }
 
 inline void hide(lv_obj_t *obj, bool hidden) {
   if (obj == nullptr) return;
@@ -153,10 +157,12 @@ inline void init(int screen_width, int screen_height, Fonts f, Hooks h) {
   hooks = std::move(h);
   lv_obj_t *top = lv_layer_top();
 
-  // Bell, top-right corner (outside the knob's round layout).
-  bell = box(top, CARD, S(20));
-  lv_obj_set_size(bell, S(40), S(40));
-  lv_obj_align(bell, LV_ALIGN_TOP_RIGHT, -S(6), S(6));
+  // Bell, top-right corner of the main carousel: a plain icon in the slim
+  // header row (onx_panel_layout::MAIN_TOP), no circular background.
+  bell = box(top, CARD, 0);
+  lv_obj_set_style_bg_opa(bell, LV_OPA_TRANSP, 0);
+  lv_obj_set_size(bell, 44, 36);
+  lv_obj_align(bell, LV_ALIGN_TOP_RIGHT, -4, 2);
   lv_obj_add_flag(bell, LV_OBJ_FLAG_CLICKABLE);
   lv_obj_set_ext_click_area(bell, S(8));
   lv_obj_center(text(bell, fonts.icon, TEXT, "\xF0\x9F\x94\x94"));  // 🔔
@@ -165,7 +171,7 @@ inline void init(int screen_width, int screen_height, Fonts f, Hooks h) {
   lv_obj_set_size(badge, LV_SIZE_CONTENT, S(18));
   lv_obj_set_style_min_width(badge, S(18), 0);
   lv_obj_set_style_pad_hor(badge, S(4), 0);
-  lv_obj_align_to(badge, bell, LV_ALIGN_TOP_RIGHT, S(4), -S(4));
+  lv_obj_align_to(badge, bell, LV_ALIGN_TOP_RIGHT, 0, 0);
   badge_label = text(badge, fonts.small, TEXT, "");
   lv_obj_center(badge_label);
   lv_obj_remove_flag(badge, LV_OBJ_FLAG_CLICKABLE);
@@ -177,7 +183,7 @@ inline void init(int screen_width, int screen_height, Fonts f, Hooks h) {
   lv_obj_set_style_pad_all(toast, S(8), 0);
   lv_obj_set_style_border_side(toast, LV_BORDER_SIDE_LEFT, 0);
   lv_obj_set_style_border_width(toast, S(4), 0);
-  lv_obj_set_style_border_color(toast, lv_color_hex(ACCENT), 0);
+  lv_obj_set_style_border_color(toast, lv_color_hex(accent()), 0);
   lv_obj_set_flex_flow(toast, LV_FLEX_FLOW_COLUMN);
   lv_obj_add_flag(toast, LV_OBJ_FLAG_CLICKABLE);
   toast_title = text(toast, fonts.title, TEXT, "");
@@ -223,7 +229,7 @@ inline void init(int screen_width, int screen_height, Fonts f, Hooks h) {
   build_header(detail, "Notification", &detail_header);
   button(detail_header, "Back", CARD, on_back, nullptr);
   detail_title = text(detail, fonts.title, TEXT, "");
-  detail_age = text(detail, fonts.small, ACCENT, "");
+  detail_age = text(detail, fonts.small, accent(), "");
   detail_image = lv_image_create(detail);
   lv_obj_align(detail_image, LV_ALIGN_TOP_MID, 0, 0);
   detail_body = text(detail, fonts.body, TEXT, "");
@@ -260,7 +266,7 @@ inline void rebuild_list() {
     lv_obj_remove_flag(column, LV_OBJ_FLAG_CLICKABLE);
     lv_obj_t *title = text(column, fonts.title, item.read ? MUTED : TEXT, item.title.c_str());
     lv_obj_t *body = text(column, fonts.body, MUTED, item.body.c_str());
-    lv_obj_t *age = text(column, fonts.small, ACCENT, onx_notification::age_text(item.received_ms, now).c_str());
+    lv_obj_t *age = text(column, fonts.small, accent(), onx_notification::age_text(item.received_ms, now).c_str());
     for (auto *label : {title, body, age}) {
       lv_obj_set_width(label, lv_pct(100));
       lv_label_set_long_mode(label, LV_LABEL_LONG_DOT);
@@ -306,14 +312,19 @@ inline void refresh() {
   const uint32_t now = esphome::millis();
   if (detail_id != 0 && center.find(detail_id) == nullptr) close_detail();
   const size_t unread = center.unread();
-  // Always reachable (also by pulling down from the top edge); dimmed when empty.
-  hide(bell, panel_open || detail_id != 0);
+  // Bell only on the main carousel (dimmed when empty); every screen can pull
+  // down from the top edge to open the centre.
+  const bool bell_shown = bell_wanted && !panel_open && detail_id == 0;
+  hide(bell, !bell_shown);
   lv_obj_set_style_opa(bell, center.items.empty() ? LV_OPA_50 : LV_OPA_COVER, 0);
-  hide(badge, unread == 0 || panel_open || detail_id != 0);
+  hide(badge, unread == 0 || !bell_shown);
   char count[8];
   snprintf(count, sizeof(count), "%u", static_cast<unsigned>(unread > 99 ? 99 : unread));
   lv_label_set_text(badge_label, count);
-  lv_obj_align_to(badge, bell, LV_ALIGN_TOP_RIGHT, S(4), -S(4));
+  lv_obj_align_to(badge, bell, LV_ALIGN_TOP_RIGHT, 0, 0);
+  // Accent colour follows the device setting.
+  lv_obj_set_style_border_color(toast, lv_color_hex(accent()), 0);
+  lv_obj_set_style_text_color(detail_age, lv_color_hex(accent()), 0);
 
   const bool show_toast = center.toast_visible(now) && !panel_open && detail_id == 0;
   if (show_toast) {
@@ -334,6 +345,13 @@ inline void refresh() {
   if (panel_open || detail_id != 0 || show_toast) lv_obj_move_foreground(panel_open ? panel : detail_id ? detail : toast);
   lv_obj_move_foreground(bell);
   lv_obj_move_foreground(badge);
+}
+
+// Called by the panel's UI tick: the bell belongs to the main carousel only.
+inline void set_bell_visible(bool visible) {
+  if (bell == nullptr || visible == bell_wanted) return;
+  bell_wanted = visible;
+  refresh();
 }
 
 // Periodic: banner timeout and list ages.

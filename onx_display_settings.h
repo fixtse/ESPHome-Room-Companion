@@ -81,6 +81,22 @@ inline bool parse_color(const std::string &text, uint32_t &color) {
   }
   color = value; return true;
 }
+// The configurable accent (formerly "ring color") tints every highlighted
+// element: progress, the selected navigator item, filled buttons and graphs.
+constexpr uint32_t DEFAULT_ACCENT=0x62B0FF;
+inline uint32_t accent() { return current.media_color & 0xFFFFFF; }
+// Linear blend: weight 0..100 of `a` over `b`, per channel.
+inline uint32_t mix(uint32_t a, uint32_t b, unsigned weight) {
+  if (weight > 100) weight = 100;
+  uint32_t out = 0;
+  for (int shift = 0; shift <= 16; shift += 8) {
+    const unsigned ca = (a >> shift) & 0xFF, cb = (b >> shift) & 0xFF;
+    out |= ((ca * weight + cb * (100 - weight) + 50) / 100) << shift;
+  }
+  return out;
+}
+inline uint32_t accent_strong() { return mix(accent(), 0x000000, 80); }  // Filled buttons (white symbol).
+inline uint32_t accent_soft() { return mix(accent(), 0x101418, 28); }    // Tinted selection surfaces.
 inline std::string color_text(uint32_t color) {
   char text[8]; snprintf(text, sizeof(text), "#%06X", static_cast<unsigned>(color & 0xFFFFFF)); return text;
 }

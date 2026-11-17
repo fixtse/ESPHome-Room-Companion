@@ -7,6 +7,7 @@
 #include <vector>
 #include "lvgl.h"
 #include "onx_render.h"
+#include "onx_display_settings.h"
 #include "esphome/components/image/image.h"
 
 namespace onx_navigation {
@@ -65,7 +66,7 @@ inline void create() {
   lv_obj_align(marker,LV_ALIGN_CENTER,0,strip.enabled?strip.center_y-strip.height/2:102);
   lv_obj_set_style_pad_all(marker,0,0);lv_obj_set_style_border_width(marker,0,0);
   lv_obj_set_style_radius(marker,marker_size/2,0);
-  lv_obj_set_style_bg_color(marker,lv_color_hex(0x20384E),0);
+  lv_obj_set_style_bg_color(marker,lv_color_hex(onx_display_settings::accent_soft()),0);
   lv_obj_set_style_bg_opa(marker,LV_OPA_COVER,0);
   lv_obj_clear_flag(marker,LV_OBJ_FLAG_SCROLLABLE);lv_obj_clear_flag(marker,LV_OBJ_FLAG_CLICKABLE);
   for(auto &icon:icons) {icon=lv_img_create(dock);lv_obj_clear_flag(icon,LV_OBJ_FLAG_CLICKABLE);}
@@ -115,6 +116,8 @@ template<typename Bind> void render(const std::vector<int> &entries,int selected
     }
   }
   selected_rank=rank;
+  // The selection marker is a tint of the configurable accent colour.
+  onx_render::style_bg_color(marker,lv_color_hex(onx_display_settings::accent_soft()),0);
   lv_obj_clear_flag(dock,LV_OBJ_FLAG_HIDDEN);visible=true;
 }
 }  // namespace onx_navigation

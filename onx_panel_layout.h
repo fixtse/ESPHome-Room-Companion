@@ -36,9 +36,11 @@ inline bool valid(const Page &p) {
   return true;
 }
 struct Rect {int x,y,w,h;};
+constexpr int MAIN_TOP=40,DETAIL_TOP=12;
 inline std::array<Rect,4> geometry(Kind k,int w,int h,bool detail=false) {
-  // Header for dashboard/bell; bottom dock only on the carousel.
-  const int top=56,bottom=detail?12:52,gap=8,pad=12,body=h-top-bottom;
+  // The main carousel keeps a slim row for the notification bell and the
+  // bottom dock; details use the whole screen (pull down for notifications).
+  const int top=detail?DETAIL_TOP:MAIN_TOP,bottom=detail?12:52,gap=8,pad=12,body=h-top-bottom;
   std::array<Rect,4> out{};
   out[0]={pad,top,w-pad*2,body};
   if(k==Kind::TWO_CONTROLS) {

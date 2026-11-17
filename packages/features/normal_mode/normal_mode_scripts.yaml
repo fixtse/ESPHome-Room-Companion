@@ -351,7 +351,7 @@ script:
                   if(index==total) {
                     onx_render::image(icon,id(normal_device_icon_settings_img)->get_lv_image_dsc());
                     lv_image_set_scale(icon,onx_geom::S(onx_navigation::icon_size())*256/id(normal_device_icon_settings_img)->get_width());
-                    onx_render::style_image_recolor(icon,lv_color_hex(active?0x62B0FF:0xFFFFFF),0);
+                    onx_render::style_image_recolor(icon,lv_color_hex(active?onx_display_settings::accent():0xFFFFFF),0);
                     onx_render::style_image_recolor_opa(icon,LV_OPA_COVER,0);
                   } else {
                     id(apply_normal_entity_icon).execute(icon,

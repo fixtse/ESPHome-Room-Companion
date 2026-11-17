@@ -18,6 +18,10 @@ int main() {
   assert(format_iso_date("2026-00-10")=="2026-00-10");
   assert(format_iso_date("2026-13-10")=="2026-13-10");
   assert(!parse_date_format("bad",format));
+  assert(mix(0xFFFFFF,0x000000,100)==0xFFFFFF && mix(0xFFFFFF,0x000000,0)==0);
+  assert(mix(0x62B0FF,0x000000,80)==0x4E8DCC);
+  current.media_color=0xF97316;assert(accent()==0xF97316 && accent_strong()!=accent() && accent_soft()!=accent());
+  current.media_color=DEFAULT_ACCENT;
   assert(parse_hour_format("12",format)&&format==1);
   datetime.hour_format=format;assert(std::string(time_pattern())=="%I:%M %p");
   assert(parse_hour_format("24",format)&&format==0);
