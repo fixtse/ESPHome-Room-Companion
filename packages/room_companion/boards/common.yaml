@@ -97,8 +97,9 @@ microphone:
     i2s_din_pin: GPIO20
     pdm: true
     sample_rate: 16000
-    bits_per_sample: 16bit
-    channel: left
+    bits_per_sample: 32bit
+    channel: right
+    correct_dc_offset: true
 
 speaker:
   - platform: i2s_audio

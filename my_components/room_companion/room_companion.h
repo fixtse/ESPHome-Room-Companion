@@ -3,7 +3,7 @@
 //  - dashboard stream settings (server, address, zoom), persisted in NVS and
 //    edited from the knob's configuration page (ops panel_state / panel_save)
 //  - display ownership between the knob's LVGL UI and the stream
-//  - leaving the dashboard by holding the top-left corner
+//  - leaving the dashboard with a horizontal swipe
 // Everything else (slots, presets, sleep, notifications, web page) is the knob's.
 #include "esphome/core/automation.h"
 #include "esphome/core/component.h"

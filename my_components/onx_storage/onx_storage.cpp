@@ -638,7 +638,13 @@ bool OnxStorage::set_normal_ui_config(const std::array<NormalUiDeviceConfig, 20>
     this->normal_ui_devices_[i].type = truncate_string(normalize_device_type(devices[i].type), NORMAL_UI_ICON_MAX_LENGTH);
     this->normal_ui_devices_[i].entity_id = truncate_string(devices[i].entity_id, NORMAL_UI_ENTITY_ID_MAX_LENGTH);
   }
-  if (this->save_normal_ui_config_()) {
+  bool changed = false;
+  for (size_t i = 0; i < this->normal_ui_devices_.size(); ++i) {
+    const auto &before = previous_devices[i];
+    const auto &after = this->normal_ui_devices_[i];
+    changed |= before.title != after.title || before.type != after.type || before.entity_id != after.entity_id;
+  }
+  if (!changed || this->save_normal_ui_config_()) {
     return true;
   }
   this->normal_ui_devices_ = previous_devices;
@@ -1030,14 +1036,29 @@ bool OnxStorage::save_normal_ui_config_() {
   copy_string_rows(this->normal_ui_devices_, stored_normal_ui.types, 1);
   copy_string_rows(this->normal_ui_devices_, stored_normal_ui.entity_ids, 2);
 
-  if (!this->normal_ui_pref_.save(&stored_normal_ui)) {
-    ESP_LOGW(TAG, "Failed to write normal UI config to NVS");
+#ifdef USE_ESP32
+  // ESPHome preferences queues a second copy and allocates another internal-RAM
+  // buffer to compare the old blob during sync. Keep this large record in PSRAM
+  // and write it directly using the same namespace/key/format as the backend.
+  nvs_handle_t handle;
+  esp_err_t error = nvs_open("esphome", NVS_READWRITE, &handle);
+  if (error != ESP_OK) {
+    ESP_LOGW(TAG, "Failed to open normal UI config NVS: %s", esp_err_to_name(error));
     return false;
   }
-  if (global_preferences != nullptr && !global_preferences->sync()) {
-    ESP_LOGW(TAG, "Failed to sync normal UI config NVS writes");
+  char key[16];
+  snprintf(key, sizeof(key), "%u", static_cast<unsigned>(NORMAL_UI_PREF_KEY));
+  error = nvs_set_blob(handle, key, &stored_normal_ui, sizeof(stored_normal_ui));
+  if (error == ESP_OK) error = nvs_commit(handle);
+  nvs_close(handle);
+  if (error != ESP_OK) {
+    ESP_LOGW(TAG, "Failed to write normal UI config NVS: %s", esp_err_to_name(error));
     return false;
   }
+#else
+  if (!this->normal_ui_pref_.save(&stored_normal_ui)) return false;
+  if (global_preferences != nullptr && !global_preferences->sync()) return false;
+#endif
 
   auto &verify_normal_ui=stored_normal_ui;
   if (!this->normal_ui_pref_.load(&verify_normal_ui)) {

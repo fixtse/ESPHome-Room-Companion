@@ -107,10 +107,6 @@ void RoomPanel::setup() {
   global_panel = this;
   load_();
   apply_(true, settings_);
-  if (touch_ != nullptr) {
-    listener_ = new CornerListener(this);  // NOLINT: lives as long as the firmware.
-    touch_->register_listener(listener_);
-  }
 }
 
 void RoomPanel::dump_config() {

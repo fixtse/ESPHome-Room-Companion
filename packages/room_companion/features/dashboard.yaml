@@ -1,7 +1,7 @@
 # Optional Home Assistant dashboard, rendered by a Remote WebView server and
 # streamed as JPEG tiles (vendored strange-v/RemoteWebViewClient with a display
 # handoff). Open it from a "[Local] Dashboard" control in the carousel or the
-# Dashboard switch; hold the top-left corner for about a second to return.
+# Dashboard switch; swipe left or right to return.
 external_components:
   - source:
       type: local

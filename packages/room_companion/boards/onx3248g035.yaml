@@ -8,11 +8,11 @@ substitutions:
   display_height: "480"
   ui_scale: 1.3333
   font_scale: 1.3333
-  strip_center_y: "378"
-  strip_spacing: "64"
-  strip_icon: "30"
-  strip_marker: "60"
-  strip_label_y: "430"
+  strip_center_y: "458"
+  strip_spacing: "54"
+  strip_icon: "20"
+  strip_marker: "32"
+  strip_label_y: "-1"
   strip_label_font: fonts_MiSans_Medium_16
   notice_image_width: "280"
   notice_image_height: "158"

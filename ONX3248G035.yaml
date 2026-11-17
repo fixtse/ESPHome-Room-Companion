@@ -1,6 +1,11 @@
 # Room Companion for the ONX3248G035: the fixtSE knob application on a
 # rectangular touch panel, with Assist and an optional dashboard stream.
 substitutions:
+  # Root values override the shared knob defaults during package merging.
+  ui_scale: 1.3333
+  font_scale: 1.3333
+  # Keep room for future updates alongside the scaled panel fonts.
+  font_bpp: 4
   project_name: onx3248g035
   project_friendly_name: ONX3248G035
   # Leave empty to provision Wi-Fi with Improv (USB or Bluetooth) or the setup AP.
@@ -12,7 +17,7 @@ substitutions:
   encoder_resolution: "4"
   standby_timeout_seconds: "300"
   diagnostics_update_interval: 15s
-  display_update_interval: 200ms
+  display_update_interval: 50ms
   lcd_spi_data_rate: 40MHz
   lcd_backlight_default: 100%
   product_firmware_version: "2026.10.2.72-panel.1"

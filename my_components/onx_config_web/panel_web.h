@@ -54,7 +54,7 @@ static const char PANEL_JS[] = R"ONXPANEL(
  form.innerHTML='<h2>Home Assistant dashboard</h2>'+
   '<p class="hint">Show an interactive Home Assistant dashboard on the panel. A Remote WebView server renders it and streams the picture; '+
   'native screens still appear for Assist and notifications. Add <strong>Dashboard</strong> as a control (listed under “On this panel”) '+
-  'to open it from the icon strip, or use the Dashboard switch in Home Assistant. Hold the top-left corner of the screen for a second to return.</p>'+
+  'to open it from the icon strip, or use the Dashboard switch in Home Assistant. Swipe left or right to return.</p>'+
   '<div class="field-grid">'+
   '<label class="field">Remote WebView server<input id="dash-server" maxlength="96" placeholder="192.168.1.10:8081" autocomplete="off"></label>'+
   '<label class="field">Zoom<input id="dash-scale" type="number" min="0.5" max="4" step="0.25"></label>'+

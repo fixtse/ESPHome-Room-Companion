@@ -2,6 +2,7 @@
 # knob's 240x240 screen; panels set font_scale in their board profile.
 substitutions:
   font_scale: 1
+  font_bpp: 8
 
 # Font paths are relative to this package. Include Latin accents explicitly;
 # ESPHome's default GF_Latin_Kernel omits characters such as the é in Beyoncé.
@@ -11,7 +12,7 @@ font:
     id: fonts_MiSans_Bold_12
     size: ${ (12 * (font_scale | float)) | round | int }
     glyphs: &text_symbols ["●", "→"]
-    bpp: 8
+    bpp: ${font_bpp}
     glyphsets: &text_glyphsets
       - GF_Latin_Kernel
       - GF_Latin_Core
@@ -23,103 +24,103 @@ font:
   - file: "../../fonts/MiSans-Bold.ttf"
     id: fonts_MiSans_Bold_14
     size: ${ (14 * (font_scale | float)) | round | int }
-    bpp: 8
+    bpp: ${font_bpp}
     glyphs: *text_symbols
     glyphsets: *text_glyphsets
     extras: *text_emoji
   - file: "../../fonts/MiSans-Bold.ttf"
     id: fonts_MiSans_Bold_16
     size: ${ (16 * (font_scale | float)) | round | int }
-    bpp: 8
+    bpp: ${font_bpp}
     glyphs: *text_symbols
     glyphsets: *text_glyphsets
     extras: *text_emoji
   - file: "../../fonts/MiSans-Bold.ttf"
     id: fonts_MiSans_Bold_18
     size: ${ (18 * (font_scale | float)) | round | int }
-    bpp: 8
+    bpp: ${font_bpp}
     glyphs: *text_symbols
     glyphsets: *text_glyphsets
     extras: *text_emoji
   - file: "../../fonts/MiSans-Bold.ttf"
     id: fonts_MiSans_Bold_22
     size: ${ (22 * (font_scale | float)) | round | int }
-    bpp: 8
+    bpp: ${font_bpp}
     glyphs: *text_symbols
     glyphsets: *text_glyphsets
     extras: *text_emoji
   - file: "../../fonts/MiSans-Bold.ttf"
     id: fonts_MiSans_Bold_24
     size: ${ (24 * (font_scale | float)) | round | int }
-    bpp: 8
+    bpp: ${font_bpp}
     glyphs: *text_symbols
     glyphsets: *text_glyphsets
     extras: *text_emoji
   - file: "../../fonts/MiSans-Bold.ttf"
     id: fonts_MiSans_Bold_60
     size: ${ (60 * (font_scale | float)) | round | int }
-    bpp: 8
+    bpp: ${font_bpp}
   - file: "../../fonts/MiSans-Bold.ttf"
     id: fonts_MiSans_Bold_64
     size: ${ (64 * (font_scale | float)) | round | int }
-    bpp: 8
+    bpp: ${font_bpp}
   - file: "../../fonts/MiSans-Medium.ttf"
     id: fonts_MiSans_Medium_14
     size: ${ (14 * (font_scale | float)) | round | int }
-    bpp: 8
+    bpp: ${font_bpp}
     glyphs: *text_symbols
     glyphsets: *text_glyphsets
     extras: *text_emoji
   - file: "../../fonts/MiSans-Medium.ttf"
     id: fonts_MiSans_Medium_15
     size: ${ (15 * (font_scale | float)) | round | int }
-    bpp: 8
+    bpp: ${font_bpp}
     glyphs: *text_symbols
     glyphsets: *text_glyphsets
     extras: *text_emoji
   - file: "../../fonts/MiSans-Medium.ttf"
     id: fonts_MiSans_Medium_12
     size: ${ (12 * (font_scale | float)) | round | int }
-    bpp: 8
+    bpp: ${font_bpp}
     glyphs: *text_symbols
     glyphsets: *text_glyphsets
     extras: *text_emoji
   - file: "../../fonts/MiSans-Medium.ttf"
     id: fonts_MiSans_Medium_16
     size: ${ (16 * (font_scale | float)) | round | int }
-    bpp: 8
+    bpp: ${font_bpp}
     glyphs: *text_symbols
     glyphsets: *text_glyphsets
     extras: *text_emoji
   - file: "../../fonts/MiSans-Medium.ttf"
     id: fonts_MiSans_Medium_18
     size: ${ (18 * (font_scale | float)) | round | int }
-    bpp: 8
+    bpp: ${font_bpp}
     glyphs: *text_symbols
     glyphsets: *text_glyphsets
     extras: *text_emoji
   - file: "../../fonts/MiSans-Medium.ttf"
     id: fonts_MiSans_Medium_20
     size: ${ (20 * (font_scale | float)) | round | int }
-    bpp: 8
+    bpp: ${font_bpp}
     glyphs: *text_symbols
     glyphsets: *text_glyphsets
     extras: *text_emoji
   - file: "../../fonts/MiSans-Medium.ttf"
     id: fonts_MiSans_Medium_64
     size: ${ (64 * (font_scale | float)) | round | int }
-    bpp: 8
+    bpp: ${font_bpp}
   - file: "../../fonts/MiSans-Medium.ttf"
     id: fonts_MiSans_Medium_24
     size: ${ (24 * (font_scale | float)) | round | int }
-    bpp: 8
+    bpp: ${font_bpp}
     glyphs: *text_symbols
     glyphsets: *text_glyphsets
     extras: *text_emoji
   - file: "../../fonts/MiSans-Medium.ttf"
     id: fonts_MiSans_Medium_32
     size: ${ (32 * (font_scale | float)) | round | int }
-    bpp: 8
+    bpp: ${font_bpp}
     glyphs: *text_symbols
     glyphsets: *text_glyphsets
     extras: *text_emoji

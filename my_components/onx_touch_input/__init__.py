@@ -27,6 +27,10 @@ CONFIG_SCHEMA = cv.Schema(
             cv.Schema({cv.Required("x0"): cv.int_, cv.Required("y0"): cv.int_,
                        cv.Required("x1"): cv.int_, cv.Required("y1"): cv.int_})
         ),
+        cv.Optional("page_swipe"): cv.returning_lambda,
+        cv.Optional("back_enabled"): cv.returning_lambda,
+        cv.Optional("native_touch"): cv.returning_lambda,
+        cv.Optional("on_back"): automation.validate_automation({}),
         cv.Optional("enabled"): cv.returning_lambda,
         cv.Optional("on_turn"): automation.validate_automation({}),
         cv.Optional("on_strip_tap"): automation.validate_automation({}),
@@ -46,6 +50,12 @@ async def to_code(config):
     if "enabled" in config:
         lam = await cg.process_lambda(config["enabled"], [], return_type=cg.bool_)
         cg.add(var.set_enabled_lambda(lam))
+    for key in ("back_enabled", "native_touch", "page_swipe"):
+        if key in config:
+            lam = await cg.process_lambda(config[key], [], return_type=cg.bool_)
+            cg.add(getattr(var, "set_" + key)(lam))
+    for conf in config.get("on_back", []):
+        await automation.build_automation(var.get_back_trigger(), [], conf)
     for conf in config.get("on_turn", []):
         await automation.build_automation(var.get_turn_trigger(), [(cg.int_, "direction")], conf)
     for conf in config.get("on_strip_tap", []):

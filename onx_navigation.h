@@ -68,7 +68,7 @@ inline void create() {
   lv_obj_set_style_bg_opa(marker,LV_OPA_COVER,0);
   lv_obj_clear_flag(marker,LV_OBJ_FLAG_SCROLLABLE);lv_obj_clear_flag(marker,LV_OBJ_FLAG_CLICKABLE);
   for(auto &icon:icons) {icon=lv_img_create(dock);lv_obj_clear_flag(icon,LV_OBJ_FLAG_CLICKABLE);}
-  if(strip.enabled && strip.font!=nullptr) {
+  if(strip.enabled && strip.font!=nullptr && strip.label_y>=0) {
     label=lv_label_create(dock);
     lv_obj_set_width(label,strip.width-24);
     lv_label_set_long_mode(label,LV_LABEL_LONG_DOT);
@@ -108,7 +108,7 @@ template<typename Bind> void render(const std::vector<int> &entries,int selected
         lv_anim_t animation;lv_anim_init(&animation);
         lv_anim_set_var(&animation,icons[n]);lv_anim_set_exec_cb(&animation,icon_offset);
         lv_anim_set_values(&animation,(offset+shift)*1000,offset*1000);
-        lv_anim_set_duration(&animation,180);lv_anim_set_path_cb(&animation,lv_anim_path_ease_out);
+        lv_anim_set_duration(&animation,strip.enabled?80:180);lv_anim_set_path_cb(&animation,lv_anim_path_ease_out);
         lv_anim_start(&animation);
       }
     }

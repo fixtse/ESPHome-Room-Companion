@@ -52,7 +52,7 @@ so e.g. a *Night* preset can show a dimmed dashboard or the native panel.
 
 ## Using it
 
-- Hold the **top-left corner** for about a second to open the native controls
+- Swipe **left or right** to return to the native controls
   (Home, Music, Assist, More). **Back to dashboard** or 30 s without touching
   returns to the stream.
 - **BOOT** or the **Talk** entity starts Assist from anywhere.

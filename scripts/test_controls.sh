@@ -13,6 +13,9 @@ check() {
     return 1
   fi
 }
+if check c++ -std=c++17 -Itests/touch_stubs tests/test_touch_input.cpp -o "$output_dir/touch"; then
+  check "$output_dir/touch"
+fi
 for name in control_state display_settings media_state icon_state icon_raster timer_state config_rules subscriptions; do
   if check c++ -std=c++17 "tests/test_${name}.cpp" -o "$output_dir/$name"; then
     check "$output_dir/$name"

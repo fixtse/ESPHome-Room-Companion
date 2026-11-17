@@ -72,6 +72,15 @@ for index, sequence in enumerate(sequences):
     entries.append((sequence, f'{{"{literal}",pixels_{buffer_index},{len(encoded)}}}'))
 # Sorted UTF-8 keys support binary prefix lookup at runtime.
 entries.sort(key=lambda entry: entry[0].encode())
-lines.append('inline const Glyph GLYPHS[] = {' + ',\n'.join(entry for _, entry in entries) + '};\n}')
+# Panels retain individual emoji; omit composite/skin-tone/flag sequences for OTA space.
+single_buffers = {entry.split('pixels_')[1].split(',')[0]
+                  for sequence, entry in entries if len(sequence) == 1}
+def panel_guard(line, keep):
+    return line if keep else '#ifndef USE_ROOM_COMPANION\n' + line + '\n#endif'
+lines = [panel_guard(line, not line.startswith('inline const uint8_t pixels_') or
+                     line.split('pixels_')[1].split('[')[0] in single_buffers)
+         for line in lines]
+lines.append('inline const Glyph GLYPHS[] = {\n' + '\n'.join(
+    panel_guard(entry + ',', len(sequence) == 1) for sequence, entry in entries) + '\n};\n}')
 Path('onx_emoji_pixels.h').write_text('\n'.join(lines)+'\n')
 print(f'{len(entries)} glyphs; {sum(len(line) for line in lines)} source bytes')

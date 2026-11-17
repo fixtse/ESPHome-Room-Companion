@@ -108,3 +108,53 @@ Observed after reset: `setup() finished successfully`, Wi-Fi connected
 Over the API: *Wake word enabled* on, *Microphone muted* off, voice assistant
 flags 7. Not yet checked by a person: the display, touch, saying "Okay Nabu",
 speaker output, the dashboard stream, presets and sleep.
+
+### Speaker media player — 2026-11-17
+
+Assist replies now use a speaker media player named **Speaker**, exposing volume
+and mute to Home Assistant. The initial volume is 60%; the component restores
+subsequent volume/mute settings. The announcement pipeline requests mono 16 kHz
+FLAC for the panel's fixed-rate I2S speaker. Talk/Close stop announcements, and
+the Assist overlay stays visible while the player is announcing.
+
+At the user's request, this change targets only `ONX3248G035.wake-word.yaml`;
+the 2.8-inch model and example matrix are not rebuilt in this iteration.
+
+Hardware follow-up found that a mapping-shaped shared `esphome.on_boot` was
+replaced by the panel's list-shaped hooks during package merging. The generated
+3.5-inch C++ lacked the shared initialization and backlight-on sequence. The
+shared hook now uses a list so all three startup handlers are retained.
+The 3.5-inch root also overrides the knob's scale defaults explicitly; scaled
+fonts initially used 4-bit antialiasing while investigating the OTA limit (the
+full-atlas 8-bit scaled build was rejected at 9,562,711 bytes, before upload). The PDM microphone now
+matches the manufacturer's right-channel, 32-bit input with DC correction.
+The scaled 4-bit build was still 144,387 bytes too large. Panel builds now keep
+1,409 individual color emoji while excluding composite sequences from the atlas;
+the round-knob build retains the full atlas. The generator emits the same
+conditional subset and proper C++ UTF-8 byte escapes.
+
+The compact-atlas 8-bit build passed at 8,114,303 bytes (99.9%). The user
+then chose 4-bit fonts for headroom; the final 3.5-inch root explicitly uses
+`font_bpp: 4`, with 6,822,447 bytes (84.0%) flash and 163,168 bytes static RAM.
+
+Final touch update: 44 px icon-only navigation (tap to jump, one page per
+horizontal swipe), horizontal swipe to close details/overlays/dashboard, native
+scrollable five-row Settings with direct row taps and a persisted Dark mode
+switch. LVGL runs at 16 ms with a 25% draw buffer to shorten individual SPI
+transfers; touch movements bypass the encoder's multi-detent accumulation.
+Only the 3.5-inch wake-word root was compiled and uploaded, per user instruction.
+The user confirmed the backlight fix restored the display. The final gestures,
+perceived latency, dark palette, microphone/wake word and speaker acoustics
+still need physical testing.
+
+Execution: devserv checkout `/home/fixt/agent-work/room-companion-volume-20261117`,
+base revision `0e9bbe0f14e1cf1e459eb8ff5c88ec80b67eb573` plus this working tree.
+Pinned container `ghcr.io/esphome/esphome:2026.10.2`; commands:
+`esphome compile ONX3248G035.wake-word.yaml` and
+`esphome upload ONX3248G035.wake-word.yaml --device 127.0.0.1`
+(loopback SSH forwarding to the panel's OTA port).
+Native C++ touch regression tests passed (one page per swipe, back in both
+directions, native scroll click suppression and navigation tap behavior), as did
+both the full and compact atlas encoding/decoding tests.
+The final binary is kept separately under
+`.esphome/artifacts/rc35-4bit-nav-dark-20261117.bin` on devserv.

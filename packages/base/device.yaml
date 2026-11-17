@@ -7,81 +7,81 @@ esphome:
   min_version: 2026.10.0
   comment: "${project_friendly_name}"
   on_boot:
-    priority: -100
-    then:
-      - lambda: |-
-          onx_runtime::start();
-          onx_entity_config::load_icons();
-          onx_entity_config::load_display_settings();
-          id(lcd_display)->set_hardware_orientation(onx_display_settings::orientation.turns);
-          lv_obj_invalidate(lv_scr_act());
-          onx_entity_config::load_sensor_configs();
-          onx_entity_config::load_gestures();
-          id(ui_presenter)->set_standby_guard([]() {
-            return !id(mode_manager)->is_provisioning_mode_enabled() && !onx_notification::current.visible && !onx_timer::popup.visible && !onx_media::idle_popup.visible && onx_display_settings::standby_allowed(onx_display_settings::current.standby_scope,
-                id(normal_device_detail_active));
-          });
-          set_normal_ui_storage_for_custom_logic(id(app_storage));
-          restore_device1_config_for_select(id(device1_config), id(api_server));
-          restore_device2_config_for_select(id(device2_config), id(api_server));
-          restore_device3_config_for_select(id(device3_config), id(api_server));
-          restore_device4_config_for_select(id(device4_config), id(api_server));
-          restore_device5_config_for_select(id(device5_config), id(api_server));
-          restore_device6_config_for_select(id(device6_config), id(api_server));
-          restore_device7_config_for_select(id(device7_config), id(api_server));
-          restore_device8_config_for_select(id(device8_config), id(api_server));
-          restore_device9_config_for_select(id(device9_config), id(api_server));
-          restore_device10_config_for_select(id(device10_config), id(api_server));
-          id(normal_device_count) = static_cast<int>(configured_normal_device_count());
-          restore_standby_weather_config_for_select(id(standby_weather_config), id(api_server));
-          subscribe_device_config_entities_from_selects(id(device1_config), id(device2_config),
-                                                        id(device3_config), id(device4_config), id(device5_config),
-                                                        id(device6_config), id(device7_config), id(device8_config),
-                                                        id(device9_config), id(device10_config),
-                                                        id(standby_weather_config), id(api_server),
-                                                        &id(standby_weather_entity_id),
-                                                        &id(standby_weather_state),
-                                                        &id(standby_weather_temperature),
-                                                        &id(standby_weather_temperature_unit),
-                                                        &id(standby_weather_humidity));
-          onx_clock_sensors::subscribe(id(api_server));
-          // Presets reuse the configuration page's save handler. A changed preset
-          // list reconnects HA so it reads the select's new options.
-          onx_presets::attach(id(entity_config_web), id(preset_select),
-                              []() { custom_logic::disconnect_all_clients_for_refresh(id(api_server)); });
-          apply_device1_type_options(id(device1_type));
-          apply_device2_type_options(id(device2_type));
-          apply_device3_type_options(id(device3_type));
-          apply_device4_type_options(id(device4_type));
-          apply_device5_type_options(id(device5_type));
-          apply_device6_type_options(id(device6_type));
-          apply_device7_type_options(id(device7_type));
-          apply_device8_type_options(id(device8_type));
-          apply_device9_type_options(id(device9_type));
-          apply_device10_type_options(id(device10_type));
-          id(sleep_mode_enabled).publish_state(id(ui_presenter)->get_sleep_mode_enabled());
-          id(sleep_mode_start_time).publish_state(id(ui_presenter)->get_sleep_window_start_time());
-          id(sleep_mode_end_time).publish_state(id(ui_presenter)->get_sleep_window_end_time());
-          id(sleep_timeout_seconds).publish_state((float) id(ui_presenter)->get_sleep_timeout_ms() / 1000.0f);
-          custom_logic::erase_legacy_ha_token();
-      # Force backlight off first to avoid boot-time flash before LVGL first frame.
-      - output.set_level:
-          id: lcd_backlight_pwm
-          level: 0%
-      - delay: 250ms
-      - light.turn_on:
-          id: lcd_backlight
-          brightness: 15%
-          transition_length: 0s
-      - delay: 1500ms
-      - light.turn_on:
-          id: lcd_backlight
-          brightness: ${lcd_backlight_default}
-          transition_length: 1200ms
-      - delay: 3000ms
-      - lambda: |-
-          id(boot_finished) = true;
-          id(mode_manager)->mark_boot_finished();
+    - priority: -100
+      then:
+        - lambda: |-
+            onx_runtime::start();
+            onx_entity_config::load_icons();
+            onx_entity_config::load_display_settings();
+            id(lcd_display)->set_hardware_orientation(onx_display_settings::orientation.turns);
+            lv_obj_invalidate(lv_scr_act());
+            onx_entity_config::load_sensor_configs();
+            onx_entity_config::load_gestures();
+            id(ui_presenter)->set_standby_guard([]() {
+              return !id(mode_manager)->is_provisioning_mode_enabled() && !onx_notification::current.visible && !onx_timer::popup.visible && !onx_media::idle_popup.visible && onx_display_settings::standby_allowed(onx_display_settings::current.standby_scope,
+                  id(normal_device_detail_active));
+            });
+            set_normal_ui_storage_for_custom_logic(id(app_storage));
+            restore_device1_config_for_select(id(device1_config), id(api_server));
+            restore_device2_config_for_select(id(device2_config), id(api_server));
+            restore_device3_config_for_select(id(device3_config), id(api_server));
+            restore_device4_config_for_select(id(device4_config), id(api_server));
+            restore_device5_config_for_select(id(device5_config), id(api_server));
+            restore_device6_config_for_select(id(device6_config), id(api_server));
+            restore_device7_config_for_select(id(device7_config), id(api_server));
+            restore_device8_config_for_select(id(device8_config), id(api_server));
+            restore_device9_config_for_select(id(device9_config), id(api_server));
+            restore_device10_config_for_select(id(device10_config), id(api_server));
+            id(normal_device_count) = static_cast<int>(configured_normal_device_count());
+            restore_standby_weather_config_for_select(id(standby_weather_config), id(api_server));
+            subscribe_device_config_entities_from_selects(id(device1_config), id(device2_config),
+                                                          id(device3_config), id(device4_config), id(device5_config),
+                                                          id(device6_config), id(device7_config), id(device8_config),
+                                                          id(device9_config), id(device10_config),
+                                                          id(standby_weather_config), id(api_server),
+                                                          &id(standby_weather_entity_id),
+                                                          &id(standby_weather_state),
+                                                          &id(standby_weather_temperature),
+                                                          &id(standby_weather_temperature_unit),
+                                                          &id(standby_weather_humidity));
+            onx_clock_sensors::subscribe(id(api_server));
+            // Presets reuse the configuration page's save handler. A changed preset
+            // list reconnects HA so it reads the select's new options.
+            onx_presets::attach(id(entity_config_web), id(preset_select),
+                                []() { custom_logic::disconnect_all_clients_for_refresh(id(api_server)); });
+            apply_device1_type_options(id(device1_type));
+            apply_device2_type_options(id(device2_type));
+            apply_device3_type_options(id(device3_type));
+            apply_device4_type_options(id(device4_type));
+            apply_device5_type_options(id(device5_type));
+            apply_device6_type_options(id(device6_type));
+            apply_device7_type_options(id(device7_type));
+            apply_device8_type_options(id(device8_type));
+            apply_device9_type_options(id(device9_type));
+            apply_device10_type_options(id(device10_type));
+            id(sleep_mode_enabled).publish_state(id(ui_presenter)->get_sleep_mode_enabled());
+            id(sleep_mode_start_time).publish_state(id(ui_presenter)->get_sleep_window_start_time());
+            id(sleep_mode_end_time).publish_state(id(ui_presenter)->get_sleep_window_end_time());
+            id(sleep_timeout_seconds).publish_state((float) id(ui_presenter)->get_sleep_timeout_ms() / 1000.0f);
+            custom_logic::erase_legacy_ha_token();
+        # Force backlight off first to avoid boot-time flash before LVGL first frame.
+        - output.set_level:
+            id: lcd_backlight_pwm
+            level: 0%
+        - delay: 250ms
+        - light.turn_on:
+            id: lcd_backlight
+            brightness: 15%
+            transition_length: 0s
+        - delay: 1500ms
+        - light.turn_on:
+            id: lcd_backlight
+            brightness: ${lcd_backlight_default}
+            transition_length: 1200ms
+        - delay: 3000ms
+        - lambda: |-
+            id(boot_finished) = true;
+            id(mode_manager)->mark_boot_finished();
   name_add_mac_suffix: true
 
 # Keep the API large-select batch patch active until ESPHome provides the fix.
@@ -97,6 +97,15 @@ esp32:
       # TLS records/certificates exhausted fragmented internal RAM on live units.
       # This board has 8 MB PSRAM; keep task stacks and DMA in internal memory.
       CONFIG_MBEDTLS_EXTERNAL_MEM_ALLOC: "y"
+      # ESPHome enables PSRAM for explicit allocations only, so every plain
+      # malloc (strings, BLE, HTTP, LVGL helpers) used the ~300 KB of internal
+      # RAM. The panel ran out (5 KB free): Wi-Fi dropped, OTA failed, the I2S
+      # microphone could not get DMA memory and the loop slowed to ~140 ms.
+      # Larger allocations now go to PSRAM; internal RAM keeps small objects
+      # and a DMA/stack reserve.
+      CONFIG_SPIRAM_USE_MALLOC: "y"
+      CONFIG_SPIRAM_MALLOC_ALWAYSINTERNAL: "4096"
+      CONFIG_SPIRAM_MALLOC_RESERVE_INTERNAL: "65536"
       # ESPHome's IDF web server rejects POST bodies above this size. The
       # configuration page sends up to 8 KB (slots with playlists and gestures,
       # preset restore chunks); ESP-IDF 5.5 grows its buffer on demand.

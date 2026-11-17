@@ -26,9 +26,93 @@ lvgl:
   touchscreens:
     - touchscreen_id: panel_touch
   resume_on_input: false
-  buffer_size: 50%
+  update_interval: 16ms
+  buffer_size: 25%
   default_font: fonts_MiSans_Medium_14
   log_level: WARN
+
+switch:
+  - platform: template
+    id: panel_dark_mode
+    name: Dark mode
+    optimistic: true
+    restore_mode: RESTORE_DEFAULT_OFF
+
+interval:
+  - interval: 50ms
+    then:
+      - lambda: |-
+          // Dark mode remaps the knob palette (grey surfaces, white text) to
+          // near-black on every widget, including overlays. Each dark colour is
+          // unique, so turning it off maps back to the original exactly, and
+          // re-applying is harmless for widgets that repaint themselves.
+          struct Pair { uint32_t normal, dark; };
+          static const Pair surfaces[] = {
+            {0x1A1A1A, 0x010101}, {0x272727, 0x121213}, {0x232323, 0x0E0E0F},
+            {0x2D2D2D, 0x151516}, {0x3D3D3D, 0x1F1F21}, {0x101418, 0x020304},
+            {0x2A2F35, 0x111417}, {0x24323A, 0x0D161B}, {0x414850, 0x22272C},
+            {0x5A5A5A, 0x333335}, {0x404040, 0x252527},
+          };
+          static const Pair texts[] = {
+            {0xFFFFFF, 0xE4E4E6}, {0xD2D2D2, 0x9C9C9E}, {0xD8D8D8, 0xA2A2A4},
+            {0xB8B8B8, 0x858587}, {0xAAAAAA, 0x7A7A7C},
+          };
+          static const lv_style_prop_t surface_props[] = {
+            LV_STYLE_BG_COLOR, LV_STYLE_BG_GRAD_COLOR, LV_STYLE_BORDER_COLOR,
+            LV_STYLE_ARC_COLOR, LV_STYLE_LINE_COLOR, LV_STYLE_OUTLINE_COLOR,
+          };
+          static const lv_style_selector_t parts[] = {
+            LV_PART_MAIN, LV_PART_INDICATOR, LV_PART_KNOB, LV_PART_ITEMS,
+          };
+          static lv_obj_t *previous = nullptr;
+          static int8_t previous_mode = -1;
+          static uint8_t ticks = 0;
+          auto *page = lv_scr_act();
+          const bool enabled = id(panel_dark_mode).state;
+          const bool changed = page != previous || enabled != (previous_mode == 1);
+          // While dark, re-sweep once a second to catch colours set at runtime.
+          if (!changed && !(enabled && ++ticks >= 20)) return;
+          ticks = 0;
+          if (changed || enabled) {
+            auto remap = [&](lv_obj_t *obj, lv_style_prop_t prop, lv_style_selector_t sel,
+                             const Pair *table, size_t n, bool to_dark) {
+              lv_style_value_t v;
+              if (lv_obj_get_local_style_prop(obj, prop, &v, sel) != LV_STYLE_RES_FOUND) return;
+              const uint32_t c = lv_color_to_u32(v.color) & 0xFFFFFF;
+              for (size_t i = 0; i < n; ++i) {
+                const uint32_t from = to_dark ? table[i].normal : table[i].dark;
+                if (c != from) continue;
+                v.color = lv_color_hex(to_dark ? table[i].dark : table[i].normal);
+                lv_obj_set_local_style_prop(obj, prop, v, sel);
+                return;
+              }
+            };
+            std::function<void(lv_obj_t *)> walk = [&](lv_obj_t *obj) {
+              for (auto part : parts) {
+                for (auto prop : surface_props)
+                  remap(obj, prop, part, surfaces, sizeof(surfaces) / sizeof(*surfaces), enabled);
+                remap(obj, LV_STYLE_TEXT_COLOR, part, texts, sizeof(texts) / sizeof(*texts), enabled);
+                remap(obj, LV_STYLE_IMAGE_RECOLOR, part, texts, sizeof(texts) / sizeof(*texts), enabled);
+              }
+              const uint32_t n = lv_obj_get_child_count(obj);
+              for (uint32_t i = 0; i < n; ++i) walk(lv_obj_get_child(obj, i));
+            };
+            // Pages left dark are restored when they are next shown.
+            walk(page);
+            walk(lv_layer_top());
+          }
+          if (!changed) return;
+          previous = page; previous_mode = enabled ? 1 : 0;
+          for (uint32_t i = 0; i < lv_obj_get_child_count(page); ++i) {
+            auto *shell = lv_obj_get_child(page, i);
+            if (lv_obj_check_type(shell, &lv_obj_class)) {
+              // Main carousel pages use the space above the compact icon bar.
+              if (onx_navigation::visible) {
+                lv_obj_set_height(shell, ${ (display_height | int) - 44 });
+                lv_obj_set_style_radius(shell, 0, 0);
+              }
+            }
+          }
 
 esphome:
   on_boot:

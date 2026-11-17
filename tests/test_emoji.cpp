@@ -2,10 +2,13 @@
 #include <cassert>
 int main() {
   assert(onx_emoji::encode("Beyoncé") == "Beyoncé");
+  #ifndef USE_ROOM_COMPANION
   for (const char *text : {"👨‍👩‍👧‍👦", "👩🏽‍💻", "👍🏿", "🇵🇪", "🏳️‍🌈", "1️⃣"}) {
     auto encoded = onx_emoji::encode(text);
     assert(encoded.size() == 4);
   }
+  #endif
+  assert(onx_emoji::encode("😀").size() == 4);
   assert(onx_emoji::encode("❤️") == onx_emoji::encode("❤"));
   lv_font_t font{24, 0, nullptr};
   for (unsigned i = 0; i < sizeof(onx_emoji::GLYPHS) / sizeof(onx_emoji::GLYPHS[0]); ++i) {

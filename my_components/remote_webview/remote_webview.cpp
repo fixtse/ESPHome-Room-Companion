@@ -12,6 +12,7 @@
 #include "esp_efuse.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
+#include "freertos/idf_additions.h"
 
 #include <algorithm>
 
@@ -439,7 +440,14 @@ void RemoteWebView::ws_event_handler_(void *handler_arg, esp_event_base_t, int32
 }
 
 bool RemoteWebView::start_decode_task_() {
-  return xTaskCreatePinnedToCore(&RemoteWebView::decode_task_tramp_, "rwv_decode", cfg::decode_task_stack, this, cfg::decode_task_prio, &t_decode_, 1) == pdPASS;
+  // 32 KB rarely exists as one internal block once Wi-Fi, BLE and LVGL are up;
+  // the decoder never touches flash, so its stack can live in PSRAM.
+  if (xTaskCreatePinnedToCore(&RemoteWebView::decode_task_tramp_, "rwv_decode", cfg::decode_task_stack, this,
+                              cfg::decode_task_prio, &t_decode_, 1) == pdPASS)
+    return true;
+  return xTaskCreatePinnedToCoreWithCaps(&RemoteWebView::decode_task_tramp_, "rwv_decode", cfg::decode_task_stack,
+                                         this, cfg::decode_task_prio, &t_decode_, 1,
+                                         MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT) == pdPASS;
 }
 
 void RemoteWebView::decode_task_tramp_(void *arg) {

@@ -25,7 +25,7 @@ onx_touch_input:
   button_id: key_btn
   width: ${display_width}
   # Everything below the scaled 240x240 knob layout is the icon strip.
-  strip_top: ${ (240 * (ui_scale | float)) | round | int }
+  strip_top: ${ (display_height | int) - 44 }
   strip_spacing: ${strip_spacing}
   step: ${ (22 * (ui_scale | float)) | round | int }
   passthrough:
@@ -36,10 +36,23 @@ onx_touch_input:
       y1: 56
   enabled: |-
     return id(room_panel)->knob_ui_has_touch();
+  page_swipe: |-
+    return !id(normal_device_detail_active) && id(room_panel)->knob_ui_has_touch();
+  back_enabled: |-
+    return id(normal_device_detail_active) || id(room_panel)->dashboard_open() || !id(room_panel)->knob_ui_has_touch();
+  native_touch: |-
+    return !id(room_panel)->knob_ui_has_touch() ||
+           (id(normal_device_detail_active) && id(normal_device_detail_kind) == NORMAL_DEVICE_DETAIL_KIND_SETTINGS);
+  on_back:
+    - script.execute: panel_back
   on_turn:
     - lambda: |-
-        if (direction > 0) id(onx_input_cw).execute();
-        else id(onx_input_ccw).execute();
+        int detents = id(normal_knob_applied_value);
+        if (detents != 1 && detents != 2 && detents != 4) detents = 1;
+        for (int i = 0; i < detents; ++i) {
+          if (direction > 0) id(onx_input_cw).execute();
+          else id(onx_input_ccw).execute();
+        }
   on_strip_tap:
     # Each carousel position needs the configured number of detents.
     - lambda: |-
@@ -51,6 +64,30 @@ onx_touch_input:
         }
 
 script:
+  - id: panel_back
+    then:
+      - lambda: |-
+          id(ui_presenter)->notify_user_activity();
+          if (onx_notification_ui::detail_id != 0) { onx_notification_ui::close_detail(); return; }
+          if (onx_notification_ui::panel_open) { onx_notification_ui::close_panel(); return; }
+          if (!lv_obj_has_flag(id(assist_overlay), LV_OBJ_FLAG_HIDDEN)) {
+            id(assist).request_stop();
+            auto call = id(panel_media_player).make_call();
+            call.set_command(esphome::media_player::MEDIA_PLAYER_COMMAND_STOP).set_announcement(true).perform();
+            id(assist_finished).stop();
+            lv_obj_add_flag(id(assist_overlay), LV_OBJ_FLAG_HIDDEN);
+            id(room_panel)->set_overlay(esphome::room_companion::OVERLAY_ASSIST, false);
+            return;
+          }
+          if (id(room_panel)->dashboard_open()) { id(room_panel)->close_dashboard(); return; }
+          if (!id(normal_device_detail_active)) return;
+          switch (id(normal_device_detail_kind)) {
+            case NORMAL_DEVICE_DETAIL_KIND_SETTINGS_WIFI: id(exit_normal_settings_wifi_detail).execute(); break;
+            case NORMAL_DEVICE_DETAIL_KIND_SETTINGS_BRIGHTNESS: id(exit_normal_settings_brightness_detail).execute(); break;
+            case NORMAL_DEVICE_DETAIL_KIND_SETTINGS_KNOB: id(exit_normal_settings_knob_detail).execute(); break;
+            case NORMAL_DEVICE_DETAIL_KIND_SETTINGS_CONNECTION: id(exit_normal_settings_connection).execute(); break;
+            default: id(exit_normal_switch_detail).execute(); break;
+          }
   # Sensitivity is applied by the detent accumulator in onx_input_cw/ccw.
   - id: onx_input_apply_sensitivity
     then:
