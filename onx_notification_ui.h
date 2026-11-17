@@ -32,7 +32,7 @@ inline Hooks hooks;
 inline int width = 240, height = 240;
 inline lv_obj_t *bell = nullptr, *badge = nullptr, *badge_label = nullptr;
 inline lv_obj_t *toast = nullptr, *toast_title = nullptr, *toast_body = nullptr;
-inline lv_obj_t *panel = nullptr, *list = nullptr, *empty_label = nullptr;
+inline lv_obj_t *panel = nullptr, *list = nullptr, *empty_label = nullptr, *count_label = nullptr, *close_button = nullptr;
 inline lv_obj_t *detail = nullptr, *detail_title = nullptr, *detail_age = nullptr, *detail_image = nullptr,
                 *detail_body = nullptr;
 inline uint32_t detail_id = 0, built_revision = 0;
@@ -200,14 +200,10 @@ inline void init(int screen_width, int screen_height, Fonts f, Hooks h) {
   lv_obj_set_style_pad_all(panel, S(8), 0);
   lv_obj_set_flex_flow(panel, LV_FLEX_FLOW_COLUMN);
   lv_obj_set_style_pad_row(panel, S(6), 0);
+  // Header: title and unread count; actions sit at the bottom within thumb reach.
   lv_obj_t *header;
   build_header(panel, "Notifications", &header);
-  lv_obj_t *actions = box(header, BG, 0);
-  lv_obj_set_size(actions, LV_SIZE_CONTENT, LV_SIZE_CONTENT);
-  lv_obj_set_flex_flow(actions, LV_FLEX_FLOW_ROW);
-  lv_obj_set_style_pad_column(actions, S(6), 0);
-  button(actions, "Clear all", CARD, on_clear, nullptr);
-  button(actions, "Close", CARD, on_close_panel, nullptr);
+  count_label = text(header, fonts.small, MUTED, "");
   list = box(panel, BG, 0);
   lv_obj_set_width(list, lv_pct(100));
   lv_obj_set_flex_grow(list, 1);
@@ -216,6 +212,17 @@ inline void init(int screen_width, int screen_height, Fonts f, Hooks h) {
   lv_obj_add_flag(list, LV_OBJ_FLAG_SCROLLABLE);
   lv_obj_set_scroll_dir(list, LV_DIR_VER);
   empty_label = text(panel, fonts.body, MUTED, "No notifications.\nPull down from the top edge to open this list.");
+  lv_obj_t *actions = box(panel, BG, 0);
+  lv_obj_set_size(actions, lv_pct(100), LV_SIZE_CONTENT);
+  lv_obj_set_flex_flow(actions, LV_FLEX_FLOW_ROW);
+  lv_obj_set_style_pad_column(actions, S(6), 0);
+  lv_obj_t *clear = button(actions, "Clear all", CARD, on_clear, nullptr);
+  close_button = button(actions, "Close", onx_display_settings::accent_strong(), on_close_panel, nullptr);
+  for (auto *b : {clear, close_button}) {
+    lv_obj_set_height(b, S(33));
+    lv_obj_set_style_radius(b, S(17), 0);
+    lv_obj_set_flex_grow(b, 1);
+  }
 
   // Detail view.
   detail = box(top, BG, 0);
@@ -266,7 +273,10 @@ inline void rebuild_list() {
     lv_obj_remove_flag(column, LV_OBJ_FLAG_CLICKABLE);
     lv_obj_t *title = text(column, fonts.title, item.read ? MUTED : TEXT, item.title.c_str());
     lv_obj_t *body = text(column, fonts.body, MUTED, item.body.c_str());
-    lv_obj_t *age = text(column, fonts.small, accent(), onx_notification::age_text(item.received_ms, now).c_str());
+    // Read items are dimmed, with a muted age.
+    const std::string age_text = onx_notification::age_text(item.received_ms, now) + (item.read ? " · read" : "");
+    lv_obj_t *age = text(column, fonts.small, item.read ? MUTED : accent(), age_text.c_str());
+    if (item.read) lv_obj_set_style_opa(row, LV_OPA_70, 0);
     for (auto *label : {title, body, age}) {
       lv_obj_set_width(label, lv_pct(100));
       lv_label_set_long_mode(label, LV_LABEL_LONG_DOT);
@@ -325,6 +335,10 @@ inline void refresh() {
   // Accent colour follows the device setting.
   lv_obj_set_style_border_color(toast, lv_color_hex(accent()), 0);
   lv_obj_set_style_text_color(detail_age, lv_color_hex(accent()), 0);
+  lv_obj_set_style_bg_color(close_button, lv_color_hex(onx_display_settings::accent_strong()), 0);
+  char unread_text[24] = "";
+  if (unread) snprintf(unread_text, sizeof(unread_text), "%u unread", static_cast<unsigned>(unread));
+  lv_label_set_text(count_label, unread_text);
 
   const bool show_toast = center.toast_visible(now) && !panel_open && detail_id == 0;
   if (show_toast) {

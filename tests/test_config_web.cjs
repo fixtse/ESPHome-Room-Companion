@@ -133,7 +133,7 @@ const { chromium } = require('playwright');
   await page.locator('#search').fill('Office fan');
   await page.locator('#results').getByRole('button',{name:'Office fan'}).click();
   assert.equal(await page.locator('#choose-action').isDisabled(),true);
-  assert.match(await page.locator('#rotate-hint').textContent(),/speed/);
+  assert.match(await page.locator('#rotate-hint').textContent(),/Speed/);
   await page.locator('#save').click();
   await page.getByRole('status').filter({hasText:'1 slot saved.'}).waitFor();
   assert.equal(saved.at(-1).icon,'mdi:ceiling-fan');assert.equal(saved.at(-1).icon_override,'1');
@@ -142,7 +142,7 @@ const { chromium } = require('playwright');
   await page.locator('#choose-entity').click();
   await page.locator('#search').fill('Office mode');
   await page.getByRole('button',{name:'Office mode'}).click();
-  assert.match(await page.locator('#press-hint').textContent(),/Confirm option/);
+  assert.match(await page.locator('#press-hint').textContent(),/Tap an option in the list/);
   await page.getByRole('button',{name:'Home Assistant',exact:true}).click();
   await page.locator('#retry-states').click();
   await page.getByRole('status').filter({hasText:'Entity state refresh queued'}).waitFor();
@@ -189,7 +189,7 @@ const { chromium } = require('playwright');
    await page.getByRole('status').filter({hasText:'1 slot saved.'}).waitFor();
    assert.equal(saved.at(-1).action,entity);
   }
-  assert.match(await page.locator('#press-hint').textContent(),/Playing\/paused: play\/pause.*Comfort scene/);
+  assert.match(await page.locator('#press-hint').textContent(),/play \/ pause.*Shortcut: Comfort scene/);
 
   await page.getByRole('button',{name:'Device settings',exact:true}).click();
   assert.equal(await page.locator('#standby-scope').inputValue(),'main');

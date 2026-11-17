@@ -172,6 +172,9 @@ interval:
   # A new orientation changes the screen size: restart once it is saved.
   - interval: 1s
     then:
+      # Recent binary-sensor changes for the redesigned detail screen.
+      - lambda: |-
+          if (id(ha_time_ready)) onx_panel_detail::track(id(ha_time).now().timestamp);
       - lambda: |-
           static uint32_t due = 0;
           if (onx_display_settings::orientation.turns == onx_panel_ui::turns) { due = 0; return; }
@@ -299,6 +302,7 @@ esphome:
   includes:
     - ../../onx_panel_ui.h
     - ../../onx_panel_layout.h
+    - ../../onx_panel_detail.h
     - ../../onx_panel_pages.h
   on_boot:
     # Orientation (Device settings → Display orientation; no accelerometer):
@@ -409,6 +413,18 @@ script:
             if (detail && custom_logic_entity_sub::is_timer_detail(entity)) view=onx_panel_pages::timer_view(entity,title);
             return view;
           };
+          // Redesigned detail screens (onx_panel_detail.h).
+          onx_panel_detail::fonts = {id(fonts_MiSans_Medium_14)->get_lv_font(), id(fonts_MiSans_Medium_20)->get_lv_font(),
+              id(fonts_MiSans_Bold_18)->get_lv_font(), id(fonts_MiSans_Medium_32)->get_lv_font(), &lv_font_montserrat_28};
+          onx_panel_detail::blocked = []() { return id(touch_input)->suppress_click() || onx_notification_ui::owns_screen(); };
+          onx_panel_detail::activity = []() { id(ui_presenter)->notify_user_activity(); };
+          onx_panel_detail::light_state = [](const std::string &entity) {
+            const int config = onx_panel_pages::configured(entity);
+            if (config < 0) return esphome::onx_storage::NormalLightState{};
+            return id(app_storage)->normal_device_slot(custom_logic::normal_ui_slot_for_device_config_slot(config)).light();
+          };
+          onx_panel_detail::light_mode = []() { return int(id(normal_detail_light_mode)); };
+          onx_panel_detail::set_light_mode = [](int mode) { id(normal_detail_light_mode) = mode; };
           onx_panel_pages::draw_graph = [](lv_obj_t *parent,const std::string &entity,int y) {
             static std::string previous;
             static uint32_t refreshed = 0;
@@ -423,6 +439,15 @@ script:
               onx_render::align(onx_sensor_graph::canvas,LV_ALIGN_TOP_MID,0,y);
             }
           };
+          onx_panel_detail::draw_graph = onx_panel_pages::draw_graph;
+          onx_panel_detail::shortcut = [](const std::string &entity) {
+            const int config = onx_panel_pages::configured(entity);
+            return config < 0 ? std::string() : onx_entity_config::action_for_slot(config);
+          };
+          onx_panel_detail::shortcut_title = [](const std::string &action) {
+            return onx_media::display_text(custom_logic::ha_entity_title_from_registry_cache(action));
+          };
+          onx_panel_detail::run_shortcut = []() { id(emit_configured_press_action).execute(id(normal_device_detail_index)); };
           onx_panel_pages::open = [](const std::string &entity) {
             if (id(touch_input)->suppress_click() || onx_notification::current.visible ||
                 onx_timer::popup.visible || onx_notification_ui::owns_screen() ||

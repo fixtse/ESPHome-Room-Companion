@@ -88,7 +88,9 @@ class TouchInput : public Component, public touchscreen::TouchListener {
       const auto &r = passthrough_[i];
       if (x >= r.x0 && x < r.x1 && y >= r.y0 && y < r.y1) { state_ = State::IGNORED; return; }
     }
-    if (passthrough_fn_ && passthrough_fn_(x, y)) { state_ = State::IGNORED; return; }
+    // The left-edge back swipe wins over on-screen controls near that edge.
+    const bool edge = x < EDGE && back_enabled_ && back_enabled_() && edge_back_ && edge_back_();
+    if (!edge && passthrough_fn_ && passthrough_fn_(x, y)) { state_ = State::IGNORED; return; }
     back_ = back_enabled_ && back_enabled_();
     // In detail views horizontal swipes page through the view; only a swipe
     // that starts at the left edge goes back.

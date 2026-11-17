@@ -6,6 +6,7 @@
 #include "onx_render.h"
 #include "onx_navigation.h"
 #include "onx_panel_ui.h"
+#include "onx_panel_detail.h"
 
 namespace onx_panel_pages {
 using onx_panel_layout::Page;
@@ -95,7 +96,7 @@ inline onx_detail_view::View timer_view(const std::string &entity,const std::str
   result.badge.text="Timer";result.value_ring=timer.ready?int(timer.fraction*1000):-1;
   return result;
 }
-struct Item {std::string entity,name,value,context,hint,icon; int ring{-1};bool available{false},graph{false};};
+struct Item {std::string entity,name,value,context,hint,icon; int ring{-1};bool available{false},graph{false},on{false};};
 inline std::function<onx_detail_view::View(const std::string &,bool)> view_for;
 inline Item item(const std::string &entity,bool detail=false) {
   Item out;out.entity=entity;
@@ -107,6 +108,12 @@ inline Item item(const std::string &entity,bool detail=false) {
   if(detail && !view.badge.text.empty())out.context=view.badge.text+(out.context.empty()?"":" · "+out.context);
   out.hint=view.hint.text;
   out.icon=view.icon;out.available=view.available;out.ring=view.value_ring;out.graph=view.layout=="graph";
+  // Active entities tint their icon with the accent colour.
+  if(const auto *d=custom_logic_entity_sub::entity_detail(entity); d && d->available) {
+    const auto &st=d->state;
+    out.on=st=="on" || st=="playing" || st=="open" || st=="opening" || st=="active" ||
+        (entity.rfind("climate.",0)==0 && st!="off");
+  }
   return out;
 }
 inline lv_obj_t *layer=nullptr;
@@ -120,7 +127,7 @@ struct Card {
 };
 inline bool same(const Item &a,const Item &b) {
   return a.entity==b.entity && a.name==b.name && a.value==b.value && a.context==b.context &&
-      a.hint==b.hint && a.icon==b.icon && a.ring==b.ring && a.available==b.available && a.graph==b.graph;
+      a.hint==b.hint && a.icon==b.icon && a.ring==b.ring && a.available==b.available && a.graph==b.graph && a.on==b.on;
 }
 inline std::array<Card,4> cards{};
 inline std::array<onx_panel_layout::Rect,4> rects{};
@@ -172,6 +179,7 @@ inline void suspend_underlay() {
   }
 }
 inline void hide() {
+  onx_panel_detail::hide();
   showing=false;if(layer)lv_obj_add_flag(layer,LV_OBJ_FLAG_HIDDEN);
   if(suspended_page)restore_underlay();
 }
@@ -190,6 +198,16 @@ template<typename Bind> void render(const std::string &entity,int width,int heig
   lv_obj_set_size(layer,width,height);lv_obj_set_pos(layer,0,0);
   // Keep the dock, dashboard and bell above the opaque panel content.
   if(lv_obj_get_index(layer)!=0)lv_obj_move_background(layer);lv_obj_remove_flag(layer,LV_OBJ_FLAG_HIDDEN);showing=true;detail_view=detail;
+  // Redesigned full-screen detail screens with direct touch controls.
+  if(detail && onx_panel_detail::supports(entity)) {
+    for(auto &c:cards){lv_obj_add_flag(c.box,LV_OBJ_FLAG_HIDDEN);c.initialized=false;}
+    auto title=custom_logic::ha_entity_title_from_registry_cache(entity);if(title.empty())title=entity;
+    const auto view=view_for?view_for(entity,true):onx_detail_view::build(entity,title);
+    onx_panel_detail::render(layer,entity,onx_media::display_text(title),view,width,height);
+    onx_panel_detail::tick(entity);
+    return;
+  }
+  onx_panel_detail::hide();
   for(int i=0;i<4;++i) {
     auto &c=cards[i];if(i>=count){lv_obj_add_flag(c.box,LV_OBJ_FLAG_HIDDEN);continue;}
     lv_obj_remove_flag(c.box,LV_OBJ_FLAG_HIDDEN);const auto r=rects[i];
@@ -224,6 +242,8 @@ template<typename Bind> void render(const std::string &entity,int width,int heig
     if(!compact && !v.graph) {
       const bool small_icon=kind==Kind::TWO_CONTROLS || r.w<220;
       bind(c.icon,entities[i]);lv_image_set_scale(c.icon,small_icon?64:96);
+      lv_obj_set_style_image_recolor(c.icon,lv_color_hex(onx_display_settings::accent()),0);
+      lv_obj_set_style_image_recolor_opa(c.icon,v.on?LV_OPA_COVER:LV_OPA_TRANSP,0);
       onx_render::align(c.icon,LV_ALIGN_TOP_RIGHT,-pad,small_icon?12:28);
       lv_obj_remove_flag(c.icon,LV_OBJ_FLAG_HIDDEN);
     }else lv_obj_add_flag(c.icon,LV_OBJ_FLAG_HIDDEN);
@@ -235,7 +255,8 @@ template<typename Bind> void render(const std::string &entity,int width,int heig
   }
 }
 inline bool tap(int x,int y) {
-  if(!showing || detail_view)return false;
+  if(showing && detail_view)return onx_panel_detail::active;  // Only its own controls act.
+  if(!showing)return false;
   for(int i=0;i<count;++i) {
     const auto r=rects[i];if(x>=r.x && x<r.x+r.w && y>=r.y && y<r.y+r.h) {
       if(configured(entities[i])>=0 && open){parent_entity=entities[0];open(entities[i]);}return true;

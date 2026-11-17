@@ -30,6 +30,35 @@ layer on top (`onx_panel_ui.h`, `packages/room_companion/panel.yaml`).
   panel”) as a control; it appears in the bottom bar and opens the stream once a
   Remote WebView server is configured.
 
+## Detail screens
+
+Opening a control shows a full-screen detail with no header (`onx_panel_detail.h`).
+Each type has a direct touch control next to the usual swipe/knob step:
+
+| Type | Screen |
+| --- | --- |
+| Light | Vertical brightness slider (drag, sent on release), power button, Brightness / White / Colour chips (the swipe mode) and white-temperature or colour swatches |
+| Climate | Target arc (drag), − / + steps, HVAC mode chips, preset / fan / swing row (tap for the next option) |
+| Fan | Power button, speed bars (tap a bar), oscillate / direction / preset rows when supported |
+| Cover | Window with the blind drawn to the position (drag when position is supported), Open / Stop / Close |
+| Switch, input boolean, automation | Large toggle; plugs with a power sensor show its reading and graph |
+| Scene, script, button | Large run button with a confirmation ring |
+| Timer | Progress ring and countdown; HA timers add +1 min, Pause/Resume and Cancel |
+| Sensor | Large value, 12 h trend, graph (when enabled) and min / avg / max of the same history |
+| Binary sensor | State disc and the last changes seen by the panel since boot (history is not fetched) |
+| Number | Large value, horizontal slider (sent on release) and − / + steps |
+| Select | Scrollable option list; tap selects immediately |
+| Weather | Current conditions, humidity / wind / rain and a five-day range list on one screen |
+
+Media keeps its artwork/transport view. Taps outside a control do nothing on
+these screens; the left-edge back swipe takes priority over controls near that
+edge. In landscape the visual (slider, arc, window…) sits on the left and the
+name and controls on the right. Commands use the shared control queue, so the
+panel shows the requested value until Home Assistant confirms it.
+
+**Hardware status:** configuration/compile validated only; the screens,
+gestures and HA actions still need review on a physical panel.
+
 ## Accent color
 
 **Device settings → Accent color** (formerly *Ring color*) tints every

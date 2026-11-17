@@ -27,24 +27,29 @@ The **On your panel** preview shows live readings when available. Switch between
 **Main screen** and **Opened entity** to see each layout. A new entity needs to be
 saved before its readings can load.
 
-## Press actions
+## Shortcut button
 
-Open a slot's **Press action** tab to choose what a short press does.
+The panels have no physical button: tap a card to open its control screen, then
+use that screen's own buttons, sliders and lists. Open a slot's **Shortcut** tab
+to add one extra button at the bottom of that screen.
 
-- **Default** keeps the control's usual behavior.
-- **Choose action** lets supported controls run a Home Assistant script or automation.
-- **No action** disables the custom press where supported.
+- **Choose script or automation** adds a button that runs it.
+- **Remove shortcut** removes the button.
 
-For **climate** controls, Default keeps the normal heating/cooling mode control;
-you can choose a script or automation instead. For **media players**, the custom
-action runs when the player is idle; a loaded playing or paused track keeps
-play/pause. Some controls need their own press behavior and do not allow an override.
-Automation conditions still apply.
+Controls whose screen already has its own action (fan, number, select, scene,
+button) do not take a shortcut. Media players run the shortcut from the player's
+own press when idle. Automation conditions still apply.
 
-Enable **Show the returned value after pressing** to display a script's returned
-`value` and optional `unit` as a brief popup. For automations, send the value back
-using the panel's feedback action. This option is independent of swipe feedback.
+Enable **Show the returned value after the shortcut runs** to display a script's
+returned `value` and optional `unit` as a brief popup. For automations, send the
+value back using the panel's feedback action.
 [Response examples](gesture-controls.md#press-action-results).
+
+## Swipes
+
+The **Swipes** tab sets what a swipe up or down does on the control's screen
+(outside its buttons). Leave it empty for the normal adjustment shown in the
+preview, or enter `none` to ignore the swipe. There are no hold gestures.
 
 [Everyday press controls](controls.md) · [Custom climate and swipe actions](gesture-controls.md)
 

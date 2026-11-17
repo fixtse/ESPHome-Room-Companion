@@ -212,6 +212,42 @@ static const char PANEL_JS[] = R"ONXPANEL(
   }catch(e){$('dash-status').textContent=e.message}
   finally{button.disabled=false}
  };
+ // Touch panels have no physical button: the press action becomes a shortcut
+ // button on the control's own screen, and there are no hold gestures.
+ const say=(selector,text)=>{const n=document.querySelector(selector);if(n)n.textContent=text};
+ const hideNode=n=>{if(n)n.hidden=true};
+ say('#slot-tab-action','Shortcut');say('#slot-tab-gestures','Swipes');
+ const actionPane=$('slot-panel-action');
+ if(actionPane){
+  hideNode(actionPane.querySelector('.help-links'));
+  const intro=document.createElement('p');intro.className='hint';
+  intro.textContent='Add a button at the bottom of this control’s screen that runs a script or automation. Tapping the card on the main view still opens the screen; the shortcut never replaces it.';
+  actionPane.prepend(intro);
+  say('#action-binding h3','Shortcut button');say('#choose-action','Choose script or automation');say('#default','Remove shortcut');
+  hideNode($('none'));
+  const responses=$('gesture-pressResponses')?.closest('label');
+  if(responses)responses.lastChild.textContent=' Show the returned value after the shortcut runs';
+  say('#action-limit','This control’s screen has its own buttons, so it cannot have a shortcut.');
+ }
+ const gesturePane=$('slot-panel-gestures');
+ if(gesturePane){
+  for(const id of ['gesture-holdCw','gesture-holdCcw'])hideNode($(id)?.closest('article'));
+  const heads=gesturePane.querySelectorAll('.binding h3');
+  if(heads[0])heads[0].textContent='Swipe up on its screen';if(heads[1])heads[1].textContent='Swipe down on its screen';
+  const hint=gesturePane.querySelector('.help-links + .hint');
+  if(hint)hint.textContent='Swipe anywhere on this control’s screen outside its buttons. Leave empty to keep the normal adjustment shown in the preview, or enter none to ignore the swipe.';
+ }
+ // Hold progress belonged to the physical button.
+ const cue=$('hold-cue')?.closest('label');
+ if(cue){hideNode(cue);if(cue.nextElementSibling?.classList.contains('field-note'))hideNode(cue.nextElementSibling)}
+ // Keep the shortcut wording after the main page re-renders.
+ const baseEditor=globalThis.ONX_PANEL_EDITOR;
+ globalThis.ONX_PANEL_EDITOR=(slots,active,...rest)=>{
+  baseEditor(slots,active,...rest);
+  const action=slots[active]?.action;
+  if(!action||action==='none')say('#action-name','No shortcut');
+  say('#action-id',action&&action!=='none'?action:'Nothing is added to the screen.');
+ };
 })();
 )ONXPANEL";
 #else
