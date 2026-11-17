@@ -145,8 +145,7 @@ void ConfigWeb::handleRequest(AsyncWebServerRequest *request) {
   respond_(request, 202, "{\"ticket\":" + std::to_string(next_ticket_) + "}");
 }
 void ConfigWeb::loop() {
-  static HADiscovery discovery;
-  discovery.poll();
+  discovery_.poll();
   Query query;
   // One device-initiated request per loop, interleaved with web requests so the
   // page can poll progress while a preset applies.
@@ -162,7 +161,7 @@ void ConfigWeb::loop() {
     query = std::move(pending_.front()); pending_.pop_front();
   }
   // NVS, entity subscriptions, and LVGL always run in the ESPHome main task.
-  Body body = take_result_(query.op == "ha_discover" ? discovery.response(query.search == "refresh", millis()) : handler_(query));
+  Body body = take_result_(query.op == "ha_discover" ? discovery_.response(query.search == "refresh", millis()) : handler_(query));
   LockGuard lock(mutex_);
   results_.emplace_back(query.ticket, std::move(body));
   while (results_.size() > 4) results_.pop_front();

@@ -444,3 +444,19 @@ onx_config_web:
     id(show_normal_device_entry_page).execute(0);
     id(refresh_normal_device_page).execute();
     return std::string("{\"ok\":true}");
+
+interval:
+  # Album art and other panel-initiated HTTP use the HA host. While it is still
+  # the factory default (homeassistant.local often does not resolve), adopt the
+  # Home Assistant found by mDNS when exactly one answers. Addresses set by the
+  # user are never replaced. Gives up after ~10 minutes until the next boot.
+  - interval: 15s
+    then:
+      - lambda: |-
+          static uint8_t attempts = 0;
+          if (attempts >= 40 || id(ha_host).state != "homeassistant.local" || !id(normal_wifi_connected)) return;
+          ++attempts;
+          const auto url = id(entity_config_web)->auto_ha_url(millis());
+          if (url.empty() || custom_logic::build_ha_http_state_url(url, "sensor.placeholder").empty()) return;
+          ESP_LOGI("ha_host", "Using discovered Home Assistant at %s", url.c_str());
+          id(ha_host).publish_state(url);

@@ -1,4 +1,5 @@
 #pragma once
+#include "ha_discovery.h"
 #include "esphome/core/component.h"
 #include "esphome/core/helpers.h"
 #include "esphome/components/web_server_base/web_server_base.h"
@@ -43,6 +44,14 @@ class ConfigWeb : public Component, public AsyncWebHandler {
   void clear_internal() { internal_.clear(); }
   size_t internal_pending() const { return internal_.size(); }
   void set_internal_result(InternalResult callback) { internal_result_ = std::move(callback); }
+  // For a panel still on the default HA host: start (or repeat, at most every 5 s)
+  // the mDNS search and return the single Home Assistant URL found, else "".
+  std::string auto_ha_url(uint32_t now) {
+    discovery_.poll();
+    auto url = discovery_.single_url();
+    if (url.empty()) discovery_.response(true, now);
+    return url;
+  }
  protected:
   void respond_(AsyncWebServerRequest *request, int code, const std::string &body) {
     respond_(request, code, body.data(), body.size());
@@ -57,5 +66,6 @@ class ConfigWeb : public Component, public AsyncWebHandler {
   InternalResult internal_result_;
   std::deque<std::pair<uint32_t, Body>> results_;
   uint32_t next_ticket_{0};
+  HADiscovery discovery_;
 };
 }  // namespace esphome::onx_config_web

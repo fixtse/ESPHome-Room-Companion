@@ -73,6 +73,9 @@ class HADiscovery {
     }
     return out + "]}";
   }
+ // The one discovered instance's URL once a search has finished; empty while
+  // searching, when nothing was found or when several instances answer.
+  std::string single_url() const { return status_ == "ready" && count_ == 1 ? urls_[0] : std::string(); }
  private:
   static std::string quote(const std::string &value) {
     std::string out = "\"";
