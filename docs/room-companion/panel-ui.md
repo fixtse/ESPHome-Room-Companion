@@ -9,7 +9,9 @@ layer on top (`onx_panel_ui.h`, `packages/room_companion/panel.yaml`).
 | --- | --- | --- |
 | Carousel | Swipe left / right | Previous / next control |
 | Carousel | Tap an icon in the bottom strip | Jump to that control |
-| Detail view (weather, light, media…) | Swipe left / right or up / down | Same as turning the knob (pages, brightness, volume) |
+| Detail view (weather, light…) | Swipe left / right or up / down | Same as turning the knob (pages, brightness, volume) |
+| Media player | Swipe left / right | Close the player without changing playback |
+| Media player | Swipe up / down | Change volume |
 | Detail view | Swipe right **starting at the left edge** | Back |
 | Anywhere in the native UI | Swipe down **from the top edge** | Open the notification centre |
 | Dashboard stream | Swipe left / right | Back to the native UI |
@@ -25,8 +27,14 @@ layer on top (`onx_panel_ui.h`, `packages/room_companion/panel.yaml`).
 
 ## Media detail
 
-Cover art fills the top of the screen. Below it: title, artist, a progress bar
-and previous / play-pause / next buttons. Swiping still changes the volume.
+Centered cover art stays above a single title and artist, volume, room name and
+a straight progress bar. The circular playback ring is hidden. Use the previous,
+play/pause and next buttons for transport. Tap the top-centre close button or
+swipe horizontally to leave the player; vertical swipes change volume.
+
+While the panel is idle (including the clock), a configured player that starts
+playing opens automatically. Playback stopping restores the previous view unless
+you have interacted with the player. Sleep and notification priorities still apply.
 
 ## Idle screen
 

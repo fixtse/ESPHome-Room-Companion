@@ -107,13 +107,18 @@ inline void create_dashboard_button(const lv_image_dsc_t *icon) {
 
 // ------------------------------------------------------------ media detail
 struct Media {
-  lv_obj_t *shell, *cover, *title, *artist, *arc, *transport, *icon, *playlist;
+  lv_obj_t *shell, *cover, *title, *artist, *arc, *transport, *icon, *playlist, *action, *room;
 };
 inline lv_obj_t *media_bar = nullptr, *media_row = nullptr, *media_play_label = nullptr;
 inline std::function<void(bool previous)> on_track;
-inline std::function<void()> on_play_pause;
+inline std::function<void()> on_play_pause, on_close;
+inline lv_obj_t *media_close = nullptr;
 inline std::function<bool()> is_playing;
 inline void create_media_controls(lv_obj_t *shell, const lv_font_t *font) {
+  media_close = round_button(shell, S(36), 0x2A2F35);
+  symbol(media_close, LV_SYMBOL_CLOSE, font);
+  lv_obj_align(media_close, LV_ALIGN_TOP_MID, 0, S(6));
+  lv_obj_add_event_cb(media_close, [](lv_event_t *) { if (on_close) on_close(); }, LV_EVENT_CLICKED, nullptr);
   media_bar = lv_bar_create(shell);
   lv_bar_set_range(media_bar, 0, 1000);
   lv_obj_set_style_bg_color(media_bar, lv_color_hex(0x414850), LV_PART_MAIN);
@@ -152,26 +157,33 @@ inline void sync_media(const Media &m, const lv_font_t *font) {
   }
   const bool playlist = !hidden(m.playlist);
   show(media_row, media && !playlist);
+  show(media_close, media && !playlist);
   if (!media) { show(media_bar, false); return; }
   const int w = width, h = height;
   // Square shell covering the whole screen (detail pages hide the strip).
   if (lv_obj_get_style_width(m.shell, LV_PART_MAIN) != w || lv_obj_get_style_height(m.shell, LV_PART_MAIN) != h)
     lv_obj_set_size(m.shell, w, h);
   // Full-width cover art on top, text and controls in the space below.
-  place(m.cover, LV_ALIGN_TOP_MID, 0, 0);
+  place(m.cover, LV_ALIGN_TOP_MID, 0, S(50));
+  place(m.icon, LV_ALIGN_TOP_MID, 0, S(50));
   place(m.transport, LV_ALIGN_TOP_MID, 0, w / 2 - S(24));
-  const int text_y = std::min(w, h - S(150)) + S(12);
+  const int text_y = S(136);
   place(m.title, LV_ALIGN_TOP_MID, 0, text_y);
   place(m.artist, LV_ALIGN_TOP_MID, 0, text_y + S(24));
+  place(m.action, LV_ALIGN_TOP_MID, 0, text_y + S(48));
+  place(m.room, LV_ALIGN_TOP_MID, 0, text_y + S(70));
+  set_width(m.action, w - S(24));
+  set_width(m.room, w - S(24));
   set_width(m.title, w - S(24));
   set_width(m.artist, w - S(24));
   // The knob's round progress ring becomes a straight bar.
   const bool progress = !hidden(m.arc);
-  show(m.arc, false);
+  lv_obj_set_style_opa(m.arc, LV_OPA_TRANSP, 0);
+  show(m.transport, false);
   show(media_bar, progress || lv_bar_get_value(media_bar) > 0);
   if (m.arc != nullptr) lv_bar_set_value(media_bar, lv_arc_get_value(m.arc), LV_ANIM_OFF);
   lv_obj_set_size(media_bar, w - S(40), S(5));
-  place(media_bar, LV_ALIGN_TOP_MID, 0, text_y + S(54));
+  place(media_bar, LV_ALIGN_TOP_MID, 0, text_y + S(96));
   place(media_row, LV_ALIGN_BOTTOM_MID, 0, -S(12));
   if (media_play_label && is_playing) {
     const char *want = is_playing() ? LV_SYMBOL_PAUSE : LV_SYMBOL_PLAY;

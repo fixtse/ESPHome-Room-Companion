@@ -31,4 +31,12 @@ int main() {
   native=false; detail=false;
   down(214,458); touch.release(); assert(jumps==1 && button.edges.empty());
   down(160,458); touch.release(); assert(jumps==1 && button.edges.empty()); // Selected nav icon is informational.
+  // A drag beginning on an LVGL transport button cannot trigger playback.
+  touch.set_passthrough_fn([](int x,int y) { return x>=100 && x<=200 && y>=300; });
+  test_ms+=200;
+  down(160,330); move(110,330); touch.release();
+  assert(touch.suppress_click() && button.edges.empty() && turns==0);
+  test_ms+=200;
+  down(160,330); touch.release();
+  assert(!touch.suppress_click() && button.edges.empty()); // An ordinary tap remains LVGL's.
 }

@@ -48,9 +48,10 @@ onx_touch_input:
   native_touch: |-
     return !id(room_panel)->knob_ui_has_touch() ||
            (id(normal_device_detail_active) && id(normal_device_detail_kind) == NORMAL_DEVICE_DETAIL_KIND_SETTINGS);
-  # Detail views page with left/right; going back is a swipe from the left edge.
+  # Media closes with either horizontal swipe; other details use edge-back.
   edge_back: |-
-    return id(normal_device_detail_active) && id(room_panel)->knob_ui_has_touch();
+    const auto entity = id(ui_presenter)->get_normal_device_entity_id(id(normal_device_detail_index));
+    return id(normal_device_detail_active) && entity.rfind("media_player.", 0) != 0 && id(room_panel)->knob_ui_has_touch();
   pull_down_enabled: |-
     return id(room_panel)->knob_ui_has_touch() && !onx_notification_ui::owns_screen();
   on_pull_down:

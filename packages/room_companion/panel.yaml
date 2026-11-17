@@ -105,7 +105,7 @@ interval:
             onx_panel_ui::sync_media({id(normal_automation_detail_shell), id(normal_media_cover), id(normal_media_title),
                                       id(normal_media_artist), id(normal_media_progress_arc),
                                       id(normal_media_transport_overlay), id(normal_automation_detail_icon),
-                                      id(normal_playlist_overlay)}, &lv_font_montserrat_28);
+                                      id(normal_playlist_overlay), id(normal_automation_detail_action), id(normal_automation_detail_title)}, &lv_font_montserrat_28);
           }
           // Idle screen.
           static bool was_standby = false;
@@ -307,12 +307,17 @@ script:
             id(room_panel)->open_dashboard();
           };
           onx_panel_ui::touch_targets.push_back(onx_panel_ui::dash_button);
+          onx_panel_ui::on_close = []() {
+            if (!id(touch_input)->suppress_click()) id(panel_back).execute();
+          };
           onx_panel_ui::on_track = [](bool previous) {
+            if (id(touch_input)->suppress_click()) return;
             id(ui_presenter)->notify_user_activity();
             id(emit_normal_media_track).execute(id(normal_device_detail_index), previous);
           };
           // Play/pause is the knob's own press on the media detail.
           onx_panel_ui::on_play_pause = []() {
+            if (id(touch_input)->suppress_click()) return;
             id(ui_presenter)->notify_user_activity();
             id(key_btn)->set_virtual_pressed(true);
             id(key_btn)->set_virtual_pressed(false);

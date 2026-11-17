@@ -158,3 +158,29 @@ directions, native scroll click suppression and navigation tap behavior), as did
 both the full and compact atlas encoding/decoding tests.
 The final binary is kept separately under
 `.esphome/artifacts/rc35-4bit-nav-dark-20261117.bin` on devserv.
+
+### Stable media layout and exit gestures — 2026-11-17
+
+The panel owns media geometry during shared detail refreshes: centred artwork,
+one title/artist pair, volume and room labels, a straight progress bar and
+transport buttons. The inherited circular ring is transparent on media pages.
+A visible close button and horizontal swipes exit; vertical swipes adjust volume.
+Dragging from a transport button suppresses its click. Idle playback automatically
+replaces the panel clock using the inherited popup lifecycle.
+
+Build/configuration validation only; these changes have not been flashed or
+hardware-tested. On devserv, isolated checkout
+`/home/fixt/agent-work/room-companion-media-20261117`, base revision
+`e2927cb0ce2cc721403d4068e24b9b9fad044cca` plus this working diff:
+
+- ESPHome container `ghcr.io/esphome/esphome:2026.10.2`: configuration and
+  compilation passed for `ONX2432G028.yaml` and `ONX3248G035.yaml`, using the
+  validation script restricted to these two model roots.
+- `c++ -std=c++17 -Itests/touch_stubs tests/test_touch_input.cpp` and
+  `c++ -std=c++17 tests/test_media_state.cpp`, followed by both executables:
+  passed, including the new drag-over-transport click suppression regression.
+- The full `scripts/validate-room-companion.sh --compile` matrix stops at the
+  inherited knob root's existing configuration error: its shared settings lambda
+  references panel-only `touch_input` and `panel_dark_mode` IDs inside a C++
+  preprocessor guard, which ESPHome still checks during configuration. The knob
+  and example matrix therefore was not compiled in this run.

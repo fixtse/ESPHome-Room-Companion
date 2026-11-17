@@ -67,7 +67,11 @@ class TouchInput : public Component, public touchscreen::TouchListener {
       }
     if (point == nullptr) return;
     if (state_ == State::IDLE) begin_(point->x, point->y);
-    else if (state_ != State::IGNORED) move_(point->x, point->y);
+    else if (state_ == State::IGNORED) {
+      // LVGL owns the button, but dragging over it must not become a click.
+      if (std::abs(point->x - x0_) >= SLOP || std::abs(point->y - y0_) >= SLOP)
+        last_swipe_ms_ = millis();
+    } else move_(point->x, point->y);
   }
   void release() override { end_(); }
 
@@ -77,6 +81,7 @@ class TouchInput : public Component, public touchscreen::TouchListener {
 
   bool enabled_now_() { return !enabled_ || enabled_(); }
   void begin_(int x, int y) {
+    x0_ = x; y0_ = y;
     for (int i = 0; i < passthrough_count_; ++i) {
       const auto &r = passthrough_[i];
       if (x >= r.x0 && x < r.x1 && y >= r.y0 && y < r.y1) { state_ = State::IGNORED; return; }

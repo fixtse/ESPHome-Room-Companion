@@ -2850,7 +2850,13 @@ script:
           auto &popup=onx_media::idle_popup;
           const auto now=id(ha_time).now();
           const bool sleep_due=now.is_valid() && id(ui_presenter)->should_enter_sleep_mode(now.hour,now.minute);
-          const bool allowed=onx_display_settings::idle.media && id(normal_ha_api_connected) &&
+          const bool media_idle =
+          #ifdef USE_ROOM_COMPANION
+              true;
+          #else
+              onx_display_settings::idle.media;
+          #endif
+          const bool allowed=media_idle && id(normal_ha_api_connected) &&
               id(ui_presenter)->is_normal_mode_active() && !id(mode_manager)->is_provisioning_mode_enabled() &&
               !id(screen_off_state) && !id(sleep_mode_state) && !sleep_due && !onx_timer::popup.visible;
           const auto timeout=id(app_storage)->get_standby_timeout_ms();
@@ -3146,6 +3152,9 @@ script:
     then:
       - lambda: |-
           const auto entity = id(ui_presenter)->get_normal_device_entity_id(id(normal_device_detail_index));
+          #ifdef USE_ROOM_COMPANION
+          lv_obj_set_style_opa(id(normal_media_progress_arc),entity.rfind("media_player.",0)==0?LV_OPA_TRANSP:LV_OPA_COVER,0);
+          #endif
           auto *detail = custom_logic_entity_sub::entity_detail(entity);
           const bool visible = id(normal_device_detail_active) && !id(screen_off_state) &&
                                !onx_playlist::browser.open &&
@@ -3190,6 +3199,23 @@ script:
               id(normal_device_detail_kind)==NORMAL_DEVICE_DETAIL_KIND_AUTOMATION &&
               entity.rfind("media_player.",0)==0 && detail!=nullptr;
           const bool material=media && onx_display_settings::media_style.material;
+          #ifdef USE_ROOM_COMPANION
+          if(media) {
+            for(auto *label:{id(normal_detail_badge),id(normal_detail_context),id(normal_detail_hint)})
+              lv_obj_add_flag(label,LV_OBJ_FLAG_HIDDEN);
+            lv_obj_set_height(id(normal_automation_detail_action),onx_geom::S(22));
+            lv_obj_set_height(id(normal_automation_detail_title),onx_geom::S(22));
+            lv_label_set_long_mode(id(normal_automation_detail_title),LV_LABEL_LONG_DOT);
+            const int dimension=std::max(id(media_cover_image)->get_width(),id(media_cover_image)->get_height());
+            lv_image_set_pivot(id(normal_media_cover),id(media_cover_image)->get_width()/2,0);
+            lv_image_set_scale(id(normal_media_cover),dimension>0?onx_geom::S(80)*256/dimension:256);
+            onx_panel_ui::sync_media({id(normal_automation_detail_shell),id(normal_media_cover),id(normal_media_title),
+                id(normal_media_artist),id(normal_media_progress_arc),id(normal_media_transport_overlay),
+                id(normal_automation_detail_icon),id(normal_playlist_overlay),id(normal_automation_detail_action),
+                id(normal_automation_detail_title)}, &lv_font_montserrat_28);
+            return;
+          }
+          #endif
           // Reset styling on shared labels before another entity uses this page.
           for(auto *label:{id(normal_media_title),id(normal_media_artist),
               id(normal_automation_detail_action),id(normal_automation_detail_title)}) {
