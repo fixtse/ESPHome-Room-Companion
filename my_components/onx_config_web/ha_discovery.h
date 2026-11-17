@@ -19,15 +19,20 @@ class HADiscovery {
     if (!mdns_query_async_get_results(search_, 0, &results, nullptr)) return;
     count_ = 0;
     for (auto *r = results; r && count_ < urls_.size(); r = r->next) {
-      std::string url;
+      std::string url, base, name, version, uuid;
       for (size_t i = 0; i < r->txt_count; ++i) {
         const auto &txt = r->txt[i];
-        if (txt.key && txt.value && std::string(txt.key) == "internal_url") {
-          const std::string value(txt.value);
-          if (value.size() <= 192 && (value.rfind("http://", 0) == 0 || value.rfind("https://", 0) == 0) &&
-              value.find('@') == std::string::npos) url = value;
-        }
+        if (!txt.key || !txt.value) continue;
+        const std::string key(txt.key), value(txt.value);
+        const bool usable = value.size() <= 192 && (value.rfind("http://", 0) == 0 || value.rfind("https://", 0) == 0) &&
+                            value.find('@') == std::string::npos;
+        if (key == "internal_url" && usable) url = value;
+        else if (key == "base_url" && usable) base = value;
+        else if (key == "location_name") name = value.substr(0, 80);
+        else if (key == "version") version = value.substr(0, 32);
+        else if (key == "uuid") uuid = value.substr(0, 64);
       }
+      if (url.empty()) url = base;
       if (url.empty() && r->port) {
         char host[64]{};
         for (auto *a = r->addr; a; a = a->next)
@@ -39,7 +44,10 @@ class HADiscovery {
       bool duplicate = false;
       for (size_t i = 0; i < count_; ++i) duplicate |= urls_[i] == url;
       if (duplicate) continue;
-      names_[count_] = r->instance_name ? std::string(r->instance_name).substr(0, 80) : "Home Assistant";
+      if (name.empty()) name = r->instance_name ? std::string(r->instance_name).substr(0, 80) : "Home Assistant";
+      names_[count_] = std::move(name);
+      versions_[count_] = std::move(version);
+      uuids_[count_] = std::move(uuid);
       urls_[count_++] = std::move(url);
     }
     mdns_query_results_free(results);
@@ -60,7 +68,8 @@ class HADiscovery {
     std::string out = "{\"status\":" + quote(status_) + ",\"instances\":[";
     for (size_t i = 0; i < count_; ++i) {
       if (i) out += ',';
-      out += "{\"name\":" + quote(names_[i]) + ",\"url\":" + quote(urls_[i]) + '}';
+      out += "{\"name\":" + quote(names_[i]) + ",\"url\":" + quote(urls_[i]) + ",\"version\":" +
+             quote(versions_[i]) + ",\"uuid\":" + quote(uuids_[i]) + '}';
     }
     return out + "]}";
   }
@@ -73,7 +82,7 @@ class HADiscovery {
     }
     return out + '"';
   }
-  std::array<std::string, 4> names_, urls_;
+  std::array<std::string, 4> names_, urls_, versions_, uuids_;
   size_t count_{0};
   bool started_{false};
   uint32_t started_ms_{0};

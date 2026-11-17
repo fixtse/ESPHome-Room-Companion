@@ -17,25 +17,35 @@ function setRailCollapsed(collapsed){
 try{setRailCollapsed(localStorage.getItem('onx.sidebar.collapsed')==='true')}catch{setRailCollapsed(false)}
 railToggle.onclick=()=>setRailCollapsed(!document.body.classList.contains('rail-collapsed'));
 for(const button of document.querySelectorAll('.tabs button'))button.title=button.textContent.trim();
-let discoveringHA=false;
-async function discoverHA(refresh=false){
- if(discoveringHA)return;discoveringHA=true;
- const button=$('ha-discover'),status=$('ha-discovery-status'),results=$('ha-discovery-results'),input=$('ha-url'),before=input.value;
- button.disabled=true;results.replaceChildren();status.textContent='Looking for Home Assistant on the panel’s network…';
+let discoveringHA=false,discoverRounds=0;
+const HA_LOGO='<svg viewBox="0 0 40 40" width="28" height="28" aria-hidden="true"><path fill="#46BDF4" d="M18.1 3.3a2.7 2.7 0 0 1 3.7 0l14.5 14.2a6.8 6.8 0 0 1 2 4.6v13.3c0 1.2-1 2.1-2.2 2.1H21.4v-4.6l6.8-6.7a3.1 3.1 0 1 0-1.9-2l-4.9 4.9V16.7a3 3 0 1 0-2.9 0v17.6l-4.9-4.8a3.1 3.1 0 1 0-1.9 1.9l6.3 6.1H3.8c-1.2 0-2.1-1-2.1-2.1V22.1c0-1.7.7-3.4 1.9-4.6z"/></svg>';
+// Scan with the panel's mDNS (the query runs asynchronously on the device), retrying while the tab stays open.
+async function discoverHA(auto=false){
+ if(discoveringHA||document.hidden)return;if(!auto)discoverRounds=0;discoveringHA=true;
+ const button=$('ha-discover'),status=$('ha-discovery-status'),results=$('ha-discovery-results'),scanner=$('ha-scanner');
+ const stop=text=>{scanner.classList.remove('loading');button.disabled=false;status.textContent=text};
+ scanner.classList.add('loading');button.disabled=true;status.textContent='Looking for Home Assistant on the panel’s network…';
+ let response;
  try{
-  let response=await rpc({op:'ha_discover',q:refresh?'refresh':''});
-  for(let attempt=0;response.status==='searching'&&attempt<12;attempt++){
-   await new Promise(resolve=>setTimeout(resolve,350));response=await rpc({op:'ha_discover'});
-  }
-  const instances=[];
-  for(const item of response.instances||[])try{const url=OnxHA.baseUrl(item.url);if(!instances.some(i=>i.url===url))instances.push({name:item.name||'Home Assistant',url})}catch{}
-  for(const instance of instances){const choice=element('button',instance.name+' ('+instance.url+')');choice.type='button';choice.onclick=()=>{input.value=instance.url;status.textContent='Address selected. Sign in to connect this browser.'};results.append(choice)}
-  if(instances.length===1&&input.value===before&&(!before||/^https?:\/\/homeassistant\.local(?::8123)?\/?$/.test(before))&&!ha.read('onx.ha.auth'))input.value=instances[0].url;
-  status.textContent=instances.length?(instances.length===1?'Home Assistant found. Sign in to connect this browser.':'Choose your Home Assistant instance, then sign in.'):'No instance found on the panel’s network. Enter its address manually, or try again.';
- }catch{status.textContent='Discovery is unavailable. Enter your Home Assistant address manually.'}
- finally{discoveringHA=false;button.disabled=false}
+  response=await rpc({op:'ha_discover',q:'refresh'});
+  for(let attempt=0;response.status==='searching'&&attempt<40;attempt++){await new Promise(resolve=>setTimeout(resolve,250));response=await rpc({op:'ha_discover'})}
+ }catch{discoveringHA=false;stop('Discovery is unavailable. Enter your Home Assistant address below.');return}
+ discoveringHA=false;
+ const seen=new Set();results.replaceChildren();
+ for(const item of response.instances||[]){
+  let url;try{url=OnxHA.baseUrl(item.url)}catch{continue}
+  const key=item.uuid||url;if(seen.has(key))continue;seen.add(key);
+  const choice=document.createElement('button');choice.type='button';choice.className='ha-result';choice.innerHTML=HA_LOGO;
+  const text=document.createElement('span');text.append(element('b',item.name||'Home Assistant'),element('small',url+(item.version?' · '+item.version:'')));
+  const chev=element('span','›');chev.className='chev';chev.setAttribute('aria-hidden','true');choice.append(text,chev);
+  choice.onclick=()=>{$('ha-url').value=url;$('ha-connect').click()};results.append(choice);
+ }
+ if(response.status==='unavailable'){stop('This panel cannot search the network. Enter the address below.');return}
+ if(seen.size){stop(seen.size===1?'Found 1 Home Assistant. Select it to sign in.':'Found '+seen.size+' Home Assistant servers. Select one to sign in.');return}
+ if(!$('page-connection').hidden&&++discoverRounds<5){status.textContent='Still looking… Make sure Home Assistant is on the same network.';setTimeout(()=>{if(!$('page-connection').hidden)discoverHA(true)},1500);return}
+ stop('No Home Assistant found automatically. Search again or enter its address below.');
 }
-$('ha-discover').onclick=()=>discoverHA(true);
+$('ha-discover').onclick=()=>discoverHA(false);
 const copy=value=>JSON.parse(JSON.stringify(value));
 const emptyGestures=()=>({cw:'',ccw:'',holdCw:'',holdCcw:'',feedback:'',popup:'1',responses:'0',pressResponses:'0',events:'0',step:'1'});
 const empty=()=>({entity:'',name:'',area:'',action:'',actionName:'',typeOption:'',icon:'',iconOverride:'0',secondary:'',secondaryText:'{value}',sensorGraph:'0',timerHidden:'0',gestures:emptyGestures(),playlists:[]});
@@ -82,7 +92,7 @@ async function rpc(values){
 }
 function browserStatus(){const loggedIn=!!ha.read('onx.ha.auth');$('browser-status').textContent='Browser → Home Assistant: '+(ha.ready?'entity list loaded':loggedIn?'signed in':'disconnected');$('browser-status').dataset.ok=String(ha.ready);$('catalogue-time').textContent=lastLoaded?'Entity list loaded '+lastLoaded.toLocaleTimeString()+'. '+ha.items.length+' available entities.':'No entity list loaded in this browser.'}
 function deviceStatus(online){$('device-status').textContent=online?'Panel: reachable':'Panel: unreachable';$('device-status').dataset.ok=String(online);$('ha-status').textContent='Panel → Home Assistant: '+(!online?'unknown':device.ha_connected?'connected':'not connected');$('ha-status').dataset.ok=String(online&&device.ha_connected);const info=$('device-info');info.replaceChildren();for(const [key,value] of [['Model','Room Companion'],['Firmware',device.firmware||'Unknown'],['Uptime',Number.isFinite(device.uptime_ms)?Math.floor(device.uptime_ms/60000)+' minutes':'Unknown'],['Wi-Fi signal',Number.isFinite(device.wifi_rssi_dbm)?Math.round(device.wifi_rssi_dbm)+' dBm':'Unavailable on this firmware'],['Wi-Fi disconnects',device.wifi_disconnects_since_boot??'Unknown'],['Last reset',device.reset_reason_text||'Unknown'],['Internal heap',Number.isFinite(device.internal_heap_free)?Math.round(device.internal_heap_free/1024)+' KB free / '+Math.round(device.internal_heap_minimum/1024)+' KB minimum':'Unavailable on this firmware'],['Artwork',device.artwork_error||device.artwork_status||'Unknown'],['Wi-Fi',online?(device.wifi_connected?'connected':'disconnected'):'unknown'],['Home Assistant',online?(device.ha_connected?'connected':'disconnected'):'unknown']])info.append(element('dt',key),element('dd',value))}
-function page(name){document.querySelectorAll('[id^=page-]').forEach(e=>e.hidden=e.id!=='page-'+name);document.querySelectorAll('[data-page]').forEach(e=>{if(e.dataset.page===name)e.setAttribute('aria-current','page');else e.removeAttribute('aria-current')})}
+function page(name){document.querySelectorAll('[id^=page-]').forEach(e=>e.hidden=e.id!=='page-'+name);if(name==='connection'&&!ha.read('onx.ha.auth'))void discoverHA(true);document.querySelectorAll('[data-page]').forEach(e=>{if(e.dataset.page===name)e.setAttribute('aria-current','page');else e.removeAttribute('aria-current')})}
 document.querySelectorAll('[data-page]').forEach(e=>e.onclick=()=>page(e.dataset.page));
 const svgNS='http://www.w3.org/2000/svg',measure=document.createElement('canvas').getContext('2d');
 function svgNode(tag,attrs={}){const node=document.createElementNS(svgNS,tag);for(const [key,value] of Object.entries(attrs))node.setAttribute(key,String(value));return node}
@@ -497,7 +507,7 @@ $('theme').onchange=()=>{const theme=$('theme').value;if(theme==='system')delete
  render();search();
  device=await rpc({op:'state'});slots=validateSlots(device.slots);saved=copy(slots);savedWeather=device.weather||'';const data=await rpc({op:'settings_state'});settings=validateSettings({...data,weather:savedWeather});savedSettings=copy(settings);initialized=true;deviceStatus(true);$('ha-url').value=device.ha_url||'';settingsForm();loadPresets();
  const draft=safeRead(DRAFT);if(draft){try{recovery=validateDocument(draft);$('draft-notice').hidden=false}catch{message('An older recovery draft could not be read. Your saved configuration is unchanged.',true)}}
- await ha.finishLogin();const auth=ha.read('onx.ha.auth');if(auth)$('ha-url').value=auth.base;browserStatus();render();search();if(auth)await refreshCatalogue();else message('Panel settings loaded. Sign in to Home Assistant to browse entities.');await refreshPreview();if(!auth)void discoverHA();
+ await ha.finishLogin();const auth=ha.read('onx.ha.auth');if(auth)$('ha-url').value=auth.base;browserStatus();render();search();if(auth)await refreshCatalogue();else message('Panel settings loaded. Sign in to Home Assistant to browse entities.');await refreshPreview();if(!auth&&!$('page-connection').hidden)void discoverHA(true);
  }catch(error){if(!initialized)deviceStatus(false);message(error.message,true);render();browserStatus()}
  document.addEventListener('visibilitychange',()=>{if(!document.hidden){refreshStatus();refreshPreview()}});setInterval(()=>{if(slots[active].entity.startsWith('media_player.')||Date.now()-lastPreviewAt>=2000)refreshPreview()},500);setInterval(()=>{if(!document.hidden)refreshStatus()},30000);
 })();
