@@ -3191,8 +3191,9 @@ lvgl:
         - label:
             id: standby_date_widget
             x: 0
-            y: ${ (168 * (ui_scale | float)) | round | int }
-            align: top_mid
+            # Below the centred time (same place on the knob, no overlap on tall panels).
+            y: ${ (62 * (ui_scale | float)) | round | int }
+            align: center
             text_font: fonts_MiSans_Medium_20
             text_color: 0xFFFFFF
             text: !lambda |-

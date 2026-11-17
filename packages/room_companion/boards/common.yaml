@@ -62,7 +62,7 @@ display:
     dimensions:
       width: ${display_width}
       height: ${display_height}
-    invert_colors: true
+    invert_colors: ${display_invert_colors}
     update_interval: never
     auto_clear_enabled: false
 

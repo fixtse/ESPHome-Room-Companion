@@ -1,6 +1,6 @@
 #pragma once
 // Notification centre UI for the touch panels (see onx_notification::Center).
-//   - bell in the top-right corner with the unread count
+//   - bell in the top-right corner with the unread count (also: pull down from the top)
 //   - arrival banner at the top; tap to open
 //   - list of recent notifications: tap to open, x to dismiss, Clear all
 //   - detail view with picture, Back and Dismiss
@@ -209,7 +209,7 @@ inline void init(int screen_width, int screen_height, Fonts f, Hooks h) {
   lv_obj_set_style_pad_row(list, S(6), 0);
   lv_obj_add_flag(list, LV_OBJ_FLAG_SCROLLABLE);
   lv_obj_set_scroll_dir(list, LV_DIR_VER);
-  empty_label = text(panel, fonts.body, MUTED, "No notifications");
+  empty_label = text(panel, fonts.body, MUTED, "No notifications.\nPull down from the top edge to open this list.");
 
   // Detail view.
   detail = box(top, BG, 0);
@@ -306,7 +306,9 @@ inline void refresh() {
   const uint32_t now = esphome::millis();
   if (detail_id != 0 && center.find(detail_id) == nullptr) close_detail();
   const size_t unread = center.unread();
-  hide(bell, center.items.empty() || panel_open || detail_id != 0);
+  // Always reachable (also by pulling down from the top edge); dimmed when empty.
+  hide(bell, panel_open || detail_id != 0);
+  lv_obj_set_style_opa(bell, center.items.empty() ? LV_OPA_50 : LV_OPA_COVER, 0);
   hide(badge, unread == 0 || panel_open || detail_id != 0);
   char count[8];
   snprintf(count, sizeof(count), "%u", static_cast<unsigned>(unread > 99 ? 99 : unread));

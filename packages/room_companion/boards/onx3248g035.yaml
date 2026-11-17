@@ -4,6 +4,8 @@
 substitutions:
   device_model: ONX3248G035
   display_model: ST7796
+  # This ST7796 shows true colours; inverting turned the dark UI white.
+  display_invert_colors: "false"
   display_width: "320"
   display_height: "480"
   ui_scale: 1.3333

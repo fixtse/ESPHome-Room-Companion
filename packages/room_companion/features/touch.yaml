@@ -34,6 +34,11 @@ onx_touch_input:
       y0: 0
       x1: ${display_width}
       y1: 56
+    # Top-left corner: dashboard button (LVGL, shown when a server is set).
+    - x0: 0
+      y0: 0
+      x1: 56
+      y1: 56
   enabled: |-
     return id(room_panel)->knob_ui_has_touch();
   page_swipe: |-
@@ -43,6 +48,15 @@ onx_touch_input:
   native_touch: |-
     return !id(room_panel)->knob_ui_has_touch() ||
            (id(normal_device_detail_active) && id(normal_device_detail_kind) == NORMAL_DEVICE_DETAIL_KIND_SETTINGS);
+  # Detail views page with left/right; going back is a swipe from the left edge.
+  edge_back: |-
+    return id(normal_device_detail_active) && id(room_panel)->knob_ui_has_touch();
+  pull_down_enabled: |-
+    return id(room_panel)->knob_ui_has_touch() && !onx_notification_ui::owns_screen();
+  on_pull_down:
+    - lambda: |-
+        id(ui_presenter)->notify_user_activity();
+        onx_notification_ui::open_panel();
   on_back:
     - script.execute: panel_back
   on_turn:
