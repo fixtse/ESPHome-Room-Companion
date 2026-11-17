@@ -59,6 +59,10 @@ The optional server image `strangev/remote-webview-server` referenced in
 - MiSans: Xiaomi's font license applies, not AGPLv3 or the OpenNextion MIT grant.
   See [Xiaomi's terms](https://hyperos.mi.com/font/en/download/).
   The inherited font files still require separate redistribution review.
+- `timer_finished.flac` (finished-timer sound): downloaded at build time from
+  [Home Assistant Voice PE](https://github.com/esphome/home-assistant-voice-pe),
+  Apache License 2.0, and embedded in compiled firmware; not stored in this
+  repository.
 - Other inherited artwork remains subject to any original third-party terms;
   OpenNextion's MIT notice does not establish ownership of external artwork.
 

@@ -462,7 +462,8 @@ $('restore-draft').onclick=()=>{if(!recovery)return;if(editTarget){message('Choo
 window.addEventListener('beforeunload',event=>{if(hasChanges()||busy){event.preventDefault();event.returnValue=''}});
 try{const theme=localStorage.getItem('onx.theme')||'system';$('theme').value=['light','dark','system'].includes(theme)?theme:'system';if($('theme').value!=='system')document.documentElement.dataset.theme=$('theme').value}catch{}
 $('theme').onchange=()=>{const theme=$('theme').value;if(theme==='system')delete document.documentElement.dataset.theme;else document.documentElement.dataset.theme=theme;try{localStorage.setItem('onx.theme',theme)}catch{}};
-(async()=>{render();search();try{
+(async()=>{try{
+ render();search();
  device=await rpc({op:'state'});slots=validateSlots(device.slots);saved=copy(slots);savedWeather=device.weather||'';const data=await rpc({op:'settings_state'});settings=validateSettings({...data,weather:savedWeather});savedSettings=copy(settings);initialized=true;deviceStatus(true);$('ha-url').value=device.ha_url||'';settingsForm();loadPresets();
  const draft=safeRead(DRAFT);if(draft){try{recovery=validateDocument(draft);$('draft-notice').hidden=false}catch{message('An older recovery draft could not be read. Your saved configuration is unchanged.',true)}}
  await ha.finishLogin();const auth=ha.read('onx.ha.auth');if(auth)$('ha-url').value=auth.base;browserStatus();render();search();if(auth)await refreshCatalogue();else message('Panel settings loaded. Sign in to Home Assistant to browse entities.');await refreshPreview();

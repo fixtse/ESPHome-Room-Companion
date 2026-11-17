@@ -76,6 +76,7 @@ script:
           id(ui_presenter)->notify_user_activity();
           if (onx_notification_ui::detail_id != 0) { onx_notification_ui::close_detail(); return; }
           if (onx_notification_ui::panel_open) { onx_notification_ui::close_panel(); return; }
+          if (onx_panel_detail::timers.overlay) { id(timer_close).execute(); return; }
           if (!lv_obj_has_flag(id(assist_overlay), LV_OBJ_FLAG_HIDDEN)) {
             id(assist).request_stop();
             auto call = id(panel_media_player).make_call();
@@ -87,6 +88,12 @@ script:
           }
           if (id(room_panel)->dashboard_open()) { id(room_panel)->close_dashboard(); return; }
           if (!id(normal_device_detail_active)) return;
+          // A timer popup returns to the control that was selected before it.
+          if (onx_timer::popup.visible) {
+            onx_timer::popup.visible = false;
+            onx_timer::popup.dismissed = true;
+            id(normal_device_selected_index) = onx_timer::popup.previous_index;
+          }
           switch (id(normal_device_detail_kind)) {
             case NORMAL_DEVICE_DETAIL_KIND_SETTINGS_WIFI: id(exit_normal_settings_wifi_detail).execute(); break;
             case NORMAL_DEVICE_DETAIL_KIND_SETTINGS_BRIGHTNESS: id(exit_normal_settings_brightness_detail).execute(); break;

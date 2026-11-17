@@ -207,52 +207,27 @@ template<typename Bind> void render(const std::string &entity,int width,int heig
     onx_panel_detail::tick(entity);
     return;
   }
-  onx_panel_detail::hide();
-  for(int i=0;i<4;++i) {
-    auto &c=cards[i];if(i>=count){lv_obj_add_flag(c.box,LV_OBJ_FLAG_HIDDEN);continue;}
-    lv_obj_remove_flag(c.box,LV_OBJ_FLAG_HIDDEN);const auto r=rects[i];
-    lv_obj_set_pos(c.box,r.x,r.y);lv_obj_set_size(c.box,r.w,r.h);
-    const auto v=item(entities[i],detail);
-    const bool compact=kind==Kind::CONTROL_SENSORS && i>0;
-    const bool unchanged=c.initialized && c.kind==kind && c.detail==detail &&
-        c.rect.x==r.x && c.rect.y==r.y && c.rect.w==r.w && c.rect.h==r.h &&
-        c.color==onx_display_settings::current.media_color && same(c.previous,v);
-    if(unchanged) {
-      // Rebind asynchronously downloaded icons, but don't reset the layout or
-      // label styles ten times per second when the presentation is unchanged.
-      if(!compact && !v.graph)bind(c.icon,entities[i]);
-      if(v.graph && detail && draw_graph)draw_graph(c.box,entities[i],r.h*38/100);
-      continue;
-    }
-    c.previous=v;c.rect=r;c.kind=kind;c.detail=detail;c.color=onx_display_settings::current.media_color;c.initialized=true;
-    const int pad=12;
-    // Narrow sensor tiles (landscape column) stack the name above the value.
-    const bool stacked=compact && r.w<220 && r.h>=lv_font_get_line_height(small)+lv_font_get_line_height(normal)+12;
-    const bool side=compact && !stacked;
-    const bool narrow=kind==Kind::TWO_CONTROLS || r.w<220;
-    label(c.name,v.name,pad,side?(r.h-lv_font_get_line_height(small))/2:stacked?8:pad,side?r.w*55/100-pad:narrow&&!compact?r.w-64:r.w-pad*2,small);
-    const auto *value_font=compact?(stacked || r.h>=lv_font_get_line_height(normal)+8?normal:small):(r.h<150 || r.w<220?normal:large);
-    label(c.value,v.value,side?r.w*55/100:pad,
-          side?(r.h-lv_font_get_line_height(value_font))/2:stacked?r.h-lv_font_get_line_height(value_font)-8:
-              r.h*(v.graph?18:kind==Kind::TWO_CONTROLS?35:49)/100,
-          side?r.w*45/100-pad:r.w-pad*2,value_font);
-    label(c.context,compact?"":v.context,pad,r.h*67/100,r.w-pad*2,small);
-    label(c.hint,detail?v.hint:"",pad,r.h-48,r.w-pad*2,small);
-    if(v.graph && detail && draw_graph)draw_graph(c.box,entities[i],r.h*38/100);
-    if(!compact && !v.graph) {
-      const bool small_icon=kind==Kind::TWO_CONTROLS || r.w<220;
-      bind(c.icon,entities[i]);lv_image_set_scale(c.icon,small_icon?64:96);
-      lv_obj_set_style_image_recolor(c.icon,lv_color_hex(onx_display_settings::accent()),0);
-      lv_obj_set_style_image_recolor_opa(c.icon,v.on?LV_OPA_COVER:LV_OPA_TRANSP,0);
-      onx_render::align(c.icon,LV_ALIGN_TOP_RIGHT,-pad,small_icon?12:28);
-      lv_obj_remove_flag(c.icon,LV_OBJ_FLAG_HIDDEN);
-    }else lv_obj_add_flag(c.icon,LV_OBJ_FLAG_HIDDEN);
-    if(v.ring>=0 && !compact) {
-      onx_render::style_bg_color(c.bar,lv_color_hex(onx_display_settings::current.media_color),LV_PART_INDICATOR);
-      lv_obj_set_pos(c.bar,pad,r.h-16);lv_obj_set_size(c.bar,r.w-pad*2,4);
-      lv_bar_set_value(c.bar,v.ring,LV_ANIM_OFF);lv_obj_remove_flag(c.bar,LV_OBJ_FLAG_HIDDEN);
-    }else lv_obj_add_flag(c.bar,LV_OBJ_FLAG_HIDDEN);
+  // Main pages: cards drawn by the shared widget engine (onx_panel_detail.h).
+  for(auto &c:cards){lv_obj_add_flag(c.box,LV_OBJ_FLAG_HIDDEN);c.initialized=false;}
+  if(!onx_panel_detail::bind_icon)onx_panel_detail::bind_icon=[bind](lv_obj_t *icon,const std::string &target){bind(icon,target);};
+  std::vector<onx_panel_detail::Tile> tiles;
+  for(int i=0;i<count;++i) {
+    const auto v=item(entities[i],false);const auto r=rects[i];
+    onx_panel_detail::Tile t;
+    t.entity=entities[i];t.name=onx_media::display_text(v.name);t.value=v.value;t.context=v.context;
+    t.on=v.on;t.ring=v.ring;t.r={r.x,r.y,r.w,r.h};t.compact=kind==Kind::CONTROL_SENSORS && i>0;
+    tiles.push_back(std::move(t));
   }
+  onx_panel_detail::render_main(layer,tiles,width,height);
+}
+// The panel's own Assist timers: full screen, above the dock.
+inline void show_timers(int width,int height) {
+  if(!layer)return;
+  suspend_underlay();
+  for(auto &c:cards){lv_obj_add_flag(c.box,LV_OBJ_FLAG_HIDDEN);c.initialized=false;}
+  lv_obj_set_size(layer,width,height);lv_obj_set_pos(layer,0,0);
+  lv_obj_move_foreground(layer);lv_obj_remove_flag(layer,LV_OBJ_FLAG_HIDDEN);showing=true;detail_view=true;
+  onx_panel_detail::render_timers(layer,width,height);
 }
 inline bool tap(int x,int y) {
   if(showing && detail_view)return onx_panel_detail::active;  // Only its own controls act.

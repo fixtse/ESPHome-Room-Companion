@@ -55,6 +55,11 @@ request with the panel's **Talk** button (Assist page), the **BOOT** button, or
 the **Talk** button entity; tap again to stop. In dashboard mode Assist takes
 the screen and gives it back six seconds after the reply.
 
+While Assist runs, a full-screen overlay (above the bottom bar) shows the status
+(*Listening…*, *Thinking…*, *Speaking…* or an error), what was heard in quotes,
+the reply in a card, and a large microphone button in the accent colour. Tap the
+microphone to talk again or to stop; swipe horizontally to close the overlay.
+
 No HA long-lived access token is needed by the panel. The microphone-mute switch
 prevents new captures and stops the running pipeline; it is a software control,
 not physical electrical isolation. Reply volume (default 60%) is on the

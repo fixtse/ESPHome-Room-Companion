@@ -23,6 +23,7 @@ namespace esphome::room_companion {
 enum Overlay : uint8_t {
   OVERLAY_ASSIST = 1 << 0,  // Voice assistant running (and reply on screen).
   OVERLAY_NOTICE = 1 << 1,  // Notification shown or notification centre open.
+  OVERLAY_TIMER = 1 << 2,   // The panel's own Assist timer screen (started or ringing).
 };
 
 struct StreamSettings {

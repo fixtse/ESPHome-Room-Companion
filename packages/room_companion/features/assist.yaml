@@ -1,7 +1,16 @@
 # Home Assistant Assist satellite. Start it from a "[Local] Assist" control in
 # the carousel, the BOOT button, the Talk button entity, or the optional wake
 # word (examples/room-companion/wake-word.yaml). A full-screen overlay shows
-# what was heard and the reply; it takes the screen from the dashboard stream.
+# the status, what was heard and the reply, with a large microphone button
+# (tap to talk again or stop). Any horizontal swipe closes it (panel_back). It
+# takes the screen from the dashboard stream.
+#
+# Voice timers set on this panel ("set a 10 minute pasta timer") are tracked by
+# the voice assistant. A timer screen opens when one starts (closing itself
+# after a few seconds) and when one finishes, sounding until Stop is tapped
+# or five minutes pass. Home Assistant offers no service to pause or cancel
+# Assist timers, so those are done by voice; HA timer helpers on the panel get
+# Cancel / Pause / +1 min buttons.
 globals:
   - id: assist_ready
     type: bool
@@ -41,6 +50,10 @@ media_player:
     id: panel_media_player
     name: Speaker
     volume_initial: 60%
+    # Downloaded at build time (Home Assistant Voice PE, Apache-2.0).
+    files:
+      - id: timer_finished_sound
+        file: https://github.com/esphome/home-assistant-voice-pe/raw/d4e6fa43d6a1a7d342b7d4d403567e06516719de/sounds/timer_finished.flac
     announcement_pipeline:
       speaker: panel_speaker
       format: FLAC
@@ -86,7 +99,9 @@ voice_assistant:
   on_stt_end:
     - lvgl.label.update:
         id: assist_transcript
-        text: !lambda 'return onx_notification::plain_text(x, 384);'
+        text: !lambda |-
+          const auto heard = onx_notification::plain_text(x, 384);
+          return heard.empty() ? heard : "\u201C" + heard + "\u201D";
     - lvgl.label.update:
         id: assist_status
         text: Thinking...
@@ -94,6 +109,7 @@ voice_assistant:
     - lvgl.label.update:
         id: assist_response
         text: !lambda 'return onx_notification::plain_text(x, 512);'
+    - lvgl.widget.show: assist_response_card
   on_idle:
     - script.execute: assist_finished
   on_error:
@@ -101,8 +117,126 @@ voice_assistant:
         id: assist_status
         text: !lambda 'return onx_notification::clipped(message, 128);'
     - script.execute: assist_finished
+  # Local voice timers (also tells Home Assistant this satellite supports them).
+  on_timer_started:
+    - script.execute: timer_sync
+    - lambda: |-
+        onx_panel_detail::timers.focus = "local:" + timer.id;
+        onx_panel_detail::timers.dismissed = false;
+    - script.execute: timer_show
+    - script.execute: timer_autoclose
+  on_timer_updated:
+    - script.execute: timer_sync
+  on_timer_tick:
+    - script.execute: timer_sync
+  on_timer_cancelled:
+    - script.execute: timer_sync
+    - script.execute: timer_close_if_idle
+  on_timer_finished:
+    - lambda: |-
+        auto &state = onx_panel_detail::timers;
+        state.ringing = true;
+        state.ringing_name = timer.name;
+        state.ringing_total = timer.total_seconds;
+        state.ringing_since = millis();
+        state.focus.clear();
+    - script.execute: timer_sync
+    - script.stop: timer_autoclose
+    - script.execute: timer_show
+    - script.execute: timer_ring
+
+esphome:
+  on_boot:
+    - priority: -100
+      then:
+        - lambda: |-
+            onx_panel_detail::stop_ringing = []() { id(timer_stop).execute(); };
+            onx_panel_detail::close_timers = []() { id(timer_close).execute(); };
 
 script:
+  # Copies the voice assistant's timers for the timer screen.
+  - id: timer_sync
+    then:
+      - lambda: |-
+          auto &state = onx_panel_detail::timers;
+          state.local.clear();
+          for (const auto &t : id(assist).get_timers())
+            state.local.push_back({t.id, t.name, t.total_seconds, t.seconds_left, t.is_active});
+          state.synced_ms = millis();
+
+  # Opens the timer screen above everything, waking the panel.
+  - id: timer_show
+    then:
+      - lambda: |-
+          if (onx_power::sleeping && id(low_power_sleep).state) id(low_power_sleep).turn_off();
+          if (id(ui_presenter)->is_standby_active()) id(exit_standby_mode).execute();
+          id(ui_presenter)->notify_user_activity();
+          onx_panel_detail::timers.overlay = true;
+          id(room_panel)->set_overlay(esphome::room_companion::OVERLAY_TIMER, true);
+
+  # A newly started timer is shown briefly, unless one is ringing.
+  - id: timer_autoclose
+    mode: restart
+    then:
+      - delay: 8s
+      - lambda: 'if (!onx_panel_detail::timers.ringing) id(timer_close).execute();'
+
+  - id: timer_close
+    then:
+      - script.stop: timer_autoclose
+      - script.stop: timer_ring
+      - lambda: |-
+          auto &state = onx_panel_detail::timers;
+          if (state.ringing) {
+            auto call = id(panel_media_player).make_call();
+            call.set_command(esphome::media_player::MEDIA_PLAYER_COMMAND_STOP).set_announcement(true).perform();
+          }
+          state.ringing = false;
+          state.overlay = false;
+          state.dismissed = true;
+          state.focus.clear();
+          id(room_panel)->set_overlay(esphome::room_companion::OVERLAY_TIMER, false);
+
+  - id: timer_close_if_idle
+    then:
+      - lambda: |-
+          const auto &state = onx_panel_detail::timers;
+          if (state.overlay && !state.ringing && state.local.empty()) id(timer_close).execute();
+
+  # Stops the finished-timer sound (the screen stays while other timers run).
+  - id: timer_stop
+    then:
+      - lambda: |-
+          const bool was = onx_panel_detail::timers.ringing;
+          onx_panel_detail::timers.ringing = false;
+          if (!was) return;
+          id(timer_ring).stop();
+          auto call = id(panel_media_player).make_call();
+          call.set_command(esphome::media_player::MEDIA_PLAYER_COMMAND_STOP).set_announcement(true).perform();
+      - script.execute: timer_close_if_idle
+
+  # Repeats the finished sound until stopped, for at most five minutes.
+  - id: timer_ring
+    mode: restart
+    then:
+      - while:
+          condition:
+            lambda: 'return onx_panel_detail::timers.ringing && millis() - onx_panel_detail::timers.ringing_since < 300000;'
+          then:
+            - media_player.speaker.play_on_device_media_file:
+                id: panel_media_player
+                media_file: timer_finished_sound
+                announcement: true
+            - delay: 500ms
+            - wait_until:
+                condition:
+                  not:
+                    media_player.is_announcing: panel_media_player
+                timeout: 15s
+            - delay: 800ms
+      - lambda: 'if (onx_panel_detail::timers.ringing) onx_panel_detail::timers.ringing = false;'
+      - script.execute: timer_close_if_idle
+
   - id: toggle_assist
     then:
       - if:
@@ -126,6 +260,7 @@ script:
                   - lvgl.label.update:
                       id: assist_response
                       text: ""
+                  - lvgl.widget.hide: assist_response_card
                   - voice_assistant.start:
                 else:
                   - script.execute:
@@ -144,6 +279,11 @@ script:
           if (onx_power::sleeping && id(low_power_sleep).state) id(low_power_sleep).turn_off();
           id(ui_presenter)->notify_user_activity();
           id(room_panel)->set_overlay(esphome::room_companion::OVERLAY_ASSIST, true);
+          // Above the bottom dock and other top-layer widgets, in the accent colour.
+          lv_obj_move_foreground(id(assist_overlay));
+          const auto accent = lv_color_hex(onx_display_settings::accent());
+          lv_obj_set_style_bg_color(id(assist_mic), accent, 0);
+          lv_obj_set_style_bg_color(id(assist_mic_ring), accent, 0);
       - lvgl.label.update:
           id: assist_status
           text: !lambda 'return status;'
@@ -179,78 +319,106 @@ lvgl:
           bg_opa: COVER
           border_width: 0
           pad_all: ${ (16 * (ui_scale | float)) | round | int }
+          pad_bottom: ${ (12 * (ui_scale | float)) | round | int }
           scrollable: false
           layout:
             type: FLEX
             flex_flow: COLUMN
-            flex_align_cross: CENTER
+            flex_align_cross: START
             pad_row: ${ (10 * (ui_scale | float)) | round | int }
           widgets:
-            - label:
-                text: "Assist"
-                text_font: fonts_MiSans_Bold_14
-                text_color: 0x62B0FF
-            - obj:
-                width: ${ (72 * (ui_scale | float)) | round | int }
-                height: ${ (72 * (ui_scale | float)) | round | int }
-                radius: ${ (36 * (ui_scale | float)) | round | int }
-                bg_color: 0x1F6FEB
-                border_width: 0
-                scrollable: false
-                clickable: false
-                widgets:
-                  - label:
-                      align: center
-                      text: "🎤"
-                      text_font: fonts_MiSans_Medium_32
-                      text_color: 0xFFFFFF
+            # Listening... / Thinking... / Speaking... or an error.
             - label:
                 id: assist_status
                 text: ""
                 width: 100%
-                long_mode: WRAP
-                text_align: CENTER
-                text_font: fonts_MiSans_Medium_18
-                text_color: 0xFFFFFF
+                long_mode: DOT
+                text_font: fonts_MiSans_Medium_12
+                text_color: 0x9C9C9E
+            # What was heard, in quotes.
             - label:
                 id: assist_transcript
                 text: ""
                 width: 100%
                 long_mode: WRAP
-                text_align: CENTER
-                text_font: fonts_MiSans_Medium_14
-                text_color: 0xB8B8B8
-            - label:
-                id: assist_response
-                text: ""
-                width: 100%
-                flex_grow: 1
-                long_mode: WRAP
-                text_align: CENTER
-                text_font: fonts_MiSans_Medium_16
+                text_font: fonts_MiSans_Bold_18
                 text_color: 0xFFFFFF
-            - button:
-                width: 60%
-                height: ${ (40 * (ui_scale | float)) | round | int }
-                radius: ${ (20 * (ui_scale | float)) | round | int }
-                bg_color: 0x2A2F35
-                on_click:
-                  - if:
-                      condition:
-                        or:
-                          - voice_assistant.is_running:
-                          - media_player.is_announcing: panel_media_player
-                      then:
-                        - voice_assistant.stop:
-                        - media_player.stop:
-                            id: panel_media_player
-                            announcement: true
-                  - script.stop: assist_finished
-                  - lvgl.widget.hide: assist_overlay
-                  - lambda: 'id(room_panel)->set_overlay(esphome::room_companion::OVERLAY_ASSIST, false);'
+            # The reply.
+            - obj:
+                id: assist_response_card
+                hidden: true
+                width: 100%
+                height: SIZE_CONTENT
+                radius: ${ (10 * (ui_scale | float)) | round | int }
+                bg_color: 0x232323
+                bg_opa: COVER
+                border_width: 0
+                pad_all: ${ (10 * (ui_scale | float)) | round | int }
+                scrollable: false
+                clickable: false
                 widgets:
                   - label:
-                      align: center
-                      text: "Close"
-                      text_font: fonts_MiSans_Medium_16
-                      text_color: 0xFFFFFF
+                      id: assist_response
+                      text: ""
+                      width: 100%
+                      long_mode: WRAP
+                      text_font: fonts_MiSans_Medium_14
+                      text_color: 0xD2D2D2
+            - obj:
+                width: 100%
+                flex_grow: 1
+                bg_opa: TRANSP
+                border_width: 0
+                pad_all: 0
+                scrollable: false
+                clickable: false
+            # Microphone: tap to talk again, or to stop listening/speaking.
+            - obj:
+                width: 100%
+                height: SIZE_CONTENT
+                bg_opa: TRANSP
+                border_width: 0
+                pad_all: 0
+                scrollable: false
+                clickable: false
+                layout:
+                  type: FLEX
+                  flex_flow: COLUMN
+                  flex_align_cross: CENTER
+                  pad_row: ${ (12 * (ui_scale | float)) | round | int }
+                widgets:
+                  - obj:
+                      id: assist_mic_ring
+                      width: ${ (104 * (ui_scale | float)) | round | int }
+                      height: ${ (104 * (ui_scale | float)) | round | int }
+                      radius: ${ (52 * (ui_scale | float)) | round | int }
+                      bg_color: 0x62B0FF
+                      bg_opa: 30%
+                      border_width: 0
+                      pad_all: 0
+                      scrollable: false
+                      on_click:
+                        - script.execute: toggle_assist
+                      widgets:
+                        - obj:
+                            id: assist_mic
+                            align: center
+                            width: ${ (68 * (ui_scale | float)) | round | int }
+                            height: ${ (68 * (ui_scale | float)) | round | int }
+                            radius: ${ (34 * (ui_scale | float)) | round | int }
+                            bg_color: 0x62B0FF
+                            bg_opa: COVER
+                            border_width: 0
+                            pad_all: 0
+                            scrollable: false
+                            clickable: false
+                            widgets:
+                              - label:
+                                  align: center
+                                  text: "🎤"
+                                  text_font: fonts_MiSans_Medium_32
+                                  text_color: 0xFFFFFF
+                  - label:
+                      text: "Swipe from the left edge to stop"
+                      text_font: fonts_MiSans_Medium_12
+                      text_color: 0x9C9C9E

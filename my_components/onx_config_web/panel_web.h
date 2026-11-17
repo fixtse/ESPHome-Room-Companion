@@ -10,9 +10,9 @@ static const char PANEL_JS[] = R"ONXPANEL(
  globalThis.ONX_PANEL=true;
  const $=id=>document.getElementById(id);
 
- // Rectangular panel previews retain the real aspect ratio.
  const style=document.createElement('style');
- style.textContent='.screen-frame{border-radius:18px!important;box-sizing:content-box;width:calc(100% - 16px);max-width:240px;height:auto!important;aspect-ratio:2/3!important}.screen-frame svg{width:100%;height:100%}.panel-page-layout{margin:18px 0;padding:16px;border:1px solid var(--line);border-radius:8px}.panel-page-layout select{width:100%}';
+ // The page stylesheet draws the device frame; drawPreview sets its aspect ratio.
+ style.textContent='.screen-frame{aspect-ratio:2/3}';
  document.head.append(style);
 
  // Same request protocol as the main page.
@@ -225,8 +225,10 @@ static const char PANEL_JS[] = R"ONXPANEL(
   actionPane.prepend(intro);
   say('#action-binding h3','Shortcut button');say('#choose-action','Choose script or automation');say('#default','Remove shortcut');
   hideNode($('none'));
-  const responses=$('gesture-pressResponses')?.closest('label');
-  if(responses)responses.lastChild.textContent=' Show the returned value after the shortcut runs';
+  // Only replace the caption text node: the span also holds the checkbox.
+  const responses=$('gesture-pressResponses');
+  const caption=responses?[...responses.parentNode.childNodes].find(n=>n.nodeType===3&&n.textContent.trim()):null;
+  if(caption)caption.textContent=' Show the returned value after the shortcut runs';
   say('#action-limit','This control’s screen has its own buttons, so it cannot have a shortcut.');
  }
  const gesturePane=$('slot-panel-gestures');
@@ -237,6 +239,9 @@ static const char PANEL_JS[] = R"ONXPANEL(
   const hint=gesturePane.querySelector('.help-links + .hint');
   if(hint)hint.textContent='Swipe anywhere on this control’s screen outside its buttons. Leave empty to keep the normal adjustment shown in the preview, or enter none to ignore the swipe.';
  }
+ // The page uses the panel's accent colour (updates while choosing one).
+ const colorValue=$('color-value');
+ if(colorValue)new MutationObserver(()=>{const v=colorValue.textContent.trim();if(/^#[0-9a-f]{6}$/i.test(v))document.documentElement.style.setProperty('--accent',v)}).observe(colorValue,{childList:true,characterData:true,subtree:true});
  // Hold progress belonged to the physical button.
  const cue=$('hold-cue')?.closest('label');
  if(cue){hideNode(cue);if(cue.nextElementSibling?.classList.contains('field-note'))hideNode(cue.nextElementSibling)}

@@ -110,6 +110,8 @@ font:
     id: fonts_MiSans_Medium_64
     size: ${ (64 * (font_scale | float)) | round | int }
     bpp: ${font_bpp}
+    # Large readings and countdowns on the rectangular screens (digits only).
+    glyphs: "0123456789.,:-%° "
   - file: "../../fonts/MiSans-Medium.ttf"
     id: fonts_MiSans_Medium_24
     size: ${ (24 * (font_scale | float)) | round | int }

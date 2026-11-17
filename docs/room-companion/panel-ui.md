@@ -44,11 +44,11 @@ Each type has a direct touch control next to the usual swipe/knob step:
 | Switch, input boolean, automation | Large toggle; plugs with a power sensor show its reading and graph |
 | Scene, script, button | Large run button with a confirmation ring |
 | Timer | Progress ring and countdown; HA timers add +1 min, Pause/Resume and Cancel |
-| Sensor | Large value, 12 h trend, graph (when enabled) and min / avg / max of the same history |
+| Sensor | Name (two lines when long), large value with its unit, a level bar for percentages, 12 h trend, graph (when enabled) and min / avg / max of the same history |
 | Binary sensor | State disc and the last changes seen by the panel since boot (history is not fetched) |
 | Number | Large value, horizontal slider (sent on release) and − / + steps |
 | Select | Scrollable option list; tap selects immediately |
-| Weather | Current conditions, humidity / wind / rain and a five-day range list on one screen |
+| Weather | Large temperature with conditions, feels-like and today's range beside it, humidity / wind / rain tiles and a five-day list (day, conditions, low, range bar, high) |
 
 Media keeps its artwork/transport view. Taps outside a control do nothing on
 these screens; the left-edge back swipe takes priority over controls near that
@@ -105,6 +105,18 @@ server and is limited by the stream's frame rate.
   sensor values). Base pages are still one control per page.
 
 ## Rectangular pages and grouped items
+
+**Main page cards.** Main pages show rounded cards with the time in the top
+row. Cards carry direct controls: lights have an on/off switch, the brightness
+percentage and a brightness slider; climate shows the mode and current
+temperature, the target and − / +; media players show the track with previous,
+play/pause and next; switches, fans and automations have a switch; scenes,
+scripts and buttons a *Run* button; weather shows the temperature, conditions,
+its icon and up to six readings (humidity, wind, pressure, visibility, UV,
+feels like). Sensors in *One control + three sensors* pages are single rows
+with icon, name and value. Tap a card outside its controls to open the detail.
+**Hardware status:** compiled; appearance and touch behaviour still need
+review on the panel.
 
 Normal entity pages now use the full display above the navigation dock, below
 a slim row for the notification bell. Generic

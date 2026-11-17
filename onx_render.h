@@ -14,8 +14,32 @@ inline void style_number(lv_obj_t *widget, lv_style_prop_t prop, int32_t number,
   lv_style_value_t value{}; value.num = number;
   lv_obj_set_local_style_prop(widget, prop, value, selector);
 }
+// Dark mode (panel "Dark mode" switch) maps the base palette to near-black.
+// Applying it here, where widgets set their colours, keeps periodic refreshes
+// from flashing the light colour before the palette sweep darkens it again.
+struct PalettePair { uint32_t normal, dark; };
+inline constexpr PalettePair DARK_SURFACES[] = {
+  {0x1A1A1A, 0x010101}, {0x272727, 0x121213}, {0x232323, 0x0E0E0F},
+  {0x2D2D2D, 0x151516}, {0x3D3D3D, 0x1F1F21}, {0x101418, 0x020304},
+  {0x2A2F35, 0x111417}, {0x24323A, 0x0D161B}, {0x414850, 0x22272C},
+  {0x5A5A5A, 0x333335}, {0x404040, 0x252527},
+};
+inline constexpr PalettePair DARK_TEXTS[] = {
+  {0xFFFFFF, 0xE4E4E6}, {0xD2D2D2, 0x9C9C9E}, {0xD8D8D8, 0xA2A2A4},
+  {0xB8B8B8, 0x858587}, {0xAAAAAA, 0x7A7A7C},
+};
+inline bool dark_palette = false;
+inline lv_color_t themed(lv_style_prop_t prop, lv_color_t color) {
+  if (!dark_palette) return color;
+  const uint32_t c = lv_color_to_u32(color) & 0xFFFFFF;
+  const bool text = prop == LV_STYLE_TEXT_COLOR || prop == LV_STYLE_IMAGE_RECOLOR;
+  if (text) { for (const auto &p : DARK_TEXTS) if (c == p.normal) return lv_color_hex(p.dark); }
+  else { for (const auto &p : DARK_SURFACES) if (c == p.normal) return lv_color_hex(p.dark); }
+  return color;
+}
 inline void style_color(lv_obj_t *widget, lv_style_prop_t prop, lv_color_t color,
                         lv_style_selector_t selector) {
+  color = themed(prop, color);
   lv_style_value_t old;
   if (lv_obj_get_local_style_prop(widget, prop, &old, selector) == LV_STYLE_RES_FOUND && lv_color_eq(old.color, color)) return;
   lv_style_value_t value{}; value.color = color;
