@@ -544,7 +544,9 @@ script:
             onx_render::apply_panel_palette(target);
             onx_render::style_bg_color(target,lv_color_hex(onx_display_settings::background()),0);
             if (lv_scr_act() != target) lv_scr_load(target);
-            if (selected >= total) onx_panel_pages::hide();
+            // Settings is drawn on the same base as the other main pages.
+            if (target == id(device_settings)->obj) onx_panel_pages::render_settings(onx_panel_ui::width, onx_panel_ui::height);
+            else if (selected >= total) onx_panel_pages::hide();
             return;
           }
           #endif
@@ -701,7 +703,7 @@ script:
     mode: restart
     then:
       - lambda: |-
-          onx_sensor_graph::hide();
+          if (!onx_sensor_graph::panel_owned) onx_sensor_graph::hide();
           if (!id(ui_presenter)->is_normal_mode_active() ||
               id(ui_presenter)->is_standby_active() ||
               !id(normal_device_detail_active) ||
@@ -844,7 +846,7 @@ script:
           if (!timer_detail && entity_id.rfind("media_player.", 0) != 0) {
             auto view = onx_detail_view::build(entity_id, title);
             onx_entity_config::customize_control_view(detail_index,entity_id,view);
-            if(view.layout=="graph") onx_sensor_graph::render(lv_obj_get_parent(id(normal_automation_detail_action)),entity_id,id(ha_time).now().timestamp,onx_display_settings::current.media_color,id(fonts_MiSans_Medium_12)->get_lv_font());
+            if(view.layout=="graph" && !onx_sensor_graph::panel_owned) onx_sensor_graph::render(lv_obj_get_parent(id(normal_automation_detail_action)),entity_id,id(ha_time).now().timestamp,onx_display_settings::current.media_color,id(fonts_MiSans_Medium_12)->get_lv_font());
             auto line = [&](lv_obj_t *label, const onx_detail_view::Line &text) {
               onx_render::label(label, text.text.c_str());
               lv_obj_set_x(label, onx_geom::S(text.x)); lv_obj_set_y(label, onx_geom::S(text.y)); lv_obj_set_width(label, onx_geom::S(text.width));

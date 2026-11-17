@@ -77,15 +77,7 @@ script:
           if (onx_notification_ui::detail_id != 0) { onx_notification_ui::close_detail(); return; }
           if (onx_notification_ui::panel_open) { onx_notification_ui::close_panel(); return; }
           if (onx_panel_detail::timers.overlay) { id(timer_close).execute(); return; }
-          if (!lv_obj_has_flag(id(assist_overlay), LV_OBJ_FLAG_HIDDEN)) {
-            id(assist).request_stop();
-            auto call = id(panel_media_player).make_call();
-            call.set_command(esphome::media_player::MEDIA_PLAYER_COMMAND_STOP).set_announcement(true).perform();
-            id(assist_finished).stop();
-            lv_obj_add_flag(id(assist_overlay), LV_OBJ_FLAG_HIDDEN);
-            id(room_panel)->set_overlay(esphome::room_companion::OVERLAY_ASSIST, false);
-            return;
-          }
+          if (!lv_obj_has_flag(id(assist_overlay), LV_OBJ_FLAG_HIDDEN)) { id(assist_stop).execute(); return; }
           if (id(room_panel)->dashboard_open()) { id(room_panel)->close_dashboard(); return; }
           if (!id(normal_device_detail_active)) return;
           // A timer popup returns to the control that was selected before it.

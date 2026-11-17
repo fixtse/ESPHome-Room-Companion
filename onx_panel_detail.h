@@ -291,17 +291,35 @@ inline lv_point_t point() {
   return p;
 }
 // Shared drag plumbing for custom sliders: live preview, commit on release.
+// Like LVGL's own slider and arc, the control must not chain the drag to its
+// parents: the top layer is scrollable (elastic), so a vertical drag started
+// scrolling it, the control lost the press and the value was never sent.
+// A lost press (finger slid off, a screen change) still commits the last value.
 inline void drag(lv_obj_t *obj, std::function<void(lv_point_t, bool commit)> fn) {
   interactive(obj);
-  on(obj, LV_EVENT_PRESSED, [fn](lv_event_t *) { if (blocked && blocked()) return; dragging = true; fn(point(), false); });
-  on(obj, LV_EVENT_PRESSING, [fn](lv_event_t *) { if (dragging) fn(point(), false); });
-  on(obj, LV_EVENT_RELEASED, [fn](lv_event_t *) {
+  lv_obj_remove_flag(obj, static_cast<lv_obj_flag_t>(LV_OBJ_FLAG_SCROLLABLE | LV_OBJ_FLAG_SCROLL_CHAIN));
+  lv_obj_add_flag(obj, LV_OBJ_FLAG_PRESS_LOCK);
+  auto last = std::make_shared<lv_point_t>(lv_point_t{0, 0});
+  on(obj, LV_EVENT_PRESSED, [fn, last](lv_event_t *) {
+    if (blocked && blocked()) return;
+    dragging = true;
+    *last = point();
+    fn(*last, false);
+  });
+  on(obj, LV_EVENT_PRESSING, [fn, last](lv_event_t *) {
+    if (!dragging) return;
+    *last = point();
+    fn(*last, false);
+  });
+  auto finish = [fn, last](lv_event_t *e) {
     if (!dragging) return;
     dragging = false;
     if (activity) activity();
-    fn(point(), true);
-  });
-  on(obj, LV_EVENT_PRESS_LOST, [](lv_event_t *) { dragging = false; });
+    if (lv_event_get_code(e) == LV_EVENT_RELEASED) *last = point();
+    fn(*last, true);
+  };
+  on(obj, LV_EVENT_RELEASED, finish);
+  on(obj, LV_EVENT_PRESS_LOST, finish);
 }
 
 // ------------------------------------------------------------ text helpers
@@ -336,6 +354,18 @@ inline void request(const std::string &entity, const std::string &service, const
 }
 
 // ------------------------------------------------------------ domains
+// Light: Home Assistant style. Name, large brightness and state, one large
+// control for the selected mode (brightness slider, colour-temperature slider or
+// colour wheel) and a pill bar along the bottom with power and the mode buttons.
+// Values are previewed while dragging and sent on release.
+inline const void *light_wheel = nullptr;                    // Colour wheel image (panel.yaml).
+inline std::array<const void *, 3> light_mode_icons{};       // Brightness, white, colour.
+inline void light_send_hs(const std::string &e, float hue, float saturation) {
+  const int h = int(std::lround(hue)) % 360, sat = std::clamp(int(std::lround(saturation)), 0, 100);
+  set_pending(e, "hs", float(h * 1000 + sat));
+  // A list value: sent as a template so Home Assistant receives [hue, saturation].
+  request(e, "light.turn_on", "hs_color", "[" + std::to_string(h) + ", " + std::to_string(sat) + "]", "panel_colour");
+}
 __attribute__((noinline)) inline void build_light(const Layout &l, const std::string &e, const EntityDetailState &d, const std::string &title) {
   const auto s = light_state ? light_state(e) : esphome::onx_storage::NormalLightState{};
   const bool on = s.is_on && d.available;
@@ -344,78 +374,166 @@ __attribute__((noinline)) inline void build_light(const Layout &l, const std::st
   const float want = pending_value(e, "brightness");
   clear_pending_if(e, "brightness", level);
   if (std::isfinite(want)) level = want;
-  std::string context = !d.available ? "Unavailable" : on ? (dimmable ? "On · " + pct(level) : "On") : "Off";
-  if (on && s.color_temperature_kelvin > 0 && s.supports_color_temperature())
-    context += " · " + std::to_string(s.color_temperature_kelvin) + " K";
-  const int pw = P(52);
-  header(l.head, title, context, pw + P(8));
-  circle(root, l.head.right() - pw / 2, l.head.y + pw / 2 - P(2), pw, on ? strong() : CONTROL(), LV_SYMBOL_POWER,
-        on ? TEXT() : SOFT_TEXT(), [e, on]() { request(e, "light.toggle", "", on ? "off" : "on", "panel_power"); });
-
-  // Vertical brightness slider.
-  const int sw = std::min(P(132), l.vis.w), sh = l.vis.h, sx = l.vis.x + (l.vis.w - sw) / 2, sy = l.vis.y;
-  lv_obj_t *track = box(root, sx, sy, sw, sh, CONTROL(), P(28));
-  lv_obj_set_style_clip_corner(track, true, 0);
-  const int fill_h = dimmable ? int(sh * std::clamp(level, 0.0f, 100.0f) / 100) : (on ? sh : 0);
-  lv_obj_t *fill = box(track, 0, sh - fill_h, sw, fill_h, accent(), 0);
-  lv_obj_t *value = text(track, dimmable ? pct(level) : (on ? "On" : "Off"), fonts.big, TEXT(), 0, P(14), sw, LV_TEXT_ALIGN_CENTER);
-  if (dimmable && d.available) {
-    drag(track, [e, track, fill, value, sh, sw](lv_point_t p, bool commit) {
-      lv_area_t a;
-      lv_obj_get_coords(track, &a);
-      const int v = std::clamp(int(std::lround((a.y2 - p.y) * 100.0f / sh)), 1, 100);
-      const int h = sh * v / 100;
-      lv_obj_set_pos(fill, 0, sh - h);
-      lv_obj_set_size(fill, sw, h);
-      lv_label_set_text(value, pct(v).c_str());
-      if (!commit) return;
-      set_pending(e, "brightness", v);
-      request(e, "light.turn_on", "brightness_pct", std::to_string(v), "panel_brightness");
-    });
-  }
-
-  // Mode chips and swatches.
-  std::vector<std::string> labels;
+  // Modes this light offers: 0 brightness, 1 white (colour temperature), 2 colour.
   std::vector<int> modes;
-  if (dimmable) { labels.push_back("Brightness"); modes.push_back(0); }
-  if (s.supports_color_temperature()) { labels.push_back("White"); modes.push_back(1); }
-  if (s.supports_rgb()) { labels.push_back("Colour"); modes.push_back(2); }
-  const int mode = light_mode ? light_mode() : 0;
-  const int ch = P(44), gap = P(12);
-  int y = l.ctl.y;
-  if (labels.size() > 1) {
-    const int sel = std::find(modes.begin(), modes.end(), mode) - modes.begin();
-    chips(root, {l.ctl.x, y, l.ctl.w, ch}, labels, sel, [modes](int i) { if (set_light_mode) set_light_mode(modes[i]); });
-    y += ch + gap;
+  if (dimmable) modes.push_back(0);
+  if (s.supports_color_temperature()) modes.push_back(1);
+  if (s.supports_rgb()) modes.push_back(2);
+  int mode = light_mode ? light_mode() : 0;
+  if (std::find(modes.begin(), modes.end(), mode) == modes.end()) mode = modes.empty() ? -1 : modes.front();
+
+  const int pad = P(16), bar_h = P(56);
+  // Portrait: everything stacked. Landscape: the control on the left, the
+  // name, value and mode bar on the right.
+  const Rect info = wide() ? Rect{l.head.x, pad, l.head.w, H - 2 * pad} : Rect{pad, pad, W - 2 * pad, H - 2 * pad};
+  text(root, title, fit(title, info.w, {fonts.title, fonts.body}), TEXT(), info.x, info.y, info.w);
+  int y = info.y + line(fonts.title) + P(10);
+  lv_obj_t *value = text(root, !d.available ? "—" : dimmable ? (on ? pct(level) : "Off") : (on ? "On" : "Off"), fonts.big, TEXT(),
+                         info.x, y, info.w, LV_TEXT_ALIGN_CENTER);
+  y += line(fonts.big);
+  std::string context = !d.available ? "Unavailable" : on ? "On" : "Off";
+  if (on && s.color_temperature_kelvin > 0 && s.supports_color_temperature() &&
+      (d.light_temperature || !s.supports_rgb()))
+    context += " · " + std::to_string(s.color_temperature_kelvin) + " K";
+  text(root, context, fonts.small, MUTED(), info.x, y, info.w, LV_TEXT_ALIGN_CENTER);
+  y += line(fonts.small) + P(14);
+
+  // Mode bar: power | modes.
+  const int bs = P(44), gap = P(6), n = modes.size() > 1 ? modes.size() : 0;
+  const int bar_w = P(8) * 2 + bs + (n ? P(17) + n * bs + (n - 1) * gap : 0);
+  // The bottom of the control column leaves room for a shortcut button (render()).
+  const int bar_x = info.x + (info.w - bar_w) / 2, bar_y = l.ctl.bottom() - bar_h;
+  lv_obj_t *bar = box(root, bar_x, bar_y, bar_w, bar_h, CARD(), bar_h / 2);
+  const int by = (bar_h - bs) / 2;
+  lv_obj_t *power = button(bar, P(8), by, bs, bs, LV_RADIUS_CIRCLE, on ? strong() : CONTROL(), "", fonts.small, TEXT(),
+                           [e, on]() { request(e, "light.toggle", "", on ? "off" : "on", "panel_power"); });
+  lv_obj_center(text(power, LV_SYMBOL_POWER, fonts.symbol,
+                     on ? (onx_display_settings::light_color(strong()) ? 0x161B22 : 0xFFFFFF) : SOFT_TEXT(), 0, 0));
+  if (n) {
+    int x = P(8) + bs + P(8);
+    box(bar, x, (bar_h - P(28)) / 2, 1, P(28), TRACK(), 0);
+    x += P(9);
+    for (int m : modes) {
+      const bool selected = m == mode;
+      lv_obj_t *b = button(bar, x, by, bs, bs, LV_RADIUS_CIRCLE, selected ? CONTROL() : CARD(), "", fonts.small, TEXT(),
+                           [m]() { if (set_light_mode) set_light_mode(m); });
+      if (selected) {
+        lv_obj_set_style_border_width(b, P(2), 0);
+        lv_obj_set_style_border_color(b, lv_color_hex(TEXT()), 0);
+      }
+      if (light_mode_icons[m]) {
+        lv_obj_t *img = lv_image_create(b);
+        lv_image_set_src(img, light_mode_icons[m]);
+        lv_obj_remove_flag(img, LV_OBJ_FLAG_CLICKABLE);
+        lv_obj_center(img);
+      }
+      x += bs + gap;
+    }
   }
-  if (!d.available) return;
-  struct Swatch { uint32_t color; std::string service, parameter, value; };
-  std::vector<Swatch> swatches;
-  if (mode == 2 && s.supports_rgb()) {
-    const std::pair<const char *, uint32_t> names[] = {{"red", 0xFF4040}, {"orange", 0xFF9A3C}, {"green", 0x3CCB6E},
-                                                       {"blue", 0x3C7BFF}, {"purple", 0xA45CFF}};
-    for (const auto &n : names) swatches.push_back({n.second, "light.turn_on", "color_name", n.first});
-  } else if (s.supports_color_temperature()) {
+
+  // The large control.
+  const Rect vis = wide() ? l.vis : Rect{pad, y, W - 2 * pad, bar_y - P(16) - y};
+  if (!d.available || vis.h < P(60)) return;
+  if (mode < 0) {  // On/off only: one large power button.
+    const int size = std::min({vis.w, vis.h, P(150)});
+    circle(root, vis.x + vis.w / 2, vis.y + vis.h / 2, size, on ? strong() : CONTROL(), LV_SYMBOL_POWER,
+           on ? TEXT() : SOFT_TEXT(), [e, on]() { request(e, "light.toggle", "", on ? "off" : "on", "panel_power"); });
+    return;
+  }
+  if (mode == 2) {
+    const int size = std::min({vis.w, vis.h, P(220)});
+    const int x0 = vis.x + (vis.w - size) / 2, y0 = vis.y + (vis.h - size) / 2;
+    lv_obj_t *wheel = box(root, x0, y0, size, size, CONTROL(), LV_RADIUS_CIRCLE, light_wheel ? LV_OPA_TRANSP : LV_OPA_COVER);
+    if (light_wheel) {
+      lv_obj_t *img = lv_image_create(wheel);
+      lv_image_set_src(img, light_wheel);
+      lv_image_header_t h{};
+      if (lv_image_decoder_get_info(light_wheel, &h) == LV_RESULT_OK && h.w && h.w != uint32_t(size)) {
+        lv_image_set_pivot(img, h.w / 2, h.h / 2);
+        lv_image_set_scale(img, size * 256 / h.w);
+      }
+      lv_obj_remove_flag(img, LV_OBJ_FLAG_CLICKABLE);
+      lv_obj_center(img);
+    }
+    float hue = std::isfinite(d.light_hue) ? d.light_hue : s.hue_degrees();
+    float sat = std::isfinite(d.light_saturation) ? d.light_saturation : 100;
+    const float packed = pending_value(e, "hs");
+    if (std::isfinite(packed)) { hue = std::floor(packed / 1000); sat = packed - hue * 1000; }
+    const int ms = P(30), radius = size / 2;
+    auto marker_at = [radius, ms](lv_obj_t *marker, float h, float sa) {
+      const float a = h * float(M_PI) / 180, r = std::clamp(sa, 0.0f, 100.0f) / 100 * (radius - ms / 4);
+      lv_obj_set_pos(marker, radius + int(std::cos(a) * r) - ms / 2, radius + int(std::sin(a) * r) - ms / 2);
+      lv_obj_set_style_bg_color(marker, lv_color_hex(onx_light::hsv(h, sa)), 0);
+    };
+    lv_obj_t *marker = box(wheel, 0, 0, ms, ms, 0xFFFFFF, LV_RADIUS_CIRCLE);
+    lv_obj_set_style_border_width(marker, P(3), 0);
+    lv_obj_set_style_border_color(marker, lv_color_hex(0xFFFFFF), 0);
+    lv_obj_set_style_shadow_width(marker, P(8), 0);
+    lv_obj_set_style_shadow_opa(marker, LV_OPA_40, 0);
+    marker_at(marker, hue, on ? sat : 0);
+    drag(wheel, [e, wheel, marker, marker_at, radius, ms](lv_point_t p, bool commit) {
+      lv_area_t a;
+      lv_obj_get_coords(wheel, &a);
+      const float dx = p.x - (a.x1 + radius), dy = p.y - (a.y1 + radius);
+      float h = std::atan2(dy, dx) * 180 / float(M_PI);
+      if (h < 0) h += 360;
+      const float sa = std::clamp(std::sqrt(dx * dx + dy * dy) / float(radius - ms / 4), 0.0f, 1.0f) * 100;
+      marker_at(marker, h, sa);
+      if (commit) light_send_hs(e, h, sa);
+    });
+    return;
+  }
+  // Vertical sliders (brightness, colour temperature).
+  const int sw = std::min(P(124), vis.w), sh = vis.h, sx = vis.x + (vis.w - sw) / 2, sy = vis.y;
+  lv_obj_t *track = box(root, sx, sy, sw, sh, CONTROL(), P(30));
+  lv_obj_set_style_clip_corner(track, true, 0);
+  const uint32_t ink = onx_display_settings::light_color(accent()) ? 0x161B22 : 0xFFFFFF;
+  if (mode == 1) {
     const int lo = s.min_color_temperature_kelvin ? s.min_color_temperature_kelvin : 2200;
     const int hi = s.max_color_temperature_kelvin > lo ? s.max_color_temperature_kelvin : 6500;
-    for (int i = 0; i < 5; ++i) {
-      const int k = (lo + (hi - lo) * i / 4) / 100 * 100;
-      swatches.push_back({onx_light::kelvin(k), "light.turn_on", "color_temp_kelvin", std::to_string(k)});
-    }
+    // Cool at the top, warm at the bottom.
+    lv_obj_set_style_bg_color(track, lv_color_hex(onx_light::kelvin(hi)), 0);
+    lv_obj_set_style_bg_grad_color(track, lv_color_hex(onx_light::kelvin(lo)), 0);
+    lv_obj_set_style_bg_grad_dir(track, LV_GRAD_DIR_VER, 0);
+    float kelvin = s.color_temperature_kelvin ? s.color_temperature_kelvin : (lo + hi) / 2;
+    const float wanted = pending_value(e, "kelvin");
+    if (std::isfinite(wanted)) kelvin = wanted;
+    const int hh = P(6);
+    auto handle_y = [sh, hh, lo, hi](float k) { return std::clamp(int(sh * (1 - (k - lo) / float(hi - lo))) - hh / 2, P(8), sh - hh - P(8)); };
+    lv_obj_t *handle = box(track, sw / 4, handle_y(kelvin), sw / 2, hh, 0x161B22, hh / 2);
+    lv_obj_set_style_border_width(handle, P(2), 0);
+    lv_obj_set_style_border_color(handle, lv_color_hex(0xFFFFFF), 0);
+    drag(track, [e, track, handle, handle_y, sh, lo, hi](lv_point_t p, bool commit) {
+      lv_area_t a;
+      lv_obj_get_coords(track, &a);
+      const float f = std::clamp((a.y2 - p.y) / float(sh), 0.0f, 1.0f);
+      const int k = (lo + int(std::lround((hi - lo) * f))) / 50 * 50;
+      lv_obj_set_y(handle, handle_y(k));
+      if (!commit) return;
+      set_pending(e, "kelvin", k);
+      request(e, "light.turn_on", "color_temp_kelvin", std::to_string(k), "panel_colour");
+    });
+    return;
   }
-  if (swatches.empty() || y + ch > l.ctl.bottom() + P(4)) return;
-  const int n = swatches.size(), size = std::min(ch, (l.ctl.w - gap * (n - 1)) / n);
-  const int step = n > 1 ? (l.ctl.w - size) / (n - 1) : 0;
-  for (int i = 0; i < n; ++i) {
-    const auto sw_ = swatches[i];
-    lv_obj_t *b = button(root, l.ctl.x + i * step, y, size, size, LV_RADIUS_CIRCLE, sw_.color, "", fonts.small, TEXT(),
-                         [e, sw_]() { request(e, sw_.service, sw_.parameter, sw_.value, "panel_colour"); });
-    const bool current = sw_.parameter == "color_temp_kelvin" && on && std::abs(s.color_temperature_kelvin - std::stoi(sw_.value)) < 150;
-    if (current) {
-      lv_obj_set_style_border_width(b, P(3), 0);
-      lv_obj_set_style_border_color(b, lv_color_hex(TEXT()), 0);
-    }
-  }
+  const int fill_h = int(sh * std::clamp(level, 0.0f, 100.0f) / 100);
+  lv_obj_t *fill = box(track, 0, sh - fill_h, sw, fill_h, accent(), 0);
+  const int kh = P(5), kw = sw * 30 / 100;
+  auto knob_y = [sh, kh](int h) { return std::clamp(sh - h + P(12), P(8), sh - kh - P(8)); };
+  lv_obj_t *knob = box(track, (sw - kw) / 2, knob_y(fill_h), kw, kh, ink, kh / 2);
+  lv_obj_set_style_bg_opa(knob, LV_OPA_70, 0);
+  drag(track, [e, track, fill, knob, knob_y, value, sh, sw](lv_point_t p, bool commit) {
+    lv_area_t a;
+    lv_obj_get_coords(track, &a);
+    const int v = std::clamp(int(std::lround((a.y2 - p.y) * 100.0f / sh)), 1, 100);
+    const int h = sh * v / 100;
+    lv_obj_set_pos(fill, 0, sh - h);
+    lv_obj_set_size(fill, sw, h);
+    lv_obj_set_y(knob, knob_y(h));
+    lv_label_set_text(value, pct(v).c_str());
+    if (!commit) return;
+    set_pending(e, "brightness", v);
+    request(e, "light.turn_on", "brightness_pct", std::to_string(v), "panel_brightness");
+  });
 }
 
 inline std::string hvac_label(const std::string &m) {
@@ -1206,14 +1324,17 @@ inline std::string condition(const std::string &s) {
   if (s == "snowy-rainy") return "Sleet";
   return label(s);
 }
+inline void icon(lv_obj_t *parent, const std::string &e, int cx, int cy, int size, uint32_t color);
 __attribute__((noinline)) inline void build_weather(const std::string &e, const EntityDetailState &d, const std::string &title) {
   auto reading_of = [](const std::string &v, const std::string &unit) {
     return v.empty() || v == "None" || v == "unknown" || v == "unavailable" ? std::string("—") : onx_detail_view::compact(v) + unit;
   };
   const int pad = P(16);
   const Rect left = wide() ? Rect{pad, pad, W * 46 / 100 - pad, H - 2 * pad} : Rect{pad, pad, W - 2 * pad, H - 2 * pad};
-  // Place name, then the temperature with the conditions beside it.
-  text(root, title, fonts.body, SOFT_TEXT(), left.x, left.y, left.w);
+  // Place name, then the temperature with the conditions beside it; the
+  // condition icon sits in the free top-right corner above the conditions.
+  const int is = P(46);
+  text(root, title, fonts.body, SOFT_TEXT(), left.x, left.y, left.w - is - P(8));
   int y = left.y + line(fonts.body);
   const std::string temp = reading_of(d.target, "°");
   const std::string feels = "Feels " + reading_of(d.apparent_temperature, "°");
@@ -1227,6 +1348,11 @@ __attribute__((noinline)) inline void build_weather(const std::string &e, const 
   const int sx = left.x + tw + P(14), sw = left.right() - sx;
   const int lines = range.empty() ? 2 : 3;
   int sy = y + (line(tf) - line(fonts.body) - (lines - 1) * line(fonts.small)) / 2;
+  {
+    // Between the top edge and the conditions, right-aligned.
+    const int top = std::max(P(4), left.y - P(8)), size = std::clamp(sy - P(4) - top, P(24), is);
+    icon(root, e, left.right() - size / 2, top + size / 2, size, TEXT());
+  }
   text(root, condition(d.state), fonts.body, TEXT(), sx, sy, sw);
   sy += line(fonts.body);
   text(root, feels, fonts.small, MUTED(), sx, sy, sw);
@@ -1634,13 +1760,43 @@ inline void card_row(lv_obj_t *c, const Tile &t, const EntityDetailState *d) {
   if (uw) text(c, unit, fonts.small, MUTED(), vx + vw + P(4), vy + line(vf) - line(fonts.small) - P(2), uw);
 }
 
+// The carousel's Settings item, drawn like the other main pages (same
+// background, time row and card) instead of the base layout's round page. A tap
+// falls through to the shared press action, which opens the settings menu.
+constexpr const char *SETTINGS = "[Local] Settings";
+inline const void *settings_icon = nullptr;
+inline void card_settings(lv_obj_t *c, const Tile &t) {
+  const Rect r = t.r;
+  const int is = std::min(P(96), r.h / 3), title_h = line(fonts.title), gap = P(14);
+  const int block = is + gap + title_h + P(4) + line(fonts.small);
+  int y = std::max(P(14), (r.h - block) / 2);
+  if (settings_icon != nullptr) {
+    lv_obj_t *img = lv_image_create(c);
+    lv_image_set_src(img, settings_icon);
+    lv_obj_remove_flag(img, LV_OBJ_FLAG_CLICKABLE);
+    lv_image_header_t h{};
+    if (lv_image_decoder_get_info(settings_icon, &h) == LV_RESULT_OK && h.w && int(h.w) != is) {
+      lv_image_set_pivot(img, h.w / 2, h.h / 2);
+      lv_image_set_scale(img, is * 256 / h.w);
+    }
+    lv_obj_set_style_image_recolor(img, lv_color_hex(accent()), 0);
+    lv_obj_set_style_image_recolor_opa(img, LV_OPA_COVER, 0);
+    lv_obj_align(img, LV_ALIGN_TOP_MID, 0, y + (is - int(h.h)) / 2);
+  }
+  y += is + gap;
+  text(c, "Settings", fonts.title, TEXT(), 0, y, r.w, LV_TEXT_ALIGN_CENTER);
+  y += title_h + P(4);
+  text(c, "Wi-Fi, display and Home Assistant", fonts.small, MUTED(), P(14), y, r.w - P(28), LV_TEXT_ALIGN_CENTER);
+}
+
 __attribute__((noinline)) inline void build_card(const Tile &t) {
   lv_obj_t *c = box(root, t.r.x, t.r.y, t.r.w, t.r.h, CARD(), t.compact ? P(14) : P(18));
   lv_obj_set_style_clip_corner(c, false, 0);
   const auto *d = custom_logic_entity_sub::entity_detail(t.entity);
   const bool ready = d != nullptr && d->received && d->available;
   if (t.compact) { card_row(c, t, d); return; }
-  if (ready && has_prefix(t.entity, "weather.")) card_weather(c, t, *d);
+  if (t.entity == SETTINGS) card_settings(c, t);
+  else if (ready && has_prefix(t.entity, "weather.")) card_weather(c, t, *d);
   else if (ready && has_prefix(t.entity, "light.")) card_light(c, t, *d);
   else if (ready && has_prefix(t.entity, "climate.")) card_climate(c, t, *d);
   else if (ready && has_prefix(t.entity, "media_player.")) card_media(c, t, *d);
@@ -1716,7 +1872,8 @@ inline std::string signature(const std::string &e, const EntityDetailState *d, c
   if (has_prefix(e, "light.") && light_state) {
     const auto l = light_state(e);
     s += '|' + std::to_string(l.is_on) + ',' + std::to_string(l.brightness_pct) + ',' + std::to_string(l.color_temperature_kelvin) +
-         ',' + std::to_string(light_mode ? light_mode() : 0);
+         ',' + std::to_string(light_mode ? light_mode() : 0) + ',' + fmt(d->light_hue, 0) + ',' + fmt(d->light_saturation, 0) + ',' +
+         std::to_string(d->light_temperature);
   }
   const int i = onx_sensor_view::index(e);
   if (i >= 0) {
@@ -1732,6 +1889,7 @@ inline std::string signature(const std::string &e, const EntityDetailState *d, c
 }
 
 inline void detach_graph() {
+  onx_sensor_graph::panel_owned = false;
   auto *canvas = onx_sensor_graph::canvas;
   if (canvas == nullptr || root == nullptr) return;
   for (lv_obj_t *p = lv_obj_get_parent(canvas); p != nullptr; p = lv_obj_get_parent(p)) {
@@ -1775,7 +1933,7 @@ inline void render(lv_obj_t *parent, const std::string &e, const std::string &ti
   if (dragging) return;  // Never rebuild under a finger.
   const auto *d = custom_logic_entity_sub::entity_detail(e);
   const auto sig = signature(e, d, v, title);
-  if (sig == built_signature && !main_mode) return;
+  if (sig == built_signature && !main_mode) { refresh_icons(); return; }
   clear();
   built_signature = sig;
   auto l = layout();

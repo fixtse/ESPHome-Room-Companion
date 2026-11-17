@@ -10,6 +10,10 @@ inline std::array<Pixel,73> pixels;
 inline size_t count=0;
 inline uint32_t range_seconds=43200;
 inline uint32_t ink=0x62B0FF;
+// Set while the rectangular detail screen draws the graph. The base layout's
+// periodic detail refresh must not hide, re-parent or resize the shared canvas
+// underneath it (that made the graph jump between two sizes every second).
+inline bool panel_owned=false;
 inline void draw(lv_event_t *event) {
   lv_area_t area;lv_obj_get_coords(canvas,&area);
   auto *layer=lv_event_get_layer(event);

@@ -172,6 +172,8 @@ interval:
             onx_panel_pages::render(entity, onx_panel_ui::width, onx_panel_ui::height, detail, [](lv_obj_t *icon, const std::string &target) {
               id(apply_normal_entity_icon).execute(icon,target,"",false);
             });
+          } else if (normal && !detail && id(normal_page_index)==0 && lv_scr_act() == id(device_settings)->obj) {
+            onx_panel_pages::render_settings(onx_panel_ui::width, onx_panel_ui::height);
           } else onx_panel_pages::hide();
           static uint32_t last_main_artwork = 0;
           if (!detail && normal && !onx_media::main_entity.empty() && millis() - last_main_artwork >= 1000) {
@@ -194,6 +196,8 @@ interval:
           const auto mode = id(panel_idle_screen).active_index().value_or(0);
           const bool entered = standby && !was_standby;
           was_standby = standby;
+          onx_panel_ui::update_idle_badge(onx_notification::center.items.size(),
+              standby && mode == onx_panel_ui::IDLE_CLOCK && !id(screen_off_state) && !id(sleep_mode_state));
           if (entered && mode == onx_panel_ui::IDLE_DASHBOARD && id(room_panel)->stream_status() != "not configured")
             id(room_panel)->open_dashboard();
           const bool slideshow = standby && mode == onx_panel_ui::IDLE_SLIDESHOW;
@@ -452,6 +456,19 @@ image:
     type: RGB565
     transparency: alpha_channel
   - platform: file
+    file: "../../assets/panel/cog-outline.svg"
+    id: panel_settings_icon
+    resize: ${ (72 * (ui_scale | float)) | round | int }x${ (72 * (ui_scale | float)) | round | int }
+    type: RGB565
+    transparency: alpha_channel
+  # Light detail colour wheel (hue around, saturation outwards).
+  - platform: file
+    file: "../../assets/panel/color-wheel.svg"
+    id: panel_color_wheel
+    resize: ${ (165 * (ui_scale | float)) | round | int }x${ (165 * (ui_scale | float)) | round | int }
+    type: RGB565
+    transparency: alpha_channel
+  - platform: file
     file: "../../assets/entity_icons/microphone.svg"
     id: panel_assist_icon
     resize: ${ (80 * (ui_scale | float)) | round | int }x${ (80 * (ui_scale | float)) | round | int }
@@ -502,10 +519,24 @@ script:
             return id(app_storage)->normal_device_slot(custom_logic::normal_ui_slot_for_device_config_slot(config)).light();
           };
           onx_panel_detail::light_mode = []() { return int(id(normal_detail_light_mode)); };
+          onx_panel_detail::light_wheel = id(panel_color_wheel)->get_lv_image_dsc();
+          onx_panel_detail::light_mode_icons = {id(normal_light_mode_icon_bright_img)->get_lv_image_dsc(),
+              id(normal_light_mode_icon_cct_img)->get_lv_image_dsc(), id(normal_light_mode_icon_color_img)->get_lv_image_dsc()};
+          onx_panel_detail::settings_icon = id(panel_settings_icon)->get_lv_image_dsc();
+          onx_panel_ui::create_idle_badge(id(standby_page)->obj, id(fonts_MiSans_Medium_14)->get_lv_font(),
+              id(panel_bell_icon)->get_lv_image_dsc());
+          // Elapsed / total time on the media detail.
+          onx_panel_ui::time_font = id(fonts_MiSans_Medium_12)->get_lv_font();
+          onx_panel_ui::media_duration = []() -> float {
+            const auto *d = custom_logic_entity_sub::entity_detail(
+                id(ui_presenter)->get_normal_device_entity_id(id(normal_device_detail_index)));
+            return d != nullptr ? d->progress.duration : NAN;
+          };
           onx_panel_detail::set_light_mode = [](int mode) { id(normal_detail_light_mode) = mode; };
           onx_panel_pages::draw_graph = [](lv_obj_t *parent,const std::string &entity,int y) {
             static std::string previous;
             static uint32_t refreshed = 0;
+            onx_sensor_graph::panel_owned = true;
             if (previous != entity || millis() - refreshed >= 1000 || !onx_sensor_graph::canvas) {
               onx_sensor_graph::render(parent,entity,id(ha_time).now().timestamp,
                   onx_display_settings::current.media_color,id(fonts_MiSans_Medium_12)->get_lv_font(),

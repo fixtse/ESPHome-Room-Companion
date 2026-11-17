@@ -199,6 +199,7 @@ template<typename Bind> void render(const std::string &entity,int width,int heig
   lv_obj_set_size(layer,width,height);lv_obj_set_pos(layer,0,0);
   // Keep the dock, dashboard and bell above the opaque panel content.
   if(lv_obj_get_index(layer)!=0)lv_obj_move_background(layer);lv_obj_remove_flag(layer,LV_OBJ_FLAG_HIDDEN);showing=true;detail_view=detail;
+  if(!onx_panel_detail::bind_icon)onx_panel_detail::bind_icon=[bind](lv_obj_t *icon,const std::string &target){bind(icon,target);};
   // Redesigned full-screen detail screens with direct touch controls.
   if(detail && onx_panel_detail::supports(entity)) {
     for(auto &c:cards){lv_obj_add_flag(c.box,LV_OBJ_FLAG_HIDDEN);c.initialized=false;}
@@ -210,7 +211,6 @@ template<typename Bind> void render(const std::string &entity,int width,int heig
   }
   // Main pages: cards drawn by the shared widget engine (onx_panel_detail.h).
   for(auto &c:cards){lv_obj_add_flag(c.box,LV_OBJ_FLAG_HIDDEN);c.initialized=false;}
-  if(!onx_panel_detail::bind_icon)onx_panel_detail::bind_icon=[bind](lv_obj_t *icon,const std::string &target){bind(icon,target);};
   std::vector<onx_panel_detail::Tile> tiles;
   for(int i=0;i<count;++i) {
     const auto v=item(entities[i],false);const auto r=rects[i];
@@ -220,6 +220,22 @@ template<typename Bind> void render(const std::string &entity,int width,int heig
     tiles.push_back(std::move(t));
   }
   onx_panel_detail::render_main(layer,tiles,width,height);
+}
+// The carousel's Settings item, on the same base as the other main pages.
+inline void render_settings(int width,int height) {
+  if(!layer)return;
+  suspend_underlay();
+  onx_render::style_bg_color(layer,lv_color_hex(onx_display_settings::background()),0);
+  for(auto &c:cards){lv_obj_add_flag(c.box,LV_OBJ_FLAG_HIDDEN);c.initialized=false;}
+  rects=onx_panel_layout::geometry(Kind::SINGLE,width,height,false);
+  entities[0]=onx_panel_detail::SETTINGS;count=1;
+  lv_obj_set_size(layer,width,height);lv_obj_set_pos(layer,0,0);
+  if(lv_obj_get_index(layer)!=0)lv_obj_move_background(layer);
+  lv_obj_remove_flag(layer,LV_OBJ_FLAG_HIDDEN);showing=true;detail_view=false;
+  onx_panel_detail::Tile t;
+  t.entity=onx_panel_detail::SETTINGS;t.name="Settings";
+  t.r={rects[0].x,rects[0].y,rects[0].w,rects[0].h};
+  onx_panel_detail::render_main(layer,{t},width,height);
 }
 // The panel's own Assist timers: full screen, above the dock.
 inline void show_timers(int width,int height) {
@@ -234,6 +250,8 @@ inline void show_timers(int width,int height) {
 inline bool tap(int x,int y) {
   if(showing && detail_view)return onx_panel_detail::active;  // Only its own controls act.
   if(!showing)return false;
+  // Settings: the shared press action opens the menu.
+  if(entities[0]==onx_panel_detail::SETTINGS)return false;
   for(int i=0;i<count;++i) {
     const auto r=rects[i];if(x>=r.x && x<r.x+r.w && y>=r.y && y<r.y+r.h) {
       if(configured(entities[i])>=0 && open){parent_entity=entities[0];open(entities[i]);}return true;

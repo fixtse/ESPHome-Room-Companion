@@ -14,6 +14,7 @@ layer on top (`onx_panel_ui.h`, `packages/room_companion/panel.yaml`).
 | Media player | Swipe up / down | Change volume |
 | Detail view | Swipe right **starting at the left edge** | Back |
 | Anywhere in the native UI | Swipe down **from the top edge** | Open the notification centre (the only way on detail screens) |
+| Notification centre | Swipe up, or tap the handle at the bottom | Close it |
 | Dashboard stream | Swipe left / right | Back to the native UI |
 
 ## Header, notifications and dashboard
@@ -21,11 +22,18 @@ layer on top (`onx_panel_ui.h`, `packages/room_companion/panel.yaml`).
 - **No top-corner buttons on details.** Detail screens (media, lights, sensors…)
   start at the top edge.
 - **Bell: main view only.** The main carousel keeps a slim row with a plain bell
-  icon (no background), dimmed when there is nothing and showing the unread
-  count. On every screen, **pull down from the top edge** to open the
-  notification centre: list, detail with picture, dismiss and clear all. A
-  banner announces new notifications. Home Assistant sends them with the
-  device's *show message* action.
+  icon (Material Design *bell-outline*, no background), dimmed when there is
+  nothing and showing the unread count. On every screen, **pull down from the
+  top edge** to open the notification centre. Its header shows
+  *Notifications · count* and *Clear all*; each card has an accent bar while
+  unread, the title with its time (*now*, *5 min*, then the time of day), up to
+  two lines of the message, a picture placeholder when it has a picture, and ×
+  to dismiss. Tap a card for its detail with the picture. Swipe up (or tap the
+  handle) to close. A banner announces new notifications. Home Assistant sends
+  them with the device's *show message* action.
+- **Settings uses the main-page base.** The carousel's Settings item is a card
+  on the same background, with the time row, bell and status icons, like the
+  other main pages. Tap it to open the settings menu.
 - **Dashboard: a bottom-bar item.** Add *Dashboard* (listed under “On this
   panel”) as a control; it appears in the bottom bar and opens the stream once a
   Remote WebView server is configured.
@@ -37,7 +45,7 @@ Each type has a direct touch control next to the usual swipe/knob step:
 
 | Type | Screen |
 | --- | --- |
-| Light | Vertical brightness slider (drag, sent on release), power button, Brightness / White / Colour chips (the swipe mode) and white-temperature or colour swatches |
+| Light | Home Assistant style: name, large brightness and state, one large control for the selected mode (vertical brightness slider, colour-temperature slider, or colour wheel) and a bottom pill bar with power and the mode buttons. Drags preview live and are sent on release |
 | Climate | Target arc (drag), − / + steps, HVAC mode chips, preset / fan / swing row (tap for the next option) |
 | Fan | Power button, speed bars (tap a bar), oscillate / direction / preset rows when supported |
 | Cover | Window with the blind drawn to the position (drag when position is supported), Open / Stop / Close |
@@ -48,9 +56,11 @@ Each type has a direct touch control next to the usual swipe/knob step:
 | Binary sensor | State disc and the last changes seen by the panel since boot (history is not fetched) |
 | Number | Large value, horizontal slider (sent on release) and − / + steps |
 | Select | Scrollable option list; tap selects immediately |
-| Weather | Large temperature with conditions, feels-like and today's range beside it, humidity / wind / rain tiles and a five-day list (day, conditions, low, range bar, high) |
+| Weather | Place name with the condition icon in the top-right corner, large temperature with conditions, feels-like and today's range beside it, humidity / wind / rain tiles and a five-day list (day, conditions, low, range bar, high) |
 
-Media keeps its artwork/transport view. Taps outside a control do nothing on
+Media keeps its artwork/transport view, with the elapsed and total time at the
+ends of the progress bar; without artwork the placeholder icon is centred in the
+artwork area. Taps outside a control do nothing on
 these screens; the left-edge back swipe takes priority over controls near that
 edge. In landscape the visual (slider, arc, window…) sits on the left and the
 name and controls on the right. Commands use the shared control queue, so the
@@ -98,6 +108,18 @@ Home Assistant entities (device configuration):
 
 *Dashboard* opens the stream when the panel goes idle; it needs a configured
 server and is limited by the stream's frame rate.
+
+The clock shows the number of notifications in a pill at the bottom centre
+while there are any.
+
+## Assist screen
+
+Laid out like Home Assistant's voice dialog: the microphone in accent rings
+(tap to talk again or stop), the status (*Listening…*, *Thinking…*,
+*Speaking…*), what was heard as a bubble on the right and the reply on the
+left, a hint (*Say “Okay Nabu” or tap the microphone* while the wake word is
+on), then a mute button (highlighted while muted) and *Stop*. A swipe from the
+left edge also stops and closes it.
 
 ## Not yet done
 
@@ -408,3 +430,23 @@ keeps button symbols legible on light backgrounds; browser regressions passed
 again. Final production build: ESPHome 2026.10.2, config `0x2eb32bb6`,
 `2026-11-17 18:53:03 UTC`, RAM 167928 B, flash 6986215 B; final factory SHA-256:
 `379a7f217e2f9b8c21d00acbfbc43a93cfedaf9708e30980b280f4c190f40142`.
+
+### Panel feedback fixes (2026-11-17, evening)
+
+- **Sensor graph jumping.** The base layout's periodic detail refresh still
+  drew the shared graph canvas at its default size about once a second, so the
+  graph alternated between two positions and sizes. While the rectangular detail
+  owns the canvas (`onx_sensor_graph::panel_owned`), that refresh no longer
+  hides, re-parents or resizes it.
+- **Light brightness drag not applied.** The custom sliders chained the drag to
+  their parents; LVGL's top layer is scrollable, so the drag became a scroll of
+  the layer and the value was not reliably committed. Draggable controls now
+  disable scroll chaining, as LVGL's own slider and arc do, and a lost press
+  commits the last previewed value. The colour wheel sends `hs_color` as a
+  template so Home Assistant receives a list.
+- Settings, media times and centred placeholder, weather icon, bell icon, idle
+  notification count, notification centre and Assist screen as described above.
+
+**Hardware status:** configuration/compile validation only until checked on the
+panel; appearance and touch behaviour of these screens are not yet
+hardware-tested.

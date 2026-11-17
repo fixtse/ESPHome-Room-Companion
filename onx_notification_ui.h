@@ -3,10 +3,13 @@
 //   - bell on the main carousel (top right, no background) with the unread count;
 //     every screen opens the centre by pulling down from the top edge
 //   - arrival banner at the top; tap to open
-//   - list of recent notifications: tap to open, x to dismiss, Clear all
+//   - list of recent notifications (accent bar while unread, time, x to
+//     dismiss), Clear all in the header, swipe up (or tap the handle) to close
 //   - detail view with picture, Back and Dismiss
 // Built on LVGL's top layer; sizes follow onx_geom so both panels scale.
+#include <algorithm>
 #include <cstdio>
+#include <ctime>
 #include <functional>
 #include <string>
 #include "lvgl.h"
@@ -19,7 +22,7 @@ namespace onx_notification_ui {
 using onx_geom::S;
 
 struct Fonts {
-  const lv_font_t *title{nullptr}, *body{nullptr}, *small{nullptr}, *icon{nullptr};
+  const lv_font_t *title{nullptr}, *body{nullptr}, *small{nullptr}, *icon{nullptr}, *symbol{nullptr};
 };
 struct Hooks {
   std::function<void(const std::string &)> load_image;  // Start downloading a picture.
@@ -32,7 +35,9 @@ inline Hooks hooks;
 inline int width = 240, height = 240;
 inline lv_obj_t *bell = nullptr, *badge = nullptr, *badge_label = nullptr;
 inline lv_obj_t *toast = nullptr, *toast_title = nullptr, *toast_body = nullptr;
-inline lv_obj_t *panel = nullptr, *list = nullptr, *empty_label = nullptr, *count_label = nullptr, *close_button = nullptr;
+inline lv_obj_t *panel = nullptr, *list = nullptr, *empty_label = nullptr, *count_label = nullptr, *clear_button = nullptr,
+                *handle = nullptr;
+inline const void *bell_image = nullptr;  // Bell glyph (an MDI image), set before init().
 inline lv_obj_t *detail = nullptr, *detail_title = nullptr, *detail_age = nullptr, *detail_image = nullptr,
                 *detail_body = nullptr;
 inline uint32_t detail_id = 0, built_revision = 0;
@@ -41,6 +46,28 @@ inline bool bell_wanted = false;  // Only the main carousel shows the bell.
 
 constexpr uint32_t BG = 0x1A1D21, CARD = 0x272B30, TEXT = 0xFFFFFF, MUTED = 0xB8B8B8;
 inline uint32_t accent() { return onx_display_settings::accent(); }
+// The list follows the panel's saved palette.
+inline uint32_t bg() { return onx_display_settings::background(); }
+inline uint32_t surface() { return onx_display_settings::surface(); }
+inline uint32_t control() { return onx_display_settings::control_surface(); }
+inline uint32_t foreground() { return onx_display_settings::foreground(); }
+inline uint32_t muted() { return onx_display_settings::muted_text(); }
+// "now", "5 min", then the time of day (or hours before the clock is set).
+inline std::string when(uint32_t received_ms, uint32_t now_ms) {
+  const uint32_t seconds = (now_ms - received_ms) / 1000;
+  if (seconds < 60) return "now";
+  if (seconds < 3600) return std::to_string(seconds / 60) + " min";
+  const time_t now = std::time(nullptr);
+  if (now > 1600000000) {
+    const time_t at = now - time_t(seconds);
+    struct tm local{};
+    localtime_r(&at, &local);
+    char out[16];
+    strftime(out, sizeof(out), seconds < 86400 ? onx_display_settings::time_pattern() : "%d %b", &local);
+    return out;
+  }
+  return seconds < 86400 ? std::to_string(seconds / 3600) + " h" : std::to_string(seconds / 86400) + " d";
+}
 
 inline void hide(lv_obj_t *obj, bool hidden) {
   if (obj == nullptr) return;
@@ -119,6 +146,13 @@ inline void on_toast(lv_event_t *) {
   if (id) open_detail(id);
 }
 inline void on_close_panel(lv_event_t *) { touched(); close_panel(); }
+// Swipe up anywhere on the centre (the list stops scrolling at its ends).
+inline void on_gesture(lv_event_t *) {
+  lv_indev_t *indev = lv_indev_active();
+  if (indev == nullptr || lv_indev_get_gesture_dir(indev) != LV_DIR_TOP) return;
+  touched();
+  close_panel();
+}
 inline void on_clear(lv_event_t *) {
   touched();
   onx_notification::center.clear();
@@ -131,7 +165,11 @@ inline void on_item(lv_event_t *event) {
 inline void on_item_dismiss(lv_event_t *event) {
   touched();
   lv_event_stop_bubbling(event);
-  onx_notification::center.dismiss(static_cast<uint32_t>(reinterpret_cast<uintptr_t>(lv_event_get_user_data(event))));
+  // Dismissing rebuilds the list, which deletes this button: defer it until the
+  // event has finished.
+  lv_async_call([](void *user) {
+    onx_notification::center.dismiss(static_cast<uint32_t>(reinterpret_cast<uintptr_t>(user)));
+  }, lv_event_get_user_data(event));
 }
 inline void on_back(lv_event_t *) { touched(); close_detail(); }
 inline void on_detail_dismiss(lv_event_t *) {
@@ -165,7 +203,16 @@ inline void init(int screen_width, int screen_height, Fonts f, Hooks h) {
   lv_obj_align(bell, LV_ALIGN_TOP_RIGHT, -4, 2);
   lv_obj_add_flag(bell, LV_OBJ_FLAG_CLICKABLE);
   lv_obj_set_ext_click_area(bell, S(8));
-  lv_obj_center(text(bell, fonts.icon, TEXT, "\xF0\x9F\x94\x94"));  // 🔔
+  if (bell_image != nullptr) {
+    lv_obj_t *glyph = lv_image_create(bell);
+    lv_image_set_src(glyph, bell_image);
+    lv_obj_set_style_image_recolor(glyph, lv_color_hex(TEXT), 0);
+    lv_obj_set_style_image_recolor_opa(glyph, LV_OPA_COVER, 0);
+    lv_obj_remove_flag(glyph, LV_OBJ_FLAG_CLICKABLE);
+    lv_obj_center(glyph);
+  } else {
+    lv_obj_center(text(bell, fonts.body, TEXT, "!"));
+  }
   lv_obj_add_event_cb(bell, on_bell, LV_EVENT_CLICKED, nullptr);
   badge = box(top, 0xE5484D, S(9));
   lv_obj_set_size(badge, LV_SIZE_CONTENT, S(18));
@@ -194,35 +241,63 @@ inline void init(int screen_width, int screen_height, Fonts f, Hooks h) {
   }
   lv_obj_add_event_cb(toast, on_toast, LV_EVENT_CLICKED, nullptr);
 
-  // List panel.
+  // List panel: header with the count and Clear all, the cards, and a handle
+  // along the bottom (swipe up or tap it to close).
   panel = box(top, BG, 0);
   lv_obj_set_size(panel, width, height);
-  lv_obj_set_style_pad_all(panel, S(8), 0);
+  lv_obj_set_style_pad_hor(panel, S(10), 0);
+  lv_obj_set_style_pad_top(panel, S(10), 0);
+  lv_obj_set_style_pad_bottom(panel, S(4), 0);
   lv_obj_set_flex_flow(panel, LV_FLEX_FLOW_COLUMN);
-  lv_obj_set_style_pad_row(panel, S(6), 0);
-  // Header: title and unread count; actions sit at the bottom within thumb reach.
-  lv_obj_t *header;
-  build_header(panel, "Notifications", &header);
-  count_label = text(header, fonts.small, MUTED, "");
+  lv_obj_set_style_pad_row(panel, S(8), 0);
+  lv_obj_add_event_cb(panel, on_gesture, LV_EVENT_GESTURE, nullptr);
+  lv_obj_t *header = box(panel, BG, 0);
+  lv_obj_set_style_bg_opa(header, LV_OPA_TRANSP, 0);
+  lv_obj_set_size(header, lv_pct(100), S(36));
+  lv_obj_set_flex_flow(header, LV_FLEX_FLOW_ROW);
+  lv_obj_set_flex_align(header, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+  lv_obj_set_style_pad_column(header, S(6), 0);
+  lv_obj_set_style_pad_left(header, S(4), 0);
+  text(header, fonts.title, TEXT, "Notifications");
+  count_label = text(header, fonts.title, MUTED, "");
+  lv_obj_t *spacer = box(header, BG, 0);
+  lv_obj_set_style_bg_opa(spacer, LV_OPA_TRANSP, 0);
+  lv_obj_set_size(spacer, 1, 1);
+  lv_obj_set_flex_grow(spacer, 1);
+  clear_button = button(header, "Clear all", CARD, on_clear, nullptr);
+  lv_obj_set_height(clear_button, S(30));
+  lv_obj_set_style_radius(clear_button, S(15), 0);
+  lv_obj_set_style_pad_hor(clear_button, S(12), 0);
+  lv_obj_set_style_text_font(lv_obj_get_child(clear_button, 0), fonts.small, 0);
   list = box(panel, BG, 0);
+  lv_obj_set_style_bg_opa(list, LV_OPA_TRANSP, 0);
   lv_obj_set_width(list, lv_pct(100));
   lv_obj_set_flex_grow(list, 1);
   lv_obj_set_flex_flow(list, LV_FLEX_FLOW_COLUMN);
-  lv_obj_set_style_pad_row(list, S(6), 0);
+  lv_obj_set_style_pad_row(list, S(8), 0);
   lv_obj_add_flag(list, LV_OBJ_FLAG_SCROLLABLE);
   lv_obj_set_scroll_dir(list, LV_DIR_VER);
-  empty_label = text(panel, fonts.body, MUTED, "No notifications.\nPull down from the top edge to open this list.");
-  lv_obj_t *actions = box(panel, BG, 0);
-  lv_obj_set_size(actions, lv_pct(100), LV_SIZE_CONTENT);
-  lv_obj_set_flex_flow(actions, LV_FLEX_FLOW_ROW);
-  lv_obj_set_style_pad_column(actions, S(6), 0);
-  lv_obj_t *clear = button(actions, "Clear all", CARD, on_clear, nullptr);
-  close_button = button(actions, "Close", onx_display_settings::accent_strong(), on_close_panel, nullptr);
-  for (auto *b : {clear, close_button}) {
-    lv_obj_set_height(b, S(33));
-    lv_obj_set_style_radius(b, S(17), 0);
-    lv_obj_set_flex_grow(b, 1);
-  }
+  lv_obj_set_scrollbar_mode(list, LV_SCROLLBAR_MODE_OFF);
+  // Without elastic/chained scrolling a swipe past the end becomes a gesture.
+  lv_obj_remove_flag(list, static_cast<lv_obj_flag_t>(LV_OBJ_FLAG_SCROLL_ELASTIC | LV_OBJ_FLAG_SCROLL_CHAIN));
+  empty_label = text(list, fonts.body, MUTED, "No notifications");
+  lv_obj_set_width(empty_label, lv_pct(100));
+  lv_obj_set_style_text_align(empty_label, LV_TEXT_ALIGN_CENTER, 0);
+  lv_obj_set_style_pad_top(empty_label, S(40), 0);
+  handle = box(panel, BG, 0);
+  lv_obj_set_style_bg_opa(handle, LV_OPA_TRANSP, 0);
+  lv_obj_set_size(handle, lv_pct(100), LV_SIZE_CONTENT);
+  lv_obj_set_flex_flow(handle, LV_FLEX_FLOW_COLUMN);
+  lv_obj_set_flex_align(handle, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+  lv_obj_set_style_pad_row(handle, S(4), 0);
+  lv_obj_set_style_pad_ver(handle, S(4), 0);
+  lv_obj_add_flag(handle, LV_OBJ_FLAG_CLICKABLE);
+  lv_obj_add_event_cb(handle, on_close_panel, LV_EVENT_CLICKED, nullptr);
+  lv_obj_t *grip = box(handle, MUTED, S(2));
+  lv_obj_set_size(grip, S(36), S(4));
+  lv_obj_remove_flag(grip, LV_OBJ_FLAG_CLICKABLE);
+  lv_obj_t *hint = text(handle, fonts.small, MUTED, "Swipe up to close");
+  lv_obj_remove_flag(hint, LV_OBJ_FLAG_CLICKABLE);
 
   // Detail view.
   detail = box(top, BG, 0);
@@ -254,39 +329,76 @@ inline void init(int screen_width, int screen_height, Fonts f, Hooks h) {
 }
 
 inline void rebuild_list() {
-  lv_obj_clean(list);
+  // Keep the empty-state label (the first child); drop the cards.
+  while (lv_obj_get_child_count(list) > 1) lv_obj_delete(lv_obj_get_child(list, 1));
   const uint32_t now = esphome::millis();
+  const int pad_l = S(16), pad_r = S(6), thumb = S(44), close_w = S(26);
   for (const auto &item : onx_notification::center.items) {
-    lv_obj_t *row = box(list, CARD, S(12));
-    lv_obj_set_size(row, lv_pct(100), LV_SIZE_CONTENT);
-    lv_obj_set_style_pad_all(row, S(8), 0);
-    lv_obj_set_flex_flow(row, LV_FLEX_FLOW_ROW);
-    lv_obj_set_flex_align(row, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
-    lv_obj_add_flag(row, LV_OBJ_FLAG_CLICKABLE);
-    lv_obj_add_flag(row, LV_OBJ_FLAG_EVENT_BUBBLE);
+    lv_obj_t *card = box(list, surface(), S(12));
+    lv_obj_set_size(card, lv_pct(100), LV_SIZE_CONTENT);
+    lv_obj_set_style_pad_left(card, pad_l, 0);
+    lv_obj_set_style_pad_right(card, pad_r, 0);
+    lv_obj_set_style_pad_ver(card, S(10), 0);
+    lv_obj_set_flex_flow(card, LV_FLEX_FLOW_ROW);
+    lv_obj_set_flex_align(card, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_START);
+    lv_obj_set_style_pad_column(card, S(10), 0);
+    lv_obj_add_flag(card, LV_OBJ_FLAG_CLICKABLE);
+    lv_obj_add_flag(card, static_cast<lv_obj_flag_t>(LV_OBJ_FLAG_EVENT_BUBBLE | LV_OBJ_FLAG_GESTURE_BUBBLE));
     void *user = reinterpret_cast<void *>(static_cast<uintptr_t>(item.id));
-    lv_obj_add_event_cb(row, on_item, LV_EVENT_CLICKED, user);
-    lv_obj_t *column = box(row, CARD, 0);
+    lv_obj_add_event_cb(card, on_item, LV_EVENT_CLICKED, user);
+    // Accent bar along the left edge while unread.
+    lv_obj_t *bar = box(card, item.read ? control() : accent(), S(2));
+    lv_obj_add_flag(bar, LV_OBJ_FLAG_FLOATING);
+    lv_obj_set_pos(bar, -pad_l + S(7), 0);
+    lv_obj_set_size(bar, S(3), lv_pct(100));
+    lv_obj_remove_flag(bar, LV_OBJ_FLAG_CLICKABLE);
+    const bool picture = !item.image_url.empty();
+    if (picture) {
+      lv_obj_t *t = box(card, control(), S(8));
+      lv_obj_set_size(t, thumb, thumb);
+      lv_obj_remove_flag(t, LV_OBJ_FLAG_CLICKABLE);
+      lv_obj_center(text(t, fonts.symbol != nullptr ? fonts.symbol : fonts.small, muted(),
+                         fonts.symbol != nullptr ? LV_SYMBOL_IMAGE : "Image"));
+    }
+    lv_obj_t *column = box(card, surface(), 0);
+    lv_obj_set_style_bg_opa(column, LV_OPA_TRANSP, 0);
     lv_obj_set_flex_grow(column, 1);
     lv_obj_set_height(column, LV_SIZE_CONTENT);
     lv_obj_set_flex_flow(column, LV_FLEX_FLOW_COLUMN);
+    lv_obj_set_style_pad_row(column, S(2), 0);
     lv_obj_remove_flag(column, LV_OBJ_FLAG_CLICKABLE);
-    lv_obj_t *title = text(column, fonts.title, item.read ? MUTED : TEXT, item.title.c_str());
-    lv_obj_t *body = text(column, fonts.body, MUTED, item.body.c_str());
-    // Read items are dimmed, with a muted age.
-    const std::string age_text = onx_notification::age_text(item.received_ms, now) + (item.read ? " · read" : "");
-    lv_obj_t *age = text(column, fonts.small, item.read ? MUTED : accent(), age_text.c_str());
-    if (item.read) lv_obj_set_style_opa(row, LV_OPA_70, 0);
-    for (auto *label : {title, body, age}) {
-      lv_obj_set_width(label, lv_pct(100));
-      lv_label_set_long_mode(label, LV_LABEL_LONG_DOT);
-      lv_obj_remove_flag(label, LV_OBJ_FLAG_CLICKABLE);
-    }
-    lv_obj_t *close = box(row, 0x3A3F45, S(16));
-    lv_obj_set_size(close, S(32), S(32));
+    lv_obj_add_flag(column, LV_OBJ_FLAG_EVENT_BUBBLE);
+    // Title and time on one line.
+    lv_obj_t *top_row = box(column, surface(), 0);
+    lv_obj_set_style_bg_opa(top_row, LV_OPA_TRANSP, 0);
+    lv_obj_set_size(top_row, lv_pct(100), LV_SIZE_CONTENT);
+    lv_obj_set_flex_flow(top_row, LV_FLEX_FLOW_ROW);
+    lv_obj_set_flex_align(top_row, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+    lv_obj_set_style_pad_column(top_row, S(6), 0);
+    lv_obj_remove_flag(top_row, LV_OBJ_FLAG_CLICKABLE);
+    lv_obj_add_flag(top_row, LV_OBJ_FLAG_EVENT_BUBBLE);
+    lv_obj_t *title = text(top_row, fonts.title, item.read ? muted() : foreground(), item.title.c_str());
+    lv_obj_set_flex_grow(title, 1);
+    lv_label_set_long_mode(title, LV_LABEL_LONG_DOT);
+    lv_obj_set_height(title, lv_font_get_line_height(fonts.title));
+    lv_obj_t *age = text(top_row, fonts.small, muted(), when(item.received_ms, now).c_str());
+    // Up to two lines of the message.
+    const int text_w = width - 2 * S(10) - pad_l - pad_r - close_w - S(10) - (picture ? thumb + S(10) : 0);
+    lv_point_t size;
+    lv_text_get_size(&size, item.body.c_str(), fonts.body, 0, 0, std::max(40, text_w), LV_TEXT_FLAG_NONE);
+    const int body_lines = std::clamp(int((size.y + lv_font_get_line_height(fonts.body) - 1) / lv_font_get_line_height(fonts.body)), 1, 2);
+    lv_obj_t *body = text(column, fonts.body, muted(), item.body.c_str());
+    lv_obj_set_size(body, lv_pct(100), body_lines * lv_font_get_line_height(fonts.body));
+    lv_label_set_long_mode(body, LV_LABEL_LONG_DOT);
+    hide(body, item.body.empty());
+    for (auto *label : {title, age, body}) lv_obj_remove_flag(label, LV_OBJ_FLAG_CLICKABLE);
+    // Dismiss.
+    lv_obj_t *close = box(card, surface(), S(13));
+    lv_obj_set_style_bg_opa(close, LV_OPA_TRANSP, 0);
+    lv_obj_set_size(close, close_w, close_w);
     lv_obj_add_flag(close, LV_OBJ_FLAG_CLICKABLE);
-    lv_obj_set_ext_click_area(close, S(6));
-    lv_obj_center(text(close, fonts.body, TEXT, "\xC3\x97"));  // ×
+    lv_obj_set_ext_click_area(close, S(10));
+    lv_obj_center(text(close, fonts.body, muted(), "\xC3\x97"));  // ×
     lv_obj_add_event_cb(close, on_item_dismiss, LV_EVENT_CLICKED, user);
   }
 }
@@ -335,10 +447,12 @@ inline void refresh() {
   // Accent colour follows the device setting.
   lv_obj_set_style_border_color(toast, lv_color_hex(accent()), 0);
   lv_obj_set_style_text_color(detail_age, lv_color_hex(accent()), 0);
-  lv_obj_set_style_bg_color(close_button, lv_color_hex(onx_display_settings::accent_strong()), 0);
-  char unread_text[24] = "";
-  if (unread) snprintf(unread_text, sizeof(unread_text), "%u unread", static_cast<unsigned>(unread));
-  lv_label_set_text(count_label, unread_text);
+  char count_text[16] = "";
+  if (!center.items.empty()) snprintf(count_text, sizeof(count_text), "\xC2\xB7 %u", static_cast<unsigned>(center.items.size()));
+  lv_label_set_text(count_label, count_text);
+  hide(clear_button, center.items.empty());
+  lv_obj_set_style_bg_color(panel, lv_color_hex(bg()), 0);
+  lv_obj_set_style_bg_color(clear_button, lv_color_hex(surface()), 0);
 
   const bool show_toast = center.toast_visible(now) && !panel_open && detail_id == 0;
   if (show_toast) {
@@ -350,8 +464,12 @@ inline void refresh() {
   hide(toast, !show_toast);
 
   hide(panel, !panel_open);
-  if (panel_open && built_revision != center.revision) {
+  // Rebuilt on changes, and once a minute while open so the times stay current.
+  static uint32_t built_minute = 0;
+  const uint32_t minute = now / 60000;
+  if (panel_open && (built_revision != center.revision || built_minute != minute)) {
     built_revision = center.revision;
+    built_minute = minute;
     rebuild_list();
   }
   hide(empty_label, !center.items.empty());
@@ -377,6 +495,11 @@ inline void set_bell_visible(bool visible) {
 
 // Periodic: banner timeout and list ages.
 inline void tick() {
+  static uint32_t minute = 0;
+  if (panel_open && esphome::millis() / 60000 != minute) {
+    minute = esphome::millis() / 60000;
+    refresh();
+  }
   static bool toast_was_visible = false;
   const bool visible = onx_notification::center.toast_visible(esphome::millis());
   if (visible != toast_was_visible) {

@@ -8,7 +8,9 @@
 // Everything is created lazily on LVGL's existing objects; the shared packages
 // are not modified.
 #include <algorithm>
+#include <cmath>
 #include <cstdint>
+#include <cstdio>
 #include <cstring>
 #include <functional>
 #include <string>
@@ -101,6 +103,9 @@ inline void set_width(lv_obj_t *obj, int w) {
 struct Media {
   lv_obj_t *shell, *cover, *title, *artist, *arc, *transport, *icon, *playlist, *action, *room;
 };
+// True while the local wake word is listening (examples/room-companion/wake-word.yaml).
+inline std::function<bool()> wake_word_on;
+
 inline lv_obj_t *media_bar = nullptr, *media_row = nullptr, *media_play = nullptr, *media_play_label = nullptr;
 inline std::function<void(bool previous)> on_track;
 inline std::function<void()> on_play_pause;
@@ -108,6 +113,18 @@ inline std::function<bool()> is_playing;
 inline std::function<bool()> has_quick_actions;
 inline std::function<void()> open_quick_actions;
 inline lv_obj_t *media_actions = nullptr, *media_actions_label = nullptr, *media_art_frame = nullptr;
+// Elapsed and total time under the progress bar.
+inline lv_obj_t *media_elapsed = nullptr, *media_total = nullptr;
+inline const lv_font_t *time_font = nullptr;
+inline std::function<float()> media_duration;  // Seconds; NAN when unknown.
+inline std::string duration_text(float seconds) {
+  if (!std::isfinite(seconds) || seconds < 0) return "";
+  const int t = int(seconds), h = t / 3600, m = t / 60 % 60, sec = t % 60;
+  char out[16];
+  if (h) snprintf(out, sizeof(out), "%d:%02d:%02d", h, m, sec);
+  else snprintf(out, sizeof(out), "%d:%02d", m, sec);
+  return out;
+}
 // Top of the artwork: there is no header on details any more.
 inline int media_top() { return S(12); }
 inline void create_media_controls(lv_obj_t *shell, const lv_font_t *font) {
@@ -119,6 +136,14 @@ inline void create_media_controls(lv_obj_t *shell, const lv_font_t *font) {
   lv_obj_set_style_radius(media_bar, S(3), LV_PART_MAIN);
   lv_obj_set_style_radius(media_bar, S(3), LV_PART_INDICATOR);
   lv_obj_remove_flag(media_bar, LV_OBJ_FLAG_CLICKABLE);
+  media_elapsed = lv_label_create(shell);
+  media_total = lv_label_create(shell);
+  for (auto *label : {media_elapsed, media_total}) {
+    lv_obj_set_style_text_font(label, time_font != nullptr ? time_font : font, 0);
+    lv_obj_set_style_text_color(label, lv_color_hex(onx_display_settings::muted_text()), 0);
+    lv_label_set_text(label, "");
+    lv_obj_remove_flag(label, LV_OBJ_FLAG_CLICKABLE);
+  }
 
   media_actions = round_button(shell, S(40), 0x2A2F35);
   media_actions_label = symbol(media_actions, LV_SYMBOL_LIST, font);
@@ -190,7 +215,14 @@ inline void sync_media(const Media &m, const lv_font_t *font) {
   place(m.cover, LV_ALIGN_CENTER, 0, 0);
   place(media_actions, LV_ALIGN_TOP_RIGHT, -S(12), top);
   if (actions) lv_obj_move_foreground(media_actions);
-  place(m.icon, LV_ALIGN_TOP_MID, cover_dx, top);
+  // Without artwork the placeholder icon sits in the middle of the artwork area.
+  int icon_h = 0;
+  if (m.icon != nullptr && lv_obj_check_type(m.icon, &lv_image_class)) {
+    lv_image_header_t ih{};
+    if (lv_image_decoder_get_info(lv_image_get_src(m.icon), &ih) == LV_RESULT_OK)
+      icon_h = int(ih.h) * lv_image_get_scale_y(m.icon) / 256;
+  }
+  place(m.icon, LV_ALIGN_TOP_MID, cover_dx, top + std::max(0, (cover_size - icon_h) / 2));
   place(m.transport, LV_ALIGN_TOP_MID, cover_dx, top + cover_size / 2);
   const int text_y = wide ? top + S(8) : top + cover_size + 12;
   place(m.title, LV_ALIGN_TOP_MID, col_dx, text_y);
@@ -208,7 +240,21 @@ inline void sync_media(const Media &m, const lv_font_t *font) {
   show(media_bar, !playlist && progress);
   if (m.arc != nullptr) lv_bar_set_value(media_bar, lv_arc_get_value(m.arc), LV_ANIM_OFF);
   if (lv_obj_get_style_width(media_bar, LV_PART_MAIN) != col_w - S(40)) lv_obj_set_size(media_bar, col_w - S(40), S(5));
-  place(media_bar, LV_ALIGN_TOP_MID, col_dx, h - row_h - row_gap - 20);
+  // Times sit just above the bar, at its ends.
+  const int bar_y = h - row_h - row_gap - 20, bar_w = col_w - S(40);
+  place(media_bar, LV_ALIGN_TOP_MID, col_dx, bar_y);
+  const float duration = media_duration ? media_duration() : NAN;
+  const bool times = !playlist && progress && std::isfinite(duration) && duration > 0;
+  show(media_elapsed, times);
+  show(media_total, times);
+  if (times) {
+    const int line_h = lv_font_get_line_height(time_font != nullptr ? time_font : font);
+    const std::string elapsed = duration_text(duration * lv_arc_get_value(m.arc) / 1000.0f), total = duration_text(duration);
+    if (elapsed != lv_label_get_text(media_elapsed)) lv_label_set_text(media_elapsed, elapsed.c_str());
+    if (total != lv_label_get_text(media_total)) lv_label_set_text(media_total, total.c_str());
+    place(media_elapsed, LV_ALIGN_TOP_LEFT, col_x + (col_w - bar_w) / 2, bar_y - line_h - S(2));
+    place(media_total, LV_ALIGN_TOP_RIGHT, -(w - col_x - col_w) - (col_w - bar_w) / 2, bar_y - line_h - S(2));
+  }
   set_width(media_row, col_w);
   place(media_row, LV_ALIGN_BOTTOM_MID, col_dx, -row_gap);
   if (media_play_label && is_playing) {
@@ -274,6 +320,48 @@ inline void create_slideshow(lv_obj_t *standby_page, const lv_font_t *time_font,
   lv_obj_align(slide_time, LV_ALIGN_BOTTOM_LEFT, S(12), -S(12));
   lv_label_set_text(slide_time, "");
   show(slide_layer, false);
+}
+
+// Notification count at the bottom centre of the idle clock (hidden when none).
+inline lv_obj_t *idle_badge = nullptr, *idle_badge_label = nullptr;
+inline void create_idle_badge(lv_obj_t *standby_page, const lv_font_t *font, const void *bell) {
+  idle_badge = lv_obj_create(standby_page);
+  lv_obj_remove_flag(idle_badge, static_cast<lv_obj_flag_t>(LV_OBJ_FLAG_SCROLLABLE | LV_OBJ_FLAG_CLICKABLE));
+  lv_obj_set_size(idle_badge, LV_SIZE_CONTENT, LV_SIZE_CONTENT);
+  lv_obj_set_style_radius(idle_badge, LV_RADIUS_CIRCLE, 0);
+  lv_obj_set_style_border_width(idle_badge, 0, 0);
+  lv_obj_set_style_bg_opa(idle_badge, LV_OPA_COVER, 0);
+  lv_obj_set_style_pad_hor(idle_badge, S(12), 0);
+  lv_obj_set_style_pad_ver(idle_badge, S(6), 0);
+  lv_obj_set_style_pad_column(idle_badge, S(6), 0);
+  lv_obj_set_flex_flow(idle_badge, LV_FLEX_FLOW_ROW);
+  lv_obj_set_flex_align(idle_badge, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+  if (bell != nullptr) {
+    lv_obj_t *glyph = lv_image_create(idle_badge);
+    lv_image_set_src(glyph, bell);
+    lv_obj_set_style_image_recolor_opa(glyph, LV_OPA_COVER, 0);
+    lv_obj_remove_flag(glyph, LV_OBJ_FLAG_CLICKABLE);
+  }
+  idle_badge_label = lv_label_create(idle_badge);
+  lv_obj_set_style_text_font(idle_badge_label, font, 0);
+  lv_label_set_text(idle_badge_label, "");
+  lv_obj_align(idle_badge, LV_ALIGN_BOTTOM_MID, 0, -S(18));
+  show(idle_badge, false);
+}
+inline void update_idle_badge(size_t count, bool visible) {
+  if (idle_badge == nullptr) return;
+  visible = visible && count > 0;
+  if (visible) {
+    char out[24];
+    snprintf(out, sizeof(out), count == 1 ? "%u notification" : "%u notifications", static_cast<unsigned>(count > 99 ? 99 : count));
+    if (strcmp(lv_label_get_text(idle_badge_label), out) != 0) lv_label_set_text(idle_badge_label, out);
+    onx_render::style_bg_color(idle_badge, lv_color_hex(onx_display_settings::surface()), 0);
+    onx_render::style_text_color(idle_badge_label, lv_color_hex(onx_display_settings::foreground()), 0);
+    if (lv_obj_get_child_count(idle_badge) > 1)
+      onx_render::style_image_recolor(lv_obj_get_child(idle_badge, 0), lv_color_hex(onx_display_settings::accent()), 0);
+    if (hidden(idle_badge)) lv_obj_move_foreground(idle_badge);
+  }
+  show(idle_badge, visible);
 }
 
 }  // namespace onx_panel_ui

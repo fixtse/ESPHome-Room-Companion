@@ -35,6 +35,14 @@ switch:
     turn_on_action:
       - micro_wake_word.stop:
 
+# The Assist screen's hint mentions the wake word while it is on.
+esphome:
+  on_boot:
+    - priority: -100
+      then:
+        - lambda: |-
+            onx_panel_ui::wake_word_on = []() { return id(wake_word_enabled).state; };
+
 voice_assistant:
   micro_wake_word: local_wake_word
   # The pipeline uses the microphone; detection resumes from the interval below.

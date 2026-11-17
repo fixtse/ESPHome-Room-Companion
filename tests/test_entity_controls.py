@@ -47,7 +47,7 @@ static_assert(!std::is_convertible_v<const char *, StringRef>);
 namespace api {
 struct HomeassistantServiceMap { StringRef key, value; };
 struct Data : std::vector<HomeassistantServiceMap> { void init(size_t n) { reserve(n); } };
-struct HomeassistantActionRequest { StringRef service; Data data; };
+struct HomeassistantActionRequest { StringRef service; Data data, data_template; };
 struct APIServer {
   std::vector<HomeassistantActionRequest> sent;
   void send_homeassistant_action(const HomeassistantActionRequest &call) { sent.push_back(call); }

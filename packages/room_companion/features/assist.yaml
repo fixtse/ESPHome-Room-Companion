@@ -1,9 +1,10 @@
 # Home Assistant Assist satellite. Start it from a "[Local] Assist" control in
 # the carousel, the BOOT button, the Talk button entity, or the optional wake
-# word (examples/room-companion/wake-word.yaml). A full-screen overlay shows
-# the status, what was heard and the reply, with a large microphone button
-# (tap to talk again or stop). Any horizontal swipe closes it (panel_back). It
-# takes the screen from the dashboard stream.
+# word (examples/room-companion/wake-word.yaml). A full-screen overlay, laid
+# out like Home Assistant's voice dialog, shows the microphone (tap to talk
+# again or stop), the status, what was heard and the reply as bubbles, and
+# mute / Stop buttons. A swipe from the left edge also closes it (panel_back).
+# It takes the screen from the dashboard stream.
 #
 # Voice timers set on this panel ("set a 10 minute pasta timer") are tracked by
 # the voice assistant. A timer screen opens when one starts (closing itself
@@ -25,6 +26,8 @@ switch:
     restore_mode: RESTORE_DEFAULT_OFF
     turn_on_action:
       - voice_assistant.stop:
+    on_state:
+      - script.execute: assist_sync_mute
 
 button:
   - platform: template
@@ -100,9 +103,10 @@ voice_assistant:
   on_stt_end:
     - lvgl.label.update:
         id: assist_transcript
-        text: !lambda |-
-          const auto heard = onx_notification::plain_text(x, 384);
-          return heard.empty() ? heard : "\u201C" + heard + "\u201D";
+        text: !lambda 'return onx_notification::plain_text(x, 384);'
+    - lambda: |-
+        if (x.empty()) lv_obj_add_flag(id(assist_transcript_bubble), LV_OBJ_FLAG_HIDDEN);
+        else lv_obj_remove_flag(id(assist_transcript_bubble), LV_OBJ_FLAG_HIDDEN);
     - lvgl.label.update:
         id: assist_status
         text: Thinking...
@@ -238,6 +242,26 @@ script:
       - lambda: 'if (onx_panel_detail::timers.ringing) onx_panel_detail::timers.ringing = false;'
       - script.execute: timer_close_if_idle
 
+  # Stop button (and the left-edge back swipe): stop and close the overlay.
+  - id: assist_stop
+    then:
+      - lambda: |-
+          id(ui_presenter)->notify_user_activity();
+          id(assist).request_stop();
+          auto call = id(panel_media_player).make_call();
+          call.set_command(esphome::media_player::MEDIA_PLAYER_COMMAND_STOP).set_announcement(true).perform();
+          id(assist_finished).stop();
+          lv_obj_add_flag(id(assist_overlay), LV_OBJ_FLAG_HIDDEN);
+          id(room_panel)->set_overlay(esphome::room_companion::OVERLAY_ASSIST, false);
+
+  # The mute button is highlighted while the microphone is muted.
+  - id: assist_sync_mute
+    then:
+      - lambda: |-
+          const bool muted = id(microphone_muted).state;
+          lv_obj_set_style_bg_color(id(assist_mute_button), lv_color_hex(muted ? onx_display_settings::accent_strong()
+                                                                                : onx_display_settings::surface()), 0);
+
   - id: toggle_assist
     then:
       - if:
@@ -262,6 +286,7 @@ script:
                       id: assist_response
                       text: ""
                   - lvgl.widget.hide: assist_response_card
+                  - lvgl.widget.hide: assist_transcript_bubble
                   - voice_assistant.start:
                 else:
                   - script.execute:
@@ -283,8 +308,23 @@ script:
           // Above the bottom dock and other top-layer widgets, in the accent colour.
           lv_obj_move_foreground(id(assist_overlay));
           const auto accent = lv_color_hex(onx_display_settings::accent());
-          lv_obj_set_style_bg_color(id(assist_mic), accent, 0);
-          lv_obj_set_style_bg_color(id(assist_mic_ring), accent, 0);
+          for (auto *obj : {id(assist_mic), id(assist_mic_ring), id(assist_mic_ring_inner)})
+            lv_obj_set_style_bg_color(obj, accent, 0);
+          lv_obj_set_style_text_color(id(assist_status), accent, 0);
+          // Bubbles and buttons follow the panel's palette.
+          const auto surface = lv_color_hex(onx_display_settings::surface());
+          for (auto *obj : {id(assist_response_card), id(assist_mute_button), id(assist_stop_button)})
+            lv_obj_set_style_bg_color(obj, surface, 0);
+          lv_obj_set_style_bg_color(id(assist_transcript_bubble), lv_color_hex(onx_display_settings::control_surface()), 0);
+          lv_obj_set_style_bg_color(id(assist_overlay), lv_color_hex(onx_display_settings::background()), 0);
+          lv_label_set_text(id(assist_hint), onx_panel_ui::wake_word_on && onx_panel_ui::wake_word_on()
+              ? "Say \u201COkay Nabu\u201D or tap the microphone" : "Tap the microphone to talk");
+          lv_obj_set_width(id(assist_transcript), LV_SIZE_CONTENT);
+          lv_obj_set_width(id(assist_response), LV_SIZE_CONTENT);
+          const int bubble = lv_obj_get_width(id(assist_overlay)) * 72 / 100;
+          lv_obj_set_style_max_width(id(assist_transcript), bubble, 0);
+          lv_obj_set_style_max_width(id(assist_response), bubble, 0);
+      - script.execute: assist_sync_mute
       - lvgl.label.update:
           id: assist_status
           text: !lambda 'return status;'
@@ -308,6 +348,9 @@ script:
 lvgl:
   top_layer:
     widgets:
+      # Laid out like Home Assistant's voice dialog: the microphone in rings,
+      # the status, the conversation as bubbles (what was heard on the right,
+      # the reply on the left), a hint, then mute and Stop along the bottom.
       - obj:
           id: assist_overlay
           hidden: true
@@ -325,81 +368,35 @@ lvgl:
           layout:
             type: FLEX
             flex_flow: COLUMN
-            flex_align_cross: START
-            pad_row: ${ (10 * (ui_scale | float)) | round | int }
+            flex_align_cross: CENTER
+            pad_row: ${ (8 * (ui_scale | float)) | round | int }
           widgets:
-            # Listening... / Thinking... / Speaking... or an error.
-            - label:
-                id: assist_status
-                text: ""
-                width: 100%
-                long_mode: DOT
-                text_font: fonts_MiSans_Medium_12
-                text_color: 0x9C9C9E
-            # What was heard, in quotes.
-            - label:
-                id: assist_transcript
-                text: ""
-                width: 100%
-                long_mode: WRAP
-                text_font: fonts_MiSans_Bold_18
-                text_color: 0xFFFFFF
-            # The reply.
-            - obj:
-                id: assist_response_card
-                hidden: true
-                width: 100%
-                height: SIZE_CONTENT
-                radius: ${ (10 * (ui_scale | float)) | round | int }
-                bg_color: 0x232323
-                bg_opa: COVER
-                border_width: 0
-                pad_all: ${ (10 * (ui_scale | float)) | round | int }
-                scrollable: false
-                clickable: false
-                widgets:
-                  - label:
-                      id: assist_response
-                      text: ""
-                      width: 100%
-                      long_mode: WRAP
-                      text_font: fonts_MiSans_Medium_14
-                      text_color: 0xD2D2D2
-            - obj:
-                width: 100%
-                flex_grow: 1
-                bg_opa: TRANSP
-                border_width: 0
-                pad_all: 0
-                scrollable: false
-                clickable: false
             # Microphone: tap to talk again, or to stop listening/speaking.
             - obj:
-                width: 100%
-                height: SIZE_CONTENT
-                bg_opa: TRANSP
+                id: assist_mic_ring
+                width: ${ (120 * (ui_scale | float)) | round | int }
+                height: ${ (120 * (ui_scale | float)) | round | int }
+                radius: ${ (60 * (ui_scale | float)) | round | int }
+                bg_color: 0x62B0FF
+                bg_opa: 18%
                 border_width: 0
                 pad_all: 0
                 scrollable: false
-                clickable: false
-                layout:
-                  type: FLEX
-                  flex_flow: COLUMN
-                  flex_align_cross: CENTER
-                  pad_row: ${ (12 * (ui_scale | float)) | round | int }
+                on_click:
+                  - script.execute: toggle_assist
                 widgets:
                   - obj:
-                      id: assist_mic_ring
-                      width: ${ (104 * (ui_scale | float)) | round | int }
-                      height: ${ (104 * (ui_scale | float)) | round | int }
-                      radius: ${ (52 * (ui_scale | float)) | round | int }
+                      id: assist_mic_ring_inner
+                      align: center
+                      width: ${ (94 * (ui_scale | float)) | round | int }
+                      height: ${ (94 * (ui_scale | float)) | round | int }
+                      radius: ${ (47 * (ui_scale | float)) | round | int }
                       bg_color: 0x62B0FF
                       bg_opa: 30%
                       border_width: 0
                       pad_all: 0
                       scrollable: false
-                      on_click:
-                        - script.execute: toggle_assist
+                      clickable: false
                       widgets:
                         - obj:
                             id: assist_mic
@@ -419,7 +416,156 @@ lvgl:
                                   text: "🎤"
                                   text_font: fonts_MiSans_Medium_32
                                   text_color: 0xFFFFFF
-                  - label:
-                      text: "Swipe from the left edge to stop"
-                      text_font: fonts_MiSans_Medium_12
-                      text_color: 0x9C9C9E
+            # Listening... / Thinking... / Speaking... or an error.
+            - label:
+                id: assist_status
+                text: ""
+                width: 100%
+                long_mode: DOT
+                text_align: CENTER
+                text_font: fonts_MiSans_Medium_14
+                text_color: 0x62B0FF
+            # The conversation.
+            - obj:
+                width: 100%
+                flex_grow: 1
+                bg_opa: TRANSP
+                border_width: 0
+                pad_all: 0
+                pad_top: ${ (6 * (ui_scale | float)) | round | int }
+                scrollable: false
+                clickable: false
+                layout:
+                  type: FLEX
+                  flex_flow: COLUMN
+                  pad_row: ${ (8 * (ui_scale | float)) | round | int }
+                widgets:
+                  # What was heard (right).
+                  - obj:
+                      width: 100%
+                      height: SIZE_CONTENT
+                      bg_opa: TRANSP
+                      border_width: 0
+                      pad_all: 0
+                      scrollable: false
+                      clickable: false
+                      layout:
+                        type: FLEX
+                        flex_flow: ROW
+                        flex_align_main: END
+                      widgets:
+                        - obj:
+                            id: assist_transcript_bubble
+                            hidden: true
+                            width: SIZE_CONTENT
+                            height: SIZE_CONTENT
+                            radius: ${ (14 * (ui_scale | float)) | round | int }
+                            bg_color: 0x2E3440
+                            bg_opa: COVER
+                            border_width: 0
+                            pad_left: ${ (12 * (ui_scale | float)) | round | int }
+                            pad_right: ${ (12 * (ui_scale | float)) | round | int }
+                            pad_top: ${ (8 * (ui_scale | float)) | round | int }
+                            pad_bottom: ${ (8 * (ui_scale | float)) | round | int }
+                            scrollable: false
+                            clickable: false
+                            widgets:
+                              - label:
+                                  id: assist_transcript
+                                  text: ""
+                                  width: SIZE_CONTENT
+                                  long_mode: WRAP
+                                  text_font: fonts_MiSans_Medium_14
+                                  text_color: 0xFFFFFF
+                  # The reply (left).
+                  - obj:
+                      id: assist_response_card
+                      hidden: true
+                      width: SIZE_CONTENT
+                      height: SIZE_CONTENT
+                      radius: ${ (14 * (ui_scale | float)) | round | int }
+                      bg_color: 0x232323
+                      bg_opa: COVER
+                      border_width: 0
+                      pad_left: ${ (12 * (ui_scale | float)) | round | int }
+                      pad_right: ${ (12 * (ui_scale | float)) | round | int }
+                      pad_top: ${ (8 * (ui_scale | float)) | round | int }
+                      pad_bottom: ${ (8 * (ui_scale | float)) | round | int }
+                      scrollable: false
+                      clickable: false
+                      widgets:
+                        - label:
+                            id: assist_response
+                            text: ""
+                            width: SIZE_CONTENT
+                            long_mode: WRAP
+                            text_font: fonts_MiSans_Medium_14
+                            text_color: 0xD2D2D2
+            - label:
+                id: assist_hint
+                text: "Tap the microphone to talk"
+                width: 100%
+                long_mode: DOT
+                text_align: CENTER
+                text_font: fonts_MiSans_Medium_12
+                text_color: 0x9C9C9E
+            # Mute and Stop.
+            - obj:
+                width: 100%
+                height: SIZE_CONTENT
+                bg_opa: TRANSP
+                border_width: 0
+                pad_all: 0
+                scrollable: false
+                clickable: false
+                layout:
+                  type: FLEX
+                  flex_flow: ROW
+                  flex_align_cross: CENTER
+                  pad_column: ${ (8 * (ui_scale | float)) | round | int }
+                widgets:
+                  - obj:
+                      id: assist_mute_button
+                      width: ${ (44 * (ui_scale | float)) | round | int }
+                      height: ${ (44 * (ui_scale | float)) | round | int }
+                      radius: ${ (12 * (ui_scale | float)) | round | int }
+                      bg_color: 0x232323
+                      bg_opa: COVER
+                      border_width: 0
+                      pad_all: 0
+                      scrollable: false
+                      on_click:
+                        - switch.toggle: microphone_muted
+                        - script.execute: assist_sync_mute
+                      widgets:
+                        - image:
+                            align: center
+                            src: panel_mic_off_icon
+                            image_recolor: 0xFFFFFF
+                            image_recolor_opa: COVER
+                  - obj:
+                      id: assist_stop_button
+                      flex_grow: 1
+                      height: ${ (44 * (ui_scale | float)) | round | int }
+                      radius: ${ (12 * (ui_scale | float)) | round | int }
+                      bg_color: 0x232323
+                      bg_opa: COVER
+                      border_width: 0
+                      pad_all: 0
+                      scrollable: false
+                      on_click:
+                        - script.execute: assist_stop
+                      widgets:
+                        - label:
+                            align: center
+                            text: "Stop"
+                            text_font: fonts_MiSans_Medium_14
+                            text_color: 0xFFFFFF
+
+image:
+  - platform: file
+    file: "../../../assets/panel/microphone-off.svg"
+    id: panel_mic_off_icon
+    resize: ${ (22 * (ui_scale | float)) | round | int }x${ (22 * (ui_scale | float)) | round | int }
+    type: RGB565
+    transparency: alpha_channel
