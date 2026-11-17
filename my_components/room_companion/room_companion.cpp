@@ -133,6 +133,8 @@ void RoomPanel::load_() {
   const std::string server = doc["server"] | std::string();
   const std::string url = doc["url"] | std::string();
   const float scale = doc["scale"] | 1.0f;
+  const std::string side = doc["toolbar_side"] | std::string("right");
+  if (side == "left" || side == "right") settings_.toolbar_side = side;
   if (valid_server(server)) settings_.server = server;
   if (valid_url(url)) settings_.url = url;
   if (std::isfinite(scale) && scale >= 0.5f && scale <= 4.0f) settings_.scale = scale;
@@ -145,6 +147,7 @@ std::string RoomPanel::settings_json_() const {
     root["server"] = settings_.server;
     root["url"] = settings_.url;
     root["scale"] = settings_.scale;
+    root["toolbar_side"] = settings_.toolbar_side;
   });
 }
 
@@ -255,6 +258,7 @@ std::string RoomPanel::state_json_() const {
     root["server"] = settings_.server;
     root["url"] = settings_.url;
     root["scale"] = settings_.scale;
+    root["toolbar_side"] = settings_.toolbar_side;
     root["status"] = stream_status();
     root["restart_required"] = restart_required_;
   });
@@ -268,6 +272,9 @@ std::string RoomPanel::handle_web(const std::string &op, const std::string &data
   StreamSettings next = settings_;
   next.server = trim(doc["server"] | settings_.server);
   next.url = trim(doc["url"] | settings_.url);
+  next.toolbar_side = doc["toolbar_side"] | settings_.toolbar_side;
+  if (next.toolbar_side != "left" && next.toolbar_side != "right")
+    return "{\"error\":\"Toolbar position must be left or right\"}";
   const float scale = doc["scale"] | settings_.scale;
   if (!valid_server(next.server)) return "{\"error\":\"Server must be host:port, for example 192.168.1.10:8081\"}";
   if (!valid_url(next.url)) return "{\"error\":\"Dashboard address must start with http:// or https://\"}";

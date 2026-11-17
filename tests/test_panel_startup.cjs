@@ -41,14 +41,14 @@ const raw=(file,tag)=>fs.readFileSync('my_components/onx_config_web/'+file,'utf8
   await page.goto('http://panel.test/');
   await page.getByText('Panel: reachable',{exact:true}).waitFor({timeout:8000});
   assert.deepEqual(errors,[],'The page must start without script errors');
-  await page.waitForFunction(()=>document.getElementById('ha-url').value==='http://192.168.10.2:8123');
+  await page.waitForFunction(()=>document.getElementById('ha-url').value==='http://homeassistant.local:8123');
   await page.locator('[data-page="settings"]').click();
   await page.locator('#background-color').evaluate(input=>{input.value='#f4f4f4';input.dispatchEvent(new Event('input',{bubbles:true}))});
   assert.equal(await page.locator('#device-preview > rect').first().getAttribute('fill'),'#F4F4F4','Background changes update the preview before saving');
   await page.click('#discard-settings');
   await page.locator('[data-page="connection"]').click();
   await page.fill('#ha-url','https://custom.example.test');await page.click('#ha-discover');
-  await page.getByText('Home Assistant found. Sign in to connect this browser.',{exact:true}).waitFor();
+  await page.getByText('Found 1 Home Assistant. Select it to sign in.',{exact:true}).waitFor();
   assert.equal(await page.locator('#ha-url').inputValue(),'https://custom.example.test','Discovery must preserve a manually entered address');
   await page.click('#rail-toggle');assert.equal(await page.locator('#rail-toggle').getAttribute('aria-expanded'),'false');
   await page.reload();await page.waitForFunction(()=>document.getElementById('device-status').dataset.ok==='true');

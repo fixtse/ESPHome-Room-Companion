@@ -82,6 +82,18 @@ inline std::string encode(const char *text, bool *missing = nullptr) {
   if (missing) *missing = false;
   std::string normalized;
   for (size_t at = 0; text[at];) {
+    // Messaging apps also use ornamental text arrows absent from MiSans.
+    // Keep the right-arrow meaning using its supported U+2192 glyph. U+27A1
+    // (emoji arrow) stays on the color-emoji path below.
+    bool arrow = false;
+    for (const char *variant : {"➔", "➙", "➛", "➜", "➝", "➞", "⟶"}) {
+      if (std::strncmp(text + at, variant, 3) != 0) continue;
+      normalized += "→";
+      at += 3;
+      arrow = true;
+      break;
+    }
+    if (arrow) continue;
     if (std::strncmp(text + at, "\xEF\xB8\x8F", 3) == 0) { at += 3; continue; }
     normalized += text[at++];
   }

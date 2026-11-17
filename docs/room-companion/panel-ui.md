@@ -450,3 +450,8 @@ again. Final production build: ESPHome 2026.10.2, config `0x2eb32bb6`,
 **Hardware status:** configuration/compile validation only until checked on the
 panel; appearance and touch behaviour of these screens are not yet
 hardware-tested.
+
+When a dashboard address is configured, its shortcut appears automatically at
+the edge of the bottom toolbar. Choose Left or Right in the web page’s Home
+Assistant dashboard settings; the position is saved on the panel. Clearing the
+address removes the shortcut. The remaining carousel controls keep their order.

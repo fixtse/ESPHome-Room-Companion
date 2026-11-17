@@ -49,7 +49,7 @@ hardware-tested status separate from configuration/build validation.
 ## Building and flashing this panel
 
 A request to build is not permission to flash. Once flashing is requested,
-complete the build, transfer, flash and boot checks without asking again for
+complete the build, transfer, flash and flash-hash verification without asking again for
 routine steps. Honor an explicit model restriction such as "only compile 3.5";
 otherwise keep the model/example validation policy above.
 
@@ -96,15 +96,13 @@ otherwise keep the model/example validation policy above.
 4. Ensure no serial monitor or other flasher owns the port. One attempt returned
    a serial readiness/disconnection error; a retry after checking the port
    succeeded. Diagnose ownership/reset/connection issues rather than launching
-   overlapping flash attempts. Read post-flash UART at **115200 baud**, with
-   **DTR and RTS false**, a bounded capture and a read timeout. Opening a monitor
-   with asserted control lines can reset or hold the board in reset.
-5. Observe roughly 90–120 seconds of boot/log output. Check for panic, abort,
-   watchdog resets and repeated display/DMA errors; distinguish startup peaks
-   from settled `sys` loop-time samples. Confirm Wi-Fi connectivity using the
-   current address. Keep visual/audio verification separate from serial/network
-   checks. Leave firmware and private logs outside Git.
-6. After all remote work finishes, release the lease exactly once. The existing
+   overlapping flash attempts. Routine post-flash boot observation is not required;
+   capture boot logs only when requested or needed to diagnose a failure. If
+   reading UART, use **115200 baud**, **DTR and RTS false**, a bounded capture and
+   a read timeout. Opening a monitor with asserted control lines can reset or
+   hold the board in reset. Keep visual/audio verification separate from
+   serial/network checks. Leave firmware and private logs outside Git.
+5. After all remote work finishes, release the lease exactly once. The existing
    automation shuts devserv down after three minutes with no leases; never force
    it off or reset the shared counter.
 
@@ -119,6 +117,23 @@ address is reachable from the container. Earlier attempts used an SSH reverse
 forward to the panel's TCP port 3232 and host networking; devserv's loopback is
 not the panel without that tunnel. Keep OTA credentials in private secrets.
 
-The HTTP release-manifest updater is a separate path. Its configured
-`onx3248g035_manifest.yml` returned HTTP 404 during the last boot checks, so it is
-not currently a verified way to deliver these local builds.
+The HTTP release-manifest updater uses the `esp-ota` release manifest described
+below. Publishing a valid manifest is separate from hardware-testing an HTTP OTA
+transfer; do not claim the latter based only on a successful build or USB flash.
+
+## OTA repository updates
+
+- The 3.5-inch wake-word device is also released through
+  `/home/fixt/git/esp-ota` (`fixtse/esp-ota`). After firmware changes, update
+  `configs/onx3248g035.yaml` there to the exact published source commit and
+  increment its project version. Preserve `ONX3248G035.wake-word.yaml` as the
+  release root. Keep this device's compiler pinned to ESPHome **2026.10.2**.
+- Build and validate the OTA integration on devserv under the task lease, then
+  publish the OTA application image using that repository's release tooling.
+  Verify the release asset checksum and
+  `ota/releases/onx3248g035_manifest.yml`. Firmware points to
+  `https://raw.githubusercontent.com/fixtse/esp-ota/main/ota/releases/onx3248g035_manifest.yml`.
+- Public firmware uses the unencrypted native API requested by the owner.
+  Never embed private API keys, OTA passwords or Wi-Fi credentials in releases.
+  USB flashes still use the factory image at offset zero; release OTA assets
+  must use `firmware.ota.bin`, never the factory image.

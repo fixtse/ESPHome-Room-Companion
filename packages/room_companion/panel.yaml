@@ -15,13 +15,12 @@ logger:
 # The base auxiliary UART would use GPIO43/44, which are the console here.
 uart: !remove
 
+# Public firmware uses an unencrypted API; provisioning stays in device NVS.
 api:
-  encryption:
-    key: !secret api_encryption_key
+  encryption: !remove
 
 ota:
   - platform: esphome
-    password: !secret ota_password
 
 lvgl:
   id: lvgl_ui
@@ -162,10 +161,9 @@ interval:
               lv_scr_act() != id(standby_page)->obj)
             id(refresh_normal_standby_page).execute();
           const bool normal = id(ui_presenter)->is_normal_mode_active() && !standby &&
-              !id(screen_off_state) && !id(sleep_mode_state) && id(room_panel)->native_ui_has_touch() &&
+              !id(screen_off_state) && !id(sleep_mode_state) && id(room_panel)->native_ui_can_render() &&
               // Timer popups open the timer detail, drawn here like any other.
-              !onx_notification::current.visible && !onx_playlist::browser.open &&
-              !onx_notification_ui::owns_screen();
+              !onx_notification::current.visible && !onx_playlist::browser.open;
           // Media keeps its specialised artwork/transport view. Main pages and
           // generic details use the entire rectangle, without the round ring.
           if (normal && !entity.empty() && ((!detail && id(normal_page_index)==0) || (entity_detail && !media))) {
@@ -182,8 +180,11 @@ interval:
           }
           // The bell (with its unread count) belongs to the main carousel; other
           // screens open the centre by pulling down from the top edge. The
-          // dashboard is a "[Local] Dashboard" item in the bottom bar.
+          // dashboard also has an automatic shortcut when a URL is configured.
           onx_notification_ui::set_bell_visible(normal && !detail && onx_navigation::visible);
+          const auto &dash = id(room_panel)->stream_settings();
+          onx_navigation::update_shortcut(id(panel_dashboard_icon)->get_lv_image_dsc(),
+              normal && !detail && !dash.url.empty(), dash.toolbar_side == "right");
           // Media detail rearranged for the tall screen.
           if (lv_scr_act() == id(normal_automation_page)->obj) {
             onx_panel_ui::sync_media({id(normal_automation_detail_shell), id(normal_media_cover), id(normal_media_title),
@@ -404,6 +405,11 @@ esphome:
             onx_geom::scale = ${ui_scale};
             // "[Local] Dashboard" and "[Local] Assist" become valid slot entities.
             custom_logic::panel_local_entries = true;
+            onx_navigation::shortcut_action = []() {
+              if (id(touch_input)->suppress_click() || onx_notification_ui::owns_screen()) return;
+              id(ui_presenter)->notify_user_activity();
+              id(room_panel)->open_dashboard();
+            };
             onx_navigation::local_action = [](const std::string &entity) {
               if (entity == "[Local] Dashboard") { id(room_panel)->open_dashboard(); return true; }
               if (entity == "[Local] Assist") { id(toggle_assist).execute(); return true; }
@@ -502,7 +508,8 @@ script:
             onx_render::register_panel_screen(screen);
           onx_panel_detail::fonts = {id(fonts_MiSans_Medium_12)->get_lv_font(), id(fonts_MiSans_Medium_15)->get_lv_font(),
               id(fonts_MiSans_Bold_18)->get_lv_font(), id(fonts_MiSans_Medium_32)->get_lv_font(), &lv_font_montserrat_28,
-              id(fonts_MiSans_Medium_64)->get_lv_font(), id(fonts_MiSans_Medium_12)->get_lv_font()};
+              id(fonts_MiSans_Medium_64)->get_lv_font(), id(fonts_MiSans_Medium_12)->get_lv_font(),
+              id(fonts_MiSans_Bold_14)->get_lv_font()};
           onx_controls::main_control_visible = [](const std::string &entity) {
             if (!onx_panel_pages::showing || onx_panel_pages::detail_view ||
                 onx_notification::current.visible || onx_notification_ui::owns_screen() ||
@@ -629,5 +636,5 @@ script:
           onx_panel_ui::create_slideshow(id(standby_page)->obj, id(fonts_MiSans_Bold_24)->get_lv_font(),
                                          id(fonts_MiSans_Medium_14)->get_lv_font());
           id(touch_input)->set_passthrough_fn([](int x, int y) {
-            return onx_panel_ui::hit(x, y) || onx_notification_ui::bell_hit(x, y);
+            return onx_panel_ui::hit(x, y) || onx_notification_ui::bell_hit(x, y) || onx_navigation::shortcut_hit(x, y);
           });

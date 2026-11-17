@@ -45,7 +45,7 @@ image:
     url: http://homeassistant.local:8123/
     format: AUTO
     type: RGB565
-    resize: ${notice_image_width}x${notice_image_height}
+    resize: ${ (44 * (ui_scale | float)) | round | int }x${ (44 * (ui_scale | float)) | round | int }
     update_interval: never
     on_download_finished:
       then:

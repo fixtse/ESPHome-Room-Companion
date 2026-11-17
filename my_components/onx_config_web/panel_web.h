@@ -276,13 +276,14 @@ static const char PANEL_JS[] = R"ONXPANEL(
  form.className='panel';form.id='panel-dashboard';
  form.innerHTML='<h2>Home Assistant dashboard</h2>'+
   '<p class="hint">Show an interactive Home Assistant dashboard on the panel. A Remote WebView server renders it and streams the picture; '+
-  'native screens still appear for Assist and notifications. Add <strong>Dashboard</strong> as a control (listed under “On this panel”) '+
+  'native screens still appear for Assist and notifications. A dashboard icon appears automatically when an address is set. You can also add <strong>Dashboard</strong> as a control '+
   'to open it from the icon strip, or use the Dashboard switch in Home Assistant. Swipe left or right to return.</p>'+
   '<div class="field-grid">'+
   '<label class="field">Remote WebView server<input id="dash-server" maxlength="96" placeholder="192.168.1.10:8081" autocomplete="off"></label>'+
   '<label class="field">Zoom<input id="dash-scale" type="number" min="0.5" max="4" step="0.25"></label>'+
   '</div>'+
   '<label class="field">Dashboard address<input id="dash-url" maxlength="256" placeholder="http://homeassistant.local:8123/room-panel/0" autocomplete="off"></label>'+
+  '<label class="field">Dashboard icon position<select id="dash-toolbar-side"><option value="left">Left of toolbar</option><option value="right">Right of toolbar</option></select></label>'+
   '<p class="hint">Design the dashboard for the panel’s size, without animations: these screens update a full frame in roughly a tenth of a second. '+
   'Changing the server or zoom needs a restart.</p>'+
   '<p class="hint" id="dash-status" role="status"></p>'+
@@ -290,6 +291,7 @@ static const char PANEL_JS[] = R"ONXPANEL(
  anchor.after(form);
  const show=state=>{
   $('dash-server').value=state.server||'';$('dash-url').value=state.url||'';$('dash-scale').value=state.scale||1;
+  $('dash-toolbar-side').value=state.toolbar_side||'right';
   $('dash-status').textContent='Stream: '+state.status+(state.restart_required?' · restart the panel to apply the new server or zoom':'');
  };
  rpc({op:'panel_state'}).then(show).catch(e=>{$('dash-status').textContent=e.message});
@@ -297,7 +299,7 @@ static const char PANEL_JS[] = R"ONXPANEL(
   event.preventDefault();
   const button=form.querySelector('button');button.disabled=true;
   try{
-   show(await rpc({op:'panel_save',data:JSON.stringify({server:$('dash-server').value.trim(),url:$('dash-url').value.trim(),scale:parseFloat($('dash-scale').value)||1})}));
+   show(await rpc({op:'panel_save',data:JSON.stringify({server:$('dash-server').value.trim(),url:$('dash-url').value.trim(),scale:parseFloat($('dash-scale').value)||1,toolbar_side:$('dash-toolbar-side').value})}));
    $('dash-status').textContent='Saved. '+$('dash-status').textContent;
   }catch(e){$('dash-status').textContent=e.message}
   finally{button.disabled=false}

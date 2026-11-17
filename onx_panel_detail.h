@@ -47,7 +47,7 @@ inline uint32_t soft() { return onx_display_settings::accent_soft(); }
 // matching P()): small 16, body 20, title 24, big 43, hero 85 (digits only).
 struct Fonts {
   const lv_font_t *small{nullptr}, *body{nullptr}, *title{nullptr}, *big{nullptr}, *symbol{nullptr}, *hero{nullptr},
-      *label{nullptr};
+      *label{nullptr}, *header_clock{nullptr};
 };
 inline Fonts fonts;
 
@@ -1838,10 +1838,11 @@ inline void render_main(lv_obj_t *parent, const std::vector<Tile> &tiles, int wi
   clear();
   built_signature = sig;
   main_mode = true;
-  if (now > 1600000000 && !tiles.empty() && tiles.front().r.y >= line(fonts.small))
+  const auto *clock_font = fonts.header_clock != nullptr ? fonts.header_clock : fonts.small;
+  if (now > 1600000000 && !tiles.empty() && tiles.front().r.y >= line(clock_font))
     // Left of the top row: the Wi-Fi / Home Assistant status sits in the
     // centre and the bell on the right.
-    text(root, clock(now), fonts.small, SOFT_TEXT(), tiles.front().r.x + P(4), (tiles.front().r.y - line(fonts.small)) / 2, W / 4);
+    text(root, clock(now), clock_font, TEXT(), tiles.front().r.x + P(4), (tiles.front().r.y - line(clock_font)) / 2, W / 4);
   for (const auto &t : tiles) build_card(t);
 }
 

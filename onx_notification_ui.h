@@ -5,10 +5,11 @@
 //   - arrival banner at the top; tap to open
 //   - list of recent notifications (accent bar while unread, time, x to
 //     dismiss), Clear all in the header, swipe up (or tap the handle) to close
-//   - detail view with picture, Back and Dismiss
+//   - detail view with a small title thumbnail, Back and Dismiss
 // Built on LVGL's top layer; sizes follow onx_geom so both panels scale.
 #include <algorithm>
 #include <cstdio>
+#include <cstring>
 #include <ctime>
 #include <functional>
 #include <string>
@@ -17,6 +18,9 @@
 #include "onx_geom.h"
 #include "onx_display_settings.h"
 #include "onx_notification.h"
+#include "onx_emoji.h"
+#include <map>
+#include <memory>
 
 namespace onx_notification_ui {
 using onx_geom::S;
@@ -40,6 +44,15 @@ inline lv_obj_t *panel = nullptr, *list = nullptr, *empty_label = nullptr, *coun
 inline const void *bell_image = nullptr;  // Bell glyph (an MDI image), set before init().
 inline lv_obj_t *detail = nullptr, *detail_title = nullptr, *detail_age = nullptr, *detail_image = nullptr,
                 *detail_body = nullptr;
+struct Thumbnail {
+  lv_image_dsc_t image{};
+  std::shared_ptr<uint8_t> pixels;
+};
+inline std::map<uint32_t, Thumbnail> thumbnails;
+inline std::map<lv_obj_t *, uint32_t> image_widgets;
+inline uint32_t loading_id = 0;
+inline bool release_pending = false;
+inline lv_obj_t *toast_icon = nullptr, *toast_bar = nullptr;
 inline uint32_t detail_id = 0, built_revision = 0;
 inline bool panel_open = false;
 inline bool bell_wanted = false;  // Only the main carousel shows the bell.
@@ -88,7 +101,7 @@ inline lv_obj_t *text(lv_obj_t *parent, const lv_font_t *font, uint32_t color, c
   lv_obj_t *label = lv_label_create(parent);
   lv_obj_set_style_text_font(label, font, 0);
   lv_obj_set_style_text_color(label, lv_color_hex(color), 0);
-  lv_label_set_text(label, value);
+  onx_emoji::set_label(label, value);
   return label;
 }
 inline lv_obj_t *button(lv_obj_t *parent, const char *caption, uint32_t color, lv_event_cb_t cb, void *user) {
@@ -113,16 +126,24 @@ inline bool owns_screen() {
 }
 
 inline void refresh();
+inline lv_obj_t *notification_icon(lv_obj_t *parent, uint32_t id, int size = 28) {
+  auto *icon = lv_image_create(parent);
+  lv_obj_set_size(icon, S(size), S(size));
+  lv_image_set_inner_align(icon, LV_IMAGE_ALIGN_CONTAIN);
+  lv_obj_remove_flag(icon, LV_OBJ_FLAG_CLICKABLE);
+  auto found = thumbnails.find(id);
+  lv_image_set_src(icon, found == thumbnails.end() || !found->second.pixels ? bell_image : &found->second.image);
+  image_widgets[icon] = id;
+  lv_obj_add_event_cb(icon, [](lv_event_t *e) {
+    image_widgets.erase(static_cast<lv_obj_t *>(lv_event_get_target(e)));
+  }, LV_EVENT_DELETE, nullptr);
+  return icon;
+}
 inline void open_detail(uint32_t id);
 
 inline void close_detail() {
   if (detail_id == 0) return;
   detail_id = 0;
-  if (detail_image) {
-    hide(detail_image, true);
-    lv_image_set_src(detail_image, static_cast<const void *>(nullptr));
-  }
-  if (hooks.release_image) hooks.release_image();
   hide(detail, true);
   refresh();
 }
@@ -225,19 +246,35 @@ inline void init(int screen_width, int screen_height, Fonts f, Hooks h) {
 
   // Arrival banner.
   toast = box(top, CARD, S(12));
-  lv_obj_set_size(toast, width - 2 * S(8) - S(48), LV_SIZE_CONTENT);
+  lv_obj_set_size(toast, width - 2 * S(8), LV_SIZE_CONTENT);
   lv_obj_align(toast, LV_ALIGN_TOP_LEFT, S(8), S(6));
   lv_obj_set_style_pad_all(toast, S(8), 0);
   lv_obj_set_style_border_side(toast, LV_BORDER_SIDE_LEFT, 0);
   lv_obj_set_style_border_width(toast, S(4), 0);
   lv_obj_set_style_border_color(toast, lv_color_hex(accent()), 0);
-  lv_obj_set_flex_flow(toast, LV_FLEX_FLOW_COLUMN);
+  lv_obj_set_flex_flow(toast, LV_FLEX_FLOW_ROW);
+  lv_obj_set_style_pad_column(toast, S(8), 0);
+  lv_obj_set_style_border_width(toast, 0, 0);
+  lv_obj_set_style_clip_corner(toast, true, 0);
+  toast_bar = box(toast, accent(), S(2));
+  lv_obj_add_flag(toast_bar, LV_OBJ_FLAG_FLOATING);
+  lv_obj_set_pos(toast_bar, -S(4), 0);
+  lv_obj_set_size(toast_bar, S(3), lv_pct(100));
+  lv_obj_remove_flag(toast_bar, LV_OBJ_FLAG_CLICKABLE);
+  toast_icon = notification_icon(toast, 0);
+  auto *toast_column = box(toast, CARD, 0);
+  lv_obj_set_style_bg_opa(toast_column, LV_OPA_TRANSP, 0);
+  lv_obj_set_flex_grow(toast_column, 1);
+  lv_obj_remove_flag(toast_column, LV_OBJ_FLAG_CLICKABLE);
+  lv_obj_set_height(toast_column, LV_SIZE_CONTENT);
+  lv_obj_set_flex_flow(toast_column, LV_FLEX_FLOW_COLUMN);
   lv_obj_add_flag(toast, LV_OBJ_FLAG_CLICKABLE);
-  toast_title = text(toast, fonts.title, TEXT, "");
-  toast_body = text(toast, fonts.body, MUTED, "");
+  toast_title = text(toast_column, fonts.title, TEXT, "");
+  toast_body = text(toast_column, fonts.body, MUTED, "");
   for (auto *label : {toast_title, toast_body}) {
     lv_obj_set_width(label, lv_pct(100));
     lv_label_set_long_mode(label, LV_LABEL_LONG_DOT);
+    lv_obj_set_style_max_height(label, 2 * lv_font_get_line_height(label == toast_title ? fonts.title : fonts.body), 0);
   }
   lv_obj_add_event_cb(toast, on_toast, LV_EVENT_CLICKED, nullptr);
 
@@ -310,19 +347,24 @@ inline void init(int screen_width, int screen_height, Fonts f, Hooks h) {
   lv_obj_t *detail_header;
   build_header(detail, "Notification", &detail_header);
   button(detail_header, "Back", CARD, on_back, nullptr);
-  detail_title = text(detail, fonts.title, TEXT, "");
+  auto *title_row = box(detail, BG, 0);
+  lv_obj_set_size(title_row, lv_pct(100), LV_SIZE_CONTENT);
+  lv_obj_set_flex_flow(title_row, LV_FLEX_FLOW_ROW);
+  lv_obj_set_style_pad_column(title_row, S(8), 0);
+  detail_image = notification_icon(title_row, 0);
+  detail_title = text(title_row, fonts.title, TEXT, "");
+  lv_obj_set_flex_grow(detail_title, 1);
   detail_age = text(detail, fonts.small, accent(), "");
-  detail_image = lv_image_create(detail);
-  lv_obj_align(detail_image, LV_ALIGN_TOP_MID, 0, 0);
+
   detail_body = text(detail, fonts.body, TEXT, "");
-  for (auto *label : {detail_title, detail_body}) {
+  for (auto *label : {detail_body}) {
     lv_obj_set_width(label, lv_pct(100));
     lv_label_set_long_mode(label, LV_LABEL_LONG_WRAP);
   }
   lv_obj_t *dismiss = button(detail, "Dismiss", 0x3A3F45, on_detail_dismiss, nullptr);
   lv_obj_set_width(dismiss, lv_pct(100));
 
-  for (auto *obj : {toast, panel, detail, detail_image}) hide(obj, true);
+  for (auto *obj : {toast, panel, detail}) hide(obj, true);
   onx_notification::center.enabled = true;
   onx_notification::center.changed = []() { refresh(); };
   refresh();
@@ -352,14 +394,7 @@ inline void rebuild_list() {
     lv_obj_set_pos(bar, -pad_l + S(7), 0);
     lv_obj_set_size(bar, S(3), lv_pct(100));
     lv_obj_remove_flag(bar, LV_OBJ_FLAG_CLICKABLE);
-    const bool picture = !item.image_url.empty();
-    if (picture) {
-      lv_obj_t *t = box(card, control(), S(8));
-      lv_obj_set_size(t, thumb, thumb);
-      lv_obj_remove_flag(t, LV_OBJ_FLAG_CLICKABLE);
-      lv_obj_center(text(t, fonts.symbol != nullptr ? fonts.symbol : fonts.small, muted(),
-                         fonts.symbol != nullptr ? LV_SYMBOL_IMAGE : "Image"));
-    }
+    notification_icon(card, item.id, 44);
     lv_obj_t *column = box(card, surface(), 0);
     lv_obj_set_style_bg_opa(column, LV_OPA_TRANSP, 0);
     lv_obj_set_flex_grow(column, 1);
@@ -383,11 +418,14 @@ inline void rebuild_list() {
     lv_obj_set_height(title, lv_font_get_line_height(fonts.title));
     lv_obj_t *age = text(top_row, fonts.small, muted(), when(item.received_ms, now).c_str());
     // Up to two lines of the message.
-    const int text_w = width - 2 * S(10) - pad_l - pad_r - close_w - S(10) - (picture ? thumb + S(10) : 0);
+    const int text_w = width - 2 * S(10) - pad_l - pad_r - close_w - S(10) - (thumb + S(10));
+    // Two visible lines do not need to retain/queue an entire chat transcript.
+    auto preview = onx_notification::clipped(item.body, 192);
+    if (preview.size() < item.body.size()) preview += "...";
     lv_point_t size;
-    lv_text_get_size(&size, item.body.c_str(), fonts.body, 0, 0, std::max(40, text_w), LV_TEXT_FLAG_NONE);
+    lv_text_get_size(&size, preview.c_str(), fonts.body, 0, 0, std::max(40, text_w), LV_TEXT_FLAG_NONE);
     const int body_lines = std::clamp(int((size.y + lv_font_get_line_height(fonts.body) - 1) / lv_font_get_line_height(fonts.body)), 1, 2);
-    lv_obj_t *body = text(column, fonts.body, muted(), item.body.c_str());
+    lv_obj_t *body = text(column, fonts.body, muted(), preview.c_str());
     lv_obj_set_size(body, lv_pct(100), body_lines * lv_font_get_line_height(fonts.body));
     lv_label_set_long_mode(body, LV_LABEL_LONG_DOT);
     hide(body, item.body.empty());
@@ -408,25 +446,35 @@ inline void open_detail(uint32_t id) {
   if (item == nullptr) return;
   touched();
   panel_open = false;
-  if (detail_id != 0 && hooks.release_image) hooks.release_image();
   detail_id = id;
-  lv_label_set_text(detail_title, item->title.c_str());
+  onx_emoji::set_label(detail_title, item->title.c_str());
   lv_label_set_text(detail_age, onx_notification::age_text(item->received_ms, esphome::millis()).c_str());
-  lv_label_set_text(detail_body, item->body.c_str());
-  hide(detail_image, true);
-  if (!item->image_url.empty() && hooks.load_image) hooks.load_image(item->image_url);
+  onx_emoji::set_label(detail_body, item->body.c_str());
+  image_widgets[detail_image] = id;
+  auto found = thumbnails.find(id);
+  lv_image_set_src(detail_image, found == thumbnails.end() || !found->second.pixels ? bell_image : &found->second.image);
   lv_obj_scroll_to_y(detail, 0, LV_ANIM_OFF);
   onx_notification::center.mark_read(id);  // Refreshes.
   refresh();
 }
 
-// Called when the picture for the open notification has downloaded.
+// Copy the shared downloader buffer into a stable, PSRAM-backed thumbnail.
 inline void image_ready(const lv_image_dsc_t *dsc) {
-  if (detail_id == 0 || dsc == nullptr) return;
-  lv_image_set_src(detail_image, dsc);
-  hide(detail_image, false);
+  if (loading_id && dsc && dsc->data) {
+    auto *pixels = static_cast<uint8_t *>(heap_caps_malloc(dsc->data_size, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT));
+    if (pixels) {
+      std::memcpy(pixels, dsc->data, dsc->data_size);
+      auto &thumb = thumbnails[loading_id];
+      thumb.pixels = std::shared_ptr<uint8_t>(pixels, [](uint8_t *p) { heap_caps_free(p); });
+      thumb.image = *dsc;
+      thumb.image.data = pixels;
+      for (auto &widget : image_widgets)
+        if (widget.second == loading_id) lv_image_set_src(widget.first, &thumb.image);
+    }
+  }
+  release_pending = true;
 }
-inline void image_failed() { hide(detail_image, true); }
+inline void image_failed() { release_pending = true; }
 
 inline void refresh() {
   if (bell == nullptr) return;
@@ -436,7 +484,7 @@ inline void refresh() {
   const size_t unread = center.unread();
   // Bell only on the main carousel (dimmed when empty); every screen can pull
   // down from the top edge to open the centre.
-  const bool bell_shown = bell_wanted && !panel_open && detail_id == 0;
+  const bool bell_shown = bell_wanted && !panel_open && detail_id == 0 && !center.toast_visible(now);
   hide(bell, !bell_shown);
   lv_obj_set_style_opa(bell, center.items.empty() ? LV_OPA_50 : LV_OPA_COVER, 0);
   hide(badge, unread == 0 || !bell_shown);
@@ -457,8 +505,17 @@ inline void refresh() {
   const bool show_toast = center.toast_visible(now) && !panel_open && detail_id == 0;
   if (show_toast) {
     if (auto *item = center.find(center.toast_id)) {
-      lv_label_set_text(toast_title, item->title.c_str());
-      lv_label_set_text(toast_body, item->body.c_str());
+      onx_emoji::set_label(toast_title, item->title.c_str());
+      if (image_widgets[toast_icon] != item->id) {
+        image_widgets[toast_icon] = item->id;
+        auto found = thumbnails.find(item->id);
+        lv_image_set_src(toast_icon, found == thumbnails.end() || !found->second.pixels ? bell_image : &found->second.image);
+      }
+      const uint32_t total = std::max<uint32_t>(1, center.toast_until - item->received_ms);
+      const uint32_t left = center.toast_until - now;
+      lv_obj_set_height(toast_bar, lv_pct(std::max<uint32_t>(1, uint64_t(left) * 100 / total)));
+      lv_obj_set_style_bg_color(toast_bar, lv_color_hex(accent()), 0);
+      onx_emoji::set_label(toast_body, item->body.c_str());
     }
   }
   hide(toast, !show_toast);
@@ -495,6 +552,35 @@ inline void set_bell_visible(bool visible) {
 
 // Periodic: banner timeout and list ages.
 inline void tick() {
+  if (release_pending) {
+    if (hooks.release_image) hooks.release_image();
+    release_pending = false;
+    loading_id = 0;
+  }
+  // Drop widgets before freeing their descriptors. Retained thumbnails are PSRAM-backed.
+  for (auto it = thumbnails.begin(); it != thumbnails.end();) {
+    if (!onx_notification::center.find(it->first)) {
+      for (auto &widget : image_widgets)
+        if (widget.second == it->first) lv_image_set_src(widget.first, bell_image);
+      lv_image_cache_drop(&it->second.image);
+      lv_image_header_cache_drop(&it->second.image);
+      it = thumbnails.erase(it);
+    } else ++it;
+  }
+  if (!loading_id && owns_screen() && hooks.load_image) {
+    for (const auto &item : onx_notification::center.items) {
+      const bool needed = panel_open || detail_id == item.id ||
+          (detail_id == 0 && onx_notification::center.toast_visible(esphome::millis()) &&
+           onx_notification::center.toast_id == item.id);
+      if (!needed || item.image_url.empty() || thumbnails.count(item.id)) continue;
+      // One attempt per notification; network failure keeps the bell fallback.
+      thumbnails.try_emplace(item.id);
+      loading_id = item.id;
+      hooks.load_image(item.image_url);
+      break;
+    }
+  }
+  if (onx_notification::center.toast_visible(esphome::millis())) refresh();
   static uint32_t minute = 0;
   if (panel_open && esphome::millis() / 60000 != minute) {
     minute = esphome::millis() / 60000;

@@ -30,6 +30,7 @@ struct StreamSettings {
   std::string server;  // RemoteWebView server, host:port.
   std::string url;     // Page the server renders.
   float scale{1.0f};
+  std::string toolbar_side{"right"};
 };
 
 class RoomPanel;
@@ -75,6 +76,7 @@ class RoomPanel : public Component {
   // Overlays and input.
   void set_overlay(Overlay overlay, bool on);
   // Touch drives the native UI only when it is visible and no overlay owns input.
+  bool native_ui_can_render() const { return !stream_owner_ && (overlays_ & ~OVERLAY_NOTICE) == 0; }
   bool native_ui_has_touch() const { return !stream_owner_ && overlays_ == 0; }
 
   // Configuration page hook: returns "" when the op is not ours.

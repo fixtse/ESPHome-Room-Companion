@@ -28,6 +28,11 @@ int main() {
   bool missing = true;
   assert(onx_emoji::encode("Beyonc\xC3\xA9", &missing) == "Beyonc\xC3\xA9" && !missing);
   assert(onx_emoji_queue::pending.empty());
+  for (const char *arrow : {"→", "➔", "➙", "➛", "➜", "➝", "➞", "⟶"}) {
+    const auto title = std::string("Ken ") + arrow + " fixt_de";
+    assert(onx_emoji::encode(title.c_str(), &missing) == "Ken → fixt_de" && !missing);
+  }
+  assert(onx_emoji_queue::pending.empty());
 
   // Not downloaded yet: text keeps the codepoints (monochrome fallback) and queues once.
   const char *family = "\xF0\x9F\x91\xA8\xE2\x80\x8D\xF0\x9F\x91\xA9\xE2\x80\x8D\xF0\x9F\x91\xA7\xE2\x80\x8D\xF0\x9F\x91\xA6";

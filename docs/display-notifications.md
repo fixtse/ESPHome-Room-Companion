@@ -141,14 +141,20 @@ data:
 Use a publicly readable or privately hosted image URL that the panel can access
 without authentication. JPEG, PNG, and BMP are supported where the decoder can
 read them; progressive JPEG is unsupported. Downloads are limited to 512 KiB,
-source images to 1,048,576 pixels, and the display image to a 112 × 64 pixel box.
-The image attempt, including waiting for downloader memory or other image work,
-expires after eight seconds. Text appears immediately, remains scrollable, and
-uses the full text-only layout if the image fails, is invalid, or exceeds a limit.
+source images to 1,048,576 pixels. The rectangular panels show the image as a
+small thumbnail beside the notification title in the dropdown, expanded view,
+and arrival popup, leaving the message area for text. Dropdown thumbnails use a 44-unit square; popup and expanded-title icons use
+a compact 28-unit square. Both are scaled for the panel and are retained in PSRAM while their notifications
+remain in the history. A bell appears until the image loads, or if it fails.
 
-Only the newest notification is retained. A replacement, dismissal, or expiry
-cancels the old download, detaches its display buffer before freeing it, and
-rejects late results. Media artwork downloads wait while a notification is visible.
+The centre retains up to twelve notifications. Opening it clears the arrival
+popup; closing it reveals the prepared normal card without the legacy layout
+flashing underneath. The popup's left accent bar shrinks as its display time
+runs out. Notification titles and bodies use the shared color emoji downloader,
+with monochrome fallback where available. The `→` text arrow is included in the
+fonts; common ornamental variants such as `➜` and `➔` use that same glyph.
+
+Configuration/build checks do not establish hardware visual or audio behavior.
 
 ## Message formatting
 

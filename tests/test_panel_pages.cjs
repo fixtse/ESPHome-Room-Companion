@@ -7,7 +7,7 @@ const {chromium}=require('playwright');
   const page=await browser.newPage({viewport:{width:1100,height:950}});
   const html=fs.readFileSync('my_components/onx_config_web/config_page.h','utf8').split('R"ONXHTML(')[1].split(')ONXHTML"')[0];
   const script=fs.readFileSync('my_components/onx_config_web/panel_web.h','utf8').split('R"ONXPANEL(')[1].split(')ONXPANEL"')[0];
-  const configs=[],payloads=[],tickets=new Map();let ticket=0;
+  const configs=[],payloads=[],dashPayloads=[],tickets=new Map();let ticket=0;
   await page.route('http://panel.test/**',async route=>{
    const req=route.request(),url=new URL(req.url());
    if(url.pathname==='/'){await route.fulfill({contentType:'text/html',body:html});return}
@@ -15,7 +15,8 @@ const {chromium}=require('playwright');
    if(url.pathname==='/panel/app.js'||url.pathname==='/panel/ha.js'){await route.fulfill({contentType:'text/javascript',body:''});return}
    if(url.pathname==='/panel/api'){
     const q=new URLSearchParams(req.postData());let response={};
-    if(q.get('op')==='panel_state')response={status:'ready',scale:1};
+    if(q.get('op')==='panel_state')response={status:'ready',scale:1,toolbar_side:'right'};
+    if(q.get('op')==='panel_save'){const p=JSON.parse(q.get('data'));dashPayloads.push(p);response={...p,status:'ready'}}
     if(q.get('op')==='panel_pages')response={pages:configs};
     if(q.get('op')==='panel_page_save'){const p=JSON.parse(q.get('data'));payloads.push(p);configs.splice(0,configs.length,p);response={pages:configs}}
     tickets.set(++ticket,response);await route.fulfill({json:{ticket}});return;
@@ -24,6 +25,17 @@ const {chromium}=require('playwright');
    await route.fulfill({status:204});
   });
   await page.goto('http://panel.test/');await page.waitForFunction(()=>!!globalThis.ONX_PANEL_EDITOR);
+  await page.evaluate(()=>document.getElementById('page-settings').hidden=false);
+  await page.locator('#dash-toolbar-side').waitFor();
+  assert.equal(await page.locator('#dash-toolbar-side').inputValue(),'right');
+  await page.selectOption('#dash-toolbar-side','left');
+  await page.fill('#dash-url','http://homeassistant.local:8123/room/0');
+  await page.locator('#panel-dashboard button[type=submit]').click();
+  await page.waitForFunction(()=>document.getElementById('dash-status').textContent.startsWith('Saved.'));
+  assert.equal(dashPayloads.at(-1).toolbar_side,'left');
+  assert.equal(dashPayloads.at(-1).url,'http://homeassistant.local:8123/room/0');
+  assert.equal(await page.locator('#dash-toolbar-side').inputValue(),'left');
+  await page.evaluate(()=>document.getElementById('page-settings').hidden=true);
   await page.evaluate(()=>{
    window.testSlots=[{entity:'light.kitchen',name:'Kitchen lights'},{entity:'switch.fan',name:'Fan'},{entity:'sensor.temperature',name:'Temperature'},{entity:'sensor.humidity',name:'Humidity'},{entity:'binary_sensor.door',name:'Door'}];
    window.testViews=testSlots.map((s,i)=>({entity:s.entity,layout:'value',available:true,value_ring:500,icon:'mdi:lightbulb',lines:[{text:'Sensor'},{text:i===2?'21 °C':i===3?'54 %':i===4?'Closed':'On'},{text:''},{text:''},{text:s.name}],carousel:{layout:'carousel',lines:[{text:''},{text:i===2?'21 °C':i===3?'54 %':i===4?'Closed':'On'},{text:''},{text:''},{text:s.name}],navigator:[]}}));
