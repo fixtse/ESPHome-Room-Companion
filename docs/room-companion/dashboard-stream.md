@@ -46,6 +46,11 @@ or the address on the panel's **More** screen):
   address** text entity, and **Screen mode** switches between modes.
 - **Zoom** enlarges text and controls (restart to apply).
 
+The stream connects the first time the dashboard is opened, not at boot, so a
+configured but unused dashboard costs no internal RAM (see
+[memory-budget.md](memory-budget.md)); the first open takes a moment longer.
+Once started it stays connected until the panel restarts.
+
 The server or zoom cannot change while the stream runs; the page shows a
 **Restart needed** card. Presets switch the screen mode and dashboard address,
 so e.g. a *Night* preset can show a dimmed dashboard or the native panel.

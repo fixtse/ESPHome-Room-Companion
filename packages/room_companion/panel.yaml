@@ -1,3 +1,9 @@
+substitutions:
+  # Internal RAM (total / largest contiguous block, bytes) that must be free
+  # before Bluetooth may start; see the esp32_ble comment below.
+  ble_min_free: "56000"
+  ble_min_block: "36000"
+
 # Panel layer: display/input integration and connectivity for these boards.
 # Everything else comes from the shared packages.
 logger:
@@ -81,7 +87,44 @@ number:
     restore_value: true
     initial_value: 20
 
+# Bluetooth is not started at boot: with the saved configuration the internal RAM
+# left after setup (about 45 KB with nine controls) is less than the Bluedroid
+# stack needs, and its failure aborts the boot. It is only used for Improv Wi-Fi
+# provisioning, so it starts when the panel has no saved network (after 10 s) or
+# the network has been unavailable for 30 s, when memory allows (onx_ble_guard.h).
+esp32_ble:
+  enable_on_boot: false
+
 interval:
+  - interval: 5s
+    then:
+      - if:
+          condition:
+            lambda: |-
+              auto *wifi_component = wifi::global_wifi_component;
+              static uint32_t down_since = 0, warned = 0;
+              if (esphome::esp32_ble::global_ble != nullptr && esphome::esp32_ble::global_ble->is_active()) {
+                onx_ble_guard::done();
+                return false;
+              }
+              if (wifi_component == nullptr || wifi_component->is_connected()) { down_since = 0; return false; }
+              if (down_since == 0) down_since = millis();
+              const bool saved = wifi_component->has_sta() && !wifi_component->get_sta().get_ssid().empty();
+              if (saved ? millis() - down_since < 30000 : millis() < 10000) return false;
+              if (onx_ble_guard::blocked()) return false;
+              if (!onx_ble_guard::enough_memory(${ble_min_free}, ${ble_min_block})) {
+                if (millis() - warned > 60000) {
+                  warned = millis();
+                  ESP_LOGW("ble", "Not starting Bluetooth: internal RAM %u B free, largest block %u B",
+                           (unsigned) heap_caps_get_free_size(MALLOC_CAP_INTERNAL),
+                           (unsigned) heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL));
+                }
+                return false;
+              }
+              onx_ble_guard::begin();
+              return true;
+          then:
+            - ble.enable:
   # Rectangular-panel UI (onx_panel_ui.h): bell, media layout, idle screen.
   - interval: 100ms
     then:
@@ -315,6 +358,7 @@ interval:
 esphome:
   includes:
     - ../../onx_panel_ui.h
+    - ../../onx_ble_guard.h
     - ../../onx_panel_layout.h
     - ../../onx_panel_detail.h
     - ../../onx_panel_pages.h

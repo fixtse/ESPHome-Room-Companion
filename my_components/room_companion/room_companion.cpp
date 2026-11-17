@@ -116,7 +116,10 @@ void RoomPanel::dump_config() {
 void RoomPanel::loop() {
   const uint32_t now = millis();
   const bool wifi_ok = wifi::global_wifi_component != nullptr && wifi::global_wifi_component->is_connected();
-  if (wifi_ok && stream_ != nullptr && !stream_->is_started() && stream_->has_server()) stream_->start();
+  // The stream's tasks, socket and decoder buffers start only once the dashboard is
+  // opened; a configured but unused dashboard costs no internal RAM (memory-budget.md).
+  if (wifi_ok && dashboard_open_ && stream_ != nullptr && !stream_->is_started() && stream_->has_server())
+    stream_->start();
   if (corner_requested_.exchange(false)) close_dashboard();
   update_owner_(now);
 }
@@ -241,7 +244,7 @@ void RoomPanel::give_display_to_(bool stream) {
 
 std::string RoomPanel::stream_status() const {
   if (stream_ == nullptr || settings_.server.empty()) return "not configured";
-  if (!stream_->is_started()) return "waiting for Wi-Fi";
+  if (!stream_->is_started()) return dashboard_open_ ? "waiting for Wi-Fi" : "starts when opened";
   if (!stream_->is_connected()) return "connecting";
   return stream_owner_ ? "showing" : "ready";
 }

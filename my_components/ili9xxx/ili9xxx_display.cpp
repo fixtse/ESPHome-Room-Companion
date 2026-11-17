@@ -3,12 +3,22 @@
 #include "esphome/core/hal.h"
 #include "esphome/core/helpers.h"
 #include "esphome/core/log.h"
+#include <algorithm>
+#include <cstring>
+#ifdef USE_ESP32
+#include "esp_heap_caps.h"
+#include "esp_memory_utils.h"
+#endif
 
 namespace esphome {
 namespace ili9xxx {
 
 static const uint16_t SPI_SETUP_US = 100;         // estimated fixed overhead in microseconds for an SPI write
 static const uint16_t SPI_MAX_BLOCK_SIZE = 4092;  // Max size of continuous SPI transfer
+// Internal DMA buffer for PSRAM pixel data (a multiple of 2 and 3 bytes). Without it
+// the SPI driver allocates a bounce buffer as large as each flush (up to ~38 KB),
+// which fails once internal RAM is fragmented and freezes the screen.
+static const size_t DMA_BOUNCE_SIZE = 4092;
 static const uint16_t COLD_BOOT_SETTLE_MS = 120;  // Give the LCD time to stabilize after ESP32 power-on.
 static const uint16_t RESET_PULSE_MS = 20;        // Keep the reset pulse width unchanged from upstream defaults.
 static const uint16_t POST_RESET_SETTLE_MS = 120; // Longer post-reset wait helps on boards that only wake after manual reset.
@@ -34,6 +44,11 @@ void ILI9XXXDisplay::set_madctl() {
 }
 
 void ILI9XXXDisplay::setup() {
+#ifdef USE_ESP32
+  this->dma_bounce_ = static_cast<uint8_t *>(heap_caps_malloc(DMA_BOUNCE_SIZE, MALLOC_CAP_DMA | MALLOC_CAP_INTERNAL));
+  if (this->dma_bounce_ == nullptr)
+    ESP_LOGW(TAG, "No internal DMA buffer; PSRAM pixels are sent in small blocks");
+#endif
   this->setup_pins_();
   this->init_lcd_(this->init_sequence_);
   this->init_lcd_(this->extra_init_sequence_.data());
@@ -260,7 +275,7 @@ void ILI9XXXDisplay::display_() {
     // 16 bit mode maps directly to display format
     ESP_LOGV(TAG, "Doing single write of %zu bytes", this->width_ * h * 2);
     set_addr_window_(0, this->y_low_, this->width_ - 1, this->y_high_);
-    this->write_array(this->buffer_ + this->y_low_ * this->width_ * 2, h * this->width_ * 2);
+    this->write_pixels_(this->buffer_ + this->y_low_ * this->width_ * 2, h * this->width_ * 2);
   } else {
     ESP_LOGV(TAG, "Doing multiple write");
     uint8_t transfer_buffer[ILI9XXX_TRANSFER_BUFFER_SIZE];
@@ -318,6 +333,26 @@ void ILI9XXXDisplay::display_() {
 }
 
 // note that this bypasses the buffer and writes directly to the display.
+void ILI9XXXDisplay::write_pixels_(const uint8_t *data, size_t length) {
+#ifdef USE_ESP32
+  if (esp_ptr_dma_capable(data) && esp_ptr_internal(data)) {
+    this->write_array(data, length);
+    return;
+  }
+#endif
+  while (length != 0) {
+    const size_t chunk = std::min(length, DMA_BOUNCE_SIZE);
+    if (this->dma_bounce_ != nullptr) {
+      std::memcpy(this->dma_bounce_, data, chunk);
+      this->write_array(this->dma_bounce_, chunk);
+    } else {
+      this->write_array(data, chunk);
+    }
+    data += chunk;
+    length -= chunk;
+  }
+}
+
 void ILI9XXXDisplay::draw_pixels_at(int x_start, int y_start, int w, int h, const uint8_t *ptr,
                                     display::ColorOrder order, display::ColorBitness bitness, bool big_endian,
                                     int x_offset, int y_offset, int x_pad) {
@@ -337,10 +372,10 @@ void ILI9XXXDisplay::draw_pixels_at(int x_start, int y_start, int w, int h, cons
   if (!this->is_18bitdisplay_) {
     if (x_offset == 0 && x_pad == 0 && y_offset == 0) {
       // we could deal here with a non-zero y_offset, but if x_offset is zero, y_offset probably will be so don't bother
-      this->write_array(ptr, w * h * 2);
+      this->write_pixels_(ptr, w * h * 2);
     } else {
       for (size_t y = 0; y != static_cast<size_t>(h); y++) {
-        this->write_array(ptr + (y + y_offset) * stride + x_offset, w * 2);
+        this->write_pixels_(ptr + ((y + y_offset) * stride + x_offset) * 2, w * 2);
       }
     }
   } else {

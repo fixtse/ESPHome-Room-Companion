@@ -127,6 +127,10 @@ class ILI9XXXDisplay : public display::DisplayBuffer,
 
   void draw_absolute_pixel_internal(int x, int y, Color color) override;
   void setup_pins_();
+  // Sends pixel data through a permanent internal DMA buffer when the source is
+  // in PSRAM, so a flush never needs a large transient DMA allocation.
+  void write_pixels_(const uint8_t *data, size_t length);
+  uint8_t *dma_bounce_{nullptr};
 
   virtual void set_madctl();
   void display_();

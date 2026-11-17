@@ -1,6 +1,7 @@
 #pragma once
 #include <array>
 #include <cstddef>
+#include <new>
 
 #ifdef USE_ESP32
 #include <cstdlib>
@@ -51,4 +52,16 @@ template<typename T, size_t N> class StateArray {
 #else
 template<typename T, size_t N> using StateArray = std::array<T, N>;
 #endif
+
+// One value-initialized object in PSRAM for large tables that would otherwise
+// sit in internal .bss/.data (docs/room-companion/memory-budget.md). Bind it to a
+// reference at namespace or function scope; PSRAM is ready during static
+// initialization. The object lives for the whole program.
+template<typename T> T &psram_object() {
+#ifdef USE_ESP32
+  if (void *memory = heap_caps_malloc(sizeof(T), MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT))
+    return *new (memory) T{};
+#endif
+  return *new T{};
+}
 }  // namespace onx_memory

@@ -62,7 +62,8 @@ struct NormalLightFeedbackWindow {
 };
 
 static std::array<NormalLightFeedbackWindow, custom_logic::CONFIGURABLE_DEVICE_SLOT_COUNT>
-    normal_light_feedback_windows{};
+    &normal_light_feedback_windows = onx_memory::psram_object<
+        std::array<NormalLightFeedbackWindow, custom_logic::CONFIGURABLE_DEVICE_SLOT_COUNT>>();
 
 inline bool normal_light_feedback_window_active(size_t ui_slot) {
   if (ui_slot >= normal_light_feedback_windows.size()) {
@@ -1272,7 +1273,7 @@ inline void tick_subscriptions(esphome::api::APIServer *api) {
 
 // Recovery reads use existing callbacks and one-shot Native API requests. They do not
 // add subscriptions, reconnect Wi-Fi, replay actions, or grow the subscription table.
-inline std::array<onx_recovery::Retry, 20> recovery_policy;
+inline std::array<onx_recovery::Retry, 20> &recovery_policy = onx_memory::psram_object<std::array<onx_recovery::Retry, 20>>();
 inline std::vector<std::string> recovery_queue;
 inline std::string recovering_entity;
 inline size_t recovery_cursor{0};
@@ -1291,7 +1292,7 @@ inline bool queue_entity_refresh(const std::string &entity, bool manual) {
 inline void recover_entity_states(esphome::api::APIServer *api, bool connected) {
 #ifdef USE_API_HOMEASSISTANT_STATES
   const uint32_t now = millis();
-  static std::array<onx_recovery::Retry,20> secondary_recovery;
+  static auto &secondary_recovery = onx_memory::psram_object<std::array<onx_recovery::Retry,20>>();
   if (!api || !connected) {
     recovery_queue.clear(); recovering_entity.clear(); recovery_cursor = 0;
     for (auto &retry : recovery_policy) { retry.since = now; retry.delay = 10000; }

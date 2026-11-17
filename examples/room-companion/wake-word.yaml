@@ -9,6 +9,7 @@ substitutions:
 
 micro_wake_word:
   id: local_wake_word
+  task_stack_in_psram: true
   microphone:
     microphone: panel_microphone
     channels: 0

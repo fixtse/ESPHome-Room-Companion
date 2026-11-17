@@ -8,6 +8,7 @@
 #include "esp_system.h"
 #include "esp_timer.h"
 #include "esp_heap_caps.h"
+#include <new>
 #include "esp_websocket_client.h"
 #include "esp_efuse.h"
 #include "freertos/FreeRTOS.h"
@@ -62,6 +63,12 @@ std::string RemoteWebView::get_current_url() const {
 
 void RemoteWebView::setup() {
   self_ = this;
+  // The decoder state is ~18 KB; keep it out of internal RAM (memory-budget.md).
+  if (void *mem = heap_caps_malloc(sizeof(JPEGDEC), MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT)) {
+    jd_ = new (mem) JPEGDEC();
+  } else {
+    jd_ = new JPEGDEC();
+  }
 
   if (!display_) {
     ESP_LOGE(TAG, "no display");
@@ -236,6 +243,10 @@ bool RemoteWebView::open_url(const std::string &s) {
 }
 
 bool RemoteWebView::start_ws_task_() {
+  // Network-only task: its stack can live in PSRAM; fall back to internal RAM.
+  if (xTaskCreatePinnedToCoreWithCaps(&RemoteWebView::ws_task_tramp_, "rwv_ws", cfg::ws_task_stack, this, 5, &t_ws_, 0,
+                                      MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT) == pdPASS)
+    return true;
   return xTaskCreatePinnedToCore(&RemoteWebView::ws_task_tramp_, "rwv_ws", cfg::ws_task_stack, this, 5, &t_ws_, 0) == pdPASS;
 }
 
@@ -440,14 +451,14 @@ void RemoteWebView::ws_event_handler_(void *handler_arg, esp_event_base_t, int32
 }
 
 bool RemoteWebView::start_decode_task_() {
-  // 32 KB rarely exists as one internal block once Wi-Fi, BLE and LVGL are up;
-  // the decoder never touches flash, so its stack can live in PSRAM.
-  if (xTaskCreatePinnedToCore(&RemoteWebView::decode_task_tramp_, "rwv_decode", cfg::decode_task_stack, this,
-                              cfg::decode_task_prio, &t_decode_, 1) == pdPASS)
+  // The decoder never touches flash, so its 32 KB stack lives in PSRAM; internal
+  // RAM is reserved for DMA and drivers (memory-budget.md).
+  if (xTaskCreatePinnedToCoreWithCaps(&RemoteWebView::decode_task_tramp_, "rwv_decode", cfg::decode_task_stack,
+                                      this, cfg::decode_task_prio, &t_decode_, 1,
+                                      MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT) == pdPASS)
     return true;
-  return xTaskCreatePinnedToCoreWithCaps(&RemoteWebView::decode_task_tramp_, "rwv_decode", cfg::decode_task_stack,
-                                         this, cfg::decode_task_prio, &t_decode_, 1,
-                                         MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT) == pdPASS;
+  return xTaskCreatePinnedToCore(&RemoteWebView::decode_task_tramp_, "rwv_decode", cfg::decode_task_stack, this,
+                                 cfg::decode_task_prio, &t_decode_, 1) == pdPASS;
 }
 
 void RemoteWebView::decode_task_tramp_(void *arg) {
@@ -796,25 +807,26 @@ bool RemoteWebView::decode_jpeg_tile_to_lcd_(int16_t dst_x, int16_t dst_y, const
 }
 
 bool RemoteWebView::decode_jpeg_tile_software_(int16_t dst_x, int16_t dst_y, const uint8_t *data, size_t len) {
-  if (!jd_.openRAM((uint8_t*)data, (int)len, &RemoteWebView::jpeg_draw_cb_s_)) {
-    ESP_LOGE(TAG, "openRAM failed (len=%u) err=%d", (unsigned)len, jd_.getLastError());
+  if (jd_ == nullptr) return false;
+  if (!jd_->openRAM((uint8_t*)data, (int)len, &RemoteWebView::jpeg_draw_cb_s_)) {
+    ESP_LOGE(TAG, "openRAM failed (len=%u) err=%d", (unsigned)len, jd_->getLastError());
     return false;
   }
 
-  jd_.setMaxOutputSize(8 * 2048);
-  jd_.setPixelType(rgb565_big_endian_ ? RGB565_BIG_ENDIAN : RGB565_LITTLE_ENDIAN);
+  jd_->setMaxOutputSize(8 * 2048);
+  jd_->setPixelType(rgb565_big_endian_ ? RGB565_BIG_ENDIAN : RGB565_LITTLE_ENDIAN);
 
   // Blocks are MCU-aligned and may extend past the image; clip them to the tile and the display.
-  sw_clip_x1_ = std::min<int>(dst_x + jd_.getWidth(), display_width_);
-  sw_clip_y1_ = std::min<int>(dst_y + jd_.getHeight(), display_height_);
+  sw_clip_x1_ = std::min<int>(dst_x + jd_->getWidth(), display_width_);
+  sw_clip_y1_ = std::min<int>(dst_y + jd_->getHeight(), display_height_);
 
-  const int rc = jd_.decode(dst_x, dst_y, 0);
+  const int rc = jd_->decode(dst_x, dst_y, 0);
   if (rc == 0) {
-    ESP_LOGE(TAG, "decode rc=%d err=%d", rc, jd_.getLastError());
-    jd_.close();
+    ESP_LOGE(TAG, "decode rc=%d err=%d", rc, jd_->getLastError());
+    jd_->close();
     return false;
   }
-  jd_.close();
+  jd_->close();
   return true;
 }
 

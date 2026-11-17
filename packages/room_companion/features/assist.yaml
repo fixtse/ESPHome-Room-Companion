@@ -48,6 +48,7 @@ binary_sensor:
 media_player:
   - platform: speaker
     id: panel_media_player
+    task_stack_in_psram: true
     name: Speaker
     volume_initial: 60%
     # Downloaded at build time (Home Assistant Voice PE, Apache-2.0).

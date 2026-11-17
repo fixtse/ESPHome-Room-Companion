@@ -99,11 +99,21 @@ esp32:
       # malloc (strings, BLE, HTTP, LVGL helpers) used the ~300 KB of internal
       # RAM. The panel ran out (5 KB free): Wi-Fi dropped, OTA failed, the I2S
       # microphone could not get DMA memory and the loop slowed to ~140 ms.
-      # Larger allocations now go to PSRAM; internal RAM keeps small objects
-      # and a DMA/stack reserve.
+      # Plain malloc now prefers PSRAM at every size: with a 1 KB threshold
+      # about 1,800 small strings/vectors still took ~55 KB of internal RAM
+      # (docs/room-companion/memory-budget.md). Drivers that need internal or
+      # DMA memory ask for it explicitly; FreeRTOS objects and task stacks
+      # stay internal. The reserve keeps a DMA/stack pool.
       CONFIG_SPIRAM_USE_MALLOC: "y"
-      CONFIG_SPIRAM_MALLOC_ALWAYSINTERNAL: "4096"
+      CONFIG_SPIRAM_MALLOC_ALWAYSINTERNAL: "0"
       CONFIG_SPIRAM_MALLOC_RESERVE_INTERNAL: "65536"
+      # Wi-Fi buffers sized for a wall panel, not a throughput router. Static
+      # RX buffers are internal DMA memory (1.6 KB each); the RX block-ack
+      # window must stay within twice the static buffer count.
+      CONFIG_ESP_WIFI_STATIC_RX_BUFFER_NUM: "10"
+      CONFIG_ESP_WIFI_DYNAMIC_RX_BUFFER_NUM: "32"
+      CONFIG_ESP_WIFI_RX_BA_WIN: "16"
+      CONFIG_ESP_WIFI_TX_BA_WIN: "16"
       # ESPHome's IDF web server rejects POST bodies above this size. The
       # configuration page sends up to 8 KB (slots with playlists and gestures,
       # preset restore chunks); ESP-IDF 5.5 grows its buffer on demand.

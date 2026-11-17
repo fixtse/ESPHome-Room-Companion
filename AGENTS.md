@@ -31,18 +31,20 @@ hardware-tested status separate from configuration/build validation.
   Enabled/configured does not mean microphone, wake-word and speaker operation
   have all been hardware-tested.
 - Latest successful build/flash: ESPHome **2026.10.2**, production config hash
-  `0x02b96553`, build timestamp `2026-11-17 13:25:32 UTC`, source `8199e15`
-  plus the rectangular-page follow-ups in the working tree. Version text remains
+  `0xfc7425ea`, build timestamp `2026-11-17 20:41:49 UTC`, factory image
+  SHA-256 prefix `f8c3d70b`, source `61bb877` plus the uncommitted internal-RAM
+  budget and Bluetooth start-guard changes. Version text remains
   `2026.10.2.72-panel.1`. Neither that text nor the YAML config hash alone can
   distinguish local builds after C++ header changes; record source hashes and
   the build timestamp too.
-- USB flash hash verification, boot and repeated Wi-Fi HTTP 200 checks passed.
-  The rectangular-page build also passed a real two-control page save, hardware
-  reset, reload and restoration of the original configuration. Settled maximum
-  loop samples were **84–92 ms**, with about 45 KB internal heap free; startup,
-  downloads and configuration/NVS writes have higher peaks. This does not certify
-  visual appearance, every gesture or audio operation. See
-  `docs/room-companion/panel-ui.md` and `docs/room-companion/loop-performance.md`.
+- USB flash hash verification, boot without panic and Wi-Fi/web/API checks
+  passed, plus a preset save/delete NVS round trip. Internal RAM settled at
+  77–90 KB free with a 37–49 KB largest block (previously 5–14 KB; the screen
+  froze on failed SPI DMA allocations). Settled `sys` loop peaks were 82–90 ms.
+  See `docs/room-companion/memory-budget.md` before adding features that use
+  internal RAM (task stacks, DMA, Bluetooth). Not hardware-tested in this build:
+  opening the dashboard stream, Assist, wake word and audio, visual appearance
+  and every gesture.
 
 ## Building and flashing this panel
 
