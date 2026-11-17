@@ -9,6 +9,7 @@ substitutions:
 
 packages:
   platform: !include platform.yaml
+  provisioning: !include features/provisioning.yaml
   home_assistant: !include features/home_assistant.yaml
   interface: !include features/interface.yaml
   assist: !include features/assist.yaml

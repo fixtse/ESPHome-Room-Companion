@@ -1,0 +1,46 @@
+# Same provisioning pattern as the knob: physical authorization, then BLE off
+# once Wi-Fi is connected so audio has the memory/radio resources.
+esp32_ble:
+  id: provisioning_ble
+
+improv_ble:
+  id: panel_improv
+  authorizer: provisioning_button
+  authorized_duration: 1min
+  wifi_timeout: 10s
+  on_state:
+    - lvgl.label.update:
+        id: connection_label
+        text: !lambda |-
+          if (state == improv::STATE_AWAITING_AUTHORIZATION)
+            return std::string("BLE setup: press BOOT");
+          if (state == improv::STATE_AUTHORIZED)
+            return std::string("BLE setup authorized (60s)");
+          if (state == improv::STATE_PROVISIONING)
+            return std::string("Connecting to Wi-Fi...");
+          return std::string("Connect Home Assistant");
+
+binary_sensor:
+  - platform: gpio
+    id: provisioning_button
+    internal: true
+    pin:
+      number: GPIO0
+      mode: INPUT_PULLUP
+      inverted: true
+    filters:
+      - delayed_on: 10ms
+
+wifi:
+  # Wi-Fi credentials are received through Improv BLE and persisted by ESPHome.
+  # There is no setup access point or compiled SSID/password by default.
+  power_save_mode: none
+  on_connect:
+    - delay: 2s
+    - if:
+        condition:
+          wifi.connected:
+        then:
+          - ble.disable:
+  on_disconnect:
+    - ble.enable:

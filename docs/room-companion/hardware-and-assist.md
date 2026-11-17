@@ -47,5 +47,7 @@ it is intentionally off at boot and is disabled when muted or disconnected.
 Local wake-word detection uses additional CPU/RAM. It is not an echo-cancellation
 implementation, and successful compilation does not verify acoustic performance.
 
-No Bluetooth proxy, camera or SD support is enabled by default, leaving resources
+Improv BLE is active only while Wi-Fi is disconnected; press BOOT to authorize
+provisioning for 60 seconds. BLE is disabled after connecting to free resources
+for audio. No Bluetooth proxy, camera or SD support is enabled by default, leaving resources
 for LVGL and audio. Extensions must avoid occupied pins and both I2S peripherals.

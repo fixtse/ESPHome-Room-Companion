@@ -22,7 +22,7 @@ entry point remain available for incremental porting. See
 - Optional `okay_nabu` local wake-word package, disabled on boot.
 - Knob-derived text notifications, HTML-break normalization and bounded timeouts.
 - Optional authenticated HTTP JPEG cards, plus a small companion renderer.
-- Native encrypted ESPHome API, OTA, fallback Wi-Fi setup and extension packages.
+- Native encrypted ESPHome API, OTA, Improv BLE Wi-Fi setup and extension packages.
 
 This is an initial port. The knob's 20-slot web editor, presets, artwork modes,
 encoder gestures, timer overlays and complete entity catalogue are retained in
@@ -34,17 +34,21 @@ firmware does not currently stream an interactive Lovelace dashboard. See
 
 Use ESPHome **2026.10.2**, matching the development container.
 
-1. Copy `secrets.example.yaml` to ignored `secrets.yaml`. Fill in Wi-Fi, a unique
-   API encryption key (`openssl rand -base64 32`), OTA and fallback AP passwords.
+1. Copy `secrets.example.yaml` to ignored `secrets.yaml`. Fill in a unique
+   API encryption key (`openssl rand -base64 32`) and OTA password. Wi-Fi
+   credentials are supplied over BLE.
    The example key is intentionally a placeholder, not a usable credential.
 2. Choose **ONX2432G028.yaml** or **ONX3248G035.yaml**. Set `room_name`,
    `light_entity`, `scene_entity`, `temperature_entity` and `media_entity` under its
    `substitutions:` block. No Home Assistant access token goes on the panel.
 3. Build and upload using that entry point in ESPHome. Hardware profiles must
    match the actual board; the images are not interchangeable.
-4. Add the device in Home Assistant's ESPHome integration. Enable **Allow the
+4. Use an Improv BLE client to discover the panel. Press **BOOT** briefly to
+   authorize setup for 60 seconds, then send your Wi-Fi credentials. BLE stops
+   after Wi-Fi connects and resumes on disconnect. No setup AP is started.
+5. Add the device in Home Assistant's ESPHome integration. Enable **Allow the
    device to perform Home Assistant actions** for light/music/scene controls.
-5. Configure an Assist pipeline with speech-to-text, a conversation agent and
+6. Configure an Assist pipeline with speech-to-text, a conversation agent and
    text-to-speech. Select it for the discovered satellite, attach the compatible
    PDM microphone accessory and speaker, then open **Assist → Talk**.
 
