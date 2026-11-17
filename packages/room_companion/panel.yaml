@@ -94,6 +94,26 @@ interval:
     then:
       - lambda: |-
           if (onx_panel_ui::dash_button == nullptr) return;
+          // Native rectangular pages reuse the existing HA state and actions.
+          const bool detail = id(normal_device_detail_active);
+          const int index = detail ? id(normal_device_detail_index) : id(normal_device_selected_index);
+          const auto entity = index >= 0 && index < id(normal_device_count) ?
+              id(ui_presenter)->get_normal_device_entity_id(index) : std::string();
+          const bool media = entity.rfind("media_player.",0)==0;
+          const bool entity_detail = detail && (id(normal_device_detail_kind)==NORMAL_DEVICE_DETAIL_KIND_AUTOMATION ||
+              id(normal_device_detail_kind)==NORMAL_DEVICE_DETAIL_KIND_LIGHT || id(normal_device_detail_kind)==NORMAL_DEVICE_DETAIL_KIND_SWITCH ||
+              id(normal_device_detail_kind)==NORMAL_DEVICE_DETAIL_KIND_PLUG || id(normal_device_detail_kind)==NORMAL_DEVICE_DETAIL_KIND_CURTAIN);
+          const bool normal = id(ui_presenter)->is_normal_mode_active() && !id(ui_presenter)->is_standby_active() &&
+              !id(screen_off_state) && !id(sleep_mode_state) && id(room_panel)->knob_ui_has_touch() &&
+              !onx_notification::current.visible && !onx_timer::popup.visible && !onx_playlist::browser.open &&
+              !onx_notification_ui::owns_screen();
+          // Media keeps its specialised artwork/transport view. Main pages and
+          // generic details use the entire rectangle, without the knob ring.
+          if (normal && !entity.empty() && ((!detail && id(normal_page_index)==0) || (entity_detail && !media))) {
+            onx_panel_pages::render(entity, ${display_width}, ${display_height}, detail, [](lv_obj_t *icon, const std::string &target) {
+              id(apply_normal_entity_icon).execute(icon,target,"",false);
+            });
+          } else onx_panel_pages::hide();
           const bool standby = id(ui_presenter)->is_standby_active();
           const bool knob = id(room_panel)->knob_ui_has_touch();
           // Dashboard button: when a server is set and the knob UI is in front.
@@ -222,6 +242,7 @@ interval:
 esphome:
   includes:
     - ../../onx_panel_ui.h
+    - ../../onx_panel_pages.h
   on_boot:
     # After the knob (-100) and the notification centre (-200) built their UI.
     - priority: -250
@@ -299,6 +320,17 @@ script:
   - id: panel_ui_setup
     then:
       - lambda: |-
+          onx_panel_pages::setup(id(fonts_MiSans_Medium_14)->get_lv_font(),
+              id(fonts_MiSans_Medium_24)->get_lv_font(), id(fonts_MiSans_Medium_32)->get_lv_font());
+          onx_panel_pages::open = [](const std::string &entity) {
+            if (id(touch_input)->suppress_click()) return;
+            const int config = onx_panel_pages::configured(entity);
+            if (config < 0) return;
+            id(normal_device_selected_index) = custom_logic::normal_ui_slot_for_device_config_slot(config);
+            id(ui_presenter)->notify_user_activity();
+            id(enter_normal_switch_detail).execute();
+          };
+          id(touch_input)->set_tap_fn([](int x,int y) { return onx_panel_pages::tap(x,y); });
           onx_panel_ui::width = ${display_width};
           onx_panel_ui::height = ${display_height};
           onx_panel_ui::create_dashboard_button(id(panel_dashboard_small_icon)->get_lv_image_dsc());

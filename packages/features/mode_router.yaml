@@ -46,6 +46,8 @@ onx_config_web:
   id: entity_config_web
   handler: !lambda |-
     #ifdef USE_ROOM_COMPANION
+    const auto pages = onx_panel_pages::rpc(query.op, query.data);
+    if (!pages.empty()) return pages;
     // Room Companion panels: dashboard stream settings (panel_state / panel_save).
     if (esphome::room_companion::global_panel != nullptr) {
       const auto panel = esphome::room_companion::global_panel->handle_web(query.op, query.data);
@@ -57,6 +59,9 @@ onx_config_web:
       return onx_entity_config::build_json([&](JsonObject root) {
         const auto clock = id(ha_time).now();
         root["clock_epoch"] = clock.is_valid() ? double(clock.timestamp) : 0;
+        #ifdef USE_ROOM_COMPANION
+        root["panel_width"] = ${display_width}; root["panel_height"] = ${display_height};
+        #endif
         JsonArray slots = root["slots"].to<JsonArray>();
         auto encode = [&](JsonObject target, const onx_detail_view::View &view) {
           target["layout"] = view.layout; target["available"] = view.available;
@@ -73,7 +78,10 @@ onx_config_web:
         };
         for (size_t i = 0; i < 20; ++i) {
           const auto entity = custom_logic::cached_device_entity_id(i);
-          if (entity.empty() || entity != query.entity) continue;
+          if (entity.empty()) continue;
+          #ifndef USE_ROOM_COMPANION
+          if (entity != query.entity) continue;
+          #endif
           const auto title = custom_logic::ha_entity_title_from_registry_cache(entity);
           auto view = onx_detail_view::build(entity, title);
           onx_entity_config::customize_control_view(custom_logic::normal_ui_slot_for_device_config_slot(i),entity,view);

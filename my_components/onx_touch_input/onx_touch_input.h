@@ -32,6 +32,7 @@ class TouchInput : public Component, public touchscreen::TouchListener {
   // While false (dashboard stream, notification centre) touches are ignored.
   void set_enabled_lambda(std::function<bool()> &&f) { enabled_ = std::move(f); }
   // Dynamic regions left to LVGL (on-screen buttons that come and go).
+  void set_tap_fn(std::function<bool(int, int)> &&f) { tap_fn_ = std::move(f); }
   void set_passthrough_fn(std::function<bool(int, int)> &&f) { passthrough_fn_ = std::move(f); }
 
   void set_page_swipe(std::function<bool()> &&f) { page_swipe_ = std::move(f); }
@@ -76,6 +77,7 @@ class TouchInput : public Component, public touchscreen::TouchListener {
   void release() override { end_(); }
 
  protected:
+  std::function<bool(int, int)> tap_fn_;
   enum class State { IDLE, IGNORED, DOWN, SWIPE, HELD };
   struct Rect { int x0, y0, x1, y1; };
 
@@ -139,6 +141,7 @@ class TouchInput : public Component, public touchscreen::TouchListener {
       if (offset != 0) strip_trigger_.trigger(offset);
       return;
     }
+    if (tap_fn_ && tap_fn_(x0_, y0_)) return;
     press_(true);
     press_(false);
   }
