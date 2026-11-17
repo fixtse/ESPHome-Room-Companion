@@ -1,5 +1,5 @@
 # ONX2432G028: 2.8-inch ST7789V, 240x320 portrait.
-# The knob layout (240x240) is drawn 1:1 at the top; the icon strip fills the
+# The base layout (240x240) is drawn 1:1 at the top; the icon strip fills the
 # remaining 80 px.
 substitutions:
   device_model: ONX2432G028

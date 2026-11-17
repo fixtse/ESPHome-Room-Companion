@@ -1,4 +1,4 @@
-# Rectangular OpenNextion panel hardware, exposed under the IDs the knob
+# Rectangular OpenNextion panel hardware, exposed under the IDs the shared
 # application uses (bus_spi, lcd_display, lcd_backlight, lvgl_ui).
 # Pin map verified against the official examples for both models.
 # PCF8574 pin numbers here are ZERO-based (vendor examples use one-based enums).
@@ -45,7 +45,7 @@ switch:
       mode: OUTPUT
     restore_mode: ALWAYS_ON
 
-# The knob's ili9xxx fork (orientation and panel-sleep commands).
+# The panel's ili9xxx fork (orientation and panel-sleep commands).
 display:
   - platform: ili9xxx
     id: lcd_display

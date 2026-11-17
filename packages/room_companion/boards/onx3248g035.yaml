@@ -1,5 +1,5 @@
 # ONX3248G035: 3.5-inch ST7796, 320x480 portrait.
-# The knob layout is scaled 4/3 to 320x320 at the top; the icon strip with the
+# The base layout is scaled 4/3 to 320x320 at the top; the icon strip with the
 # selected control's name fills the remaining 160 px.
 substitutions:
   device_model: ONX3248G035

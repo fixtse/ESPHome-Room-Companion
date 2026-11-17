@@ -1,5 +1,5 @@
-# Text fonts shared by the knob and the touch panels. Sizes are authored for the
-# knob's 240x240 screen; panels set font_scale in their board profile.
+# Text fonts. Sizes are authored for the 240x240 base layout; each board
+# profile sets font_scale.
 substitutions:
   font_scale: 1
   font_bpp: 8

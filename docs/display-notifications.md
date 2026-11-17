@@ -1,48 +1,48 @@
-# Reminders and calendar messages on your knob
+# Reminders and calendar messages on your panel
 
 [All guides](../README.md#find-your-guide) · [Timers](web-configuration.md#timers-without-clutter)
 
 Put a useful message where you can see it: washing finished, a door left open,
 or your next meeting. Home Assistant sends the message; you do not need to give
-it a display slot. Press the knob to dismiss, or turn to scroll longer text.
+it a display slot. Tap the screen to dismiss, or swipe to scroll longer text.
 The underlying control is not changed by those movements.
 
 ## Send your first reminder without writing YAML
 
 1. In Home Assistant, open **Settings → Automations & scenes** and create an automation.
 2. Choose when it should run, such as a time of day or a sensor changing state.
-3. Add an action and search for **show_message** under your knob's ESPHome device name.
+3. Add an action and search for **show_message** under your panel's ESPHome device name.
 4. Fill in **title** (for example, “Reminder”) and **message** (“Take the washing out”). Set **image_url** to a reachable image URL, or an empty string for text only.
 5. Set **timeout_seconds** to 60, save the automation, and try its message action.
 
 For a different duration, change **timeout_seconds**. Use 120 for two minutes, or 0 to keep it until you dismiss it.
 Use **dismiss_message** in an automation to clear it remotely. If the actions
-are missing, update the knob and let its ESPHome integration reconnect.
+are missing, update the panel and let its ESPHome integration reconnect.
 
 Notifications cover timer popups by default; timers keep counting underneath and
 reappear when the message closes. In website **Device settings → Notifications**,
 turn off **Allow notifications to cover timers** to give timer popups priority.
 Messages wait while the screen is deliberately off, during scheduled sleep or
 during setup. Only the newest message is kept,
-and messages do not survive restarting the knob.
+and messages do not survive restarting the panel.
 
 ## Copy-and-adapt examples
 
 These examples are for Home Assistant's YAML editor. The calendar example below
 shows a meeting title automatically, rather than needing to type it each time.
 
-The knob exposes ESPHome actions in Home Assistant for reminders, calendar events,
+The panel exposes ESPHome actions in Home Assistant for reminders, calendar events,
 and messages from other automations. Install the firmware and let Home Assistant
 reconnect to discover the new actions. In Developer Tools → Actions, search for
-`show_message` under your knob's ESPHome device name.
+`show_message` under your panel's ESPHome device name.
 
-The examples use `onx2424g013_dbbc54`; replace that prefix if your device has a
+The examples use `onx3248g035_dbbc54`; replace that prefix if your device has a
 different name.
 
 ## Show a reminder
 
 ```yaml
-action: esphome.onx2424g013_dbbc54_show_message
+action: esphome.onx3248g035_dbbc54_show_message
 data:
   title: Reminder
   message: Take the washing out.
@@ -50,20 +50,20 @@ data:
   timeout_seconds: 60
 ```
 
-The message appears for 60 seconds. Press the knob to dismiss it, or turn it to
+The message appears for 60 seconds. Tap the screen to dismiss it, or swipe to
 scroll longer text. Dismissing and scrolling do not operate the page underneath.
 The underlying page is retained.
 
-Holding a notification-dismiss press for 10 seconds does not reset the device or
-erase its settings. The entire press is consumed until release, including if the
+Holding a notification-dismiss touch for 10 seconds does not reset the device or
+erase its settings. The entire touch is consumed until release, including if the
 message times out or is dismissed remotely. A notification appearing during an
-existing hold also consumes that press. See [reset Wi-Fi and device configuration](knob-controls.md#reset-wi-fi-and-device-configuration)
+existing hold also consumes that touch. See [reset Wi-Fi and device configuration](controls.md#reset-wi-fi-and-device-configuration)
 for the separate 10-second reset gesture in normal mode.
 
 For a custom timeout, use `show_message`:
 
 ```yaml
-action: esphome.onx2424g013_dbbc54_show_message
+action: esphome.onx3248g035_dbbc54_show_message
 data:
   title: Next meeting
   message: Team catch-up in ten minutes. Bring the project notes.
@@ -80,7 +80,7 @@ Messages are temporary and do not survive a reboot.
 To dismiss remotely:
 
 ```yaml
-action: esphome.onx2424g013_dbbc54_dismiss_message
+action: esphome.onx3248g035_dbbc54_dismiss_message
 ```
 
 ## Calendar reminder
@@ -89,14 +89,14 @@ Replace `calendar.work` with your calendar entity. This automation displays each
 meeting's title ten minutes before it starts:
 
 ```yaml
-alias: Meeting reminder on knob
+alias: Meeting reminder on panel
 triggers:
   - trigger: calendar
     entity_id: calendar.work
     event: start
     offset: "-00:10:00"
 actions:
-  - action: esphome.onx2424g013_dbbc54_show_message
+  - action: esphome.onx3248g035_dbbc54_show_message
     data:
       title: Meeting in 10 minutes
       message: "{{ trigger.calendar_event.summary }}"
@@ -126,11 +126,11 @@ The single `show_message` action accepts `image_url` and `timeout_seconds`. Set 
 an empty string (`""`) for a text-only notification. After this update, add that
 field and `timeout_seconds` to existing Home Assistant calls. The separate
 `show_message_with_timeout` action has been consolidated into `show_message`. The URL must be an absolute HTTP or HTTPS
-address reachable directly from the knob; browser sign-in and Home Assistant
+address reachable directly from the panel; browser sign-in and Home Assistant
 session cookies are not forwarded.
 
 ```yaml
-action: esphome.onx2424g013_dbbc54_show_message
+action: esphome.onx3248g035_dbbc54_show_message
 data:
   title: Front door
   message: Someone is at the door.
@@ -138,7 +138,7 @@ data:
   timeout_seconds: 60
 ```
 
-Use a publicly readable or privately hosted image URL that the knob can access
+Use a publicly readable or privately hosted image URL that the panel can access
 without authentication. JPEG, PNG, and BMP are supported where the decoder can
 read them; progressive JPEG is unsupported. Downloads are limited to 512 KiB,
 source images to 1,048,576 pixels, and the display image to a 112 × 64 pixel box.
@@ -158,13 +158,10 @@ breaks; inline markup is removed. Common HTML entities and numeric character
 references are decoded. Literal newlines, accented text, and UTF-8 characters
 remain intact within the message length limit.
 
-The popup keeps only a small **Press to dismiss** footer. Turning still scrolls
-long messages. Image notifications show at least three text lines at once, and
-text-only notifications use the larger body area.
+## On the panel
 
-## Expiry ring
-
-Timed notifications show a ring around the screen edge. It starts full and
-shrinks as the timeout approaches. A notification with timeout zero stays until
-dismissed and has no expiry ring. If a message is suspended by sleep or timer
-priority, its timeout pauses and the ring resumes from the remaining time.
+A new message shows a banner at the top; tap it to open the message. Every
+message is kept in the notification centre: pull down from the top edge on any
+screen, or tap the bell (with its unread count) on the main view. The centre
+lists recent messages with their age; open one for the full text and picture,
+or dismiss it. See [panel screen behaviour](room-companion/panel-ui.md).

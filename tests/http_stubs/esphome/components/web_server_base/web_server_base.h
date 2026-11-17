@@ -20,7 +20,7 @@ class AsyncWebServerRequest {
   static constexpr unsigned URL_BUF_SIZE = 256;
   AsyncWebServerResponse *response_{nullptr};
   ~AsyncWebServerRequest(){delete response_;}
-  std::string url{"/knob/api"}, body, status;
+  std::string url{"/panel/api"}, body, status;
   int method_{HTTP_POST};
   std::map<std::string,std::string> args, headers;
   unsigned length{0};

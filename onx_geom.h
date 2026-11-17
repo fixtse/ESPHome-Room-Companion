@@ -1,5 +1,5 @@
 #pragma once
-// UI geometry scale. Layouts are authored for the knob's 240x240 screen; the
+// UI geometry scale. Layouts are authored for a 240x240 base layout; the
 // rectangular panels set `scale` at boot (same value as the ui_scale
 // substitution used for YAML layout). S() maps a layout length to pixels.
 #include <cmath>

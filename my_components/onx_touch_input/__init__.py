@@ -1,4 +1,4 @@
-"""Touch-to-knob input for rectangular panels (see onx_touch_input.h)."""
+"""Touch input for rectangular panels (see onx_touch_input.h)."""
 
 import esphome.codegen as cg
 import esphome.config_validation as cv

@@ -1,12 +1,12 @@
-# Notification centre for the touch panels (onx_notification_ui.h). The knob's
-# show_message / dismiss_message actions feed it instead of the knob's round
-# full-screen popup: a bell in the top-right corner shows unread notifications,
+# Notification centre for the touch panels (onx_notification_ui.h). The
+# show_message / dismiss_message actions feed it instead of a round
+# full-screen popup: a bell on the main carousel shows unread notifications,
 # a banner announces new ones, and each can be opened and dismissed.
 esphome:
   includes:
     - ../../../onx_notification_ui.h
   on_boot:
-    # After the knob's boot handler (-100) has built its pages.
+    # After the base boot handler (-100) has built its pages.
     - priority: -200
       then:
         - lambda: |-
@@ -28,7 +28,7 @@ esphome:
               id(entity_icon_downloader)->set_artwork_busy(onx_media::downloading);
             };
             hooks.activity = []() { id(ui_presenter)->notify_user_activity(); };
-            onx_notification_ui::init(${display_width}, ${display_height}, fonts, hooks);
+            onx_notification_ui::init(onx_panel_ui::width, onx_panel_ui::height, fonts, hooks);
 
 image:
   - platform: online_image
@@ -55,7 +55,7 @@ interval:
       - lambda: |-
           static uint32_t seen = 0;
           auto &center = onx_notification::center;
-          // A new notification wakes the panel (knob sleep, standby, screen off).
+          // A new notification wakes the panel (low-power sleep, standby, screen off).
           if (center.next_id != seen) {
             const bool arrived = seen != 0 || center.next_id > 1;
             seen = center.next_id;

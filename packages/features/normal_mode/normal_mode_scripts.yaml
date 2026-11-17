@@ -321,7 +321,7 @@ script:
               onx_render::label(w.title, device_title.c_str());
             } else {
               // Build once and apply the final layout directly. Resetting to the
-              // knob defaults first dirtied the same widgets on every refresh.
+              // defaults first dirtied the same widgets on every refresh.
               const auto view = onx_detail_view::carousel(entity, device_title);
               onx_render::label(w.value, view.value.text.c_str());
               lv_obj_set_y(w.value, onx_geom::S(view.value.y));
@@ -1074,7 +1074,7 @@ script:
             id(normal_detail_exit_switch_ready) = false;
             id(normal_detail_exit_light_ready) = held_ms >= exit_ms;
             id(normal_detail_exit_settings_ready) = false;
-          } else if (kind == NORMAL_DEVICE_DETAIL_KIND_SETTINGS || kind == NORMAL_DEVICE_DETAIL_KIND_SETTINGS_WIFI || kind == NORMAL_DEVICE_DETAIL_KIND_SETTINGS_BRIGHTNESS || kind == NORMAL_DEVICE_DETAIL_KIND_SETTINGS_KNOB || kind == NORMAL_DEVICE_DETAIL_KIND_SETTINGS_CONNECTION) {
+          } else if (kind == NORMAL_DEVICE_DETAIL_KIND_SETTINGS || kind == NORMAL_DEVICE_DETAIL_KIND_SETTINGS_WIFI || kind == NORMAL_DEVICE_DETAIL_KIND_SETTINGS_BRIGHTNESS || kind == NORMAL_DEVICE_DETAIL_KIND_SETTINGS_INPUT || kind == NORMAL_DEVICE_DETAIL_KIND_SETTINGS_CONNECTION) {
             id(normal_detail_exit_switch_ready) = false;
             id(normal_detail_exit_light_ready) = false;
             id(normal_detail_exit_settings_ready) = held_ms >= 688;
@@ -1108,7 +1108,7 @@ script:
             case NORMAL_DEVICE_DETAIL_KIND_SETTINGS:
             case NORMAL_DEVICE_DETAIL_KIND_SETTINGS_WIFI:
             case NORMAL_DEVICE_DETAIL_KIND_SETTINGS_BRIGHTNESS:
-            case NORMAL_DEVICE_DETAIL_KIND_SETTINGS_KNOB:
+            case NORMAL_DEVICE_DETAIL_KIND_SETTINGS_INPUT:
             case NORMAL_DEVICE_DETAIL_KIND_SETTINGS_CONNECTION:
               id(normal_detail_exit_allowed) = id(normal_detail_exit_settings_ready);
               break;
@@ -1317,7 +1317,7 @@ script:
                   case 0: id(enter_normal_settings_connection).execute(); break;
                   case 1: id(enter_normal_settings_wifi_detail).execute(); break;
                   case 2: id(enter_normal_settings_brightness_detail).execute(); break;
-                  case 3: id(enter_normal_settings_knob_detail).execute(); break;
+                  case 3: id(enter_normal_settings_input_detail).execute(); break;
                   case 4:
                     id(panel_dark_mode).toggle();
                     lv_label_set_text(lv_obj_get_child(static_cast<lv_obj_t *>(lv_event_get_target(event)), 0),
@@ -1435,14 +1435,14 @@ script:
           snprintf(value_text, sizeof(value_text), "Brightness: %d%%", pct);
           lv_label_set_text(id(normal_settings_brightness_value_label), value_text);
 
-  - id: refresh_normal_settings_knob_detail_page
+  - id: refresh_normal_settings_input_detail_page
     mode: restart
     then:
       - lambda: |-
           if (!id(ui_presenter)->is_normal_mode_active() ||
               id(ui_presenter)->is_standby_active() ||
               !id(normal_device_detail_active) ||
-              id(normal_device_detail_kind) != NORMAL_DEVICE_DETAIL_KIND_SETTINGS_KNOB) {
+              id(normal_device_detail_kind) != NORMAL_DEVICE_DETAIL_KIND_SETTINGS_INPUT) {
             return;
           }
 
@@ -1452,24 +1452,24 @@ script:
           lv_obj_add_flag(id(normal_device_homeassistant_offline_widget), LV_OBJ_FLAG_HIDDEN);
 
 
-          onx_render::style_bg_color(id(normal_settings_knob_page)->obj, lv_color_hex(0x1A1A1A), 0);
-          onx_render::style_bg_color(id(normal_settings_knob_shell), lv_color_hex(0x1A1A1A), 0);
-          onx_render::style_border_width(id(normal_settings_knob_shell), 0, 0);
+          onx_render::style_bg_color(id(normal_settings_input_page)->obj, lv_color_hex(0x1A1A1A), 0);
+          onx_render::style_bg_color(id(normal_settings_input_shell), lv_color_hex(0x1A1A1A), 0);
+          onx_render::style_border_width(id(normal_settings_input_shell), 0, 0);
 
-          int pending = id(normal_knob_pending_value);
+          int pending = id(normal_input_pending_value);
           if (pending != 1 && pending != 2 && pending != 4) {
             pending = 1;
           }
-          id(normal_knob_pending_value) = pending;
+          id(normal_input_pending_value) = pending;
           int selected = 2;
           if (pending == 2) {
             selected = 1;
           } else if (pending == 4) {
             selected = 0;
           }
-          lv_obj_t *roller = id(normal_settings_knob_roller)->obj;
+          lv_obj_t *roller = id(normal_settings_input_roller)->obj;
 
-          lv_label_set_text(id(normal_settings_knob_title), "Knob sensitivity");
+          lv_label_set_text(id(normal_settings_input_title), "Swipe sensitivity");
           onx_render::settings_roller(roller,id(fonts_MiSans_Medium_16)->get_lv_font(),
               id(fonts_MiSans_Medium_18)->get_lv_font());
 
@@ -1491,23 +1491,23 @@ script:
           }
           lv_label_set_text(id(normal_settings_connection_url), url.c_str());
 
-  - id: apply_normal_settings_knob_detail
+  - id: apply_normal_settings_input_detail
     mode: restart
     then:
       - lambda: |-
-          if (!id(normal_device_detail_active) || id(normal_device_detail_kind) != NORMAL_DEVICE_DETAIL_KIND_SETTINGS_KNOB) {
+          if (!id(normal_device_detail_active) || id(normal_device_detail_kind) != NORMAL_DEVICE_DETAIL_KIND_SETTINGS_INPUT) {
             return;
           }
-          int pending = id(normal_knob_pending_value);
+          int pending = id(normal_input_pending_value);
           if (pending != 1 && pending != 2 && pending != 4) {
             pending = 1;
           }
-          id(normal_knob_pending_value) = pending;
-          id(normal_knob_applied_value) = pending;
-          ESP_LOGI("normal_mode", "knob sensitivity applied: %d", pending);
-      # Input hardware applies the sensitivity (encoder on the knob, swipe step on touch).
+          id(normal_input_pending_value) = pending;
+          id(normal_input_applied_value) = pending;
+          ESP_LOGI("normal_mode", "swipe sensitivity applied: %d", pending);
+      # Touch input applies the sensitivity as the swipe step.
       - script.execute: onx_input_apply_sensitivity
-      - script.execute: exit_normal_settings_knob_detail
+      - script.execute: exit_normal_settings_input_detail
 
   - id: refresh_normal_provisioning_page
     mode: restart
@@ -1543,7 +1543,7 @@ script:
           set_text(id(normal_add_hmi_title), connected ? "Wi-Fi connected" : "Connecting to Wi-Fi");
           set_text(id(normal_add_hmi_ssid), connected ? address : "Please wait");
           set_text(id(normal_add_hmi_hint), connected
-              ? "Open this address to choose controls.\nAdd ESPHome in Home Assistant.\nTurn the knob for more options."
+              ? "Open this address to choose controls.\nAdd ESPHome in Home Assistant.\nSwipe for more options."
               : "Saved Wi-Fi will reconnect.\nNo hotspot setup needed.");
           std::string title = "Wi-Fi setup";
           std::string status = ssid;
@@ -1558,7 +1558,7 @@ script:
             hint = "Please wait.\nKeep setup open on your phone.";
           } else if (state == improv::STATE_AWAITING_AUTHORIZATION) {
             title = "Bluetooth setup";
-            status = "Press the knob\nto allow setup";
+            status = "Press BOOT\nto allow setup";
             hint = "Continue on your phone, or join\n" + ssid + "\nhttp://192.168.4.1";
           } else if (state == improv::STATE_AUTHORIZED) {
             title = "Bluetooth setup";
@@ -1830,7 +1830,7 @@ script:
           lv_scr_load(id(normal_settings_brightness_page)->obj);
       - script.execute: refresh_normal_settings_brightness_detail_page
 
-  - id: enter_normal_settings_knob_detail
+  - id: enter_normal_settings_input_detail
     mode: restart
     then:
       - lambda: |-
@@ -1842,17 +1842,17 @@ script:
           }
           onx_navigation::hide();
           id(normal_device_detail_active) = true;
-          id(normal_device_detail_kind) = NORMAL_DEVICE_DETAIL_KIND_SETTINGS_KNOB;
+          id(normal_device_detail_kind) = NORMAL_DEVICE_DETAIL_KIND_SETTINGS_INPUT;
           id(normal_page_index) = 1;
           id(key_long_press_handled) = true;
-          id(normal_knob_pending_value) = id(normal_knob_applied_value);
-          ESP_LOGI("normal_mode", "settings knob detail opened");
+          id(normal_input_pending_value) = id(normal_input_applied_value);
+          ESP_LOGI("normal_mode", "settings input detail opened");
           id(normal_detail_exit_switch_ready) = false;
           id(normal_detail_exit_light_ready) = false;
           id(normal_detail_exit_settings_ready) = false;
           id(normal_detail_exit_allowed) = false;
-          lv_scr_load(id(normal_settings_knob_page)->obj);
-      - script.execute: refresh_normal_settings_knob_detail_page
+          lv_scr_load(id(normal_settings_input_page)->obj);
+      - script.execute: refresh_normal_settings_input_detail_page
 
   - id: enter_normal_settings_connection
     mode: restart
@@ -1915,17 +1915,17 @@ script:
       - script.execute:
           id: refresh_normal_settings_detail_page
 
-  - id: exit_normal_settings_knob_detail
+  - id: exit_normal_settings_input_detail
     mode: restart
     then:
       - lambda: |-
-          if (!id(normal_device_detail_active) || id(normal_device_detail_kind) != NORMAL_DEVICE_DETAIL_KIND_SETTINGS_KNOB) {
+          if (!id(normal_device_detail_active) || id(normal_device_detail_kind) != NORMAL_DEVICE_DETAIL_KIND_SETTINGS_INPUT) {
             return;
           }
           id(normal_device_detail_kind) = NORMAL_DEVICE_DETAIL_KIND_SETTINGS;
           id(normal_page_index) = 1;
           id(key_long_press_handled) = true;
-          ESP_LOGI("normal_mode", "settings knob detail closed");
+          ESP_LOGI("normal_mode", "settings input detail closed");
           id(normal_detail_exit_switch_ready) = false;
           id(normal_detail_exit_light_ready) = false;
           id(normal_detail_exit_settings_ready) = false;
@@ -2478,7 +2478,7 @@ script:
       direction: int
     then:
       - lambda: |-
-          if (!id(normal_knob_event_pass) || id(screen_off_state) ||
+          if (!id(normal_input_event_pass) || id(screen_off_state) ||
               !id(ui_presenter)->is_normal_mode_active() || id(ui_presenter)->is_standby_active() ||
               id(standby_wakeup_pending) || id(sleep_wakeup_pending) ||
               !id(normal_device_detail_active) || !id(normal_device_detail_online) ||
@@ -2527,7 +2527,7 @@ script:
           const int slot=onx_entity_config::gesture_slot_for_ui(id(normal_device_detail_index));
           const int kind=onx_gesture::gesture(direction,id(key_btn).state);
           if(!onx_gesture::routes(slot,kind))return;
-          onx_gesture::queue(slot,kind,id(normal_knob_applied_value));
+          onx_gesture::queue(slot,kind,id(normal_input_applied_value));
           if(id(key_btn).state) {id(key_long_press_handled)=true;id(normal_clear_wifi_allowed)=false;}
           id(ui_presenter)->notify_user_activity();
 
@@ -2575,7 +2575,7 @@ script:
             lambda: return events;
           then:
             - homeassistant.event:
-                event: esphome.knob_gesture
+                event: esphome.panel_gesture
                 data:
                   device: !lambda return App.get_name();
                   entity_id: !lambda return entity;
@@ -2603,7 +2603,7 @@ script:
             - homeassistant.action:
                 action: !lambda return action;
                 data:
-                  knob_entity: !lambda return entity;
+                  panel_entity: !lambda return entity;
                   direction: !lambda return std::string(onx_gesture::names[kind]);
                   delta: !lambda return std::to_string(delta);
                   pressed: !lambda return std::string(kind>=2?"true":"false");
@@ -2616,7 +2616,7 @@ script:
             - homeassistant.action:
                 action: !lambda return action;
                 data:
-                  knob_entity: !lambda return entity;
+                  panel_entity: !lambda return entity;
                   direction: !lambda return std::string(onx_gesture::names[kind]);
                   delta: !lambda return std::to_string(delta);
                   pressed: !lambda return std::string(kind>=2?"true":"false");
@@ -3004,7 +3004,7 @@ script:
                   skip_condition: "false"
                 data_template:
                   variables: !lambda |-
-                    return responses ? "{{ dict(knob_entity='"+entity+"') }}" : "{{ dict() }}";
+                    return responses ? "{{ dict(panel_entity='"+entity+"') }}" : "{{ dict() }}";
             - script.execute: show_normal_action_sent
       - if:
           condition:

@@ -233,7 +233,7 @@ onx_config_web:
         root["notifications_cover_timers"] = onx_display_settings::behavior.cover_timers?"1":"0";
         root["idle_view"] = onx_display_settings::idle.media?"media":"clock";
         root["standby_scope"] = onx_display_settings::scope_text(onx_display_settings::current.standby_scope);
-        root["sensitivity"] = std::to_string(id(normal_knob_applied_value));
+        root["sensitivity"] = std::to_string(id(normal_input_applied_value));
         root["sleep_enabled"] = id(ui_presenter)->get_sleep_mode_enabled() ? "1" : "0";
         root["sleep_start"] = id(ui_presenter)->get_sleep_window_start_time().substr(0, 5);
         root["sleep_end"] = id(ui_presenter)->get_sleep_window_end_time().substr(0, 5);
@@ -278,8 +278,7 @@ onx_config_web:
         return onx_entity_config::error("Could not save the clock sensors; retry");
       if (!onx_entity_config::save_hold_cue(query.hold_cue))
         return onx_entity_config::error("Could not persist appearance settings; retry");
-      id(lcd_display)->set_hardware_orientation(onx_display_settings::orientation.turns);
-      lv_obj_invalidate(lv_scr_act());
+      // Panels apply a new orientation at boot (panel.yaml restarts after a change).
       auto standby_call = id(standby_timeout_seconds).make_call();
       standby_call.set_value(standby); standby_call.perform();
       id(ui_presenter)->set_sleep_mode_config(enabled, start, end, sleep_timeout * 1000U);
@@ -287,8 +286,8 @@ onx_config_web:
       id(sleep_mode_start_time).publish_state(start);
       id(sleep_mode_end_time).publish_state(end);
       id(sleep_timeout_seconds).publish_state(sleep_timeout);
-      id(normal_knob_applied_value) = sensitivity;
-      id(normal_knob_pending_value) = sensitivity;
+      id(normal_input_applied_value) = sensitivity;
+      id(normal_input_pending_value) = sensitivity;
       id(normal_brightness_value) = brightness;
       auto light_call = id(lcd_backlight)->make_call();
       light_call.set_state(true); light_call.set_brightness(brightness / 100.0f); light_call.perform();

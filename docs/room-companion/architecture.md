@@ -1,9 +1,10 @@
 # Architecture and software ancestry
 
-The main software base is [fixtSE's OpenNextion Knob](https://github.com/fixtse/OpenNextion-Example-ESPHome_KNOB_Control),
-from local commit `6a710e2ce0258e3ced31da3177e00ed5f0b260e3`. Its Git history,
-headers, components and original round-knob entry point (`ONX2424G013.yaml`) are
-preserved. Rectangular firmware lives in `packages/room_companion/` and
+The software base is an earlier fixtSE OpenNextion ESPHome project (credited in
+[THIRD_PARTY_NOTICES.md](../../THIRD_PARTY_NOTICES.md)), from local commit
+`6a710e2ce0258e3ced31da3177e00ed5f0b260e3`. Its Git history, headers, components
+and shared application packages are preserved. This repository builds only the
+3.5" (ONX3248G035) and 2.8" (ONX2432G028) panels. Rectangular firmware lives in `packages/room_companion/` and
 `my_components/room_companion/`; both model roots merge one `application.yaml`.
 
 ## Layers
@@ -17,16 +18,16 @@ preserved. Rectangular firmware lives in `packages/room_companion/` and
 | Native UI | `features/interface.yaml` | LVGL Home, Music, Assist, More, setup and notification pages. |
 | Dashboard stream | `features/dashboard.yaml` + `my_components/remote_webview` | Optional, server-rendered HA dashboard. |
 | Assist | `features/assist.yaml` | Voice satellite: PDM mic, I2S speaker, tap/BOOT/HA button. |
-| Notifications | `features/notifications.yaml` | Knob `show_message` / `dismiss_message`, optional picture. |
+| Notifications | `features/notifications.yaml` | `show_message` / `dismiss_message` actions, optional picture. |
 | Sleep | `features/sleep.yaml` + core | Connected low-power sleep, timeout and schedule. |
 
-## Reused from the knob
+## Reused from the base project
 
 - `onx_notification.h` — message model, HTML-to-text, bounded timeouts, suspend.
 - `onx_subscriptions.h` — reference-counted Home Assistant subscriptions. Room
   entities change at runtime from the settings page without leaking API rows.
 - `onx_control_state.h`, `onx_media_state.h` — value parsing and formatting.
-- Patterns re-implemented for the rectangular settings model (the knob's code is
+- Patterns re-implemented for the rectangular settings model (the base project's code is
   bound to its 20-slot registry and round renderer): the nonce- and
   Origin-checked configuration page executed on the main loop, NVS-backed
   named presets with a Home Assistant **Preset** select that shows "Custom"
@@ -89,6 +90,6 @@ Wi-Fi power saving is off for latency; sleep switches to modem sleep.
 
 ## Not ported
 
-The knob's encoder gestures, timers, artwork modes, sensor graphs and 20-slot
+The base project's step/press gestures, timers, artwork modes, sensor graphs and 20-slot
 entity editor are not part of the rectangular firmware. Its full emoji/font
 pipeline is not used; text uses built-in Montserrat glyphs.

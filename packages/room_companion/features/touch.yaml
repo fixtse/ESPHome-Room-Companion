@@ -1,4 +1,4 @@
-# Touch drives the knob's input scripts (packages/base/input_actions.yaml).
+# Touch drives the shared input scripts (packages/base/input_actions.yaml).
 external_components:
   - source:
       type: local
@@ -7,7 +7,7 @@ external_components:
       - onx_touch_input
 
 binary_sensor:
-  # Virtual knob button: no pin, pressed/released by onx_touch_input. The knob's
+  # Virtual button: no pin, pressed/released by onx_touch_input. The shared
   # press/release logic and hold timing run unchanged.
   - platform: onx_button
     id: key_btn
@@ -23,37 +23,28 @@ onx_touch_input:
   id: touch_input
   touchscreen_id: panel_touch
   button_id: key_btn
+  # Placeholders: panel_ui_setup sets the runtime geometry for the configured
+  # orientation (landscape swaps width and height).
   width: ${display_width}
-  # Everything below the scaled 240x240 knob layout is the icon strip.
   strip_top: ${ (display_height | int) - 44 }
   strip_spacing: ${strip_spacing}
   step: ${ (22 * (ui_scale | float)) | round | int }
-  passthrough:
-    # Top-right corner: notification bell (LVGL).
-    - x0: ${ (display_width | int) - 56 }
-      y0: 0
-      x1: ${display_width}
-      y1: 56
-    # Top-left corner: dashboard button (LVGL, shown when a server is set).
-    - x0: 0
-      y0: 0
-      x1: 56
-      y1: 56
+  # On-screen buttons (bell, media transport) are dynamic passthrough regions.
   enabled: |-
-    return id(room_panel)->knob_ui_has_touch();
+    return id(room_panel)->native_ui_has_touch();
   page_swipe: |-
-    return !id(normal_device_detail_active) && id(room_panel)->knob_ui_has_touch();
+    return !id(normal_device_detail_active) && id(room_panel)->native_ui_has_touch();
   back_enabled: |-
-    return id(normal_device_detail_active) || id(room_panel)->dashboard_open() || !id(room_panel)->knob_ui_has_touch();
+    return id(normal_device_detail_active) || id(room_panel)->dashboard_open() || !id(room_panel)->native_ui_has_touch();
   native_touch: |-
-    return !id(room_panel)->knob_ui_has_touch() ||
+    return !id(room_panel)->native_ui_has_touch() ||
            (id(normal_device_detail_active) && id(normal_device_detail_kind) == NORMAL_DEVICE_DETAIL_KIND_SETTINGS);
   # Media closes with either horizontal swipe; other details use edge-back.
   edge_back: |-
     const auto entity = id(ui_presenter)->get_normal_device_entity_id(id(normal_device_detail_index));
-    return id(normal_device_detail_active) && entity.rfind("media_player.", 0) != 0 && id(room_panel)->knob_ui_has_touch();
+    return id(normal_device_detail_active) && entity.rfind("media_player.", 0) != 0 && id(room_panel)->native_ui_has_touch();
   pull_down_enabled: |-
-    return id(room_panel)->knob_ui_has_touch() && !onx_notification_ui::owns_screen();
+    return id(room_panel)->native_ui_has_touch() && !onx_notification_ui::owns_screen();
   on_pull_down:
     - lambda: |-
         id(ui_presenter)->notify_user_activity();
@@ -62,7 +53,7 @@ onx_touch_input:
     - script.execute: panel_back
   on_turn:
     - lambda: |-
-        int detents = id(normal_knob_applied_value);
+        int detents = id(normal_input_applied_value);
         if (detents != 1 && detents != 2 && detents != 4) detents = 1;
         for (int i = 0; i < detents; ++i) {
           if (direction > 0) id(onx_input_cw).execute();
@@ -71,7 +62,7 @@ onx_touch_input:
   on_strip_tap:
     # Each carousel position needs the configured number of detents.
     - lambda: |-
-        int detents = id(normal_knob_applied_value);
+        int detents = id(normal_input_applied_value);
         if (detents != 1 && detents != 2 && detents != 4) detents = 1;
         for (int i = 0; i < std::abs(offset) * detents; ++i) {
           if (offset > 0) id(onx_input_cw).execute();
@@ -99,7 +90,7 @@ script:
           switch (id(normal_device_detail_kind)) {
             case NORMAL_DEVICE_DETAIL_KIND_SETTINGS_WIFI: id(exit_normal_settings_wifi_detail).execute(); break;
             case NORMAL_DEVICE_DETAIL_KIND_SETTINGS_BRIGHTNESS: id(exit_normal_settings_brightness_detail).execute(); break;
-            case NORMAL_DEVICE_DETAIL_KIND_SETTINGS_KNOB: id(exit_normal_settings_knob_detail).execute(); break;
+            case NORMAL_DEVICE_DETAIL_KIND_SETTINGS_INPUT: id(exit_normal_settings_input_detail).execute(); break;
             case NORMAL_DEVICE_DETAIL_KIND_SETTINGS_CONNECTION: id(exit_normal_settings_connection).execute(); break;
             default: id(exit_normal_switch_detail).execute(); break;
           }

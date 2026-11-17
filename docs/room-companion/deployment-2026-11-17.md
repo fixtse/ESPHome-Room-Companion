@@ -7,7 +7,7 @@ forwarded over a loopback-only SSH tunnel.
 
 ## Provisioning and console
 
-Wi-Fi setup now uses the knob project's provisioning pattern: native Improv BLE,
+Wi-Fi setup now uses the base project's provisioning pattern: native Improv BLE,
 a physical BOOT-button authorizer (GPIO0), a 60-second authorization window,
 BLE disabled two seconds after Wi-Fi connects and re-enabled on disconnect.
 The default application has no compiled network credentials or setup AP.

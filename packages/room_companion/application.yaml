@@ -1,5 +1,5 @@
-# Room Companion: the fixtSE knob application on rectangular touch panels.
-# The knob packages are used unchanged; this file adds the panel layer
+# Room Companion: shared application on the rectangular touch panels.
+# This file adds the panel layer
 # (display, touch, strip carousel), Assist and the optional dashboard stream.
 packages:
   device: !include ../base/device.yaml

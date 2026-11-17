@@ -47,4 +47,12 @@ int main() {
   test_ms+=200;down(270,200);move(160,200);touch.release();assert(card_taps==1 && turns==1);
   test_ms+=200;down(150,200);test_ms+=1000;touch.loop();touch.release();
   assert(card_taps==1 && button.edges.size()==2);
+  // Detail controls next to the left edge never block the back swipe.
+  button.edges.clear(); detail=true;
+  touch.set_edge_back([&]{return true;});
+  touch.set_passthrough_fn([](int x,int){return x<120;});
+  test_ms+=200;down(10,200);move(150,200);touch.release();
+  assert(backs==3 && turns==1);
+  test_ms+=200;down(60,200);move(200,200);touch.release();
+  assert(backs==3 && turns==1); // Away from the edge the control keeps the gesture.
 }

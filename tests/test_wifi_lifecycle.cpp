@@ -31,7 +31,7 @@ int main() {
   {
     Device fresh(flash);
     assert(fresh.modes.is_provisioning_mode_enabled());
-    assert(fresh.wifi.get_ap().get_ssid() == "ONX2424G013-eeff");
+    assert(fresh.wifi.get_ap().get_ssid() == "RoomCompanion-eeff");
     fresh.wifi.save_wifi_sta("first-network", "first-password");
     fresh.modes.loop();
     assert(!fresh.modes.is_provisioning_mode_enabled());

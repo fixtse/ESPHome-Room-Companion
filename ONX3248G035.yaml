@@ -1,7 +1,7 @@
-# Room Companion for the ONX3248G035: the fixtSE knob application on a
+# Room Companion for the ONX3248G035: shared application on a
 # rectangular touch panel, with Assist and an optional dashboard stream.
 substitutions:
-  # Root values override the shared knob defaults during package merging.
+  # Root values override the shared defaults during package merging.
   ui_scale: 1.3333
   font_scale: 1.3333
   # Keep room for future updates alongside the scaled panel fonts.

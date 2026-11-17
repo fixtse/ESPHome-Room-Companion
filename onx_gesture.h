@@ -21,7 +21,8 @@ struct State {
 };
 inline onx_memory::StateArray<Config,20> configs;
 inline onx_memory::StateArray<State,20> states;
-inline const char *names[]={"clockwise","counterclockwise","held_clockwise","held_counterclockwise"};
+// Swipe up/left steps up, down/right steps down; "held" = touch held first.
+inline const char *names[]={"up","down","held_up","held_down"};
 inline int gesture(int direction,bool pressed) {return (pressed?2:0)+(direction<0?1:0);}
 struct Request {int slot,kind,delta;};
 inline std::deque<Request> pending;

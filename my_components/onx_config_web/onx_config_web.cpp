@@ -28,7 +28,7 @@ bool ConfigWeb::canHandle(AsyncWebServerRequest *request) const {
   // address open our app after Wi-Fi connects. Do not expose the generic server
   // entity-control endpoints alongside the configuration app.
   if (wifi::global_wifi_component != nullptr && wifi::global_wifi_component->is_connected()) return true;
-  return url == "/knob/favicon.svg" || url == "/knob/fixtse-logo.png" || url == "/knob" || url == "/knob/" || url == "/knob/api" || url == "/knob/result" || url == "/knob/ha.js" || url == "/knob/app.js" || url == "/knob/panel.js";
+  return url == "/panel/favicon.svg" || url == "/panel/fixtse-logo.png" || url == "/panel" || url == "/panel/" || url == "/panel/api" || url == "/panel/result" || url == "/panel/ha.js" || url == "/panel/app.js" || url == "/panel/panel.js";
 }
 void ConfigWeb::respond_(AsyncWebServerRequest *request, int code, const char *data, size_t size) {
   auto *response = request->beginResponse(code, "application/json", reinterpret_cast<const uint8_t *>(data), size);
@@ -48,24 +48,24 @@ void ConfigWeb::respond_(AsyncWebServerRequest *request, int code, const char *d
 void ConfigWeb::handleRequest(AsyncWebServerRequest *request) {
   std::array<char, AsyncWebServerRequest::URL_BUF_SIZE> buffer;
   const auto url = request->url_to(buffer);
-  if (request->method() == HTTP_GET && (url == "/knob/fixtse-logo.png" || url == "/knob/favicon.svg")) {
-    const bool logo = url == "/knob/fixtse-logo.png";
+  if (request->method() == HTTP_GET && (url == "/panel/fixtse-logo.png" || url == "/panel/favicon.svg")) {
+    const bool logo = url == "/panel/fixtse-logo.png";
     auto *response = request->beginResponse(200, logo ? "image/png" : "image/svg+xml",
-        logo ? FIXTSE_LOGO : reinterpret_cast<const uint8_t *>(KNOB_FAVICON),
-        logo ? sizeof(FIXTSE_LOGO) : sizeof(KNOB_FAVICON) - 1);
+        logo ? FIXTSE_LOGO : reinterpret_cast<const uint8_t *>(PANEL_FAVICON),
+        logo ? sizeof(FIXTSE_LOGO) : sizeof(PANEL_FAVICON) - 1);
     response->addHeader("Cache-Control", "public, max-age=86400");
     request->send(response);
     return;
   }
-  if ((url == "/knob/ha.js" || url == "/knob/app.js" || url == "/knob/panel.js") && request->method() == HTTP_GET) {
-    const char *asset = url == "/knob/ha.js" ? HA_BROWSER_JS : url == "/knob/panel.js" ? PANEL_JS : CONFIG_APP_JS;
+  if ((url == "/panel/ha.js" || url == "/panel/app.js" || url == "/panel/panel.js") && request->method() == HTTP_GET) {
+    const char *asset = url == "/panel/ha.js" ? HA_BROWSER_JS : url == "/panel/panel.js" ? PANEL_JS : CONFIG_APP_JS;
     auto *response = request->beginResponse(200, "text/javascript; charset=utf-8",
         reinterpret_cast<const uint8_t *>(asset), std::strlen(asset));
     response->addHeader("Cache-Control", "no-store");
     request->send(response);
     return;
   }
-  if ((url == "/" || url == "/knob" || url == "/knob/") && request->method() == HTTP_GET) {
+  if ((url == "/" || url == "/panel" || url == "/panel/") && request->method() == HTTP_GET) {
     const char *token = std::strstr(CONFIG_PAGE, "__ONX_TOKEN__");
     if (token == nullptr) { respond_(request, 500, "{\"error\":\"Page template unavailable\"}"); return; }
     auto *response = request->beginResponse(200, "text/html; charset=utf-8");
@@ -80,7 +80,7 @@ void ConfigWeb::handleRequest(AsyncWebServerRequest *request) {
     httpd_resp_send_chunk(*request, nullptr, 0);
     return;
   }
-  if (url == "/knob/result" && request->method() == HTTP_GET) {
+  if (url == "/panel/result" && request->method() == HTTP_GET) {
     unsigned ticket;
     if (!number(request->arg("ticket"), ticket)) { respond_(request, 400, "{\"error\":\"Invalid ticket\"}"); return; }
     LockGuard lock(mutex_);
@@ -89,7 +89,7 @@ void ConfigWeb::handleRequest(AsyncWebServerRequest *request) {
     respond_(request, 202, "{\"pending\":true}");
     return;
   }
-  if (url != "/knob/api" || request->method() != HTTP_POST) { respond_(request, 405, "{\"error\":\"Method not allowed\"}"); return; }
+  if (url != "/panel/api" || request->method() != HTTP_POST) { respond_(request, 405, "{\"error\":\"Method not allowed\"}"); return; }
   const auto token = request->get_header("X-Onx-Token");
   const auto origin = request->get_header("Origin");
   const auto host = request->get_header("Host");

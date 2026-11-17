@@ -20,7 +20,7 @@ static const char *const TAG = "onx_mode_manager";
 static const char *const NORMAL_HA_ADDED_PREF_KEY = "3139337893";
 
 static std::string build_provisioning_ap_ssid_() {
-  std::string ssid = "ONX2424G013-";
+  std::string ssid = "RoomCompanion-";
   std::string mac = get_mac_address();
   for (char &ch : mac) {
     ch = static_cast<char>(std::tolower(static_cast<unsigned char>(ch)));

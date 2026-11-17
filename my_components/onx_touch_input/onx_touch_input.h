@@ -1,8 +1,8 @@
 #pragma once
-// Touch input for the knob application on rectangular panels.
+// Touch input for the rectangular panels.
 //
-// The knob UI is driven by encoder detents and one button. This component maps
-// touch onto exactly those events, so the knob's behaviour is reused unchanged:
+// The native UI is driven by encoder detents and one button. This component maps
+// touch onto exactly those events, so the shared input behaviour is reused:
 //   swipe (horizontal, or vertical on detail pages) -> encoder detents
 //   tap -> button press + release        hold -> button held (with swipes: held turn)
 //   tap on a strip icon -> jump that many carousel positions
@@ -88,7 +88,9 @@ class TouchInput : public Component, public touchscreen::TouchListener {
       const auto &r = passthrough_[i];
       if (x >= r.x0 && x < r.x1 && y >= r.y0 && y < r.y1) { state_ = State::IGNORED; return; }
     }
-    if (passthrough_fn_ && passthrough_fn_(x, y)) { state_ = State::IGNORED; return; }
+    // The left-edge back swipe wins over on-screen controls near that edge.
+    const bool edge = x < EDGE && back_enabled_ && back_enabled_() && edge_back_ && edge_back_();
+    if (!edge && passthrough_fn_ && passthrough_fn_(x, y)) { state_ = State::IGNORED; return; }
     back_ = back_enabled_ && back_enabled_();
     // In detail views horizontal swipes page through the view; only a swipe
     // that starts at the left edge goes back.

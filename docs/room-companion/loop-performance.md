@@ -34,7 +34,7 @@ these settled ranges.
 - Use cached label updates for the idle clock, date, weather readings, slideshow
   clock and navigation label.
 - Construct the selected carousel view once per refresh and apply its final
-  geometry directly, rather than resetting to knob defaults first.
+  geometry directly, rather than resetting to defaults first.
 - Bind the final state-aware icon directly, avoiding fallback-image replacement
   and hide/show cycles on every refresh.
 - Skip unchanged alignment calls. Touch, media progress and animation intervals
@@ -48,9 +48,9 @@ cover-art appearance, swiping and all possible screens are not visually verified
 
 The native control/state, touch, subscription, Wi-Fi lifecycle, HTTP and browser
 catalogue checks passed. The aggregate suite also encountered two unrelated
-existing harness failures: `test_input_routing` searches unchanged input YAML for
-an obsolete exact substring, and the configuration-browser request mock rejects
-`/knob/panel.js`. Neither failing source/test area is modified here.
+existing harness failures: `test_input_routing` (since removed with the obsolete
+encoder input package) searched for an obsolete substring, and the configuration-browser request mock rejects
+`/panel/panel.js`. Neither failing source/test area is modified here.
 
 ## Reproduction and artifacts
 

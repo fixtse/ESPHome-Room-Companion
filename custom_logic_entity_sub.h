@@ -399,7 +399,7 @@ inline bool is_timer_detail(const std::string &entity_id) {
 
 inline std::vector<onx_control::Command> control_commands;
 inline std::string control_entity, control_setting, control_preview;
-inline bool knob_control_domain(const std::string &id) {
+inline bool control_domain(const std::string &id) {
   for (const char *domain : {"fan.", "number.", "input_number.", "select.", "input_select.", "scene.", "button.", "input_button."})
     if (has_prefix(id, domain)) return true;
   return false;
@@ -528,7 +528,7 @@ class DeviceSlotStateUpdater {
     }
     if (has_prefix(this->entity_id_, "sensor.") || has_prefix(this->entity_id_, "binary_sensor.") ||
         has_prefix(this->entity_id_, "climate.") || has_prefix(this->entity_id_, "media_player.") || has_prefix(this->entity_id_, "script.") ||
-        has_prefix(this->entity_id_, "weather.") || has_prefix(this->entity_id_, "timer.") || knob_control_domain(this->entity_id_)) {
+        has_prefix(this->entity_id_, "weather.") || has_prefix(this->entity_id_, "timer.") || control_domain(this->entity_id_)) {
       if (ui_slot == static_cast<size_t>(-1)) return;
       auto &detail = entity_details[this->slot_];
       if (detail.entity_id != this->entity_id_) {

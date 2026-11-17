@@ -1,10 +1,10 @@
 #pragma once
-// Room Companion panel extras on top of the knob application:
+// Room Companion panel extras on top of the shared application:
 //  - dashboard stream settings (server, address, zoom), persisted in NVS and
-//    edited from the knob's configuration page (ops panel_state / panel_save)
-//  - display ownership between the knob's LVGL UI and the stream
+//    edited from the panel's configuration page (ops panel_state / panel_save)
+//  - display ownership between the native LVGL UI and the stream
 //  - leaving the dashboard with a horizontal swipe
-// Everything else (slots, presets, sleep, notifications, web page) is the knob's.
+// Everything else (slots, presets, sleep, notifications, web page) is shared.
 #include "esphome/core/automation.h"
 #include "esphome/core/component.h"
 #include "esphome/core/helpers.h"
@@ -19,7 +19,7 @@
 
 namespace esphome::room_companion {
 
-// Reasons the knob UI must own the display even while the dashboard is open.
+// Reasons the native UI must own the display even while the dashboard is open.
 enum Overlay : uint8_t {
   OVERLAY_ASSIST = 1 << 0,  // Voice assistant running (and reply on screen).
   OVERLAY_NOTICE = 1 << 1,  // Notification shown or notification centre open.
@@ -73,10 +73,10 @@ class RoomPanel : public Component {
 
   // Overlays and input.
   void set_overlay(Overlay overlay, bool on);
-  // Touch drives the knob UI only when it is visible and no overlay owns input.
-  bool knob_ui_has_touch() const { return !stream_owner_ && overlays_ == 0; }
+  // Touch drives the native UI only when it is visible and no overlay owns input.
+  bool native_ui_has_touch() const { return !stream_owner_ && overlays_ == 0; }
 
-  // Knob configuration page hook: returns "" when the op is not ours.
+  // Configuration page hook: returns "" when the op is not ours.
   std::string handle_web(const std::string &op, const std::string &data);
 
   // Corner hold (touch listener).
@@ -115,7 +115,7 @@ class RoomPanel : public Component {
   std::atomic<bool> corner_requested_{false};
 };
 
-// Set in setup(); lets shared knob lambdas reach the panel without id().
+// Set in setup(); lets shared lambdas reach the panel without id().
 inline RoomPanel *global_panel = nullptr;
 
 }  // namespace esphome::room_companion
