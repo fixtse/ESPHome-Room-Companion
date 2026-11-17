@@ -131,7 +131,7 @@ interval:
           }
           if (id(ha_time_ready)) {
             auto now = id(ha_time).now();
-            if (now.is_valid()) lv_label_set_text(onx_panel_ui::slide_time, now.strftime(onx_display_settings::time_pattern()).c_str());
+            if (now.is_valid()) onx_render::label(onx_panel_ui::slide_time, now.strftime(onx_display_settings::time_pattern()).c_str());
           }
           onx_panel_ui::slides = onx_panel_ui::split_urls(id(panel_slideshow_urls).state);
           onx_panel_ui::show(onx_panel_ui::slide_hint, onx_panel_ui::slides.empty());

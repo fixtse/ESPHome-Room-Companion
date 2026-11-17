@@ -14,6 +14,7 @@
 #include <string>
 #include <vector>
 #include "lvgl.h"
+#include "onx_render.h"
 #include "esphome/core/hal.h"
 #include "onx_geom.h"
 
@@ -26,7 +27,7 @@ inline int width = 320, height = 480;
 // The knob draws its pages inside a 240x240 circle. On a rectangle those
 // circles show as a lighter disc: square every large rounded object.
 inline void flatten(lv_obj_t *obj) {
-  if (lv_obj_get_style_radius(obj, LV_PART_MAIN) >= S(100)) lv_obj_set_style_radius(obj, 0, LV_PART_MAIN);
+  if (lv_obj_get_style_radius(obj, LV_PART_MAIN) >= S(100)) onx_render::style_radius(obj, 0, LV_PART_MAIN);
   const uint32_t n = lv_obj_get_child_count(obj);
   for (uint32_t i = 0; i < n; ++i) flatten(lv_obj_get_child(obj, i));
 }
@@ -47,10 +48,10 @@ inline bool hit(int x, int y) {
 inline lv_obj_t *round_button(lv_obj_t *parent, int size, uint32_t color) {
   lv_obj_t *b = lv_obj_create(parent);
   lv_obj_set_size(b, size, size);
-  lv_obj_set_style_radius(b, LV_RADIUS_CIRCLE, 0);
-  lv_obj_set_style_bg_color(b, lv_color_hex(color), 0);
-  lv_obj_set_style_bg_opa(b, LV_OPA_COVER, 0);
-  lv_obj_set_style_border_width(b, 0, 0);
+  onx_render::style_radius(b, LV_RADIUS_CIRCLE, 0);
+  onx_render::style_bg_color(b, lv_color_hex(color), 0);
+  onx_render::style_bg_opa(b, LV_OPA_COVER, 0);
+  onx_render::style_border_width(b, 0, 0);
   lv_obj_set_style_pad_all(b, 0, 0);
   lv_obj_set_style_shadow_width(b, 0, 0);
   lv_obj_remove_flag(b, LV_OBJ_FLAG_SCROLLABLE);
@@ -60,8 +61,8 @@ inline lv_obj_t *round_button(lv_obj_t *parent, int size, uint32_t color) {
 }
 inline lv_obj_t *symbol(lv_obj_t *parent, const char *text, const lv_font_t *font) {
   lv_obj_t *l = lv_label_create(parent);
-  lv_obj_set_style_text_font(l, font, 0);
-  lv_obj_set_style_text_color(l, lv_color_hex(0xFFFFFF), 0);
+  onx_render::style_text_font(l, font, 0);
+  onx_render::style_text_color(l, lv_color_hex(0xFFFFFF), 0);
   lv_label_set_text(l, text);
   lv_obj_center(l);
   return l;
@@ -178,7 +179,7 @@ inline void sync_media(const Media &m, const lv_font_t *font) {
   set_width(m.artist, w - S(24));
   // The knob's round progress ring becomes a straight bar.
   const bool progress = !hidden(m.arc);
-  lv_obj_set_style_opa(m.arc, LV_OPA_TRANSP, 0);
+  onx_render::style_opa(m.arc, LV_OPA_TRANSP, 0);
   show(m.transport, false);
   show(media_bar, progress || lv_bar_get_value(media_bar) > 0);
   if (m.arc != nullptr) lv_bar_set_value(media_bar, lv_arc_get_value(m.arc), LV_ANIM_OFF);

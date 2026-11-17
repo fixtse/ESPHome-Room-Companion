@@ -6,6 +6,7 @@
 #include <string>
 #include <vector>
 #include "lvgl.h"
+#include "onx_render.h"
 #include "esphome/components/image/image.h"
 
 namespace onx_navigation {
@@ -79,7 +80,7 @@ inline void create() {
     lv_label_set_text(label,"");
   }
 }
-inline void set_label(const char *text) {if(label)lv_label_set_text(label,text);}
+inline void set_label(const char *text) {if(label)onx_render::label(label,text);}
 // Panel-local controls ([Local] Dashboard / [Local] Assist): set by the touch
 // panels at boot, empty on the knob.
 inline std::function<bool(const std::string &)> local_action;     // Handles a press; true if handled.
@@ -100,7 +101,7 @@ template<typename Bind> void render(const std::vector<int> &entries,int selected
     }
     lv_obj_clear_flag(icons[n],LV_OBJ_FLAG_HIDDEN);
     bind(icons[n],entries[index],offset==0);
-    lv_obj_set_style_opa(icons[n],offset==0?LV_OPA_COVER:std::abs(offset)==1?170:110,0);
+    onx_render::style_opa(icons[n],offset==0?LV_OPA_COVER:std::abs(offset)==1?170:110,0);
     if(changed) {
       lv_anim_delete(icons[n],icon_offset);
       icon_offset(icons[n],(offset+shift)*1000);

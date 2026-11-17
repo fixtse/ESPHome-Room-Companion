@@ -297,90 +297,52 @@ script:
               }
             }
 
-            set_hidden(w.icon_switch, !(device_kind == 1 || device_kind == 10));
-            set_hidden(w.icon_switch_on, true);
-            set_hidden(w.icon_plug, device_kind != 3);
-            set_hidden(w.icon_plug_on, true);
-            set_hidden(w.icon_light, !(device_kind == 2 || device_kind == 7));
-            set_hidden(w.icon_light_on, true);
-            set_hidden(w.icon_curtain, device_kind != 4);
-            set_hidden(w.icon_settings, device_kind != 5);
-            lv_img_set_src(w.icon_switch,
-                           device_type == "weather" ? id(standby_weather_icon_partlycloudy_img) :
-                           device_kind == 10 ? id(normal_device_automation_img)
-                                             : id(normal_device_icon_switch_img));
-            if (device_kind == 4 && !settings_entry) {
-              const uint8_t curtain_position = id(app_storage)->get_normal_ui_device_position(entry_index);
-              if (curtain_position >= 100) {
-                lv_img_set_src(w.icon_curtain, id(normal_device_icon_curtain_open_img));
-              } else if (curtain_position == 0) {
-                lv_img_set_src(w.icon_curtain, id(normal_device_icon_curtain_closed_img));
-              } else {
-                lv_img_set_src(w.icon_curtain, id(normal_device_icon_curtain_img));
-              }
-            } else {
-              lv_img_set_src(w.icon_curtain, id(normal_device_icon_curtain_img));
-            }
-
-            if (!settings_entry && (device_kind == 1 || device_kind == 3 || device_kind == 2 || device_kind == 7)) {
-              bool local_state = false;
-              if (device_kind == 1 && local_hmi_gpio_switch_state(id(ui_presenter)->get_normal_device_entity_id(entry_index), &local_state)) {
-                id(app_storage)->set_normal_ui_device_state(entry_index, local_state);
-              }
-              bool is_on = id(app_storage)->get_normal_ui_device_state(entry_index);
-              if (device_kind == 1) {
-                set_hidden(w.icon_switch, is_on);
-                set_hidden(w.icon_switch_on, !is_on);
-              } else if (device_kind == 3) {
-                set_hidden(w.icon_plug, is_on);
-                set_hidden(w.icon_plug_on, !is_on);
-              } else {
-                set_hidden(w.icon_light, is_on);
-                set_hidden(w.icon_light_on, !is_on);
-              }
-            }
-
+            // All configured controls use the icon downloader's state-aware
+            // fallback. Do not install another image and hide/show it first.
+            for (auto *icon : {w.icon_switch_on, w.icon_plug, w.icon_plug_on,
+                              w.icon_light, w.icon_light_on, w.icon_curtain}) set_hidden(icon, true);
+            set_hidden(w.icon_settings, !settings_entry);
+            set_hidden(w.icon_switch, settings_entry);
             if (!settings_entry) {
-              for (auto *icon : {w.icon_switch_on, w.icon_plug, w.icon_plug_on, w.icon_light,
-                                w.icon_light_on, w.icon_curtain, w.icon_settings}) set_hidden(icon, true);
-              set_hidden(w.icon_switch, false);
+              bool local_state = false;
+              if (device_kind == 1 && local_hmi_gpio_switch_state(id(ui_presenter)->get_normal_device_entity_id(entry_index), &local_state))
+                id(app_storage)->set_normal_ui_device_state(entry_index, local_state);
               id(apply_normal_entity_icon).execute(w.icon_switch,
                   id(ui_presenter)->get_normal_device_entity_id(entry_index), device_type,
                   id(app_storage)->get_normal_ui_device_state(entry_index));
             }
-            lv_obj_set_y(w.icon_switch, onx_geom::S(62));
-            lv_image_set_scale(w.icon_switch, 256);
-            lv_obj_set_y(w.title, onx_geom::S(151)); lv_obj_set_width(w.title, onx_geom::S(180)); lv_obj_set_height(w.title, onx_geom::S(25));
-            lv_label_set_long_mode(w.title, LV_LABEL_LONG_DOT);
             const auto entity = settings_entry ? std::string("") : id(ui_presenter)->get_normal_device_entity_id(entry_index);
-            if (!settings_entry) {
+            if (settings_entry) {
+              lv_obj_set_y(w.icon_switch, onx_geom::S(62));
+              lv_image_set_scale(w.icon_switch, 256);
+              lv_obj_set_size(w.title, onx_geom::S(180), onx_geom::S(25));
+              lv_label_set_long_mode(w.title, LV_LABEL_LONG_DOT);
+              onx_render::align(w.title, LV_ALIGN_TOP_MID, 0, onx_geom::S(151));
+              onx_render::label(w.title, device_title.c_str());
+            } else {
+              // Build once and apply the final layout directly. Resetting to the
+              // knob defaults first dirtied the same widgets on every refresh.
               const auto view = onx_detail_view::carousel(entity, device_title);
-              lv_label_set_text(w.value, view.value.text.c_str());
+              onx_render::label(w.value, view.value.text.c_str());
               lv_obj_set_y(w.value, onx_geom::S(view.value.y));
-              lv_obj_set_style_text_font(w.value,
+              onx_render::style_text_font(w.value,
                   view.value.size == 32 ? id(fonts_MiSans_Medium_32)->get_lv_font() : id(fonts_MiSans_Medium_24)->get_lv_font(), 0);
               set_hidden(w.value, false);
               lv_obj_set_y(w.icon_switch, onx_geom::S(onx_detail_view::image_object_y(view.icon_y, view.icon_size)));
               lv_image_set_scale(w.icon_switch, view.icon_size * 256 / 80);
-              lv_obj_set_y(w.title, onx_geom::S(view.name.y)); lv_obj_set_width(w.title, onx_geom::S(184)); lv_obj_set_height(w.title, onx_geom::S(40));
-              lv_obj_set_style_text_font(w.title, id(fonts_MiSans_Medium_16)->get_lv_font(), 0);
-              lv_label_set_text(w.context, view.context.text.c_str());
+              onx_render::label(w.context, view.context.text.c_str());
               lv_obj_set_y(w.context, onx_geom::S(view.context.y));
-              lv_obj_set_style_text_font(w.context, view.context.size == 24 ? id(fonts_MiSans_Medium_24)->get_lv_font() : id(fonts_MiSans_Medium_14)->get_lv_font(), 0);
+              onx_render::style_text_font(w.context, view.context.size == 24 ? id(fonts_MiSans_Medium_24)->get_lv_font() : id(fonts_MiSans_Medium_14)->get_lv_font(), 0);
               lv_obj_set_height(w.context, onx_geom::S(view.context.size == 24 ? 30 : 20));
               if (view.icon.empty()) set_hidden(w.icon_switch, true);
               set_hidden(w.context, view.context.text.empty());
               lv_label_set_long_mode(w.title, LV_LABEL_LONG_WRAP);
+              onx_render::align(w.title, LV_ALIGN_TOP_MID, 0, onx_geom::S(view.name.y));
+              onx_render::style_text_font(w.title, view.name.size == 14 ? id(fonts_MiSans_Medium_14)->get_lv_font() : id(fonts_MiSans_Medium_16)->get_lv_font(), 0);
+              lv_obj_set_size(w.title, onx_geom::S(view.name.width), onx_geom::S(40));
+              onx_render::label(w.title, view.name.text.c_str());
             }
-            lv_obj_set_style_text_align(w.title, LV_TEXT_ALIGN_CENTER, 0);
-            lv_obj_align(w.title, LV_ALIGN_TOP_MID, 0, onx_geom::S(settings_entry ? 151 : onx_detail_view::carousel(entity, device_title).name.y));
-            if(settings_entry) onx_render::label(w.title, device_title.c_str());
-            else {
-              const auto view=onx_detail_view::carousel(entity,device_title);
-              onx_render::label(w.title,view.name.text.c_str());
-              lv_obj_set_style_text_font(w.title,view.name.size==14?id(fonts_MiSans_Medium_14)->get_lv_font():id(fonts_MiSans_Medium_16)->get_lv_font(),0);
-              lv_obj_set_width(w.title,onx_geom::S(view.name.width));lv_obj_set_height(w.title,onx_geom::S(40));
-            }
+            onx_render::style_text_align(w.title, LV_TEXT_ALIGN_CENTER, 0);
             set_hidden(w.index_icon, true);
             set_hidden(w.pagination,true);
             const int navigator_index=settings_entry?total:entry_index;
@@ -389,8 +351,8 @@ script:
                   if(index==total) {
                     onx_render::image(icon,id(normal_device_icon_settings_img)->get_lv_image_dsc());
                     lv_image_set_scale(icon,onx_geom::S(onx_navigation::icon_size())*256/id(normal_device_icon_settings_img)->get_width());
-                    lv_obj_set_style_image_recolor(icon,lv_color_hex(active?0x62B0FF:0xFFFFFF),0);
-                    lv_obj_set_style_image_recolor_opa(icon,LV_OPA_COVER,0);
+                    onx_render::style_image_recolor(icon,lv_color_hex(active?0x62B0FF:0xFFFFFF),0);
+                    onx_render::style_image_recolor_opa(icon,LV_OPA_COVER,0);
                   } else {
                     id(apply_normal_entity_icon).execute(icon,
                         id(ui_presenter)->get_normal_device_entity_id(index),
@@ -572,17 +534,17 @@ script:
           };
 
           if (is_on) {
-            lv_obj_set_style_bg_color(page, lv_color_hex(0x54524F), 0);
-            lv_obj_set_style_bg_color(shell, lv_color_hex(0x54524F), 0);
-            lv_obj_set_style_border_width(shell, 0, 0);
-            lv_obj_set_style_text_color(id(normal_switch_detail_state), lv_color_hex(0xFFFFFF), 0);
-            lv_obj_set_style_text_color(id(normal_switch_detail_title), lv_color_hex(0xFFFFFF), 0);
+            onx_render::style_bg_color(page, lv_color_hex(0x54524F), 0);
+            onx_render::style_bg_color(shell, lv_color_hex(0x54524F), 0);
+            onx_render::style_border_width(shell, 0, 0);
+            onx_render::style_text_color(id(normal_switch_detail_state), lv_color_hex(0xFFFFFF), 0);
+            onx_render::style_text_color(id(normal_switch_detail_title), lv_color_hex(0xFFFFFF), 0);
           } else {
-            lv_obj_set_style_bg_color(page, lv_color_hex(0x272727), 0);
-            lv_obj_set_style_bg_color(shell, lv_color_hex(0x272727), 0);
-            lv_obj_set_style_border_width(shell, 0, 0);
-            lv_obj_set_style_text_color(id(normal_switch_detail_state), lv_color_hex(0xFFFFFF), 0);
-            lv_obj_set_style_text_color(id(normal_switch_detail_title), lv_color_hex(0xD2D2D2), 0);
+            onx_render::style_bg_color(page, lv_color_hex(0x272727), 0);
+            onx_render::style_bg_color(shell, lv_color_hex(0x272727), 0);
+            onx_render::style_border_width(shell, 0, 0);
+            onx_render::style_text_color(id(normal_switch_detail_state), lv_color_hex(0xFFFFFF), 0);
+            onx_render::style_text_color(id(normal_switch_detail_title), lv_color_hex(0xD2D2D2), 0);
           }
           if (id(normal_device_detail_kind) == NORMAL_DEVICE_DETAIL_KIND_SWITCH) {
             set_hidden(id(normal_device_detail_plug_on), true);
@@ -763,17 +725,17 @@ script:
               lv_image_set_scale(id(normal_automation_detail_icon), 128);
               lv_obj_set_y(id(normal_automation_detail_icon), onx_geom::S(-10));
               lv_obj_set_y(id(normal_automation_detail_action), onx_geom::S(60));
-              lv_obj_set_style_text_font(id(normal_automation_detail_action), id(fonts_MiSans_Medium_16)->get_lv_font(), 0);
+              onx_render::style_text_font(id(normal_automation_detail_action), id(fonts_MiSans_Medium_16)->get_lv_font(), 0);
             } else {
               lv_image_set_scale(id(normal_automation_detail_icon), 256);
               lv_obj_set_y(id(normal_automation_detail_icon), onx_geom::S(40));
-              lv_obj_set_style_text_font(id(normal_automation_detail_action), id(fonts_MiSans_Medium_18)->get_lv_font(), 0);
+              onx_render::style_text_font(id(normal_automation_detail_action), id(fonts_MiSans_Medium_18)->get_lv_font(), 0);
             }
           }
           lv_obj_set_height(id(normal_automation_detail_action), LV_SIZE_CONTENT);
           lv_label_set_long_mode(id(normal_automation_detail_action), LV_LABEL_LONG_WRAP);
           if (entity_id.rfind("media_player.", 0) == 0)
-            lv_obj_set_style_text_font(id(normal_automation_detail_action), id(fonts_MiSans_Medium_18)->get_lv_font(), 0);
+            onx_render::style_text_font(id(normal_automation_detail_action), id(fonts_MiSans_Medium_18)->get_lv_font(), 0);
           // The same presentation model supplies the browser's live preview.
           for (auto *label : {id(normal_detail_badge), id(normal_detail_context), id(normal_detail_hint)})
             lv_obj_add_flag(label, LV_OBJ_FLAG_HIDDEN);
@@ -787,12 +749,12 @@ script:
             auto line = [&](lv_obj_t *label, const onx_detail_view::Line &text) {
               onx_render::label(label, text.text.c_str());
               lv_obj_set_x(label, onx_geom::S(text.x)); lv_obj_set_y(label, onx_geom::S(text.y)); lv_obj_set_width(label, onx_geom::S(text.width));
-              lv_obj_set_style_text_color(label, lv_color_hex(text.color), 0);
+              onx_render::style_text_color(label, lv_color_hex(text.color), 0);
               auto *font = text.size == 32 ? id(fonts_MiSans_Medium_32)->get_lv_font() :
                            text.size == 24 ? id(fonts_MiSans_Medium_24)->get_lv_font() :
                            text.size == 14 ? id(fonts_MiSans_Medium_14)->get_lv_font() :
                            id(fonts_MiSans_Medium_16)->get_lv_font();
-              lv_obj_set_style_text_font(label, font, 0);
+              onx_render::style_text_font(label, font, 0);
               if (text.text.empty()) lv_obj_add_flag(label, LV_OBJ_FLAG_HIDDEN);
               else lv_obj_clear_flag(label, LV_OBJ_FLAG_HIDDEN);
             };
@@ -813,7 +775,7 @@ script:
           } else {
             lv_label_set_long_mode(id(normal_automation_detail_title), LV_LABEL_LONG_DOT);
             lv_obj_set_y(id(normal_automation_detail_title), onx_geom::S(192));
-            lv_obj_set_style_text_font(id(normal_automation_detail_title), id(fonts_MiSans_Medium_16)->get_lv_font(), 0);
+            onx_render::style_text_font(id(normal_automation_detail_title), id(fonts_MiSans_Medium_16)->get_lv_font(), 0);
           }
           id(apply_normal_media_style).execute();
           id(refresh_normal_media_progress).execute();
@@ -914,17 +876,17 @@ script:
           };
 
           if (is_on) {
-            lv_obj_set_style_bg_color(page, lv_color_hex(0x54524F), 0);
-            lv_obj_set_style_bg_color(shell, lv_color_hex(0x54524F), 0);
-            lv_obj_set_style_border_width(shell, 0, 0);
-            lv_obj_set_style_text_color(id(normal_light_detail_state), lv_color_hex(0xFFFFFF), 0);
-            lv_obj_set_style_text_color(id(normal_light_detail_title), lv_color_hex(0xFFFFFF), 0);
+            onx_render::style_bg_color(page, lv_color_hex(0x54524F), 0);
+            onx_render::style_bg_color(shell, lv_color_hex(0x54524F), 0);
+            onx_render::style_border_width(shell, 0, 0);
+            onx_render::style_text_color(id(normal_light_detail_state), lv_color_hex(0xFFFFFF), 0);
+            onx_render::style_text_color(id(normal_light_detail_title), lv_color_hex(0xFFFFFF), 0);
           } else {
-            lv_obj_set_style_bg_color(page, lv_color_hex(0x272727), 0);
-            lv_obj_set_style_bg_color(shell, lv_color_hex(0x272727), 0);
-            lv_obj_set_style_border_width(shell, 0, 0);
-            lv_obj_set_style_text_color(id(normal_light_detail_state), lv_color_hex(0xFFFFFF), 0);
-            lv_obj_set_style_text_color(id(normal_light_detail_title), lv_color_hex(0xD2D2D2), 0);
+            onx_render::style_bg_color(page, lv_color_hex(0x272727), 0);
+            onx_render::style_bg_color(shell, lv_color_hex(0x272727), 0);
+            onx_render::style_border_width(shell, 0, 0);
+            onx_render::style_text_color(id(normal_light_detail_state), lv_color_hex(0xFFFFFF), 0);
+            onx_render::style_text_color(id(normal_light_detail_title), lv_color_hex(0xD2D2D2), 0);
           }
 
           set_hidden(id(normal_light_device_detail_switch_on), true);
@@ -974,12 +936,12 @@ script:
             const int size = mode_switching ? (active ? 26 : 23) : 20;
             const uint16_t zoom = mode_switching ? (active ? 333 : 295) : 256;
             lv_obj_set_size(icon, onx_geom::S(size), onx_geom::S(size));
-            lv_obj_set_style_radius(icon, onx_geom::S(size / 2), 0);
+            onx_render::style_radius(icon, onx_geom::S(size / 2), 0);
             lv_img_set_zoom(img, zoom);
             lv_img_set_pivot(img, 10, 10);
             lv_img_set_antialias(img, true);
-            lv_obj_set_style_border_width(icon, active ? 3 : 0, 0);
-            lv_obj_set_style_border_color(icon, lv_color_hex(0xFFFFFF), 0);
+            onx_render::style_border_width(icon, active ? 3 : 0, 0);
+            onx_render::style_border_color(icon, lv_color_hex(0xFFFFFF), 0);
           };
           if (!is_mode_enabled(id(normal_detail_light_mode))) {
             for (int mode = 0; mode < 3; ++mode) {
@@ -1046,21 +1008,21 @@ script:
           }
 
           const auto view=onx_detail_view::light_view(device_entity_id,device_title,detail_slot.light(),id(normal_detail_light_mode));
-          lv_obj_set_style_bg_color(page,lv_color_hex(0x000000),0);
-          lv_obj_set_style_bg_color(shell,lv_color_hex(0x000000),0);
+          onx_render::style_bg_color(page,lv_color_hex(0x000000),0);
+          onx_render::style_bg_color(shell,lv_color_hex(0x000000),0);
           onx_render::label(id(normal_light_control_label),view.badge.text.c_str());
           set_hidden(id(normal_light_control_label),!is_on);
           onx_render::label(id(normal_light_detail_state),view.value.text.c_str());
           lv_obj_set_y(id(normal_light_detail_state),onx_geom::S(view.value.y));
           lv_obj_set_width(id(normal_light_detail_state),onx_geom::S(view.value.width));
-          lv_obj_set_style_text_align(id(normal_light_detail_state),LV_TEXT_ALIGN_CENTER,0);
-          lv_obj_set_style_text_font(id(normal_light_detail_state),view.value.size==24?id(fonts_MiSans_Medium_24)->get_lv_font():id(fonts_MiSans_Medium_32)->get_lv_font(),0);
+          onx_render::style_text_align(id(normal_light_detail_state),LV_TEXT_ALIGN_CENTER,0);
+          onx_render::style_text_font(id(normal_light_detail_state),view.value.size==24?id(fonts_MiSans_Medium_24)->get_lv_font():id(fonts_MiSans_Medium_32)->get_lv_font(),0);
           lv_obj_set_y(id(normal_light_detail_title),onx_geom::S(view.name.y));
           lv_obj_set_width(id(normal_light_detail_title),onx_geom::S(view.name.width));
-          lv_obj_set_style_text_font(id(normal_light_detail_title),id(fonts_MiSans_Medium_14)->get_lv_font(),0);
+          onx_render::style_text_font(id(normal_light_detail_title),id(fonts_MiSans_Medium_14)->get_lv_font(),0);
           set_hidden(id(normal_light_dimming_light_detail_arc),!is_on || view.value_ring<0);
           if(view.value_ring>=0)lv_arc_set_value(id(normal_light_dimming_light_detail_arc),view.value_ring/10);
-          lv_obj_set_style_arc_color(id(normal_light_dimming_light_detail_arc),lv_color_hex(view.accent),LV_PART_INDICATOR);
+          onx_render::style_arc_color(id(normal_light_dimming_light_detail_arc),lv_color_hex(view.accent),LV_PART_INDICATOR);
           set_hidden(id(normal_light_cct_gradient),!is_on || !show_cct_bar);
           set_hidden(id(normal_light_rgb_gradient),!is_on || !show_rgb_bar);
           set_hidden(id(normal_light_cct_value_arc),!is_on || !show_cct_bar);
@@ -1207,9 +1169,9 @@ script:
           lv_obj_t *shell = id(normal_curtain_detail_shell);
           lv_obj_t *arc = id(normal_curtain_detail_arc);
           lv_obj_t *target_arc = id(normal_curtain_detail_target_arc);
-          lv_obj_set_style_bg_color(page, lv_color_hex(0x000000), 0);
-          lv_obj_set_style_bg_color(shell, lv_color_hex(0x232323), 0);
-          lv_obj_set_style_border_width(shell, 0, 0);
+          onx_render::style_bg_color(page, lv_color_hex(0x000000), 0);
+          onx_render::style_bg_color(shell, lv_color_hex(0x232323), 0);
+          onx_render::style_border_width(shell, 0, 0);
           lv_arc_set_value(arc, display_position);
           const int target_position = std::clamp(id(normal_device_detail_curtain_target_position), 0, 100);
           lv_arc_set_value(target_arc, target_position);
@@ -1314,23 +1276,23 @@ script:
 
           lv_obj_t *roller = id(normal_settings_roller)->obj;
           lv_obj_t *arrow = id(normal_settings_arrow_hint);
-          lv_obj_set_style_bg_color(id(normal_settings_page)->obj, lv_color_hex(0x1A1A1A), 0);
-          lv_obj_set_style_bg_color(id(normal_settings_detail_shell), lv_color_hex(0x1A1A1A), 0);
-          lv_obj_set_style_border_width(id(normal_settings_detail_shell), 0, 0);
+          onx_render::style_bg_color(id(normal_settings_page)->obj, lv_color_hex(0x1A1A1A), 0);
+          onx_render::style_bg_color(id(normal_settings_detail_shell), lv_color_hex(0x1A1A1A), 0);
+          onx_render::style_border_width(id(normal_settings_detail_shell), 0, 0);
           lv_label_set_text(id(normal_settings_header_title), "Settings");
 
           #ifdef USE_ROOM_COMPANION
           lv_obj_add_flag(roller, LV_OBJ_FLAG_HIDDEN);
           lv_obj_add_flag(arrow, LV_OBJ_FLAG_HIDDEN);
           lv_obj_set_size(id(normal_settings_detail_shell), lv_display_get_horizontal_resolution(nullptr), lv_display_get_vertical_resolution(nullptr));
-          lv_obj_set_style_radius(id(normal_settings_detail_shell), 0, 0);
+          onx_render::style_radius(id(normal_settings_detail_shell), 0, 0);
           static lv_obj_t *menu = nullptr;
           if (menu == nullptr) {
             menu = lv_obj_create(id(normal_settings_detail_shell));
             lv_obj_set_pos(menu, 12, 64);
             lv_obj_set_size(menu, lv_display_get_horizontal_resolution(nullptr) - 24, lv_display_get_vertical_resolution(nullptr) - 76);
-            lv_obj_set_style_bg_opa(menu, LV_OPA_TRANSP, 0);
-            lv_obj_set_style_border_width(menu, 0, 0);
+            onx_render::style_bg_opa(menu, LV_OPA_TRANSP, 0);
+            onx_render::style_border_width(menu, 0, 0);
             lv_obj_set_style_pad_all(menu, 0, 0);
             lv_obj_set_style_pad_row(menu, 8, 0);
             lv_obj_set_flex_flow(menu, LV_FLEX_FLOW_COLUMN);
@@ -1340,12 +1302,12 @@ script:
             for (int i = 0; i < 5; ++i) {
               auto *row = lv_button_create(menu);
               lv_obj_set_size(row, LV_PCT(100), (lv_display_get_vertical_resolution(nullptr) - 108) / 5);
-              lv_obj_set_style_bg_color(row, lv_color_hex(0x2A2F35), 0);
-              lv_obj_set_style_radius(row, 12, 0);
+              onx_render::style_bg_color(row, lv_color_hex(0x2A2F35), 0);
+              onx_render::style_radius(row, 12, 0);
               auto *label = lv_label_create(row);
               lv_label_set_text(label, labels[i]);
-              lv_obj_set_style_text_font(label, id(fonts_MiSans_Medium_16)->get_lv_font(), 0);
-              lv_obj_align(label, LV_ALIGN_LEFT_MID, 8, 0);
+              onx_render::style_text_font(label, id(fonts_MiSans_Medium_16)->get_lv_font(), 0);
+              onx_render::align(label, LV_ALIGN_LEFT_MID, 8, 0);
               lv_obj_add_event_cb(row, [](lv_event_t *event) {
                 if (id(touch_input)->suppress_click()) return;
                 const auto index = reinterpret_cast<intptr_t>(lv_event_get_user_data(event));
@@ -1418,27 +1380,27 @@ script:
             }
           }
 
-          lv_obj_set_style_bg_color(id(normal_settings_wifi_page)->obj, lv_color_hex(0x1A1A1A), 0);
-          lv_obj_set_style_bg_color(id(normal_settings_wifi_shell), lv_color_hex(0x1A1A1A), 0);
-          lv_obj_set_style_border_width(id(normal_settings_wifi_shell), 0, 0);
+          onx_render::style_bg_color(id(normal_settings_wifi_page)->obj, lv_color_hex(0x1A1A1A), 0);
+          onx_render::style_bg_color(id(normal_settings_wifi_shell), lv_color_hex(0x1A1A1A), 0);
+          onx_render::style_border_width(id(normal_settings_wifi_shell), 0, 0);
 
           set_text(id(normal_settings_wifi_title), "Wireless network");
           set_text(id(normal_settings_wifi_ssid), ssid_text);
           set_text(id(normal_settings_wifi_ip), ip_text);
 
-          lv_obj_set_style_bg_color(id(normal_settings_wifi_card), lv_color_hex(0x000000), LV_PART_MAIN);
-          lv_obj_set_style_bg_opa(id(normal_settings_wifi_card), LV_OPA_TRANSP, LV_PART_MAIN);
-          lv_obj_set_style_border_width(id(normal_settings_wifi_card), 0, LV_PART_MAIN);
-          lv_obj_set_style_border_width(id(normal_settings_wifi_card_top), 0, LV_PART_MAIN);
-          lv_obj_set_style_border_width(id(normal_settings_wifi_card_btm), 0, LV_PART_MAIN);
-          lv_obj_set_style_bg_color(id(normal_settings_wifi_card_top), lv_color_hex(0x3D3D3D), LV_PART_MAIN);
-          lv_obj_set_style_bg_color(id(normal_settings_wifi_card_btm), lv_color_hex(0x2D2D2D), LV_PART_MAIN);
-          lv_obj_set_style_bg_opa(id(normal_settings_wifi_card_top), LV_OPA_COVER, LV_PART_MAIN);
-          lv_obj_set_style_bg_opa(id(normal_settings_wifi_card_btm), LV_OPA_COVER, LV_PART_MAIN);
+          onx_render::style_bg_color(id(normal_settings_wifi_card), lv_color_hex(0x000000), LV_PART_MAIN);
+          onx_render::style_bg_opa(id(normal_settings_wifi_card), LV_OPA_TRANSP, LV_PART_MAIN);
+          onx_render::style_border_width(id(normal_settings_wifi_card), 0, LV_PART_MAIN);
+          onx_render::style_border_width(id(normal_settings_wifi_card_top), 0, LV_PART_MAIN);
+          onx_render::style_border_width(id(normal_settings_wifi_card_btm), 0, LV_PART_MAIN);
+          onx_render::style_bg_color(id(normal_settings_wifi_card_top), lv_color_hex(0x3D3D3D), LV_PART_MAIN);
+          onx_render::style_bg_color(id(normal_settings_wifi_card_btm), lv_color_hex(0x2D2D2D), LV_PART_MAIN);
+          onx_render::style_bg_opa(id(normal_settings_wifi_card_top), LV_OPA_COVER, LV_PART_MAIN);
+          onx_render::style_bg_opa(id(normal_settings_wifi_card_btm), LV_OPA_COVER, LV_PART_MAIN);
 
-          lv_obj_set_style_bg_color(id(normal_settings_wifi_ok_btn), lv_color_hex(0x0091FF), LV_PART_MAIN);
-          lv_obj_set_style_border_width(id(normal_settings_wifi_ok_btn), 1, LV_PART_MAIN);
-          lv_obj_set_style_border_color(id(normal_settings_wifi_ok_btn), lv_color_hex(0x66BFFF), LV_PART_MAIN);
+          onx_render::style_bg_color(id(normal_settings_wifi_ok_btn), lv_color_hex(0x0091FF), LV_PART_MAIN);
+          onx_render::style_border_width(id(normal_settings_wifi_ok_btn), 1, LV_PART_MAIN);
+          onx_render::style_border_color(id(normal_settings_wifi_ok_btn), lv_color_hex(0x66BFFF), LV_PART_MAIN);
           lv_obj_set_style_shadow_width(id(normal_settings_wifi_ok_btn), 0, LV_PART_MAIN);
 
   - id: refresh_normal_settings_brightness_detail_page
@@ -1463,9 +1425,9 @@ script:
           if (pct > 100) pct = 100;
           id(normal_brightness_value) = pct;
 
-          lv_obj_set_style_bg_color(id(normal_settings_brightness_page)->obj, lv_color_hex(0x1A1A1A), 0);
-          lv_obj_set_style_bg_color(id(normal_settings_brightness_shell), lv_color_hex(0x1A1A1A), 0);
-          lv_obj_set_style_border_width(id(normal_settings_brightness_shell), 0, 0);
+          onx_render::style_bg_color(id(normal_settings_brightness_page)->obj, lv_color_hex(0x1A1A1A), 0);
+          onx_render::style_bg_color(id(normal_settings_brightness_shell), lv_color_hex(0x1A1A1A), 0);
+          onx_render::style_border_width(id(normal_settings_brightness_shell), 0, 0);
 
           lv_label_set_text(id(normal_settings_brightness_title), "Brightness");
           lv_slider_set_value(id(normal_settings_brightness_slider), pct, LV_ANIM_OFF);
@@ -1490,9 +1452,9 @@ script:
           lv_obj_add_flag(id(normal_device_homeassistant_offline_widget), LV_OBJ_FLAG_HIDDEN);
 
 
-          lv_obj_set_style_bg_color(id(normal_settings_knob_page)->obj, lv_color_hex(0x1A1A1A), 0);
-          lv_obj_set_style_bg_color(id(normal_settings_knob_shell), lv_color_hex(0x1A1A1A), 0);
-          lv_obj_set_style_border_width(id(normal_settings_knob_shell), 0, 0);
+          onx_render::style_bg_color(id(normal_settings_knob_page)->obj, lv_color_hex(0x1A1A1A), 0);
+          onx_render::style_bg_color(id(normal_settings_knob_shell), lv_color_hex(0x1A1A1A), 0);
+          onx_render::style_border_width(id(normal_settings_knob_shell), 0, 0);
 
           int pending = id(normal_knob_pending_value);
           if (pending != 1 && pending != 2 && pending != 4) {
@@ -2708,7 +2670,7 @@ script:
           if(last_second!=now.timestamp) {last_second=now.timestamp;tick_ms=millis();}
           const uint32_t fraction=std::min<uint32_t>(999,millis()-tick_ms);
           lv_arc_set_value(id(standby_seconds_arc),(now.second*1000+fraction)/60);
-          lv_obj_set_style_arc_color(id(standby_seconds_arc),lv_color_hex(onx_display_settings::current.media_color),LV_PART_INDICATOR);
+          onx_render::style_arc_color(id(standby_seconds_arc),lv_color_hex(onx_display_settings::current.media_color),LV_PART_INDICATOR);
           lv_obj_clear_flag(id(standby_seconds_arc),LV_OBJ_FLAG_HIDDEN);
 
   - id: refresh_normal_message_popup
@@ -2763,7 +2725,7 @@ script:
           if(countdown<0)lv_obj_add_flag(id(normal_message_countdown_arc),LV_OBJ_FLAG_HIDDEN);
           else {
             lv_arc_set_value(id(normal_message_countdown_arc),countdown);
-            lv_obj_set_style_arc_color(id(normal_message_countdown_arc),lv_color_hex(onx_display_settings::current.media_color),LV_PART_INDICATOR);
+            onx_render::style_arc_color(id(normal_message_countdown_arc),lv_color_hex(onx_display_settings::current.media_color),LV_PART_INDICATOR);
             lv_obj_clear_flag(id(normal_message_countdown_arc),LV_OBJ_FLAG_HIDDEN);
           }
           static uint32_t rendered_revision=0;
@@ -2772,12 +2734,12 @@ script:
             const bool with_image=picture.ready;
             lv_obj_set_y(id(normal_message_title),onx_geom::S(with_image?40:43));
             lv_obj_set_height(id(normal_message_title),onx_geom::S(with_image?24:44));
-            lv_obj_set_style_text_font(id(normal_message_title),with_image?
+            onx_render::style_text_font(id(normal_message_title),with_image?
                 id(fonts_MiSans_Medium_16)->get_lv_font():id(fonts_MiSans_Medium_18)->get_lv_font(),0);
             lv_label_set_long_mode(id(normal_message_title),with_image?LV_LABEL_LONG_DOT:LV_LABEL_LONG_WRAP);
             lv_obj_set_y(id(normal_message_body),onx_geom::S(with_image?138:94));
             lv_obj_set_height(id(normal_message_body),onx_geom::S(with_image?64:110));
-            lv_obj_set_style_text_font(id(normal_message_text),with_image?
+            onx_render::style_text_font(id(normal_message_text),with_image?
                 id(fonts_MiSans_Medium_14)->get_lv_font():id(fonts_MiSans_Medium_16)->get_lv_font(),0);
             if(with_image) {
               onx_render::image(id(normal_message_image),id(notification_image)->get_lv_image_dsc());
@@ -2996,9 +2958,9 @@ script:
           if (finished) lv_label_set_text(id(normal_timer_detail_status), "Time is up");
           const auto color = onx_display_settings::current.media_color;
           if (finished) lv_arc_set_value(id(normal_timer_detail_arc), 1000);
-          lv_obj_set_style_arc_opa(id(normal_timer_detail_arc), finished && (millis()/350)%2 ? 60 : LV_OPA_COVER, LV_PART_INDICATOR);
-          lv_obj_set_style_arc_color(id(normal_timer_detail_arc), lv_color_hex(color), LV_PART_INDICATOR);
-          lv_obj_set_style_text_opa(id(normal_timer_detail_countdown),
+          onx_render::style_arc_opa(id(normal_timer_detail_arc), finished && (millis()/350)%2 ? 60 : LV_OPA_COVER, LV_PART_INDICATOR);
+          onx_render::style_arc_color(id(normal_timer_detail_arc), lv_color_hex(color), LV_PART_INDICATOR);
+          onx_render::style_text_opa(id(normal_timer_detail_countdown),
               finished ? static_cast<lv_opa_t>(160 + 95 * (0.5 + 0.5 * sin(millis() / 250.0))) : LV_OPA_COVER, 0);
 
   - id: emit_configured_press_action
@@ -3153,7 +3115,7 @@ script:
       - lambda: |-
           const auto entity = id(ui_presenter)->get_normal_device_entity_id(id(normal_device_detail_index));
           #ifdef USE_ROOM_COMPANION
-          lv_obj_set_style_opa(id(normal_media_progress_arc),entity.rfind("media_player.",0)==0?LV_OPA_TRANSP:LV_OPA_COVER,0);
+          onx_render::style_opa(id(normal_media_progress_arc),entity.rfind("media_player.",0)==0?LV_OPA_TRANSP:LV_OPA_COVER,0);
           #endif
           auto *detail = custom_logic_entity_sub::entity_detail(entity);
           const bool visible = id(normal_device_detail_active) && !id(screen_off_state) &&
@@ -3168,8 +3130,8 @@ script:
               lv_obj_add_flag(id(normal_media_progress_arc),LV_OBJ_FLAG_HIDDEN);return;
             }
             lv_arc_set_value(id(normal_media_progress_arc),numeric.value_ring);
-            lv_obj_set_style_arc_color(id(normal_media_progress_arc),lv_color_hex(onx_display_settings::current.media_color),LV_PART_INDICATOR);
-            lv_obj_set_style_arc_opa(id(normal_media_progress_arc),LV_OPA_COVER,LV_PART_INDICATOR);
+            onx_render::style_arc_color(id(normal_media_progress_arc),lv_color_hex(onx_display_settings::current.media_color),LV_PART_INDICATOR);
+            onx_render::style_arc_opa(id(normal_media_progress_arc),LV_OPA_COVER,LV_PART_INDICATOR);
             lv_obj_clear_flag(id(normal_media_progress_arc),LV_OBJ_FLAG_HIDDEN);
             return;
           }
@@ -3186,9 +3148,9 @@ script:
           if (!view.visible) { lv_obj_add_flag(id(normal_media_progress_arc), LV_OBJ_FLAG_HIDDEN); return; }
           lv_obj_clear_flag(id(normal_media_progress_arc), LV_OBJ_FLAG_HIDDEN);
           lv_arc_set_value(id(normal_media_progress_arc), view.permille);
-          lv_obj_set_style_arc_color(id(normal_media_progress_arc),
+          onx_render::style_arc_color(id(normal_media_progress_arc),
               lv_color_hex(onx_display_settings::current.media_color), LV_PART_INDICATOR);
-          lv_obj_set_style_arc_opa(id(normal_media_progress_arc), detail->state == "paused" ? 153 : LV_OPA_COVER, LV_PART_INDICATOR);
+          onx_render::style_arc_opa(id(normal_media_progress_arc), detail->state == "paused" ? 153 : LV_OPA_COVER, LV_PART_INDICATOR);
 
   - id: apply_normal_media_style
     then:
@@ -3219,7 +3181,7 @@ script:
           // Reset styling on shared labels before another entity uses this page.
           for(auto *label:{id(normal_media_title),id(normal_media_artist),
               id(normal_automation_detail_action),id(normal_automation_detail_title)}) {
-            lv_obj_set_style_bg_opa(label,LV_OPA_TRANSP,0);
+            onx_render::style_bg_opa(label,LV_OPA_TRANSP,0);
             lv_obj_set_style_pad_left(label,0,0);
             lv_obj_set_style_pad_right(label,0,0);
             lv_obj_set_style_pad_top(label,0,0);
@@ -3236,7 +3198,7 @@ script:
           lv_image_set_pivot(cover,0,0);
           lv_image_set_scale(cover,scale);
           const int width=source_width*scale/256,height=source_height*scale/256;
-          lv_obj_align(cover,LV_ALIGN_TOP_LEFT,(onx_geom::S(240)-width)/2,material?(onx_geom::S(240)-height)/2:onx_geom::S(18));
+          onx_render::align(cover,LV_ALIGN_TOP_LEFT,(onx_geom::S(240)-width)/2,material?(onx_geom::S(240)-height)/2:onx_geom::S(18));
           lv_obj_set_style_clip_corner(id(normal_automation_detail_shell),true,0);
           lv_obj_set_x(id(normal_automation_detail_icon),0);
           lv_obj_set_y(id(normal_automation_detail_icon),onx_geom::S(material?30:18));
@@ -3251,9 +3213,9 @@ script:
           lv_obj_set_y(id(normal_automation_detail_title),onx_geom::S(material?206:192));
           lv_obj_set_width(id(normal_automation_detail_action),onx_geom::S(196));
           lv_obj_set_width(id(normal_automation_detail_title),onx_geom::S(180));
-          lv_obj_set_style_text_font(id(normal_automation_detail_action),
+          onx_render::style_text_font(id(normal_automation_detail_action),
               material?id(fonts_MiSans_Medium_14)->get_lv_font():id(fonts_MiSans_Medium_18)->get_lv_font(),0);
-          lv_obj_set_style_text_font(id(normal_automation_detail_title),
+          onx_render::style_text_font(id(normal_automation_detail_title),
               material?id(fonts_MiSans_Medium_14)->get_lv_font():id(fonts_MiSans_Medium_16)->get_lv_font(),0);
           // The pause/next/previous icon is centered in the artwork area above the
           // track details (classic: over the cover; full-screen art: above the title).
@@ -3270,9 +3232,9 @@ script:
               lv_obj_set_style_pad_right(label,onx_geom::S(6),0);
               lv_obj_set_style_pad_top(label,onx_geom::S(2),0);
               lv_obj_set_style_pad_bottom(label,onx_geom::S(2),0);
-              lv_obj_set_style_radius(label,onx_geom::S(7),0);
-              lv_obj_set_style_bg_color(label,lv_color_hex(0x14171D),0);
-              lv_obj_set_style_bg_opa(label,lv_label_get_text(label)[0]?178:LV_OPA_TRANSP,0);
+              onx_render::style_radius(label,onx_geom::S(7),0);
+              onx_render::style_bg_color(label,lv_color_hex(0x14171D),0);
+              onx_render::style_bg_opa(label,lv_label_get_text(label)[0]?178:LV_OPA_TRANSP,0);
               lv_label_set_long_mode(label,LV_LABEL_LONG_DOT);
             };
             backing(id(normal_media_title),200);
@@ -3473,7 +3435,7 @@ script:
             lv_obj_add_flag(id(normal_playlist_hint), LV_OBJ_FLAG_HIDDEN);
             lv_obj_clear_flag(id(normal_playlist_hold_bar), LV_OBJ_FLAG_HIDDEN);
             lv_bar_set_value(id(normal_playlist_hold_bar), std::min<uint32_t>(100, (held - onx_playlist::CUE_MS) * 100 / (688 - onx_playlist::CUE_MS)), LV_ANIM_OFF);
-            lv_obj_set_style_bg_color(id(normal_playlist_hold_bar), lv_color_hex(0xFF8A65), LV_PART_INDICATOR);
+            onx_render::style_bg_color(id(normal_playlist_hold_bar), lv_color_hex(0xFF8A65), LV_PART_INDICATOR);
             return;
           }
           if (holding) lv_obj_add_flag(id(normal_playlist_roller)->obj, LV_OBJ_FLAG_HIDDEN);
@@ -3490,7 +3452,7 @@ script:
                 std::min<uint32_t>(100, (held - onx_playlist::OPEN_MS) * 100 / (onx_playlist::BACK_MS - onx_playlist::OPEN_MS)) :
                 std::min<uint32_t>(100, (held - onx_playlist::CUE_MS) * 100 / (onx_playlist::OPEN_MS - onx_playlist::CUE_MS));
             lv_bar_set_value(id(normal_playlist_hold_bar), progress, LV_ANIM_OFF);
-            lv_obj_set_style_bg_color(id(normal_playlist_hold_bar), lv_color_hex(ready ? 0x62D49B : 0x62B0FF), LV_PART_INDICATOR);
+            onx_render::style_bg_color(id(normal_playlist_hold_bar), lv_color_hex(ready ? 0x62D49B : 0x62B0FF), LV_PART_INDICATOR);
           } else {
             browser.selected = std::clamp(browser.selected, 0, static_cast<int>(list->count)-1);
             const int i = browser.selected;
