@@ -1,8 +1,8 @@
-# Input behaviour shared by the knob (encoder + button) and the touch panels.
+# Input behaviour (step and press events) driven by touch on the panels.
 # Hardware packages call these scripts; the scripts never wait, so each event
 # completes before the next one is handled.
 script:
-  # Knob/touch press (key_btn on_press).
+  # Touch press (key_btn on_press).
   - id: onx_input_press
     then:
       - if:
@@ -67,7 +67,7 @@ script:
                   - script.execute: enter_normal_light_detail_mode_switching
             - lambda: |-
                 id(ui_presenter)->notify_user_activity();
-  # Knob/touch release (key_btn on_release).
+  # Touch release (key_btn on_release).
   - id: onx_input_release
     then:
       - if:
@@ -496,7 +496,7 @@ script:
                            !id(ui_presenter)->is_standby_active() &&
                            !id(key_long_press_handled) &&
                            id(normal_device_detail_active) &&
-                           id(normal_device_detail_kind) == NORMAL_DEVICE_DETAIL_KIND_SETTINGS_KNOB;
+                           id(normal_device_detail_kind) == NORMAL_DEVICE_DETAIL_KIND_SETTINGS_INPUT;
                 then:
                   - if:
                       condition:
@@ -524,9 +524,9 @@ script:
                                   id(ui_presenter)->notify_user_activity();
                             else:
                               - lambda: |-
-                                  ESP_LOGW("input", "settings knob detail exit denied");
+                                  ESP_LOGW("input", "settings input detail exit denied");
                       else:
-                        - script.execute: apply_normal_settings_knob_detail
+                        - script.execute: apply_normal_settings_input_detail
                   - lambda: |-
                       id(key_long_press_handled) = true;
                       id(ui_presenter)->notify_user_activity();
@@ -621,7 +621,7 @@ script:
                                     case 0: id(enter_normal_settings_connection).execute(); break;
                                     case 1: id(enter_normal_settings_wifi_detail).execute(); break;
                                     case 2: id(enter_normal_settings_brightness_detail).execute(); break;
-                                    case 3: id(enter_normal_settings_knob_detail).execute(); break;
+                                    case 3: id(enter_normal_settings_input_detail).execute(); break;
                                   }
 
                   - lambda: |-
@@ -721,19 +721,19 @@ script:
                         id(normal_device_selected_index)=onx_timer::popup.previous_index;
                         id(exit_normal_switch_detail).execute();
                       }
-                      int threshold = id(normal_knob_applied_value);
+                      int threshold = id(normal_input_applied_value);
                       // Playlist selection follows every encoder detent.
                       if (onx_playlist::browser.open && id(normal_device_detail_active)) threshold = 1;
                       if (threshold != 1 && threshold != 2 && threshold != 4) {
                         threshold = 1;
                       }
-                      id(normal_knob_cw_accumulator) = 0;
-                      id(normal_knob_ccw_accumulator)++;
-                      if (id(normal_knob_ccw_accumulator) >= threshold) {
-                        id(normal_knob_ccw_accumulator) = 0;
-                        id(normal_knob_event_pass) = true;
+                      id(normal_input_cw_accumulator) = 0;
+                      id(normal_input_ccw_accumulator)++;
+                      if (id(normal_input_ccw_accumulator) >= threshold) {
+                        id(normal_input_ccw_accumulator) = 0;
+                        id(normal_input_event_pass) = true;
                       } else {
-                        id(normal_knob_event_pass) = false;
+                        id(normal_input_event_pass) = false;
                       }
                   - if:
                       condition:
@@ -754,7 +754,7 @@ script:
                         - switch.turn_off: ha_screen_off
                   - lambda: |-
                       if (millis() < id(standby_input_suppressed_until_ms)) {
-                        id(normal_knob_event_pass) = false;
+                        id(normal_input_event_pass) = false;
                       }
                   - script.execute:
                       id: adjust_normal_entity_control
@@ -767,7 +767,7 @@ script:
                                  id(mode_manager)->is_provisioning_mode_enabled();
                       then:
                         - lambda: |-
-                            id(normal_knob_event_pass) = false;
+                            id(normal_input_event_pass) = false;
                   - if:
                       condition:
                         lambda: |-
@@ -775,7 +775,7 @@ script:
                           if (total < 0) total = 0;
                           if (total > 20) total = 20;
                           const int last_selectable = total == 0 ? (id(normal_ha_added) ? 1 : 2) : total;
-                          return id(normal_knob_event_pass) &&
+                          return id(normal_input_event_pass) &&
                                  !id(screen_off_state) && id(ui_presenter)->is_normal_mode_active() && !id(ui_presenter)->is_standby_active() && !id(standby_wakeup_pending) &&
                                  id(normal_page_index) == 0 && id(normal_device_selected_index) < last_selectable;
                       then:
@@ -787,7 +787,7 @@ script:
                   - if:
                       condition:
                         lambda: |-
-                          return id(normal_knob_event_pass) &&
+                          return id(normal_input_event_pass) &&
                                  !id(screen_off_state) && id(ui_presenter)->is_normal_mode_active() && !id(ui_presenter)->is_standby_active() && !id(standby_wakeup_pending) &&
                                  id(normal_device_detail_active) && id(normal_device_detail_kind) == NORMAL_DEVICE_DETAIL_KIND_SETTINGS;
                       then:
@@ -802,7 +802,7 @@ script:
                   - if:
                       condition:
                         lambda: |-
-                          return id(normal_knob_event_pass) &&
+                          return id(normal_input_event_pass) &&
                                  !id(screen_off_state) && id(ui_presenter)->is_normal_mode_active() && !id(ui_presenter)->is_standby_active() && !id(standby_wakeup_pending) &&
                                  id(normal_device_detail_active) && id(normal_device_detail_kind) == NORMAL_DEVICE_DETAIL_KIND_CURTAIN && !onx_playlist::browser.open &&
                                  id(normal_device_detail_online) &&
@@ -831,7 +831,7 @@ script:
                   - if:
                       condition:
                         lambda: |-
-                          return id(normal_knob_event_pass) &&
+                          return id(normal_input_event_pass) &&
                                  !id(screen_off_state) && id(ui_presenter)->is_normal_mode_active() && !id(ui_presenter)->is_standby_active() && !id(standby_wakeup_pending) &&
                                  id(normal_device_detail_active) &&
                                  id(normal_device_detail_kind) == NORMAL_DEVICE_DETAIL_KIND_CURTAIN && !onx_playlist::browser.open &&
@@ -861,7 +861,7 @@ script:
                   - if:
                       condition:
                         lambda: |-
-                          return id(normal_knob_event_pass) &&
+                          return id(normal_input_event_pass) &&
                                  !id(screen_off_state) && id(ui_presenter)->is_normal_mode_active() && !id(ui_presenter)->is_standby_active() && !id(standby_wakeup_pending) &&
                                   id(normal_device_detail_active) &&
                                  id(normal_device_detail_kind) == NORMAL_DEVICE_DETAIL_KIND_CURTAIN && !onx_playlist::browser.open &&
@@ -883,7 +883,7 @@ script:
                   - if:
                       condition:
                         lambda: |-
-                          return id(normal_knob_event_pass) &&
+                          return id(normal_input_event_pass) &&
                                  !id(screen_off_state) && id(ui_presenter)->is_normal_mode_active() && !id(ui_presenter)->is_standby_active() && !id(standby_wakeup_pending) &&
                                  id(normal_device_detail_active) &&
                                  id(normal_device_detail_kind) == NORMAL_DEVICE_DETAIL_KIND_LIGHT && !onx_playlist::browser.open &&
@@ -920,7 +920,7 @@ script:
                   - if:
                       condition:
                         lambda: |-
-                          return id(normal_knob_event_pass) &&
+                          return id(normal_input_event_pass) &&
                                  !id(screen_off_state) && id(ui_presenter)->is_normal_mode_active() && !id(ui_presenter)->is_standby_active() && !id(standby_wakeup_pending) &&
                                  id(normal_device_detail_active) &&
                                  id(normal_device_detail_kind) == NORMAL_DEVICE_DETAIL_KIND_LIGHT && !onx_playlist::browser.open &&
@@ -961,7 +961,7 @@ script:
                             id(normal_device_detail_is_on) = true;
                             id(hmi_switch_state) = true;
                             if(auto *detail=custom_logic_entity_sub::entity_detail(id(ui_presenter)->get_normal_device_entity_id(detail_index)))detail->light_temperature=true;
-                            ESP_LOGI("input", "light detail CCT knob cw: target_kelvin=%u", static_cast<unsigned int>(color_temperature));
+                            ESP_LOGI("input", "light detail CCT step cw: target_kelvin=%u", static_cast<unsigned int>(color_temperature));
                             id(refresh_normal_light_detail_page).execute();
                             id(emit_normal_cct_light_event).execute(detail_index, static_cast<int>(color_temperature));
                         - lambda: |-
@@ -969,7 +969,7 @@ script:
                   - if:
                       condition:
                         lambda: |-
-                          return id(normal_knob_event_pass) &&
+                          return id(normal_input_event_pass) &&
                                  !id(screen_off_state) && id(ui_presenter)->is_normal_mode_active() && !id(ui_presenter)->is_standby_active() && !id(standby_wakeup_pending) &&
                                  id(normal_device_detail_active) &&
                                  id(normal_device_detail_kind) == NORMAL_DEVICE_DETAIL_KIND_LIGHT && !onx_playlist::browser.open &&
@@ -1004,7 +1004,7 @@ script:
                             if(auto *detail=custom_logic_entity_sub::entity_detail(id(ui_presenter)->get_normal_device_entity_id(detail_index))) {
                               detail->light_hue=hue;detail->light_saturation=100;detail->light_temperature=false;
                             }
-                            ESP_LOGI("input", "light detail RGB knob cw: target_hue=%d saturation=100", hue);
+                            ESP_LOGI("input", "light detail RGB step cw: target_hue=%d saturation=100", hue);
                             id(refresh_normal_light_detail_page).execute();
                             id(emit_normal_rgb_light_event).execute(detail_index, rgb_value_pct);
                         - lambda: |-
@@ -1012,7 +1012,7 @@ script:
                   - if:
                       condition:
                         lambda: |-
-                          return id(normal_knob_event_pass) &&
+                          return id(normal_input_event_pass) &&
                                  !id(screen_off_state) && id(ui_presenter)->is_normal_mode_active() && !id(ui_presenter)->is_standby_active() && !id(standby_wakeup_pending) &&
                                  id(normal_device_detail_active) &&
                                  id(normal_device_detail_kind) == NORMAL_DEVICE_DETAIL_KIND_LIGHT && !onx_playlist::browser.open &&
@@ -1047,7 +1047,7 @@ script:
                   - if:
                       condition:
                         lambda: |-
-                          return id(normal_knob_event_pass) &&
+                          return id(normal_input_event_pass) &&
                                  !id(screen_off_state) && id(ui_presenter)->is_normal_mode_active() && !id(ui_presenter)->is_standby_active() && !id(standby_wakeup_pending) &&
                                  id(normal_device_detail_active) && id(normal_device_detail_kind) == NORMAL_DEVICE_DETAIL_KIND_SETTINGS_BRIGHTNESS;
                       then:
@@ -1060,7 +1060,7 @@ script:
                             id(normal_brightness_value) = pct;
                             float current = 0.0f;
                             id(lcd_backlight)->current_values_as_brightness(&current);
-                            ESP_LOGI("input", "display brightness knob anti-cw: current=%.3f target_pct=%d", current, pct);
+                            ESP_LOGI("input", "display brightness step anti-cw: current=%.3f target_pct=%d", current, pct);
                                   auto call = id(lcd_backlight)->make_call();
                                   call.set_brightness((float)pct / 100.0f);
                                   call.set_state(true);
@@ -1078,25 +1078,25 @@ script:
                   - if:
                       condition:
                         lambda: |-
-                          return id(normal_knob_event_pass) &&
+                          return id(normal_input_event_pass) &&
                                  !id(screen_off_state) && id(ui_presenter)->is_normal_mode_active() && !id(ui_presenter)->is_standby_active() && !id(standby_wakeup_pending) &&
-                                 id(normal_device_detail_active) && id(normal_device_detail_kind) == NORMAL_DEVICE_DETAIL_KIND_SETTINGS_KNOB;
+                                 id(normal_device_detail_active) && id(normal_device_detail_kind) == NORMAL_DEVICE_DETAIL_KIND_SETTINGS_INPUT;
                       then:
                         - lambda: |-
-                            int pending = id(normal_knob_pending_value);
+                            int pending = id(normal_input_pending_value);
                             if (pending == 4) {
                               pending = 2;
                             } else if (pending == 2) {
                               pending = 1;
                             }
-                            id(normal_knob_pending_value) = pending;
-                        - script.execute: refresh_normal_settings_knob_detail_page
+                            id(normal_input_pending_value) = pending;
+                        - script.execute: refresh_normal_settings_input_detail_page
                         - lambda: |-
                             id(ui_presenter)->notify_user_activity();
                   - if:
                       condition:
                         lambda: |-
-                          return id(normal_knob_event_pass) &&
+                          return id(normal_input_event_pass) &&
                                  !id(screen_off_state) && id(ui_presenter)->is_normal_mode_active() && !id(ui_presenter)->is_standby_active() && !id(standby_wakeup_pending) &&
                                  id(normal_page_index) != 0 && !id(normal_device_detail_active) &&
                                  !id(ha_light_active);
@@ -1167,19 +1167,19 @@ script:
                         id(normal_device_selected_index)=onx_timer::popup.previous_index;
                         id(exit_normal_switch_detail).execute();
                       }
-                      int threshold = id(normal_knob_applied_value);
+                      int threshold = id(normal_input_applied_value);
                       // Playlist selection follows every encoder detent.
                       if (onx_playlist::browser.open && id(normal_device_detail_active)) threshold = 1;
                       if (threshold != 1 && threshold != 2 && threshold != 4) {
                         threshold = 1;
                       }
-                      id(normal_knob_ccw_accumulator) = 0;
-                      id(normal_knob_cw_accumulator)++;
-                      if (id(normal_knob_cw_accumulator) >= threshold) {
-                        id(normal_knob_cw_accumulator) = 0;
-                        id(normal_knob_event_pass) = true;
+                      id(normal_input_ccw_accumulator) = 0;
+                      id(normal_input_cw_accumulator)++;
+                      if (id(normal_input_cw_accumulator) >= threshold) {
+                        id(normal_input_cw_accumulator) = 0;
+                        id(normal_input_event_pass) = true;
                       } else {
-                        id(normal_knob_event_pass) = false;
+                        id(normal_input_event_pass) = false;
                       }
                   - if:
                       condition:
@@ -1200,7 +1200,7 @@ script:
                         - switch.turn_off: ha_screen_off
                   - lambda: |-
                       if (millis() < id(standby_input_suppressed_until_ms)) {
-                        id(normal_knob_event_pass) = false;
+                        id(normal_input_event_pass) = false;
                       }
                   - script.execute:
                       id: adjust_normal_entity_control
@@ -1213,14 +1213,14 @@ script:
                                  id(mode_manager)->is_provisioning_mode_enabled();
                       then:
                         - lambda: |-
-                            id(normal_knob_event_pass) = false;
+                            id(normal_input_event_pass) = false;
                   - if:
                       condition:
                         lambda: |-
                           int total = id(normal_device_count);
                           if (total < 0) total = 0;
                           if (total > 20) total = 20;
-                          return id(normal_knob_event_pass) &&
+                          return id(normal_input_event_pass) &&
                                  !id(screen_off_state) && id(ui_presenter)->is_normal_mode_active() && !id(ui_presenter)->is_standby_active() && !id(standby_wakeup_pending) &&
                                  id(normal_page_index) == 0 && id(normal_device_selected_index) > 0;
                       then:
@@ -1232,7 +1232,7 @@ script:
                   - if:
                       condition:
                         lambda: |-
-                          return id(normal_knob_event_pass) &&
+                          return id(normal_input_event_pass) &&
                                  !id(screen_off_state) && id(ui_presenter)->is_normal_mode_active() && !id(ui_presenter)->is_standby_active() && !id(standby_wakeup_pending) &&
                                  id(normal_device_detail_active) && id(normal_device_detail_kind) == NORMAL_DEVICE_DETAIL_KIND_SETTINGS;
                       then:
@@ -1247,7 +1247,7 @@ script:
                   - if:
                       condition:
                         lambda: |-
-                          return id(normal_knob_event_pass) &&
+                          return id(normal_input_event_pass) &&
                                  !id(screen_off_state) && id(ui_presenter)->is_normal_mode_active() && !id(ui_presenter)->is_standby_active() && !id(standby_wakeup_pending) &&
                                  id(normal_device_detail_active) && id(normal_device_detail_kind) == NORMAL_DEVICE_DETAIL_KIND_CURTAIN && !onx_playlist::browser.open &&
                                  id(normal_device_detail_online) &&
@@ -1276,7 +1276,7 @@ script:
                   - if:
                       condition:
                         lambda: |-
-                          return id(normal_knob_event_pass) &&
+                          return id(normal_input_event_pass) &&
                                  !id(screen_off_state) && id(ui_presenter)->is_normal_mode_active() && !id(ui_presenter)->is_standby_active() && !id(standby_wakeup_pending) &&
                                  id(normal_device_detail_active) &&
                                  id(normal_device_detail_kind) == NORMAL_DEVICE_DETAIL_KIND_CURTAIN && !onx_playlist::browser.open &&
@@ -1306,7 +1306,7 @@ script:
                   - if:
                       condition:
                         lambda: |-
-                          return id(normal_knob_event_pass) &&
+                          return id(normal_input_event_pass) &&
                                  !id(screen_off_state) && id(ui_presenter)->is_normal_mode_active() && !id(ui_presenter)->is_standby_active() && !id(standby_wakeup_pending) &&
                                   id(normal_device_detail_active) &&
                                  id(normal_device_detail_kind) == NORMAL_DEVICE_DETAIL_KIND_CURTAIN && !onx_playlist::browser.open &&
@@ -1327,7 +1327,7 @@ script:
                   - if:
                       condition:
                         lambda: |-
-                          return id(normal_knob_event_pass) &&
+                          return id(normal_input_event_pass) &&
                                  !id(screen_off_state) && id(ui_presenter)->is_normal_mode_active() && !id(ui_presenter)->is_standby_active() && !id(standby_wakeup_pending) &&
                                  id(normal_device_detail_active) &&
                                  id(normal_device_detail_kind) == NORMAL_DEVICE_DETAIL_KIND_LIGHT && !onx_playlist::browser.open &&
@@ -1364,7 +1364,7 @@ script:
                   - if:
                       condition:
                         lambda: |-
-                          return id(normal_knob_event_pass) &&
+                          return id(normal_input_event_pass) &&
                                  !id(screen_off_state) && id(ui_presenter)->is_normal_mode_active() && !id(ui_presenter)->is_standby_active() && !id(standby_wakeup_pending) &&
                                  id(normal_device_detail_active) &&
                                  id(normal_device_detail_kind) == NORMAL_DEVICE_DETAIL_KIND_LIGHT && !onx_playlist::browser.open &&
@@ -1405,7 +1405,7 @@ script:
                             id(normal_device_detail_is_on) = true;
                             id(hmi_switch_state) = true;
                             if(auto *detail=custom_logic_entity_sub::entity_detail(id(ui_presenter)->get_normal_device_entity_id(detail_index)))detail->light_temperature=true;
-                            ESP_LOGI("input", "light detail CCT knob ccw: target_kelvin=%u", static_cast<unsigned int>(color_temperature));
+                            ESP_LOGI("input", "light detail CCT step ccw: target_kelvin=%u", static_cast<unsigned int>(color_temperature));
                             id(refresh_normal_light_detail_page).execute();
                             id(emit_normal_cct_light_event).execute(detail_index, static_cast<int>(color_temperature));
                         - lambda: |-
@@ -1413,7 +1413,7 @@ script:
                   - if:
                       condition:
                         lambda: |-
-                          return id(normal_knob_event_pass) &&
+                          return id(normal_input_event_pass) &&
                                  !id(screen_off_state) && id(ui_presenter)->is_normal_mode_active() && !id(ui_presenter)->is_standby_active() && !id(standby_wakeup_pending) &&
                                  id(normal_device_detail_active) &&
                                  id(normal_device_detail_kind) == NORMAL_DEVICE_DETAIL_KIND_LIGHT && !onx_playlist::browser.open &&
@@ -1448,7 +1448,7 @@ script:
                             if(auto *detail=custom_logic_entity_sub::entity_detail(id(ui_presenter)->get_normal_device_entity_id(detail_index))) {
                               detail->light_hue=hue;detail->light_saturation=100;detail->light_temperature=false;
                             }
-                            ESP_LOGI("input", "light detail RGB knob ccw: target_hue=%d saturation=100", hue);
+                            ESP_LOGI("input", "light detail RGB step ccw: target_hue=%d saturation=100", hue);
                             id(refresh_normal_light_detail_page).execute();
                             id(emit_normal_rgb_light_event).execute(detail_index, rgb_value_pct);
                         - lambda: |-
@@ -1456,7 +1456,7 @@ script:
                   - if:
                       condition:
                         lambda: |-
-                          return id(normal_knob_event_pass) &&
+                          return id(normal_input_event_pass) &&
                                  !id(screen_off_state) && id(ui_presenter)->is_normal_mode_active() && !id(ui_presenter)->is_standby_active() && !id(standby_wakeup_pending) &&
                                  id(normal_device_detail_active) &&
                                  id(normal_device_detail_kind) == NORMAL_DEVICE_DETAIL_KIND_LIGHT && !onx_playlist::browser.open &&
@@ -1491,7 +1491,7 @@ script:
                   - if:
                       condition:
                         lambda: |-
-                          return id(normal_knob_event_pass) &&
+                          return id(normal_input_event_pass) &&
                                  !id(screen_off_state) && id(ui_presenter)->is_normal_mode_active() && !id(ui_presenter)->is_standby_active() && !id(standby_wakeup_pending) &&
                                  id(normal_device_detail_active) && id(normal_device_detail_kind) == NORMAL_DEVICE_DETAIL_KIND_SETTINGS_BRIGHTNESS;
                       then:
@@ -1504,7 +1504,7 @@ script:
                             id(normal_brightness_value) = pct;
                             float current = 0.0f;
                             id(lcd_backlight)->current_values_as_brightness(&current);
-                            ESP_LOGI("input", "display brightness knob cw: current=%.3f target_pct=%d", current, pct);
+                            ESP_LOGI("input", "display brightness step cw: current=%.3f target_pct=%d", current, pct);
                             auto call = id(lcd_backlight)->make_call();
                             call.set_brightness((float)pct / 100.0f);
                             call.set_state(true);
@@ -1522,25 +1522,25 @@ script:
                   - if:
                       condition:
                         lambda: |-
-                          return id(normal_knob_event_pass) &&
+                          return id(normal_input_event_pass) &&
                                  !id(screen_off_state) && id(ui_presenter)->is_normal_mode_active() && !id(ui_presenter)->is_standby_active() && !id(standby_wakeup_pending) &&
-                                 id(normal_device_detail_active) && id(normal_device_detail_kind) == NORMAL_DEVICE_DETAIL_KIND_SETTINGS_KNOB;
+                                 id(normal_device_detail_active) && id(normal_device_detail_kind) == NORMAL_DEVICE_DETAIL_KIND_SETTINGS_INPUT;
                       then:
                         - lambda: |-
-                            int pending = id(normal_knob_pending_value);
+                            int pending = id(normal_input_pending_value);
                             if (pending == 1) {
                               pending = 2;
                             } else if (pending == 2) {
                               pending = 4;
                             }
-                            id(normal_knob_pending_value) = pending;
-                        - script.execute: refresh_normal_settings_knob_detail_page
+                            id(normal_input_pending_value) = pending;
+                        - script.execute: refresh_normal_settings_input_detail_page
                         - lambda: |-
                             id(ui_presenter)->notify_user_activity();
                   - if:
                       condition:
                         lambda: |-
-                          return id(normal_knob_event_pass) &&
+                          return id(normal_input_event_pass) &&
                                  !id(screen_off_state) && id(ui_presenter)->is_normal_mode_active() && !id(ui_presenter)->is_standby_active() && !id(standby_wakeup_pending) &&
                                  id(normal_page_index) != 0 && !id(normal_device_detail_active) &&
                                  !id(ha_light_active);
@@ -1581,7 +1581,7 @@ script:
                   - lambda: |-
                       id(ui_presenter)->notify_user_activity();
 
-# Long-press handling (detail exit, 10 s reset), shared by knob and touch.
+# Long-press handling (detail exit, 10 s reset).
 interval:
   - interval: 20ms
     then:
@@ -1629,8 +1629,8 @@ interval:
                 id(device9_type).publish_state("Switch");
                 id(device10_type).publish_state("Switch");
                 id(normal_brightness_value) = 100;
-                id(normal_knob_applied_value) = 2;
-                id(normal_knob_pending_value) = 2;
+                id(normal_input_applied_value) = 2;
+                id(normal_input_pending_value) = 2;
                 id(normal_ha_added) = false;
                 id(normal_ha_api_connected) = false;
                 App.safe_reboot();
@@ -1651,7 +1651,7 @@ interval:
                         id(normal_device_detail_kind) == NORMAL_DEVICE_DETAIL_KIND_SETTINGS ||
                         id(normal_device_detail_kind) == NORMAL_DEVICE_DETAIL_KIND_SETTINGS_WIFI ||
                         id(normal_device_detail_kind) == NORMAL_DEVICE_DETAIL_KIND_SETTINGS_BRIGHTNESS ||
-                        id(normal_device_detail_kind) == NORMAL_DEVICE_DETAIL_KIND_SETTINGS_KNOB ||
+                        id(normal_device_detail_kind) == NORMAL_DEVICE_DETAIL_KIND_SETTINGS_INPUT ||
                         id(normal_device_detail_kind) == NORMAL_DEVICE_DETAIL_KIND_SETTINGS_CONNECTION ||
                         id(normal_device_detail_kind) == NORMAL_DEVICE_DETAIL_KIND_AUTOMATION) &&
                      !(id(normal_device_detail_kind) == NORMAL_DEVICE_DETAIL_KIND_CURTAIN && !onx_playlist::browser.open && id(normal_device_detail_curtain_adjust_active)) &&

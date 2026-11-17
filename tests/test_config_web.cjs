@@ -22,23 +22,23 @@ const { chromium } = require('playwright');
   slots[8]={entity:'media_player.bedroom',name:'Bedroom',action:''};
   const results = new Map(); let ticket=0, failSave=false, saved=[],iconUpdates=[],savedSettings=[];
   const presetStore={presets:[],active:'',applying:'',capacity:8,remaining:0},presetOps=[];
-  await page.route('http://knob.test/**',async route=>{
+  await page.route('http://panel.test/**',async route=>{
    const request=route.request(),url=new URL(request.url());
-   if(url.pathname==='/'||url.pathname==='/knob'){await route.fulfill({contentType:'text/html',body:html});return}
-   if(url.pathname==='/knob/panel.js'){await route.fulfill({contentType:'text/javascript',body:''});return}
-   if(url.pathname==='/knob/ha.js'){
+   if(url.pathname==='/'||url.pathname==='/panel'){await route.fulfill({contentType:'text/html',body:html});return}
+   if(url.pathname==='/panel/panel.js'){await route.fulfill({contentType:'text/javascript',body:''});return}
+   if(url.pathname==='/panel/ha.js'){
     const source=fs.readFileSync('my_components/onx_config_web/ha_browser.h','utf8').split('R"ONXJS(')[1].split(')ONXJS"')[0];
     const mock=`OnxHA.Client=class {constructor(){this.items=${JSON.stringify(entities)};this.ready=true}read(){return {base:'http://ha.test:8123'}}async finishLogin(){}async load(){return this.items}disconnect(){this.items=[];this.ready=false}};`;
     await route.fulfill({contentType:'text/javascript',body:source+'\n'+mock});return;
    }
-   if(url.pathname==='/knob/app.js'){
+   if(url.pathname==='/panel/app.js'){
     const source=fs.readFileSync('my_components/onx_config_web/config_app.h','utf8').split('R"ONXJS(')[1].split(')ONXJS"')[0];
     await route.fulfill({contentType:'text/javascript',body:source});return;
    }
-   if(url.pathname==='/knob/fixtse-logo.png'){
+   if(url.pathname==='/panel/fixtse-logo.png'){
     await route.fulfill({contentType:'image/png',body:Buffer.from('iVBORw0KGgo=', 'base64')});return;
    }
-   if(url.pathname==='/knob/api'){
+   if(url.pathname==='/panel/api'){
     const values=new URLSearchParams(request.postData());
     let result;
     if(values.get('op')==='state')result={count:0,slots,weather:'',ha_url:'http://ha.test:8123'};
@@ -78,11 +78,11 @@ const { chromium } = require('playwright');
     }else if(values.get('op')==='refresh'||values.get('op')==='search')throw Error('Catalogue must stay in browser');else result={ok:true};
     results.set(++ticket,result);await route.fulfill({status:202,json:{ticket}});return;
    }
-   if(url.pathname==='/knob/result'){await route.fulfill({json:results.get(Number(url.searchParams.get('ticket')))});return}
+   if(url.pathname==='/panel/result'){await route.fulfill({json:results.get(Number(url.searchParams.get('ticket')))});return}
    throw Error('Unexpected request: '+request.url());
   });
   await page.route('http://ha.test/artwork.svg',route=>route.fulfill({contentType:'image/svg+xml',body:'<svg xmlns="http://www.w3.org/2000/svg" width="100" height="100"><rect width="100" height="100" fill="#b91c1c"/></svg>'}));
-  await page.goto('http://knob.test/');
+  await page.goto('http://panel.test/');
   await page.waitForFunction(()=>!document.getElementById('choose-entity').disabled);
   await page.getByRole('status').filter({hasText:'Entity list refreshed.'}).waitFor();
   if(await page.locator('#entity-picker').isVisible())await page.locator('#close-picker').click();
@@ -219,15 +219,15 @@ const { chromium } = require('playwright');
   assert.equal(await page.getByRole('button',{name:'Presets',exact:true}).count(),0,'The Presets tab was merged into Display & actions');
   assert.equal(await page.locator('#preset-toggle').getAttribute('aria-expanded'),'false','Presets start collapsed');
   assert.ok(await page.locator('#preset-body').isHidden());
-  assert.equal(await page.locator('#preset-summary').textContent(),'On the knob');
+  assert.equal(await page.locator('#preset-summary').textContent(),'On the panel');
   assert.equal(await page.locator('#preset-badge').textContent(),'Live');
   await page.locator('#preset-toggle').click();
   assert.ok(await page.locator('#preset-body').isVisible());
-  assert.match(await page.locator('#preset-mode').textContent(),/on the knob now/);
+  assert.match(await page.locator('#preset-mode').textContent(),/on the panel now/);
   assert.equal(await page.locator('#slots-heading').textContent(),'Slots');
   await page.locator('#preset-save-as').click();
   assert.equal(await answer('Evening'),'Save as preset');
-  await page.getByRole('status').filter({hasText:'Saved the knob’s controls as “Evening”.'}).waitFor();
+  await page.getByRole('status').filter({hasText:'Saved the panel’s controls as “Evening”.'}).waitFor();
   assert.equal(presetOps.at(-1).op,'preset_save');assert.equal(presetOps.at(-1).name,'Evening');
   assert.match(await page.locator('#preset-target option[value="Evening"]').textContent(),/active/);
   await page.locator('#preset-target').selectOption('Evening');
@@ -235,9 +235,9 @@ const { chromium } = require('playwright');
   await page.getByRole('status').filter({hasText:'Editing preset “Evening”'}).waitFor();
   assert.equal(await page.locator('#preset-badge').textContent(),'Active');
   assert.ok(await page.locator('#preset-save-as').isHidden());
-  assert.equal(await page.locator('#preset-apply').getAttribute('aria-label'),'Apply preset to knob');
+  assert.equal(await page.locator('#preset-apply').getAttribute('aria-label'),'Apply preset to panel');
   await page.locator('#preset-apply').click();
-  assert.match(await answer(),/Apply “Evening” to the knob\?/);
+  assert.match(await answer(),/Apply “Evening” to the panel\?/);
   await page.getByRole('status').filter({hasText:'Preset “Evening” applied.'}).waitFor();
   assert.ok(presetOps.some(o=>o.op==='preset_apply'&&o.name==='Evening'));
   assert.equal(await page.locator('#preset-target').inputValue(),'');
@@ -266,7 +266,7 @@ const { chromium } = require('playwright');
   assert.equal(await page.locator('#preset-target').inputValue(),'Night');
   await page.locator('#preset-delete').click();
   assert.match(await answer(),/Delete preset “Night”/);
-  await page.getByRole('status').filter({hasText:'Showing the controls on the knob.'}).waitFor();
+  await page.getByRole('status').filter({hasText:'Showing the controls on the panel.'}).waitFor();
   assert.equal(presetStore.presets.length,0);assert.equal(await page.locator('#preset-target').inputValue(),'');
   // A new preset is edited and saved without applying it.
   const savesBefore=saved.length;
@@ -281,14 +281,14 @@ const { chromium } = require('playwright');
   if(await page.locator('#entity-picker').isVisible())await page.locator('#close-picker').click();
   await page.locator('#save-all').click();
   await page.getByRole('status').filter({hasText:'Preset “Guests” created.'}).waitFor();
-  assert.equal(saved.length,savesBefore,'Saving a preset must not save knob slots');
+  assert.equal(saved.length,savesBefore,'Saving a preset must not save panel slots');
   assert.equal(presetStore.docs.Guests[0].entity,'fan.office');
   assert.ok(!presetOps.some(o=>o.op==='preset_apply'&&o.name==='Guests'),'Saving a preset must not apply it');
   assert.equal(await page.locator('#preset-badge').textContent(),'Saved');
   assert.ok(await page.locator('#preset-apply').isEnabled());
   await page.screenshot({path:path.join(screenshots,'onx-preset-card.png')});
   await page.locator('#preset-target').selectOption('');
-  await page.getByRole('status').filter({hasText:'Showing the controls on the knob.'}).waitFor();
+  await page.getByRole('status').filter({hasText:'Showing the controls on the panel.'}).waitFor();
   await page.locator('#preset-target').selectOption('Guests');
   await page.getByRole('status').filter({hasText:'Editing preset “Guests”'}).waitFor();
   assert.match(await page.locator('#slots').textContent(),/Office fan|fan\.office/);

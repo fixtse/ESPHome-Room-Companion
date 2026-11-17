@@ -3,9 +3,8 @@
 An ESPHome touch panel and Home Assistant Assist satellite for **ONX2432G028
 (2.8-inch, 240 × 320)** and **ONX3248G035 (3.5-inch, 320 × 480)**.
 
-It builds on **OpenNextion Knob by fixtSE**, preserving its complete Git history
-(base `6a710e2ce0258e3ced31da3177e00ed5f0b260e3`), license and original
-round-knob entry point. See [the original README](docs/room-companion/KNOB-README.md).
+It is derived from an earlier fixtSE OpenNextion ESPHome project, preserving its
+Git history and AGPL license (see [third-party notices](THIRD_PARTY_NOTICES.md)).
 
 ## What it does
 
@@ -26,7 +25,7 @@ round-knob entry point. See [the original README](docs/room-companion/KNOB-READM
   BLE, authorized by pressing BOOT). No setup hotspot.
 - **Assist.** Tap Talk, press BOOT, or use the **Talk** entity; transcript and
   reply on screen, spoken reply on the speaker, software mute.
-- **Notifications** compatible with the knob's `show_message`, including an
+- **Notifications** through the `show_message` action, including an
   optional picture; HTML line breaks become text.
 - **Low-power sleep.** Screen off, Wi-Fi modem sleep, Home Assistant stays
   connected. After inactivity, on a schedule, from the **Low power sleep**
@@ -101,7 +100,7 @@ absent, and removes only the file it created. It never uploads firmware.
 
 ## License
 
-AGPL-3.0-only, inherited from the knob project. Original copyright, upstream MIT
+AGPL-3.0-only, inherited from the upstream project. Original copyright, upstream MIT
 notices, fonts and other third-party notices remain in `COPYRIGHT`, `LICENSES/`
 and `THIRD_PARTY_NOTICES.md`. `my_components/remote_webview` is vendored from
 [strange-v/RemoteWebViewClient](https://github.com/strange-v/RemoteWebViewClient)

@@ -6,7 +6,7 @@
 namespace onx_controls {
 using namespace custom_logic_entity_sub;
 inline bool handles(const std::string &id) {
-  return knob_control_domain(id) || has_prefix(id, "climate.") || has_prefix(id, "media_player.");
+  return control_domain(id) || has_prefix(id, "climate.") || has_prefix(id, "media_player.");
 }
 inline std::string domain(const std::string &id) { return id.substr(0, id.find('.')); }
 inline std::string actual(const EntityDetailState &d, const std::string &key) {

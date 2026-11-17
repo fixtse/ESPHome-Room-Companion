@@ -79,7 +79,7 @@ inline void touched() {
   if (hooks.activity) hooks.activity();
 }
 
-// True while the centre covers the knob UI or shows its banner; the knob UI
+// True while the centre covers the native UI or shows its banner; the native UI
 // and the dashboard stream then give way.
 inline bool owns_screen() {
   return panel_open || detail_id != 0 || onx_notification::center.toast_visible(esphome::millis());
@@ -347,6 +347,13 @@ inline void refresh() {
   lv_obj_move_foreground(badge);
 }
 
+// Touches on the visible bell go to LVGL rather than the gesture router.
+inline bool bell_hit(int x, int y) {
+  if (bell == nullptr || lv_obj_has_flag(bell, LV_OBJ_FLAG_HIDDEN)) return false;
+  lv_area_t a;
+  lv_obj_get_coords(bell, &a);
+  return x >= a.x1 - 8 && x <= a.x2 + 8 && y >= a.y1 && y <= a.y2 + 8;
+}
 // Called by the panel's UI tick: the bell belongs to the main carousel only.
 inline void set_bell_visible(bool visible) {
   if (bell == nullptr || visible == bell_wanted) return;

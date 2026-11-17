@@ -3,8 +3,11 @@
 Read `/home/fixt/AGENTS.md`. Builds, installs, tests and services run on devserv
 under a task lease and isolated checkout. Do not flash a board unless requested.
 
-The software foundation is the existing fixtSE knob project. Preserve its history,
-AGPL license, copyright and original entry point. Prefer extracting/reusing its
+Preserve the project's Git history, AGPL license, copyright and the upstream
+notice in `THIRD_PARTY_NOTICES.md`. This repository targets only the 3.5"
+(ONX3248G035) and 2.8" (ONX2432G028) rectangular panels; all settings,
+documentation and UI text describe those devices. Prefer extracting/reusing the
+shared
 state/configuration logic over reimplementing it. New rectangular firmware lives
 in `packages/room_companion/`; both model roots use one shared application.
 

@@ -1,6 +1,6 @@
 # Panel screen behaviour
 
-The rectangular panels run the knob application unchanged and add a thin panel
+The rectangular panels run the shared application and add a thin panel
 layer on top (`onx_panel_ui.h`, `packages/room_companion/panel.yaml`).
 
 ## Gestures
@@ -9,32 +9,51 @@ layer on top (`onx_panel_ui.h`, `packages/room_companion/panel.yaml`).
 | --- | --- | --- |
 | Carousel | Swipe left / right | Previous / next control |
 | Carousel | Tap an icon in the bottom strip | Jump to that control |
-| Detail view (weather, light…) | Swipe left / right or up / down | Same as turning the knob (pages, brightness, volume) |
+| Detail view (weather, light…) | Swipe left / right or up / down | Step the value (pages, brightness, volume) |
 | Media player | Swipe left / right | Close the player without changing playback |
 | Media player | Swipe up / down | Change volume |
 | Detail view | Swipe right **starting at the left edge** | Back |
-| Anywhere in the native UI | Swipe down **from the top edge** | Open the notification centre |
+| Anywhere in the native UI | Swipe down **from the top edge** | Open the notification centre (the only way on detail screens) |
 | Dashboard stream | Swipe left / right | Back to the native UI |
 
-## Top corners
+## Header, notifications and dashboard
 
-- **Top right: bell.** Always visible (dimmed when there is nothing). Shows the
-  unread count; opens the notification centre: list, detail with picture,
-  dismiss and clear all. A banner announces new notifications. Home Assistant
-  sends them with the device's *show message* action.
-- **Top left: dashboard.** Shown once a Remote WebView server is configured;
-  opens the dashboard stream.
+- **No top-corner buttons on details.** Detail screens (media, lights, sensors…)
+  start at the top edge.
+- **Bell: main view only.** The main carousel keeps a slim row with a plain bell
+  icon (no background), dimmed when there is nothing and showing the unread
+  count. On every screen, **pull down from the top edge** to open the
+  notification centre: list, detail with picture, dismiss and clear all. A
+  banner announces new notifications. Home Assistant sends them with the
+  device's *show message* action.
+- **Dashboard: a bottom-bar item.** Add *Dashboard* (listed under “On this
+  panel”) as a control; it appears in the bottom bar and opens the stream once a
+  Remote WebView server is configured.
 
-## Media detail
+## Accent color
 
-Centered cover art stays above a single title and artist, volume, room name and
-a straight progress bar. The circular playback ring is hidden. Use the previous,
-play/pause and next buttons for transport. Tap the top-centre close button or
-swipe horizontally to leave the player; vertical swipes change volume.
+**Device settings → Accent color** (formerly *Ring color*) tints every
+highlighted element: progress bars, the media play button, the
+selected bottom-bar item and its marker, graphs, timers and the notification
+banner. Presets and custom colors are saved with the device settings.
 
-While the panel is idle (including the clock), a configured player that starts
-playing opens automatically. Playback stopping restores the previous view unless
-you have interacted with the player. Sleep and notification priorities still apply.
+## Orientation
+
+These panels have no accelerometer, so **Device settings → Display orientation**
+chooses *Portrait*, *Landscape*, *Portrait · upside down* or *Landscape ·
+flipped*. Saving a new orientation restarts the panel; the display controller
+is turned in hardware (MADCTL) and the touch coordinates are mapped before the
+display, touchscreen and LVGL start, so landscape is a native 480×320 (3.5")
+or 320×240 (2.8") screen with no software rotation cost.
+
+In landscape, grouped pages place two controls side by side and the three
+sensors in a column to the right of the main control; the media player puts
+the artwork on the left with title, volume, progress and transport on the
+right. The bottom bar and gestures work the same way. Screens still drawn by
+the square base layout (e.g. settings) remain centred. The configuration
+preview follows the selected orientation. **Hardware status:** landscape has
+been validated by configuration/compile and browser tests only; it has not yet
+been verified on a physical panel (display direction, touch mapping).
 
 ## Idle screen
 
@@ -54,14 +73,14 @@ server and is limited by the stream's frame rate.
 ## Not yet done
 
 - Configurable page layouts (two controls per page, or one control plus three
-  sensor values). The knob pages are still one control per page.
+  sensor values). Base pages are still one control per page.
 
 ## Rectangular pages and grouped items
 
-Normal entity pages now use the full portrait display above the navigation dock,
-with a header reserved for the dashboard and notification buttons. Generic
+Normal entity pages now use the full display above the navigation dock, below
+a slim row for the notification bell. Generic
 entity details use the full height; numeric progress is a straight bar rather
-than the knob's circular ring. The physical knob keeps its original presentation.
+than a circular ring.
 Media retains its artwork and transport view, with artwork sized after reserving
 space for the text and controls. The configuration preview uses the panel's
 actual dimensions, including the outer frame, instead of a 240×240 circle.
@@ -96,7 +115,7 @@ existing entity preset/backup documents.
 The layout model is `onx_panel_layout.h`; the panel renderer, persistent bindings
 and page RPC handlers are in `onx_panel_pages.h`. `panel_pages` reads the saved
 bindings and `panel_page_save` validates/persists one page. Layout state is kept
-in PSRAM. The browser's panel extension implements matching portrait geometry.
+in PSRAM. The browser's panel extension implements matching portrait and landscape geometry.
 Run `mise exec -- bash scripts/test_panel_pages.sh` on devserv for geometry,
 validation, tap-versus-swipe routing and browser editor/preview tests.
 
@@ -129,7 +148,7 @@ test. UART observation showed no panic/abort, approximately 45 KB internal heap
 free and settled maximum-loop samples of 84, 86 and 92 ms. Startup, icon downloads
 and configuration writes produced larger peaks (including 2474 ms during the
 configuration test); these are not normal interaction latency measurements.
-Unchanged native cards are cached, and the covered knob body is hidden while the
+Unchanged native cards are cached, and the covered base-layout body is hidden while the
 rectangular page is displayed to avoid redundant rendering and touch handling.
 
 Hardware verification covers boot, networking and saved layout persistence.

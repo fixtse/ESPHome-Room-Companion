@@ -1,4 +1,4 @@
-# Room Companion for the ONX2432G028: the fixtSE knob application on a
+# Room Companion for the ONX2432G028: shared application on a
 # rectangular touch panel, with Assist and an optional dashboard stream.
 substitutions:
   project_name: onx2432g028

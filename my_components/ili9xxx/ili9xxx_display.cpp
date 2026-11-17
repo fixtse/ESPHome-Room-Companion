@@ -9,7 +9,7 @@ namespace ili9xxx {
 
 static const uint16_t SPI_SETUP_US = 100;         // estimated fixed overhead in microseconds for an SPI write
 static const uint16_t SPI_MAX_BLOCK_SIZE = 4092;  // Max size of continuous SPI transfer
-static const uint16_t COLD_BOOT_SETTLE_MS = 120;  // Give the GC9A01A panel time to stabilize after ESP32 power-on.
+static const uint16_t COLD_BOOT_SETTLE_MS = 120;  // Give the LCD time to stabilize after ESP32 power-on.
 static const uint16_t RESET_PULSE_MS = 20;        // Keep the reset pulse width unchanged from upstream defaults.
 static const uint16_t POST_RESET_SETTLE_MS = 120; // Longer post-reset wait helps on boards that only wake after manual reset.
 

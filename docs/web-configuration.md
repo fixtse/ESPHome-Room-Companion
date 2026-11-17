@@ -1,10 +1,10 @@
-# Make the knob yours
+# Make the panel yours
 
-[All guides](../README.md#find-your-guide) · [First-time setup](setup.md) · [Using the knob](knob-controls.md)
+[All guides](../README.md#find-your-guide) · [First-time setup](setup.md) · [Using the panel](controls.md)
 
-Open **Visit** on the knob's Home Assistant device page, or open the web address
-shown on the knob. Use a phone or computer on a network that can reach it.
-Settings stay on the knob after you save them.
+Open **Visit** on the panel's Home Assistant device page, or open the web address
+shown on the panel. Use a phone or computer on a network that can reach it.
+Settings stay on the panel after you save them.
 
 ## Add and arrange controls
 
@@ -14,8 +14,8 @@ Settings stay on the knob after you save them.
 4. Use **Add slot** for more controls, up to **20**. Move controls earlier/later or duplicate one into an empty slot.
 
 Start with a few favorites. Empty slots do not need to be filled. The main screen
-shows readings as you browse, and the curved row of icons keeps the selected page
-in the center. Press to open a control.
+shows readings as you browse, and the bottom bar keeps the selected page in the
+center. Tap to open a control.
 
 **Save slot** saves the selected control. **Save all** saves all changed slots.
 Unsaved changes are marked; **Discard changes** restores the last saved version.
@@ -23,7 +23,7 @@ If a save fails, already saved slots stay saved and the others remain marked.
 The browser can offer to recover an unsaved draft after a reload—still save your
 work before closing it.
 
-The **On your knob** preview shows live readings when available. Switch between
+The **On your panel** preview shows live readings when available. Switch between
 **Main screen** and **Opened entity** to see each layout. A new entity needs to be
 saved before its readings can load.
 
@@ -43,19 +43,19 @@ Automation conditions still apply.
 
 Enable **Show the returned value after pressing** to display a script's returned
 `value` and optional `unit` as a brief popup. For automations, send the value back
-using the knob's feedback action. This option is independent of turn feedback.
+using the panel's feedback action. This option is independent of swipe feedback.
 [Response examples](gesture-controls.md#press-action-results).
 
-[Everyday press controls](knob-controls.md) · [Custom climate and turn actions](gesture-controls.md)
+[Everyday press controls](controls.md) · [Custom climate and swipe actions](gesture-controls.md)
 
-## Custom turn actions
+## Custom swipe actions
 
-In **Gestures**, choose separate actions for **Turn clockwise** and **Turn
-counterclockwise**. These are ordinary turns. **Hold + turn** is a separate,
+In **Gestures**, choose separate actions for **Swipe up** and **Swipe
+down**. These are ordinary swipes. **Hold + swipe** is a separate,
 optional pair of actions. Assignments apply only while that control is opened;
-browsing the main list still works normally.
+browsing the main view still works normally.
 
-For example, show a computer-volume sensor and make turning run the Home
+For example, show a computer-volume sensor and make swiping run the Home
 Assistant script that changes your computer's volume. Choose an optional
 **Feedback entity** to show the resulting value, and enable the brief popup if
 you want a quick confirmation. Leave a gesture at **Default** to keep its usual
@@ -73,19 +73,19 @@ You can add up to **eight entries per player**. Set the intended player and musi
 source in the Home Assistant action itself; adding a row does not create a music
 playlist in Home Assistant.
 
-On the knob, open the player, hold until **Release now / Open playlists** appears,
-then release. Turn through the Settings-style list and press your choice. The
-knob sends the action and **returns to the player automatically**. A checkmark
+On the panel, open the player, hold until **Release now / Open playlists** appears,
+then release. Swipe through the list and tap your choice. The
+panel sends the action and **returns to the player automatically**. A checkmark
 means the request was sent; the player may take a moment to start.
 
-[Media controls and holding gestures](knob-controls.md#music-and-playlists)
+[Media controls and holding gestures](controls.md#music-and-playlists)
 
 ## Sensors and graphs
 
 Choose a sensor slot and open **Display**. Keep **Value** for a simple reading,
 or choose **12-hour graph when opened** for a numeric sensor. The main screen
 still shows its current value. Graphs use Home Assistant's recorded statistics
-where available; otherwise they show readings collected since the knob started.
+where available; otherwise they show readings collected since the panel started.
 Some sensors do not have recorded statistics. Gaps stay empty, and locally
 collected history is lost on restart.
 
@@ -111,13 +111,13 @@ Then select **Hide timer from carousel** in **Display** if you do not want a
 regular page for it. It still counts toward the **20 configured slots**, and its
 automatic popup stays active.
 
-The knob supports Home Assistant `timer.*`, compatible Voice PE/SoundSense voice
+The panel supports Home Assistant `timer.*`, compatible Voice PE/SoundSense voice
 timer sensors and Google Home integration timer sensors. Ordinary text sensors
 are not automatically treated as timers.
 
 Ringing timers take priority, followed by the nearest running timer and paused
 timers. Active timers appear while browsing, or after ten idle seconds on an
-opened control. Turn to return to browsing; an active timer can return after ten
+opened control. Swipe to return to browsing; an active timer can return after ten
 idle seconds. Timer control remains in Home Assistant or the originating speaker.
 Settings, scheduled sleep and a deliberately switched-off screen are not interrupted.
 
@@ -128,16 +128,16 @@ Open **Device settings**, make your choices, then **Save device settings**.
 | Setting | Choose what suits you |
 | --- | --- |
 | Screen brightness | 10–100%. Saving brightness turns the screen on. |
-| Knob sensitivity | Fast, Balanced or Fine. |
+| Swipe sensitivity | Fast, Balanced or Fine. |
 | Standby after | How long to wait before the automatic idle view, from 1–900 seconds. |
 | Automatic idle screen | Allow it from the main screen only, from any screen, or never automatically. |
 | Idle screen | **Clock** is the default. **Playing media** shows an actively playing configured player from the main carousel, with the clock when stopped. |
 | Standby weather | Choose the weather entity used by the standby display. |
 | Date and clock | Choose day/month order, named months, 12/24-hour time and optional AM/PM. |
-| Media progress ring | Pick a preset or your own color for playback and timer rings. |
+| Accent color | Pick a preset or your own color for progress bars and timers, the selected navigator item, filled buttons and graphs. |
 
-The media idle view uses a player already configured on the knob. Timers and
-scheduled sleep keep priority. Turn or press to leave the idle view before using
+The media idle view uses a player already configured on the panel. Timers and
+scheduled sleep keep priority. Tap or swipe to leave the idle view before using
 the underlying control.
 
 ### Scheduled sleep
@@ -151,7 +151,7 @@ the idle clock/media view.
 
 Home Assistant automations can show a message over the current view, such as
 “Take the washing out” or “Meeting in 10 minutes.” No display slot is needed.
-Press to dismiss it, or turn to scroll longer text. A normal reminder lasts
+Tap to dismiss it, or swipe to scroll longer text. A normal reminder lasts
 60 seconds; an automation can choose a different duration or keep it until dismissed.
 
 Timer popups take priority. Messages wait during setup, scheduled sleep or when
@@ -162,45 +162,45 @@ the screen is deliberately off. Only the latest message is kept.
 ## Presets
 
 A preset is a named set of controls: every slot's entity, display name, icon,
-press and turn actions, playlists and sensor choices. Keep one for each room,
-time of day or person, and switch between them without restarting the knob.
+tap and swipe actions, playlists and sensor choices. Keep one for each room,
+time of day or person, and switch between them without restarting the panel.
 
 Presets live in the **Preset** card above the slot list in **Display & actions**.
-It starts collapsed and shows what you are editing: **On the knob** (marked
-**Live**) or a preset's name. Click it to expand; the knob page remembers your
+It starts collapsed and shows what you are editing: **On the panel** (marked
+**Live**) or a preset's name. Click it to expand; the panel page remembers your
 choice in this browser.
 
-- **Save as preset** (while editing the knob) stores the knob's saved controls
+- **Save as preset** (while editing the panel) stores the panel's saved controls
   under a name. Unsaved slot changes are not included.
 - **+** starts a new, empty preset. Add controls, then **Save all** to create it.
 - Choose a preset from the list to edit its slots. While a preset is selected,
-  **Save slot** and **Save all** store the preset only; the knob does not change.
-- **▶ Apply** replaces the knob's controls with the selected preset. Only the
+  **Save slot** and **Save all** store the preset only; the panel does not change.
+- **▶ Apply** replaces the panel's controls with the selected preset. Only the
   slots that differ are rewritten, and controls you no longer use are released
   from memory. Save the preset's changes before applying it.
 - The pencil and bin buttons rename and delete the selected preset.
 
-Up to **8** presets fit on the knob. **Active** marks the preset the knob's
-controls currently match. Editing a slot on the knob by hand afterwards marks the
+Up to **8** presets fit on the panel. **Active** marks the preset the panel's
+controls currently match. Editing a slot on the panel by hand afterwards marks the
 controls as **Custom** until you apply or save a preset again.
 
 ### Switch presets from Home Assistant
 
-The knob adds a **Preset** select to its Home Assistant device. Choose an option
+The panel adds a **Preset** select to its Home Assistant device. Choose an option
 to switch, or use it in automations and dashboards:
 
 ```yaml
 action: select.select_option
 target:
-  entity_id: select.onx2424g013_dbbc54_preset
+  entity_id: select.onx3248g035_dbbc54_preset
 data:
   option: Evening
 ```
 
-The knob also provides three actions. Replace the device prefix with yours:
+The panel also provides three actions. Replace the device prefix with yours:
 
 ```yaml
-action: esphome.onx2424g013_dbbc54_apply_preset
+action: esphome.onx3248g035_dbbc54_apply_preset
 data:
   name: Evening
 ```
@@ -208,18 +208,18 @@ data:
 `save_preset` saves the current controls under `name` (replacing a preset with
 the same name) and `delete_preset` removes one. The select shows **Custom** when
 the controls match no saved preset. When the list of presets changes, Home
-Assistant reconnects to the knob briefly so the select shows the new options.
+Assistant reconnects to the panel briefly so the select shows the new options.
 
 ## Home Assistant connection
 
 The **Home Assistant** section lets your browser sign in to search entities and
-sync their icons. This is separate from adding the knob's ESPHome integration.
+sync their icons. This is separate from adding the panel's ESPHome integration.
 Enable **Allow the device to perform Home Assistant actions** in that integration
-so the knob can control devices.
+so the panel can control devices.
 
-The status strip shows three different connections: reaching the knob, the
-knob's connection to Home Assistant, and browser sign-in. Use **Refresh entity
-list** after changing an icon or name in Home Assistant. **Retry knob entity
+The status strip shows three different connections: reaching the panel, the
+panel's connection to Home Assistant, and browser sign-in. Use **Refresh entity
+list** after changing an icon or name in Home Assistant. **Retry panel entity
 states** asks for fresh readings without restarting or replaying old commands.
 
 [Connection troubleshooting](setup.md#if-something-does-not-work) · [Icons and album art](icons-and-media.md)
@@ -227,53 +227,49 @@ states** asks for fresh readings without restarting or replaying old commands.
 ## Backups and diagnostics
 
 In **Backup & diagnostics**, click **Download saved configuration** before making
-large changes. Backups include saved controls, names, press/turn actions,
+large changes. Backups include saved controls, names, tap/swipe actions,
 playlists, sensor display choices, saved presets and device settings. They
 exclude credentials.
 
 **Import configuration** opens a backup as an unsaved draft. Review it, then save
 slots and device settings separately to apply it. Importing alone does not change
-the knob. Older supported backups receive defaults for newer settings.
+the panel. Older supported backups receive defaults for newer settings.
 
-When a backup contains presets, the knob offers to restore them right away.
-Presets with the same name are replaced; other presets on the knob are kept.
+When a backup contains presets, the panel offers to restore them right away.
+Presets with the same name are replaced; other presets on the panel are kept.
 Restoring presets does not change the current controls.
 
 **Download diagnostics** provides firmware, uptime and connection information
 for troubleshooting, without entity names, addresses or credentials. After a
 crash, its `last_event_before_boot` entry is named `panic` and lists the crash
-address and backtrace, even if the knob returned to its previous firmware. Wireless
+address and backtrace, even if the panel returned to its previous firmware. Wireless
 updates are available through the **Firmware Update** entity in Home Assistant.
 
 ## Display orientation
 
-For the ONX2424G013, choose **Device settings → Display orientation** and save.
-Supported hardware orientations are **0°**, **90° clockwise**, **180°**, and
-**270° clockwise (90° left)**, relative to the default mounting position. The
-setting applies immediately to every device screen, persists after reboot, and
-is included in configuration backups. Knob direction is unchanged.
-
-This writes the GC9A01-compatible panel's MADCTL address-order register without
-software framebuffer rotation. Arbitrary angles such as 45° are not offered.
-The webpage preview remains upright as a content preview, independent of mounting.
-
-References: [ONX2424G013 specifications](https://open-nextion-app-store.nextion.tech/devices/onx2424g013/)
-and [GC9A01A hardware rotation implementation](https://github.com/adafruit/Adafruit_GC9A01A/blob/main/Adafruit_GC9A01A.cpp).
+The panels have no accelerometer, so choose **Device settings → Display
+orientation** — *Portrait*, *Landscape*, *Portrait · upside down* or
+*Landscape · flipped* — and save. The panel restarts to apply it: the display
+controller's MADCTL address order and the touch mapping are set before the
+display, touchscreen and LVGL start, so landscape runs as a native 480×320
+(3.5") or 320×240 (2.8") screen without software framebuffer rotation. The
+setting persists and is included in configuration backups, and the webpage
+preview follows it. See [panel-ui.md](room-companion/panel-ui.md#orientation).
 
 ## Clock seconds and connected sleep
 
 Device settings are grouped into Screen & controls, Clock & idle screen,
-Media & ring appearance, Notifications, and Sleep & wake.
+Media & accent appearance, Notifications, and Sleep & wake.
 
 Under **Clock & idle screen**, enable **Show seconds around the clock edge** to
-fill the edge ring once each minute. It is off by default and needs a valid
-Home Assistant time. The shared **Ring color** also applies to clock seconds,
+show a seconds bar that fills once each minute. It is off by default and needs a valid
+Home Assistant time. The shared **Accent color** also applies to clock seconds,
 notification expiry, numeric values and media playback.
 
 The Home Assistant **Low Power Sleep** switch keeps the device reachable while
 sleeping the display panel, switching off the backlight, pausing LVGL rendering
-and enabling Wi-Fi modem power saving. Turn the switch off or press the knob to
-wake. The wake press is consumed and does not trigger an entity action. Turning
+and enabling Wi-Fi modem power saving. Turn the switch off or tap the screen to
+wake. The wake tap is consumed and does not trigger an entity action. Turning
 the display light on also leaves this mode. Rebooting starts awake.
 
 This is connected low-power sleep, not ESP32 deep sleep: Home Assistant can wake

@@ -4,8 +4,8 @@ const header=fs.readFileSync('my_components/onx_config_web/ha_browser.h','utf8')
 const js=header.split('R"ONXJS(')[1].split(')ONXJS"')[0];
 const states=Array.from({length:12000},(_,i)=>({entity_id:'sensor.test_'+i,attributes:{friendly_name:'Sensor '+i}}));
 states.push({entity_id:'climate.calentador',attributes:{friendly_name:'Calentador'}},{entity_id:'media_player.room',attributes:{friendly_name:'Room player'}},{entity_id:'light.rgb',attributes:{supported_color_modes:['rgb']}},{entity_id:'weather.home',attributes:{}},{entity_id:'camera.unsupported',attributes:{}});
-const knobDomains=['fan','number','input_number','select','input_select','scene','button','input_button'];
-for(const domain of knobDomains)states.push({entity_id:domain+'.test',attributes:{friendly_name:domain+' test'}});
+const deviceDomains=['fan','number','input_number','select','input_select','scene','button','input_button'];
+for(const domain of deviceDomains)states.push({entity_id:domain+'.test',attributes:{friendly_name:domain+' test'}});
 const storage=new Map(),sessionStorage={getItem:k=>storage.get(k)||null,setItem:(k,v)=>storage.set(k,v),removeItem:k=>storage.delete(k)};
 const commands=[],http=[],urls=[];
 class Socket {
@@ -22,7 +22,7 @@ vm.runInNewContext(js,context);const {catalogue,search,Client,baseUrl}=context.O
 (async()=>{
  const client=new Client(sessionStorage);sessionStorage.setItem('onx.ha.auth',JSON.stringify({base:'http://ha.local:8123',access:'browser-secret',refresh:'refresh-secret',expires:Date.now()+60000}));
  const items=await client.load();assert.equal(items.length,12016);assert(client.ready);assert.equal(http.length,0);assert(urls.every(u=>u.startsWith('ws://ha.local:8123/')));
- for(const domain of knobDomains)assert.equal(search(items,'',domain).total,1);
+ for(const domain of deviceDomains)assert.equal(search(items,'',domain).total,1);
  const match=search(items,'calentador','climate');assert.equal(match.total,1);assert.equal(match.items[0].area,'Kitchen');assert.equal(match.items[0].icon,'mdi:radiator');assert.equal(match.items[0].iconOverride,'1');
  // HA can render an integration icon without either an icon state attribute or registry override.
  assert.equal(items.find(i=>i.entity==='sensor.test_0').icon,'mdi:weather-fog');

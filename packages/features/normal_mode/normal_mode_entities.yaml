@@ -157,7 +157,7 @@ http_request:
 
 select:
   # Switch the whole set of controls from Home Assistant. Options are the
-  # presets saved on the knob; "Custom" means the slots match no stored preset.
+  # presets saved on the panel; "Custom" means the slots match no stored preset.
   - platform: template
     id: preset_select
     name: Preset
@@ -822,23 +822,23 @@ globals:
     type: int
     restore_value: yes
     initial_value: '100'
-  - id: normal_knob_applied_value
+  - id: normal_input_applied_value
     type: int
     restore_value: yes
     initial_value: '2'
-  - id: normal_knob_pending_value
+  - id: normal_input_pending_value
     type: int
     restore_value: no
     initial_value: '2'
-  - id: normal_knob_event_pass
+  - id: normal_input_event_pass
     type: bool
     restore_value: no
     initial_value: 'true'
-  - id: normal_knob_cw_accumulator
+  - id: normal_input_cw_accumulator
     type: int
     restore_value: no
     initial_value: '0'
-  - id: normal_knob_ccw_accumulator
+  - id: normal_input_ccw_accumulator
     type: int
     restore_value: no
     initial_value: '0'

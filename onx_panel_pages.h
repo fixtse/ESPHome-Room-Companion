@@ -5,6 +5,7 @@
 #include "onx_entity_config.h"
 #include "onx_render.h"
 #include "onx_navigation.h"
+#include "onx_panel_ui.h"
 
 namespace onx_panel_pages {
 using onx_panel_layout::Page;
@@ -32,6 +33,12 @@ inline Page page(const std::string &entity) {
   return pages[slot];
 }
 inline std::string rpc(const std::string &op,const std::string &data) {
+  // Native (portrait) size and the orientation in use since boot, so the
+  // configuration preview matches either model and orientation.
+  if(op=="panel_screen")return onx_entity_config::build_json([](JsonObject root) {
+    root["width"]=onx_panel_ui::native_width;root["height"]=onx_panel_ui::native_height;
+    root["orientation"]=onx_panel_ui::turns*90;
+  });
   if(op!="panel_pages" && op!="panel_page_save")return "";
   if(op=="panel_page_save") {
     JsonDocument doc;
@@ -155,7 +162,7 @@ inline void suspend_underlay() {
   auto *page=lv_scr_act();
   if(page!=suspended_page){restore_underlay();suspended_page=page;}
   // Keep the existing presenters/actions alive, but avoid rendering covered
-  // knob body containers or letting their old touch widgets receive clicks.
+  // base-layout body containers or letting their old touch widgets receive clicks.
   // The navigator and native overlays live separately on lv_layer_top().
   for(uint32_t i=0;i<lv_obj_get_child_count(page);++i) {
     auto *obj=lv_obj_get_child(page,i);
@@ -201,17 +208,23 @@ template<typename Bind> void render(const std::string &entity,int width,int heig
     }
     c.previous=v;c.rect=r;c.kind=kind;c.detail=detail;c.color=onx_display_settings::current.media_color;c.initialized=true;
     const int pad=12;
-    label(c.name,v.name,pad,compact?(r.h-lv_font_get_line_height(small))/2:pad,compact?r.w*55/100-pad:kind==Kind::TWO_CONTROLS?r.w-64:r.w-pad*2,small);
-    const auto *value_font=compact?(r.h>=lv_font_get_line_height(normal)+8?normal:small):(r.h<150?normal:large);
-    label(c.value,v.value,compact?r.w*55/100:pad,
-          compact?(r.h-lv_font_get_line_height(value_font))/2:r.h*(v.graph?18:kind==Kind::TWO_CONTROLS?35:49)/100,
-          compact?r.w*45/100-pad:r.w-pad*2,value_font);
+    // Narrow sensor tiles (landscape column) stack the name above the value.
+    const bool stacked=compact && r.w<220 && r.h>=lv_font_get_line_height(small)+lv_font_get_line_height(normal)+12;
+    const bool side=compact && !stacked;
+    const bool narrow=kind==Kind::TWO_CONTROLS || r.w<220;
+    label(c.name,v.name,pad,side?(r.h-lv_font_get_line_height(small))/2:stacked?8:pad,side?r.w*55/100-pad:narrow&&!compact?r.w-64:r.w-pad*2,small);
+    const auto *value_font=compact?(stacked || r.h>=lv_font_get_line_height(normal)+8?normal:small):(r.h<150 || r.w<220?normal:large);
+    label(c.value,v.value,side?r.w*55/100:pad,
+          side?(r.h-lv_font_get_line_height(value_font))/2:stacked?r.h-lv_font_get_line_height(value_font)-8:
+              r.h*(v.graph?18:kind==Kind::TWO_CONTROLS?35:49)/100,
+          side?r.w*45/100-pad:r.w-pad*2,value_font);
     label(c.context,compact?"":v.context,pad,r.h*67/100,r.w-pad*2,small);
     label(c.hint,detail?v.hint:"",pad,r.h-48,r.w-pad*2,small);
     if(v.graph && detail && draw_graph)draw_graph(c.box,entities[i],r.h*38/100);
     if(!compact && !v.graph) {
-      bind(c.icon,entities[i]);lv_image_set_scale(c.icon,kind==Kind::TWO_CONTROLS?64:96);
-      onx_render::align(c.icon,LV_ALIGN_TOP_RIGHT,-pad,kind==Kind::TWO_CONTROLS?12:28);
+      const bool small_icon=kind==Kind::TWO_CONTROLS || r.w<220;
+      bind(c.icon,entities[i]);lv_image_set_scale(c.icon,small_icon?64:96);
+      onx_render::align(c.icon,LV_ALIGN_TOP_RIGHT,-pad,small_icon?12:28);
       lv_obj_remove_flag(c.icon,LV_OBJ_FLAG_HIDDEN);
     }else lv_obj_add_flag(c.icon,LV_OBJ_FLAG_HIDDEN);
     if(v.ring>=0 && !compact) {

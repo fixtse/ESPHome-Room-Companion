@@ -9,7 +9,7 @@ cleanup. RuntimeImage decoding and all UI work stay on the ESPHome main task.
 Images and compressed buffers are RAM-only. The Python schema's buffer_size is
 accepted for compatibility; the network worker sizes its bounded PSRAM buffer
 from the response length instead. HTTP conditional-cache headers are unused;
-the knob retains its completed artwork until the supplied URL changes.
+the device retains its completed artwork until the supplied URL changes.
 
 Grayscale JPEGs use an explicit RGB565 callback. JPEGDEC 1.8.4's grayscale
 writer emits 16-bit pixels even when RGB8888 is requested; reading those as

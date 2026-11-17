@@ -2,7 +2,7 @@
 """Make LVGL layout coordinates scale-aware (run once per file; idempotent).
 
 Integer geometry values become Jinja substitutions, e.g. `y: 62` ->
-`y: ${ (62 * ui_scale) | round | int }`. With the knob's ui_scale of 1 the
+`y: ${ (62 * ui_scale) | round | int }`. With the panel's ui_scale of 1 the
 resolved values are unchanged; the rectangular panels set ui_scale per model.
 """
 import re

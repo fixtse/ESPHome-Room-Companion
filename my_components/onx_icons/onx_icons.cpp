@@ -34,7 +34,7 @@ static void *onx_svg_realloc(void *p, size_t size) { return heap_caps_realloc(p,
 
 namespace esphome::onx_icons {
 // Icons are rasterised at the layout's 80 px icon size, scaled for the panel
-// (onx_geom::scale is 1 on the knob).
+// (onx_geom::scale is 1 on the 2.8" panel).
 static size_t icon_px() { return static_cast<size_t>(onx_geom::S(80)); }
 static constexpr size_t MAX_SVG_BYTES = 32768;
 static constexpr size_t CACHE_SIZE = 25;  // ~25 KB of PSRAM each.
@@ -48,7 +48,7 @@ static bool fetch_svg(const std::string &url, std::string &svg, std::string &err
   config.timeout_ms = 5000;
   config.disable_auto_redirect = true;
   config.buffer_size = 1024;
-  config.user_agent = "ONX2424G013/MDI-icons";
+  config.user_agent = "RoomCompanion/MDI-icons";
   auto client = esp_http_client_init(&config);
   if (client == nullptr) { error = "HTTP client allocation failed"; return false; }
   esp_http_client_set_header(client, "Accept", "image/svg+xml");

@@ -1,4 +1,5 @@
 #pragma once
+#include <utility>
 #include "esphome/components/spi/spi.h"
 #include "esphome/components/display/display_buffer.h"
 #include "esphome/components/display/display_color_utils.h"
@@ -78,7 +79,25 @@ class ILI9XXXDisplay : public display::DisplayBuffer,
   virtual void data(uint8_t value);
   void send_command(uint8_t command_byte, const uint8_t *data_bytes, uint8_t num_data_bytes);
   void set_color_order(display::ColorOrder color_order) { this->color_order_ = color_order; }
-  virtual void set_hardware_orientation(uint8_t) {}
+  // Rectangular panels: rotate by clockwise quarter turns relative to the
+  // init sequence's MADCTL baseline. The logical width/height swap for 90/270,
+  // so this must run before setup() and before LVGL and the touchscreen read
+  // the dimensions; it applies once (a new orientation needs a restart).
+  // Pixels keep the direct SPI path: DisplayBuffer rotation stays zero.
+  bool set_boot_orientation(uint8_t turns) {
+    if (turns > 3 || this->boot_orientation_set_) return false;
+    this->boot_orientation_set_ = true;
+    // Successive 90-degree MADCTL steps for an MX baseline (MADCTL 0x48):
+    // MX, MV, MY, MV|MX|MY. Other baselines toggle the mirrors accordingly.
+    static constexpr bool turn_mx[] = {true, false, false, true};
+    static constexpr bool turn_my[] = {false, false, true, true};
+    const bool base_mx = this->mirror_x_, base_my = this->mirror_y_;
+    this->mirror_x_ = turn_mx[turns] ^ !base_mx;
+    this->mirror_y_ = turn_my[turns] ^ base_my;
+    this->swap_xy_ = (turns & 1) != 0;
+    if (turns & 1) std::swap(this->width_, this->height_);
+    return true;
+  }
   void set_swap_xy(bool swap_xy) { this->swap_xy_ = swap_xy; }
   void set_mirror_x(bool mirror_x) { this->mirror_x_ = mirror_x; }
   void set_mirror_y(bool mirror_y) { this->mirror_y_ = mirror_y; }
@@ -115,6 +134,7 @@ class ILI9XXXDisplay : public display::DisplayBuffer,
   void set_addr_window_(uint16_t x, uint16_t y, uint16_t x2, uint16_t y2);
   void reset_();
 
+  bool boot_orientation_set_{false};
   uint8_t const *init_sequence_{};
   std::vector<uint8_t> extra_init_sequence_;
   int16_t width_{0};   ///< Display width as modified by current rotation
@@ -266,22 +286,6 @@ class ILI9XXXS3Box : public ILI9XXXDisplay {
 class ILI9XXXS3BoxLite : public ILI9XXXDisplay {
  public:
   ILI9XXXS3BoxLite() : ILI9XXXDisplay(INITCMD_S3BOXLITE, 320, 240) {}
-};
-
-class ILI9XXXGC9A01A : public ILI9XXXDisplay {
- public:
-  ILI9XXXGC9A01A() : ILI9XXXDisplay(INITCMD_GC9A01A, 240, 240) {}
-  // Clockwise quarter turns relative to this panel's existing MX baseline.
-  // Change only MADCTL: DisplayBuffer rotation stays zero, retaining direct SPI.
-  void set_hardware_orientation(uint8_t turns) override {
-    if(turns>3 || turns==hardware_orientation_)return;
-    static constexpr bool mx[]={true,false,false,true};
-    static constexpr bool my[]={false,false,true,true};
-    set_mirror_x(mx[turns]);set_mirror_y(my[turns]);set_swap_xy(turns&1);
-    set_madctl();hardware_orientation_=turns;
-  }
- protected:
-  uint8_t hardware_orientation_{255};
 };
 
 class ILI9XXXGC9D01N : public ILI9XXXDisplay {

@@ -88,7 +88,7 @@ improv_serial:
 esp32_ble:
   id: onx_ble
 
-# BLE provisioning is authorized with a physical knob press.
+# BLE provisioning is authorized with a BOOT button press.
 improv_ble:
   id: onx_improv
   authorizer: key_btn

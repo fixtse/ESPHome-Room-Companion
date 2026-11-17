@@ -13,12 +13,12 @@
 namespace onx_navigation {
 constexpr int VISIBLE_ICONS=5;
 struct Point {int x,y;};
-// Knob: icons follow the lower curve of the 240x240 round screen.
+// Base layout (strip disabled): icons follow a curve on a 240x240 screen.
 // Panels: icons sit in a straight row centred in a bottom strip (configure_strip).
 struct Strip {
   bool enabled{false};
   int width{240},height{240},center_y{0},spacing{48},marker{24};
-  int icon{18};             // Icon size in layout units (the knob uses 18).
+  int icon{18};             // Icon size in layout units (default 18).
   int label_y{0};           // Name of the selected control, below the strip.
   const lv_font_t *font{nullptr};
 };
@@ -83,7 +83,7 @@ inline void create() {
 }
 inline void set_label(const char *text) {if(label)onx_render::label(label,text);}
 // Panel-local controls ([Local] Dashboard / [Local] Assist): set by the touch
-// panels at boot, empty on the knob.
+// panels at boot.
 inline std::function<bool(const std::string &)> local_action;     // Handles a press; true if handled.
 inline std::function<bool(int io)> local_state;                     // On/off for the icon.
 inline std::function<esphome::image::Image *(const std::string &)> local_icon;

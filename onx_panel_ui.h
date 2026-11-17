@@ -1,11 +1,11 @@
 #pragma once
-// Rectangular-panel additions on top of the knob UI (touch panels only):
-//   - flattens the knob's round shells (radius >= half the knob width)
+// Rectangular-panel additions on top of the native UI (touch panels only):
+//   - flattens the base layout's round shells (radius >= half its width)
 //   - media detail rearranged for a tall screen: large cover art, title,
 //     progress bar and previous / play-pause / next buttons (no header: swipe
 //     horizontally to close, pull down from the top for notifications)
-//   - idle screen: clock (knob default), photo slideshow or dashboard stream
-// Everything is created lazily on LVGL's existing objects; the knob packages
+//   - idle screen: clock (default), photo slideshow or dashboard stream
+// Everything is created lazily on LVGL's existing objects; the shared packages
 // are not modified.
 #include <algorithm>
 #include <cstdint>
@@ -22,13 +22,23 @@
 namespace onx_panel_ui {
 using onx_geom::S;
 
-inline int width = 320, height = 480;
+// Logical screen after the configured orientation (Device settings → Display
+// orientation; these panels have no accelerometer). The board's native size is
+// portrait; quarter turns 1 and 3 give landscape. Applied once at boot.
+inline int native_width = 320, native_height = 480, width = 320, height = 480;
+inline uint8_t turns = 0;
+inline void configure_screen(int w, int h, uint8_t quarter_turns) {
+  native_width = w; native_height = h; turns = quarter_turns & 3;
+  width = turns & 1 ? h : w;
+  height = turns & 1 ? w : h;
+}
+inline bool landscape() { return width > height; }
 
 // ------------------------------------------------------------ hit testing
 inline std::vector<lv_obj_t *> touch_targets;  // Visible buttons owned by LVGL.
 
 // ------------------------------------------------------------ round shells
-// The knob draws its pages inside a 240x240 circle. On a rectangle those
+// The base layout draws its pages inside a 240x240 circle. On a rectangle those
 // circles show as a lighter disc: square every large rounded object, but keep
 // the panel's own round buttons (LV_RADIUS_CIRCLE would otherwise match).
 inline void flatten(lv_obj_t *obj) {
@@ -127,7 +137,7 @@ inline void create_media_controls(lv_obj_t *shell, const lv_font_t *font) {
   lv_obj_add_event_cb(next, [](lv_event_t *) { if (on_track) on_track(false); }, LV_EVENT_CLICKED, nullptr);
 }
 
-// Called every tick while the knob's detail page is shown.
+// Called every tick while the media detail page is shown.
 inline void sync_media(const Media &m, const lv_font_t *font) {
   const bool media = !hidden(m.cover) || !hidden(m.title);
   if (media_bar == nullptr) {
@@ -137,41 +147,49 @@ inline void sync_media(const Media &m, const lv_font_t *font) {
   const bool playlist = !hidden(m.playlist);
   show(media_row, media && !playlist);
   if (!media) { show(media_bar, false); return; }
-  const int w = width, h = height, top = media_top();
+  const int w = width, h = height, top = media_top(), row_h = S(64), row_gap = S(12);
   // Square shell covering the whole screen (detail pages hide the strip).
   if (lv_obj_get_style_width(m.shell, LV_PART_MAIN) != w || lv_obj_get_style_height(m.shell, LV_PART_MAIN) != h)
     lv_obj_set_size(m.shell, w, h);
   // Accent colour follows the device setting without recreating the controls.
   onx_render::style_bg_color(media_bar, lv_color_hex(onx_display_settings::accent()), LV_PART_INDICATOR);
   onx_render::style_bg_color(media_play, lv_color_hex(onx_display_settings::accent_strong()), 0);
-  // Reserve text (84), progress (28) and transport space; the artwork gets the rest.
-  const int cover_size = std::max(48, std::min(w - 48, h - top - 12 - 84 - 28 - S(64) - S(12)));
+  // Portrait: artwork on top, text, progress and transport below.
+  // Landscape: square artwork on the left, the same column on the right.
+  const bool wide = landscape();
+  const int cover_size = wide ? std::max(48, std::min(h - 2 * top, w * 45 / 100))
+                              : std::max(48, std::min(w - 48, h - top - 12 - 84 - 28 - row_h - row_gap));
+  const int col_x = wide ? top + cover_size + S(12) : 0;      // Text/transport column.
+  const int col_w = wide ? w - col_x - S(8) : w;
+  const int col_dx = col_x + col_w / 2 - w / 2;                 // Offset from the screen centre.
   lv_image_header_t header{};
   if (lv_image_decoder_get_info(lv_image_get_src(m.cover), &header) == LV_RESULT_OK && header.w && header.h) {
     const int scale = cover_size * 256 / std::max(header.w,header.h);
     if (lv_image_get_scale_x(m.cover) != scale) lv_image_set_scale(m.cover,scale);
   }
-  place(m.cover, LV_ALIGN_TOP_MID, 0, top);
-  place(m.icon, LV_ALIGN_TOP_MID, 0, top);
-  place(m.transport, LV_ALIGN_TOP_MID, 0, top + cover_size / 2);
-  const int text_y = top + cover_size + 12;
-  place(m.title, LV_ALIGN_TOP_MID, 0, text_y);
-  place(m.artist, LV_ALIGN_TOP_MID, 0, text_y + 28);
-  place(m.action, LV_ALIGN_TOP_MID, 0, text_y + 52);
+  const int cover_dx = wide ? top + cover_size / 2 - w / 2 : 0;
+  place(m.cover, LV_ALIGN_TOP_MID, cover_dx, top);
+  place(m.icon, LV_ALIGN_TOP_MID, cover_dx, top);
+  place(m.transport, LV_ALIGN_TOP_MID, cover_dx, top + cover_size / 2);
+  const int text_y = wide ? top + S(8) : top + cover_size + 12;
+  place(m.title, LV_ALIGN_TOP_MID, col_dx, text_y);
+  place(m.artist, LV_ALIGN_TOP_MID, col_dx, text_y + 28);
+  place(m.action, LV_ALIGN_TOP_MID, col_dx, text_y + 52);
   show(m.room, false);
-  set_width(m.action, w - S(24));
-  set_width(m.room, w - S(24));
-  set_width(m.title, w - S(24));
-  set_width(m.artist, w - S(24));
-  // The knob's round progress ring becomes a straight bar.
+  for (auto *label : {m.action, m.room, m.title, m.artist}) set_width(label, col_w - S(24));
+  // The base layout's round progress ring becomes a straight bar.
   const bool progress = !hidden(m.arc);
   onx_render::style_opa(m.arc, LV_OPA_TRANSP, 0);
-  show(m.transport, false);
+  // The base layout's paused/transport glyph over the artwork is redundant with the
+  // play/pause button. Its own refresh keeps un-hiding it while paused, so
+  // hiding it here each tick made it flicker: keep it transparent instead.
+  onx_render::style_opa(m.transport, LV_OPA_TRANSP, 0);
   show(media_bar, progress || lv_bar_get_value(media_bar) > 0);
   if (m.arc != nullptr) lv_bar_set_value(media_bar, lv_arc_get_value(m.arc), LV_ANIM_OFF);
-  lv_obj_set_size(media_bar, w - S(40), S(5));
-  place(media_bar, LV_ALIGN_TOP_MID, 0, h - S(64) - S(12) - 20);
-  place(media_row, LV_ALIGN_BOTTOM_MID, 0, -S(12));
+  if (lv_obj_get_style_width(media_bar, LV_PART_MAIN) != col_w - S(40)) lv_obj_set_size(media_bar, col_w - S(40), S(5));
+  place(media_bar, LV_ALIGN_TOP_MID, col_dx, h - row_h - row_gap - 20);
+  set_width(media_row, col_w);
+  place(media_row, LV_ALIGN_BOTTOM_MID, col_dx, -row_gap);
   if (media_play_label && is_playing) {
     const char *want = is_playing() ? LV_SYMBOL_PAUSE : LV_SYMBOL_PLAY;
     if (strcmp(lv_label_get_text(media_play_label), want) != 0) lv_label_set_text(media_play_label, want);

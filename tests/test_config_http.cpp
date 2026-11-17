@@ -17,7 +17,7 @@ int main() {
   unsigned refreshes=0;
   web.set_handler([&](const Query &query) {assert(query.op=="refresh"); ++refreshes; return std::string("{\"ok\":true}");});
   AsyncWebServerRequest page;
-  page.url="/knob"; page.method_=HTTP_GET;
+  page.url="/panel"; page.method_=HTTP_GET;
   web.handleRequest(&page);
   assert(page.code()==200);
   const std::string token_marker = "window.ONX_TOKEN='";
@@ -27,7 +27,7 @@ int main() {
   const auto token=page.body.substr(token_start,page.body.find("'",token_start)-token_start);
   assert(token.size()==32);
   assert(page.copied_response_bytes==0&&page.chunks==4);
-  for(const auto &url : {"/knob/ha.js","/knob/app.js"}) {
+  for(const auto &url : {"/panel/ha.js","/panel/app.js"}) {
     AsyncWebServerRequest asset;asset.url=url;asset.method_=HTTP_GET;web.handleRequest(&asset);
     assert(asset.code()==200&&!asset.body.empty()&&asset.copied_response_bytes==0);
     assert(asset.flash_response_bytes==asset.body.size());
@@ -38,7 +38,7 @@ int main() {
   assert(refreshes==0); // HTTP task must not perform HA refresh/NVS/UI work.
   assert(refresh.body=="{\"ticket\":1}");
   AsyncWebServerRequest result;
-  result.url="/knob/result"; result.method_=HTTP_GET; result.args={{"ticket","1"}};
+  result.url="/panel/result"; result.method_=HTTP_GET; result.args={{"ticket","1"}};
   web.handleRequest(&result);
   assert(result.code()==202 && result.body=="{\"pending\":true}");
   web.loop();
@@ -49,14 +49,14 @@ int main() {
   const std::string large_json="{\"value\":\""+std::string(10000,'x')+"\"}";
   web.set_handler([&](const Query &){return large_json;});
   auto big=request(token);web.handleRequest(&big);web.loop();
-  AsyncWebServerRequest big_result;big_result.url="/knob/result";big_result.method_=HTTP_GET;big_result.args={{"ticket","2"}};
+  AsyncWebServerRequest big_result;big_result.url="/panel/result";big_result.method_=HTTP_GET;big_result.args={{"ticket","2"}};
   web.handleRequest(&big_result);assert(big_result.body==large_json&&big_result.copied_response_bytes==0);
   // Large bodies built in PSRAM are handed over without an internal-RAM string.
   web.set_handler([&](const Query &){
     esphome::onx_config_web::large_body().assign(large_json.data(),large_json.size());
     return std::string(esphome::onx_config_web::LARGE_BODY_MARKER);});
   auto psram=request(token);web.handleRequest(&psram);web.loop();
-  AsyncWebServerRequest psram_result;psram_result.url="/knob/result";psram_result.method_=HTTP_GET;psram_result.args={{"ticket","3"}};
+  AsyncWebServerRequest psram_result;psram_result.url="/panel/result";psram_result.method_=HTTP_GET;psram_result.args={{"ticket","3"}};
   web.handleRequest(&psram_result);assert(psram_result.body==large_json&&esphome::onx_config_web::large_body().empty());
   web.set_handler([&](const Query &query) {assert(query.op=="refresh"); ++refreshes; return std::string("{\"ok\":true}");});
   auto forbidden=request("wrong");web.handleRequest(&forbidden);assert(forbidden.code()==403);

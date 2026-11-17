@@ -11,16 +11,16 @@ const {chromium}=require('playwright');
   await page.route('http://panel.test/**',async route=>{
    const req=route.request(),url=new URL(req.url());
    if(url.pathname==='/'){await route.fulfill({contentType:'text/html',body:html});return}
-   if(url.pathname==='/knob/panel.js'){await route.fulfill({contentType:'text/javascript',body:script});return}
-   if(url.pathname==='/knob/app.js'||url.pathname==='/knob/ha.js'){await route.fulfill({contentType:'text/javascript',body:''});return}
-   if(url.pathname==='/knob/api'){
+   if(url.pathname==='/panel/panel.js'){await route.fulfill({contentType:'text/javascript',body:script});return}
+   if(url.pathname==='/panel/app.js'||url.pathname==='/panel/ha.js'){await route.fulfill({contentType:'text/javascript',body:''});return}
+   if(url.pathname==='/panel/api'){
     const q=new URLSearchParams(req.postData());let response={};
     if(q.get('op')==='panel_state')response={status:'ready',scale:1};
     if(q.get('op')==='panel_pages')response={pages:configs};
     if(q.get('op')==='panel_page_save'){const p=JSON.parse(q.get('data'));payloads.push(p);configs.splice(0,configs.length,p);response={pages:configs}}
     tickets.set(++ticket,response);await route.fulfill({json:{ticket}});return;
    }
-   if(url.pathname==='/knob/result'){await route.fulfill({json:tickets.get(Number(url.searchParams.get('ticket')))||{}});return}
+   if(url.pathname==='/panel/result'){await route.fulfill({json:tickets.get(Number(url.searchParams.get('ticket')))||{}});return}
    await route.fulfill({status:204});
   });
   await page.goto('http://panel.test/');await page.waitForFunction(()=>!!globalThis.ONX_PANEL_EDITOR);
@@ -33,7 +33,7 @@ const {chromium}=require('playwright');
   });
   assert.equal(await page.locator('#device-preview').getAttribute('viewBox'),'0 0 320 480');
   assert.equal(await page.locator('#device-preview circle').count(),0);
-  const frame=await page.locator('.knob').boundingBox();assert(frame.height>frame.width*1.35,'Preview frame must be rectangular, not a square SVG letterbox');
+  const frame=await page.locator('.screen-frame').boundingBox();assert(frame.height>frame.width*1.35,'Preview frame must be rectangular, not a square SVG letterbox');
   await page.selectOption('#page-kind','two_controls');await page.selectOption('[data-member="0"]','switch.fan');
   assert.equal(await page.locator('[data-panel-item]').count(),2);
   await page.click('#save-page-layout');await page.getByText('Page layout saved.',{exact:true}).waitFor();
@@ -60,6 +60,22 @@ const {chromium}=require('playwright');
   });
   assert.match(await page.locator('#device-preview').textContent(),/Track title/);assert.match(await page.locator('#device-preview').textContent(),/Artist/);
   assert.equal(await page.locator('#device-preview circle').count(),0);
+  // Media matches the device: three transport buttons, no close button, no header icons.
+  assert.equal(await page.locator('[data-media-button]').count(),3);
+  assert.doesNotMatch(await page.locator('#device-preview').innerHTML(),/close|monitor-dashboard|bell/);
+  // Landscape: the selected orientation turns the preview and the layout.
+  await page.evaluate(()=>{
+   const media={entity:'media_player.room',name:'Room speaker'},view={layout:'media',playing:true,progress:500,lines:[{text:''},{text:'Volume: 50%'},{text:'Track title'},{text:'Artist'},{text:'Room speaker'}]};
+   ONX_PANEL_PREVIEW(document.getElementById('device-preview'),media,view,[view],'detail',{orientation:'90',media_color:'#F97316'});
+  });
+  assert.equal(await page.locator('#device-preview').getAttribute('viewBox'),'0 0 480 320');
+  const play=await page.locator('[data-media-button="play"]').evaluate(n=>({x:+n.getAttribute('x'),fill:n.getAttribute('fill')}));
+  assert(play.x>200,'Landscape transport sits beside the artwork');assert.notEqual(play.fill,'#1f6feb');
+  const wide=await page.evaluate(()=>ONX_PANEL_GEOMETRY('two_controls',480,320));assert.equal(wide[0].y,wide[1].y);
+  await page.evaluate(()=>{ONX_PANEL_PREVIEW(document.getElementById('device-preview'),testSlots[0],testViews[0],testViews,'main',{orientation:'270'})});
+  assert.equal(await page.locator('#device-preview').getAttribute('viewBox'),'0 0 480 320');
+  assert.match(await page.locator('#device-preview').innerHTML(),/bell-outline/,'Main view shows the bell');
+  await page.screenshot({path:'/config/tests/artifacts/panel-pages-35-landscape.png',fullPage:true});
   await page.evaluate(()=>{ONX_PANEL_EDITOR(testSlots,0,false,testDraw,true)});
   assert.equal(await page.locator('#panel-page-layout').isVisible(),false,'Editing a preset must not accidentally save a live-device page layout');
   console.log('Panel pages: full-height previews, grouped live values, editing, save payloads, duplicate rejection and both model geometries passed');

@@ -1,8 +1,8 @@
 #pragma once
-// Touch input for the knob application on rectangular panels.
+// Touch input for the rectangular panels.
 //
-// The knob UI is driven by encoder detents and one button. This component maps
-// touch onto exactly those events, so the knob's behaviour is reused unchanged:
+// The native UI is driven by encoder detents and one button. This component maps
+// touch onto exactly those events, so the shared input behaviour is reused:
 //   swipe (horizontal, or vertical on detail pages) -> encoder detents
 //   tap -> button press + release        hold -> button held (with swipes: held turn)
 //   tap on a strip icon -> jump that many carousel positions

@@ -282,7 +282,7 @@ inline bool same_query(const esphome::onx_config_web::Query &a, const esphome::o
 // ---- operations ----------------------------------------------------------
 // Each returns an empty string on success or a message for the user.
 // Stores a {"slots":[...]} document under a name, replacing a preset with the
-// same name. mark_active records that the knob's controls match it now.
+// same name. mark_active records that the panel's controls match it now.
 inline std::string store_document(const std::string &raw_name, JsonDocument &doc, bool mark_active) {
   load();
   const std::string requested = trim(raw_name);
@@ -318,7 +318,7 @@ inline std::string store_document(const std::string &raw_name, JsonDocument &doc
     active = name;
     persist_active();
   } else if (!mark_active && same_name(active, name)) {
-    // Replaced from a backup: the knob's controls may no longer match it.
+    // Replaced from a backup: the panel's controls may no longer match it.
     active.clear();
     persist_active();
   }

@@ -144,7 +144,7 @@ void OnlineImage::fetch_task_(void *arg) {
   config.crt_bundle_attach=esp_crt_bundle_attach;
   config.disable_auto_redirect=true;
   config.buffer_size=2048;
-  config.user_agent="ONX2424G013/artwork";
+  config.user_agent="RoomCompanion/artwork";
   auto client=esp_http_client_init(&config);
   if(!client) error="HTTP allocation failed";
   const uint32_t started=millis();

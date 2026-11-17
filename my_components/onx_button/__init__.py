@@ -1,1 +1,1 @@
-# Buffered GPIO input for the physical knob button.
+# Buffered virtual button input (pressed and released by touch).

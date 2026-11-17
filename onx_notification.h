@@ -154,8 +154,8 @@ inline bool press_consumed{false};
 inline bool expanded{false};
 
 // Notification centre (touch panels). When enabled, show_message adds to a
-// short history shown behind a corner bell instead of the knob's full-screen
-// popup; each entry can be opened and dismissed. Disabled on the knob.
+// short history shown behind the bell instead of a full-screen popup; each
+// entry can be opened and dismissed.
 struct CenterItem {
   uint32_t id{0},received_ms{0};
   std::string title,body,image_url;

@@ -45,7 +45,7 @@ enum NormalDeviceDetailKind : int {
   NORMAL_DEVICE_DETAIL_KIND_SETTINGS_WIFI = 6,
   NORMAL_DEVICE_DETAIL_KIND_DIMMING_LIGHT = 7,
   NORMAL_DEVICE_DETAIL_KIND_SETTINGS_BRIGHTNESS = 8,
-  NORMAL_DEVICE_DETAIL_KIND_SETTINGS_KNOB = 9,
+  NORMAL_DEVICE_DETAIL_KIND_SETTINGS_INPUT = 9,
   NORMAL_DEVICE_DETAIL_KIND_AUTOMATION = 10,
   NORMAL_DEVICE_DETAIL_KIND_SETTINGS_CONNECTION = 11,
 
@@ -689,7 +689,7 @@ inline void ensure_device2_config_pref_ready() {
 inline std::string build_ha_action_variables(const std::string &entity,int delta,const std::string &direction,
                                              bool pressed,const std::string &value,const std::string &unit) {
   auto doc=make_psram_json_document();
-  doc["knob_entity"]=entity;doc["delta"]=delta;doc["direction"]=direction;
+  doc["panel_entity"]=entity;doc["delta"]=delta;doc["direction"]=direction;
   doc["pressed"]=pressed;doc["value"]=value;doc["unit"]=unit;
   std::string result;serializeJson(doc,result);return "{{ "+result+" }}";
 }
@@ -1257,7 +1257,7 @@ inline std::string trim_copy(const std::string &value) {
 }
 
 // Touch panels add two local controls (dashboard stream, Assist). They reuse
-// the local-switch path with reserved IO numbers; the knob never accepts them.
+// the local-switch path with reserved IO numbers; the panel never accepts them.
 inline bool panel_local_entries = false;
 constexpr int PANEL_LOCAL_DASHBOARD = 90, PANEL_LOCAL_ASSIST = 91;
 
@@ -1319,7 +1319,7 @@ inline std::string extract_entity_id_from_device1_option(const std::string &opti
 }
 
 inline std::string get_provisioning_ap_ssid_string() {
-  cached_provisioning_ap_ssid = "ONX2424G013-";
+  cached_provisioning_ap_ssid = "RoomCompanion-";
   std::string mac = esphome::get_mac_address();
   for (char &ch : mac) {
     ch = static_cast<char>(std::tolower(static_cast<unsigned char>(ch)));
@@ -4559,7 +4559,7 @@ using custom_logic::NORMAL_DEVICE_DETAIL_KIND_NONE;
 using custom_logic::NORMAL_DEVICE_DETAIL_KIND_PLUG;
 using custom_logic::NORMAL_DEVICE_DETAIL_KIND_SETTINGS;
 using custom_logic::NORMAL_DEVICE_DETAIL_KIND_SETTINGS_BRIGHTNESS;
-using custom_logic::NORMAL_DEVICE_DETAIL_KIND_SETTINGS_KNOB;
+using custom_logic::NORMAL_DEVICE_DETAIL_KIND_SETTINGS_INPUT;
 using custom_logic::NORMAL_DEVICE_DETAIL_KIND_SETTINGS_CONNECTION;
 
 using custom_logic::NORMAL_DEVICE_DETAIL_KIND_SETTINGS_WIFI;

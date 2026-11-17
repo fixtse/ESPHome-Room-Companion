@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Run on devserv, in the pinned ESPHome container/devcontainer.
-# Validates (and with --compile, builds) the knob and both Room Companion panels,
+# Validates (and with --compile, builds) both Room Companion panels,
 # including the wake-word root and the extension example.
 set -euo pipefail
 cd "$(dirname "$0")/.."
@@ -26,7 +26,7 @@ packages:
   device: !include ONX2432G028.yaml
   extension: !include examples/room-companion/extension.yaml
 YAML
-for config in ONX2424G013.yaml ONX2432G028.yaml ONX3248G035.yaml ONX3248G035.wake-word.yaml .validation-extension.yaml; do
+for config in ONX2432G028.yaml ONX3248G035.yaml ONX3248G035.wake-word.yaml .validation-extension.yaml; do
   echo "== $config"
   esphome config "$config" > /tmp/room-companion-config.log
   if [[ "${1:-}" = --compile ]]; then esphome compile "$config"; fi

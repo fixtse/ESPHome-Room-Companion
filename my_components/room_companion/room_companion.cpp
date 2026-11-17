@@ -4,7 +4,7 @@
 #include "esphome/components/json/json_util.h"
 #include "esphome/components/wifi/wifi_component.h"
 
-// Knob power state (copied into the build by `esphome: includes:`).
+// Power state (copied into the build by `esphome: includes:`).
 #include "onx_power_state.h"
 
 #include <cctype>
@@ -231,11 +231,11 @@ void RoomPanel::give_display_to_(bool stream) {
     stream_->set_active(true);
   } else {
     stream_->set_active(false);
-    // The knob's sleep keeps LVGL paused itself.
+    // Low-power sleep keeps LVGL paused itself.
     if (!onx_power::sleeping) lvgl_->set_paused(false, false);
   }
   stream_owner_ = stream;
-  ESP_LOGI(TAG, "Display owner: %s", stream ? "dashboard stream" : "knob UI");
+  ESP_LOGI(TAG, "Display owner: %s", stream ? "dashboard stream" : "native UI");
   owner_trigger_.trigger(stream);
 }
 
