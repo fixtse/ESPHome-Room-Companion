@@ -34,20 +34,40 @@ SPK, with power off. Use the correct FPC orientation and vendor accessory pinout
 After firmware upload, verify I2C detection, display colors/orientation, corner
 touch coordinates and PSRAM initialization before testing audio.
 
+## Wi-Fi provisioning
+
+Both Improv transports are on by default; there is no setup access point and no
+compiled SSID.
+
+- **Improv Serial**: connect USB (CH340, GPIO43/44, also the log port), open
+  [web.esphome.io](https://web.esphome.io) in Chrome or Edge, **Connect**, then
+  **Configure Wi-Fi**. Afterwards it offers **Visit device**, the settings page.
+- **Improv BLE**: Home Assistant's Bluetooth discovery or any Improv app. Press
+  **BOOT** to authorize for 60 seconds. BLE is turned off two seconds after
+  Wi-Fi connects (freeing memory for audio and the stream) and back on if Wi-Fi
+  drops.
+
+## Assist
+
 In Home Assistant, configure an Assist pipeline including STT and TTS. Add the
-ESPHome device and select that pipeline for its Assist satellite. Tap Talk, say a
-short command, check the transcript, then check reply text and speaker output.
+ESPHome device and select that pipeline for its Assist satellite. Start a
+request with the panel's **Talk** button (Assist page), the **BOOT** button, or
+the **Talk** button entity; tap again to stop. In dashboard mode Assist takes
+the screen and gives it back six seconds after the reply.
+
 No HA long-lived access token is needed by the panel. The microphone-mute switch
 prevents new captures and stops the running pipeline; it is a software control,
-not physical electrical isolation. Default playback volume is 35%.
+not physical electrical isolation. Reply volume (default 60%) is on the
+settings page and part of presets.
 
 The optional wake-word package is `examples/room-companion/wake-word.yaml`.
 Add it through `packages:` after verifying tap-to-talk. Enable its switch in HA;
 it is intentionally off at boot and is disabled when muted or disconnected.
-Local wake-word detection uses additional CPU/RAM. It is not an echo-cancellation
-implementation, and successful compilation does not verify acoustic performance.
+Local wake-word detection keeps one CPU core busy and competes with dashboard
+JPEG decoding; prefer tap-to-talk in dashboard mode. It is not an
+echo-cancellation implementation, and successful compilation does not verify
+acoustic performance.
 
-Improv BLE is active only while Wi-Fi is disconnected; press BOOT to authorize
-provisioning for 60 seconds. BLE is disabled after connecting to free resources
-for audio. No Bluetooth proxy, camera or SD support is enabled by default, leaving resources
-for LVGL and audio. Extensions must avoid occupied pins and both I2S peripherals.
+No Bluetooth proxy, camera or SD support is enabled, leaving resources for
+LVGL, audio and the stream. Extensions must avoid occupied pins and both I2S
+peripherals.

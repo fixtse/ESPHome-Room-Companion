@@ -1,42 +1,47 @@
+# Layout is authored for the knob's 240x240 round screen. Rectangular panels
+# set ui_scale (and the other geometry substitutions) in their board profile.
+substitutions:
+  ui_scale: 1
+
 lvgl:
   top_layer:
     widgets:
       - image:
           id: normal_device_wifi_online_widget
-          x: -13
-          y: 10
-          width: 20
+          x: ${ (-13 * (ui_scale | float)) | round | int }
+          y: ${ (10 * (ui_scale | float)) | round | int }
+          width: ${ (20 * (ui_scale | float)) | round | int }
           align: TOP_MID
           src: standby_wifi_online_img
           hidden: true
       - image:
           id: normal_device_wifi_offline_widget
-          x: -13
-          y: 10
+          x: ${ (-13 * (ui_scale | float)) | round | int }
+          y: ${ (10 * (ui_scale | float)) | round | int }
           align: TOP_MID
           src: standby_wifi_offline_img
           hidden: true
       - image:
           id: normal_device_homeassistant_online_widget
-          x: 13
-          y: 10
+          x: ${ (13 * (ui_scale | float)) | round | int }
+          y: ${ (10 * (ui_scale | float)) | round | int }
           align: TOP_MID
           src: standby_homeassistant_online_img
           hidden: true
       - image:
           id: normal_device_homeassistant_offline_widget
-          x: 13
-          y: 10
+          x: ${ (13 * (ui_scale | float)) | round | int }
+          y: ${ (10 * (ui_scale | float)) | round | int }
           align: TOP_MID
           src: standby_homeassistant_offline_img
           hidden: true
       - obj:
           id: normal_action_feedback
           align: bottom_mid
-          y: -28
-          width: 48
-          height: 48
-          radius: 24
+          y: ${ (-28 * (ui_scale | float)) | round | int }
+          width: ${ (48 * (ui_scale | float)) | round | int }
+          height: ${ (48 * (ui_scale | float)) | round | int }
+          radius: ${ (24 * (ui_scale | float)) | round | int }
           bg_color: 0x000000
           bg_opa: 85%
           border_width: 0
@@ -53,9 +58,9 @@ lvgl:
           id: normal_message_overlay
           x: 0
           y: 0
-          width: 240
-          height: 240
-          radius: 120
+          width: ${ (240 * (ui_scale | float)) | round | int }
+          height: ${ (240 * (ui_scale | float)) | round | int }
+          radius: ${ (120 * (ui_scale | float)) | round | int }
           bg_color: 0x1A1A1A
           bg_opa: COVER
           border_width: 0
@@ -67,8 +72,8 @@ lvgl:
             - arc:
                 id: normal_message_countdown_arc
                 align: center
-                width: 240
-                height: 240
+                width: ${ (240 * (ui_scale | float)) | round | int }
+                height: ${ (240 * (ui_scale | float)) | round | int }
                 pad_all: 0
                 border_width: 0
                 adjustable: false
@@ -79,24 +84,24 @@ lvgl:
                 start_angle: 0
                 end_angle: 360
                 rotation: 270
-                arc_width: 4
+                arc_width: ${ (4 * (ui_scale | float)) | round | int }
                 arc_color: 0x414850
                 indicator:
-                  arc_width: 4
+                  arc_width: ${ (4 * (ui_scale | float)) | round | int }
                   arc_color: 0x62B0FF
                 hidden: true
             - label:
                 align: top_mid
-                y: 20
+                y: ${ (20 * (ui_scale | float)) | round | int }
                 text_font: fonts_MiSans_Bold_12
                 text_color: 0x62B0FF
                 text: "Notification"
             - label:
                 id: normal_message_title
                 align: top_mid
-                y: 43
-                width: 184
-                height: 44
+                y: ${ (43 * (ui_scale | float)) | round | int }
+                width: ${ (184 * (ui_scale | float)) | round | int }
+                height: ${ (44 * (ui_scale | float)) | round | int }
                 long_mode: WRAP
                 text_align: CENTER
                 text_font: fonts_MiSans_Medium_18
@@ -105,15 +110,15 @@ lvgl:
             - image:
                 id: normal_message_image
                 align: top_mid
-                y: 70
+                y: ${ (70 * (ui_scale | float)) | round | int }
                 src: notification_image
                 hidden: true
             - obj:
                 id: normal_message_body
                 align: top_mid
-                y: 94
-                width: 168
-                height: 110
+                y: ${ (94 * (ui_scale | float)) | round | int }
+                width: ${ (168 * (ui_scale | float)) | round | int }
+                height: ${ (110 * (ui_scale | float)) | round | int }
                 bg_opa: TRANSP
                 border_width: 0
                 pad_all: 0
@@ -124,17 +129,17 @@ lvgl:
                       id: normal_message_text
                       x: 0
                       y: 0
-                      width: 160
-                      text_line_space: 2
+                      width: ${ (160 * (ui_scale | float)) | round | int }
+                      text_line_space: ${ (2 * (ui_scale | float)) | round | int }
                       long_mode: WRAP
                       text_font: fonts_MiSans_Medium_16
                       text_color: 0xFFFFFF
                       text: ""
             - label:
                 align: top_mid
-                y: 212
-                width: 120
-                height: 16
+                y: ${ (212 * (ui_scale | float)) | round | int }
+                width: ${ (120 * (ui_scale | float)) | round | int }
+                height: ${ (16 * (ui_scale | float)) | round | int }
                 text_align: CENTER
                 text_font: fonts_MiSans_Bold_12
                 text_color: 0xB8B8B8
@@ -142,14 +147,14 @@ lvgl:
       - obj:
           id: normal_gesture_feedback
           align: bottom_mid
-          y: -44
-          width: 168
-          height: 40
-          radius: 12
+          y: ${ (-44 * (ui_scale | float)) | round | int }
+          width: ${ (168 * (ui_scale | float)) | round | int }
+          height: ${ (40 * (ui_scale | float)) | round | int }
+          radius: ${ (12 * (ui_scale | float)) | round | int }
           bg_color: 0x000000
           bg_opa: 85%
           border_width: 0
-          pad_all: 4
+          pad_all: ${ (4 * (ui_scale | float)) | round | int }
           clickable: false
           scrollable: false
           hidden: true
@@ -157,7 +162,7 @@ lvgl:
             - label:
                 id: normal_gesture_feedback_text
                 align: center
-                width: 158
+                width: ${ (158 * (ui_scale | float)) | round | int }
                 long_mode: DOT
                 text_align: CENTER
                 text_font: fonts_MiSans_Medium_18
@@ -176,8 +181,8 @@ lvgl:
             id: normal_device_empty_shell
             x: 0
             y: 0
-            width: 240
-            height: 240
+            width: ${ (240 * (ui_scale | float)) | round | int }
+            height: ${ (240 * (ui_scale | float)) | round | int }
             radius: 0
             bg_color: 0x272727
             border_width: 0
@@ -186,34 +191,34 @@ lvgl:
             widgets:
               - image:
                   src: homeassistant_img
-                  width: 43
-                  height: 43
+                  width: ${ (43 * (ui_scale | float)) | round | int }
+                  height: ${ (43 * (ui_scale | float)) | round | int }
                   align: TOP_MID
-                  y: 10
+                  y: ${ (10 * (ui_scale | float)) | round | int }
               - label:
                   x: 0
-                  y: 55
+                  y: ${ (55 * (ui_scale | float)) | round | int }
                   align: top_mid
                   text_font: fonts_MiSans_Bold_16
                   text_color: 0xFFFFFF
                   text: "Add controlled Device"
               - label:
                   x: 0
-                  y: 73
+                  y: ${ (73 * (ui_scale | float)) | round | int }
                   align: top_mid
                   text_font: fonts_MiSans_Bold_16
                   text_color: 0xFFFFFF
                   text: "in Home Assistant"
               - label:
-                  y: 100
+                  y: ${ (100 * (ui_scale | float)) | round | int }
                   align: top_mid
                   text_font: fonts_MiSans_Bold_14
                   text_color: 0x4AC81A
                   text: "Controlled devices not added"
               - label:
-                  y: 123
+                  y: ${ (123 * (ui_scale | float)) | round | int }
                   align: top_mid
-                  width: 205
+                  width: ${ (205 * (ui_scale | float)) | round | int }
                   text_align: CENTER
                   text_font: fonts_MiSans_Medium_16
                   text_color: 0xD2D2D2
@@ -231,8 +236,8 @@ lvgl:
             id: normal_device_0_shell
             x: 0
             y: 0
-            width: 240
-            height: 240
+            width: ${ (240 * (ui_scale | float)) | round | int }
+            height: ${ (240 * (ui_scale | float)) | round | int }
             radius: 0
             bg_color: 0x272727
             border_width: 0
@@ -242,76 +247,76 @@ lvgl:
               - image:
                   id: normal_device_0_icon_switch
                   x: 0
-                  y: 62
+                  y: ${ (62 * (ui_scale | float)) | round | int }
                   align: top_mid
                   src: normal_device_icon_switch_img
               - image:
                   id: normal_device_0_icon_switch_on
                   x: 0
-                  y: 62
+                  y: ${ (62 * (ui_scale | float)) | round | int }
                   align: top_mid
                   src: normal_device_icon_switch_on_img
                   hidden: true
               - image:
                   id: normal_device_0_icon_plug
                   x: 0
-                  y: 62
+                  y: ${ (62 * (ui_scale | float)) | round | int }
                   align: top_mid
                   src: normal_device_icon_plug_img
                   hidden: true
               - image:
                   id: normal_device_0_icon_plug_on
                   x: 0
-                  y: 62
+                  y: ${ (62 * (ui_scale | float)) | round | int }
                   align: top_mid
                   src: normal_device_icon_plug_on_img
                   hidden: true
               - image:
                   id: normal_device_0_icon_light
                   x: 0
-                  y: 62
+                  y: ${ (62 * (ui_scale | float)) | round | int }
                   align: top_mid
                   src: normal_device_icon_light_img
                   hidden: true
               - image:
                   id: normal_device_0_icon_light_on
                   x: 0
-                  y: 62
+                  y: ${ (62 * (ui_scale | float)) | round | int }
                   align: top_mid
                   src: normal_device_icon_light_on_img
                   hidden: true
               - image:
                   id: normal_device_0_icon_curtain
                   x: 0
-                  y: 62
+                  y: ${ (62 * (ui_scale | float)) | round | int }
                   align: top_mid
                   src: normal_device_icon_curtain_img
                   hidden: true
               - image:
                   id: normal_device_0_icon_settings
                   x: 0
-                  y: 62
+                  y: ${ (62 * (ui_scale | float)) | round | int }
                   align: top_mid
                   src: normal_device_icon_settings_img
                   hidden: true
               - label:
                   id: normal_device_0_title
                   x: 0
-                  y: 151
+                  y: ${ (151 * (ui_scale | float)) | round | int }
                   align: top_mid
                   text_font: fonts_MiSans_Medium_18
                   text_color: 0xFFFFFF
-                  width: 180
-                  height: 25
+                  width: ${ (180 * (ui_scale | float)) | round | int }
+                  height: ${ (25 * (ui_scale | float)) | round | int }
                   long_mode: dot
                   text_align: CENTER
                   text: "Plug"
               - label:
                   id: normal_device_0_value
                   align: top_mid
-                  y: 84
-                  width: 216
-                  height: 44
+                  y: ${ (84 * (ui_scale | float)) | round | int }
+                  width: ${ (216 * (ui_scale | float)) | round | int }
+                  height: ${ (44 * (ui_scale | float)) | round | int }
                   long_mode: dot
                   text_align: CENTER
                   text_font: fonts_MiSans_Medium_32
@@ -321,9 +326,9 @@ lvgl:
               - label:
                   id: normal_device_0_context
                   align: top_mid
-                  y: 124
-                  width: 198
-                  height: 20
+                  y: ${ (124 * (ui_scale | float)) | round | int }
+                  width: ${ (198 * (ui_scale | float)) | round | int }
+                  height: ${ (20 * (ui_scale | float)) | round | int }
                   long_mode: dot
                   text_align: CENTER
                   text_font: fonts_MiSans_Medium_14
@@ -333,9 +338,9 @@ lvgl:
               - label:
                   id: normal_device_0_pagination
                   align: top_mid
-                  y: 212
-                  width: 120
-                  height: 16
+                  y: ${ (212 * (ui_scale | float)) | round | int }
+                  width: ${ (120 * (ui_scale | float)) | round | int }
+                  height: ${ (16 * (ui_scale | float)) | round | int }
                   text_align: CENTER
                   text_font: fonts_MiSans_Bold_12
                   text_color: 0xD2D2D2
@@ -343,10 +348,10 @@ lvgl:
               - image:
                   id: normal_device_0_index_icon
                   x: 0
-                  y: 190
+                  y: ${ (190 * (ui_scale | float)) | round | int }
                   align: top_mid
-                  width: 12
-                  height: 12
+                  width: ${ (12 * (ui_scale | float)) | round | int }
+                  height: ${ (12 * (ui_scale | float)) | round | int }
                   src: normal_device_icon_settings_img
                   hidden: true
     - id: device_1
@@ -361,8 +366,8 @@ lvgl:
             id: normal_device_1_shell
             x: 0
             y: 0
-            width: 240
-            height: 240
+            width: ${ (240 * (ui_scale | float)) | round | int }
+            height: ${ (240 * (ui_scale | float)) | round | int }
             radius: 0
             bg_color: 0x272727
             border_width: 0
@@ -372,76 +377,76 @@ lvgl:
               - image:
                   id: normal_device_1_icon_switch
                   x: 0
-                  y: 62
+                  y: ${ (62 * (ui_scale | float)) | round | int }
                   align: top_mid
                   src: normal_device_icon_switch_img
               - image:
                   id: normal_device_1_icon_switch_on
                   x: 0
-                  y: 62
+                  y: ${ (62 * (ui_scale | float)) | round | int }
                   align: top_mid
                   src: normal_device_icon_switch_on_img
                   hidden: true
               - image:
                   id: normal_device_1_icon_plug
                   x: 0
-                  y: 62
+                  y: ${ (62 * (ui_scale | float)) | round | int }
                   align: top_mid
                   src: normal_device_icon_plug_img
                   hidden: true
               - image:
                   id: normal_device_1_icon_plug_on
                   x: 0
-                  y: 62
+                  y: ${ (62 * (ui_scale | float)) | round | int }
                   align: top_mid
                   src: normal_device_icon_plug_on_img
                   hidden: true
               - image:
                   id: normal_device_1_icon_light
                   x: 0
-                  y: 62
+                  y: ${ (62 * (ui_scale | float)) | round | int }
                   align: top_mid
                   src: normal_device_icon_light_img
                   hidden: true
               - image:
                   id: normal_device_1_icon_light_on
                   x: 0
-                  y: 62
+                  y: ${ (62 * (ui_scale | float)) | round | int }
                   align: top_mid
                   src: normal_device_icon_light_on_img
                   hidden: true
               - image:
                   id: normal_device_1_icon_curtain
                   x: 0
-                  y: 62
+                  y: ${ (62 * (ui_scale | float)) | round | int }
                   align: top_mid
                   src: normal_device_icon_curtain_img
                   hidden: true
               - image:
                   id: normal_device_1_icon_settings
                   x: 0
-                  y: 62
+                  y: ${ (62 * (ui_scale | float)) | round | int }
                   align: top_mid
                   src: normal_device_icon_settings_img
                   hidden: true
               - label:
                   id: normal_device_1_title
                   x: 0
-                  y: 151
+                  y: ${ (151 * (ui_scale | float)) | round | int }
                   align: top_mid
                   text_font: fonts_MiSans_Medium_18
                   text_color: 0xFFFFFF
-                  width: 180
-                  height: 25
+                  width: ${ (180 * (ui_scale | float)) | round | int }
+                  height: ${ (25 * (ui_scale | float)) | round | int }
                   long_mode: dot
                   text_align: CENTER
                   text: "Plug"
               - label:
                   id: normal_device_1_value
                   align: top_mid
-                  y: 84
-                  width: 216
-                  height: 44
+                  y: ${ (84 * (ui_scale | float)) | round | int }
+                  width: ${ (216 * (ui_scale | float)) | round | int }
+                  height: ${ (44 * (ui_scale | float)) | round | int }
                   long_mode: dot
                   text_align: CENTER
                   text_font: fonts_MiSans_Medium_32
@@ -451,9 +456,9 @@ lvgl:
               - label:
                   id: normal_device_1_context
                   align: top_mid
-                  y: 124
-                  width: 198
-                  height: 20
+                  y: ${ (124 * (ui_scale | float)) | round | int }
+                  width: ${ (198 * (ui_scale | float)) | round | int }
+                  height: ${ (20 * (ui_scale | float)) | round | int }
                   long_mode: dot
                   text_align: CENTER
                   text_font: fonts_MiSans_Medium_14
@@ -463,9 +468,9 @@ lvgl:
               - label:
                   id: normal_device_1_pagination
                   align: top_mid
-                  y: 212
-                  width: 120
-                  height: 16
+                  y: ${ (212 * (ui_scale | float)) | round | int }
+                  width: ${ (120 * (ui_scale | float)) | round | int }
+                  height: ${ (16 * (ui_scale | float)) | round | int }
                   text_align: CENTER
                   text_font: fonts_MiSans_Bold_12
                   text_color: 0xD2D2D2
@@ -473,10 +478,10 @@ lvgl:
               - image:
                   id: normal_device_1_index_icon
                   x: 0
-                  y: 190
+                  y: ${ (190 * (ui_scale | float)) | round | int }
                   align: top_mid
-                  width: 12
-                  height: 12
+                  width: ${ (12 * (ui_scale | float)) | round | int }
+                  height: ${ (12 * (ui_scale | float)) | round | int }
                   src: normal_device_icon_settings_img
                   hidden: true
     - id: device_2
@@ -491,8 +496,8 @@ lvgl:
             id: normal_device_2_shell
             x: 0
             y: 0
-            width: 240
-            height: 240
+            width: ${ (240 * (ui_scale | float)) | round | int }
+            height: ${ (240 * (ui_scale | float)) | round | int }
             radius: 0
             bg_color: 0x272727
             border_width: 0
@@ -502,76 +507,76 @@ lvgl:
               - image:
                   id: normal_device_2_icon_switch
                   x: 0
-                  y: 62
+                  y: ${ (62 * (ui_scale | float)) | round | int }
                   align: top_mid
                   src: normal_device_icon_switch_img
               - image:
                   id: normal_device_2_icon_switch_on
                   x: 0
-                  y: 62
+                  y: ${ (62 * (ui_scale | float)) | round | int }
                   align: top_mid
                   src: normal_device_icon_switch_on_img
                   hidden: true
               - image:
                   id: normal_device_2_icon_plug
                   x: 0
-                  y: 62
+                  y: ${ (62 * (ui_scale | float)) | round | int }
                   align: top_mid
                   src: normal_device_icon_plug_img
                   hidden: true
               - image:
                   id: normal_device_2_icon_plug_on
                   x: 0
-                  y: 62
+                  y: ${ (62 * (ui_scale | float)) | round | int }
                   align: top_mid
                   src: normal_device_icon_plug_on_img
                   hidden: true
               - image:
                   id: normal_device_2_icon_light
                   x: 0
-                  y: 62
+                  y: ${ (62 * (ui_scale | float)) | round | int }
                   align: top_mid
                   src: normal_device_icon_light_img
                   hidden: true
               - image:
                   id: normal_device_2_icon_light_on
                   x: 0
-                  y: 62
+                  y: ${ (62 * (ui_scale | float)) | round | int }
                   align: top_mid
                   src: normal_device_icon_light_on_img
                   hidden: true
               - image:
                   id: normal_device_2_icon_curtain
                   x: 0
-                  y: 62
+                  y: ${ (62 * (ui_scale | float)) | round | int }
                   align: top_mid
                   src: normal_device_icon_curtain_img
                   hidden: true
               - image:
                   id: normal_device_2_icon_settings
                   x: 0
-                  y: 62
+                  y: ${ (62 * (ui_scale | float)) | round | int }
                   align: top_mid
                   src: normal_device_icon_settings_img
                   hidden: true
               - label:
                   id: normal_device_2_title
                   x: 0
-                  y: 151
+                  y: ${ (151 * (ui_scale | float)) | round | int }
                   align: top_mid
                   text_font: fonts_MiSans_Medium_18
                   text_color: 0xFFFFFF
-                  width: 180
-                  height: 25
+                  width: ${ (180 * (ui_scale | float)) | round | int }
+                  height: ${ (25 * (ui_scale | float)) | round | int }
                   long_mode: dot
                   text_align: CENTER
                   text: "Plug"
               - label:
                   id: normal_device_2_value
                   align: top_mid
-                  y: 84
-                  width: 216
-                  height: 44
+                  y: ${ (84 * (ui_scale | float)) | round | int }
+                  width: ${ (216 * (ui_scale | float)) | round | int }
+                  height: ${ (44 * (ui_scale | float)) | round | int }
                   long_mode: dot
                   text_align: CENTER
                   text_font: fonts_MiSans_Medium_32
@@ -581,9 +586,9 @@ lvgl:
               - label:
                   id: normal_device_2_context
                   align: top_mid
-                  y: 124
-                  width: 198
-                  height: 20
+                  y: ${ (124 * (ui_scale | float)) | round | int }
+                  width: ${ (198 * (ui_scale | float)) | round | int }
+                  height: ${ (20 * (ui_scale | float)) | round | int }
                   long_mode: dot
                   text_align: CENTER
                   text_font: fonts_MiSans_Medium_14
@@ -593,9 +598,9 @@ lvgl:
               - label:
                   id: normal_device_2_pagination
                   align: top_mid
-                  y: 212
-                  width: 120
-                  height: 16
+                  y: ${ (212 * (ui_scale | float)) | round | int }
+                  width: ${ (120 * (ui_scale | float)) | round | int }
+                  height: ${ (16 * (ui_scale | float)) | round | int }
                   text_align: CENTER
                   text_font: fonts_MiSans_Bold_12
                   text_color: 0xD2D2D2
@@ -603,10 +608,10 @@ lvgl:
               - image:
                   id: normal_device_2_index_icon
                   x: 0
-                  y: 190
+                  y: ${ (190 * (ui_scale | float)) | round | int }
                   align: top_mid
-                  width: 12
-                  height: 12
+                  width: ${ (12 * (ui_scale | float)) | round | int }
+                  height: ${ (12 * (ui_scale | float)) | round | int }
                   src: normal_device_icon_settings_img
                   hidden: true
     - id: device_3
@@ -621,8 +626,8 @@ lvgl:
             id: normal_device_3_shell
             x: 0
             y: 0
-            width: 240
-            height: 240
+            width: ${ (240 * (ui_scale | float)) | round | int }
+            height: ${ (240 * (ui_scale | float)) | round | int }
             radius: 0
             bg_color: 0x272727
             border_width: 0
@@ -632,76 +637,76 @@ lvgl:
               - image:
                   id: normal_device_3_icon_switch
                   x: 0
-                  y: 62
+                  y: ${ (62 * (ui_scale | float)) | round | int }
                   align: top_mid
                   src: normal_device_icon_switch_img
               - image:
                   id: normal_device_3_icon_switch_on
                   x: 0
-                  y: 62
+                  y: ${ (62 * (ui_scale | float)) | round | int }
                   align: top_mid
                   src: normal_device_icon_switch_on_img
                   hidden: true
               - image:
                   id: normal_device_3_icon_plug
                   x: 0
-                  y: 62
+                  y: ${ (62 * (ui_scale | float)) | round | int }
                   align: top_mid
                   src: normal_device_icon_plug_img
                   hidden: true
               - image:
                   id: normal_device_3_icon_plug_on
                   x: 0
-                  y: 62
+                  y: ${ (62 * (ui_scale | float)) | round | int }
                   align: top_mid
                   src: normal_device_icon_plug_on_img
                   hidden: true
               - image:
                   id: normal_device_3_icon_light
                   x: 0
-                  y: 62
+                  y: ${ (62 * (ui_scale | float)) | round | int }
                   align: top_mid
                   src: normal_device_icon_light_img
                   hidden: true
               - image:
                   id: normal_device_3_icon_light_on
                   x: 0
-                  y: 62
+                  y: ${ (62 * (ui_scale | float)) | round | int }
                   align: top_mid
                   src: normal_device_icon_light_on_img
                   hidden: true
               - image:
                   id: normal_device_3_icon_curtain
                   x: 0
-                  y: 62
+                  y: ${ (62 * (ui_scale | float)) | round | int }
                   align: top_mid
                   src: normal_device_icon_curtain_img
                   hidden: true
               - image:
                   id: normal_device_3_icon_settings
                   x: 0
-                  y: 62
+                  y: ${ (62 * (ui_scale | float)) | round | int }
                   align: top_mid
                   src: normal_device_icon_settings_img
                   hidden: true
               - label:
                   id: normal_device_3_title
                   x: 0
-                  y: 151
+                  y: ${ (151 * (ui_scale | float)) | round | int }
                   align: top_mid
                   text_font: fonts_MiSans_Medium_18
                   text_color: 0xFFFFFF
-                  width: 180
-                  height: 25
+                  width: ${ (180 * (ui_scale | float)) | round | int }
+                  height: ${ (25 * (ui_scale | float)) | round | int }
                   long_mode: dot
                   text_align: CENTER
                   text: "Plug"
               - label:
                   id: normal_device_3_value
                   align: top_mid
-                  y: 84
-                  width: 216
-                  height: 44
+                  y: ${ (84 * (ui_scale | float)) | round | int }
+                  width: ${ (216 * (ui_scale | float)) | round | int }
+                  height: ${ (44 * (ui_scale | float)) | round | int }
                   long_mode: dot
                   text_align: CENTER
                   text_font: fonts_MiSans_Medium_32
@@ -711,9 +716,9 @@ lvgl:
               - label:
                   id: normal_device_3_context
                   align: top_mid
-                  y: 124
-                  width: 198
-                  height: 20
+                  y: ${ (124 * (ui_scale | float)) | round | int }
+                  width: ${ (198 * (ui_scale | float)) | round | int }
+                  height: ${ (20 * (ui_scale | float)) | round | int }
                   long_mode: dot
                   text_align: CENTER
                   text_font: fonts_MiSans_Medium_14
@@ -723,9 +728,9 @@ lvgl:
               - label:
                   id: normal_device_3_pagination
                   align: top_mid
-                  y: 212
-                  width: 120
-                  height: 16
+                  y: ${ (212 * (ui_scale | float)) | round | int }
+                  width: ${ (120 * (ui_scale | float)) | round | int }
+                  height: ${ (16 * (ui_scale | float)) | round | int }
                   text_align: CENTER
                   text_font: fonts_MiSans_Bold_12
                   text_color: 0xD2D2D2
@@ -733,10 +738,10 @@ lvgl:
               - image:
                   id: normal_device_3_index_icon
                   x: 0
-                  y: 190
+                  y: ${ (190 * (ui_scale | float)) | round | int }
                   align: top_mid
-                  width: 12
-                  height: 12
+                  width: ${ (12 * (ui_scale | float)) | round | int }
+                  height: ${ (12 * (ui_scale | float)) | round | int }
                   src: normal_device_icon_settings_img
                   hidden: true
     - id: device_4
@@ -751,8 +756,8 @@ lvgl:
             id: normal_device_4_shell
             x: 0
             y: 0
-            width: 240
-            height: 240
+            width: ${ (240 * (ui_scale | float)) | round | int }
+            height: ${ (240 * (ui_scale | float)) | round | int }
             radius: 0
             bg_color: 0x272727
             border_width: 0
@@ -762,76 +767,76 @@ lvgl:
               - image:
                   id: normal_device_4_icon_switch
                   x: 0
-                  y: 62
+                  y: ${ (62 * (ui_scale | float)) | round | int }
                   align: top_mid
                   src: normal_device_icon_switch_img
               - image:
                   id: normal_device_4_icon_switch_on
                   x: 0
-                  y: 62
+                  y: ${ (62 * (ui_scale | float)) | round | int }
                   align: top_mid
                   src: normal_device_icon_switch_on_img
                   hidden: true
               - image:
                   id: normal_device_4_icon_plug
                   x: 0
-                  y: 62
+                  y: ${ (62 * (ui_scale | float)) | round | int }
                   align: top_mid
                   src: normal_device_icon_plug_img
                   hidden: true
               - image:
                   id: normal_device_4_icon_plug_on
                   x: 0
-                  y: 62
+                  y: ${ (62 * (ui_scale | float)) | round | int }
                   align: top_mid
                   src: normal_device_icon_plug_on_img
                   hidden: true
               - image:
                   id: normal_device_4_icon_light
                   x: 0
-                  y: 62
+                  y: ${ (62 * (ui_scale | float)) | round | int }
                   align: top_mid
                   src: normal_device_icon_light_img
                   hidden: true
               - image:
                   id: normal_device_4_icon_light_on
                   x: 0
-                  y: 62
+                  y: ${ (62 * (ui_scale | float)) | round | int }
                   align: top_mid
                   src: normal_device_icon_light_on_img
                   hidden: true
               - image:
                   id: normal_device_4_icon_curtain
                   x: 0
-                  y: 62
+                  y: ${ (62 * (ui_scale | float)) | round | int }
                   align: top_mid
                   src: normal_device_icon_curtain_img
                   hidden: true
               - image:
                   id: normal_device_4_icon_settings
                   x: 0
-                  y: 62
+                  y: ${ (62 * (ui_scale | float)) | round | int }
                   align: top_mid
                   src: normal_device_icon_settings_img
                   hidden: true
               - label:
                   id: normal_device_4_title
                   x: 0
-                  y: 151
+                  y: ${ (151 * (ui_scale | float)) | round | int }
                   align: top_mid
                   text_font: fonts_MiSans_Medium_18
                   text_color: 0xFFFFFF
-                  width: 180
-                  height: 25
+                  width: ${ (180 * (ui_scale | float)) | round | int }
+                  height: ${ (25 * (ui_scale | float)) | round | int }
                   long_mode: dot
                   text_align: CENTER
                   text: "Plug"
               - label:
                   id: normal_device_4_value
                   align: top_mid
-                  y: 84
-                  width: 216
-                  height: 44
+                  y: ${ (84 * (ui_scale | float)) | round | int }
+                  width: ${ (216 * (ui_scale | float)) | round | int }
+                  height: ${ (44 * (ui_scale | float)) | round | int }
                   long_mode: dot
                   text_align: CENTER
                   text_font: fonts_MiSans_Medium_32
@@ -841,9 +846,9 @@ lvgl:
               - label:
                   id: normal_device_4_context
                   align: top_mid
-                  y: 124
-                  width: 198
-                  height: 20
+                  y: ${ (124 * (ui_scale | float)) | round | int }
+                  width: ${ (198 * (ui_scale | float)) | round | int }
+                  height: ${ (20 * (ui_scale | float)) | round | int }
                   long_mode: dot
                   text_align: CENTER
                   text_font: fonts_MiSans_Medium_14
@@ -853,9 +858,9 @@ lvgl:
               - label:
                   id: normal_device_4_pagination
                   align: top_mid
-                  y: 212
-                  width: 120
-                  height: 16
+                  y: ${ (212 * (ui_scale | float)) | round | int }
+                  width: ${ (120 * (ui_scale | float)) | round | int }
+                  height: ${ (16 * (ui_scale | float)) | round | int }
                   text_align: CENTER
                   text_font: fonts_MiSans_Bold_12
                   text_color: 0xD2D2D2
@@ -863,10 +868,10 @@ lvgl:
               - image:
                   id: normal_device_4_index_icon
                   x: 0
-                  y: 190
+                  y: ${ (190 * (ui_scale | float)) | round | int }
                   align: top_mid
-                  width: 12
-                  height: 12
+                  width: ${ (12 * (ui_scale | float)) | round | int }
+                  height: ${ (12 * (ui_scale | float)) | round | int }
                   src: normal_device_icon_settings_img
                   hidden: true
     - id: device_5
@@ -881,8 +886,8 @@ lvgl:
             id: normal_device_5_shell
             x: 0
             y: 0
-            width: 240
-            height: 240
+            width: ${ (240 * (ui_scale | float)) | round | int }
+            height: ${ (240 * (ui_scale | float)) | round | int }
             radius: 0
             bg_color: 0x272727
             border_width: 0
@@ -892,76 +897,76 @@ lvgl:
               - image:
                   id: normal_device_5_icon_switch
                   x: 0
-                  y: 62
+                  y: ${ (62 * (ui_scale | float)) | round | int }
                   align: top_mid
                   src: normal_device_icon_switch_img
               - image:
                   id: normal_device_5_icon_switch_on
                   x: 0
-                  y: 62
+                  y: ${ (62 * (ui_scale | float)) | round | int }
                   align: top_mid
                   src: normal_device_icon_switch_on_img
                   hidden: true
               - image:
                   id: normal_device_5_icon_plug
                   x: 0
-                  y: 62
+                  y: ${ (62 * (ui_scale | float)) | round | int }
                   align: top_mid
                   src: normal_device_icon_plug_img
                   hidden: true
               - image:
                   id: normal_device_5_icon_plug_on
                   x: 0
-                  y: 62
+                  y: ${ (62 * (ui_scale | float)) | round | int }
                   align: top_mid
                   src: normal_device_icon_plug_on_img
                   hidden: true
               - image:
                   id: normal_device_5_icon_light
                   x: 0
-                  y: 62
+                  y: ${ (62 * (ui_scale | float)) | round | int }
                   align: top_mid
                   src: normal_device_icon_light_img
                   hidden: true
               - image:
                   id: normal_device_5_icon_light_on
                   x: 0
-                  y: 62
+                  y: ${ (62 * (ui_scale | float)) | round | int }
                   align: top_mid
                   src: normal_device_icon_light_on_img
                   hidden: true
               - image:
                   id: normal_device_5_icon_curtain
                   x: 0
-                  y: 62
+                  y: ${ (62 * (ui_scale | float)) | round | int }
                   align: top_mid
                   src: normal_device_icon_curtain_img
                   hidden: true
               - image:
                   id: normal_device_5_icon_settings
                   x: 0
-                  y: 62
+                  y: ${ (62 * (ui_scale | float)) | round | int }
                   align: top_mid
                   src: normal_device_icon_settings_img
                   hidden: true
               - label:
                   id: normal_device_5_title
                   x: 0
-                  y: 151
+                  y: ${ (151 * (ui_scale | float)) | round | int }
                   align: top_mid
                   text_font: fonts_MiSans_Medium_18
                   text_color: 0xFFFFFF
-                  width: 180
-                  height: 25
+                  width: ${ (180 * (ui_scale | float)) | round | int }
+                  height: ${ (25 * (ui_scale | float)) | round | int }
                   long_mode: dot
                   text_align: CENTER
                   text: "Plug"
               - label:
                   id: normal_device_5_value
                   align: top_mid
-                  y: 84
-                  width: 216
-                  height: 44
+                  y: ${ (84 * (ui_scale | float)) | round | int }
+                  width: ${ (216 * (ui_scale | float)) | round | int }
+                  height: ${ (44 * (ui_scale | float)) | round | int }
                   long_mode: dot
                   text_align: CENTER
                   text_font: fonts_MiSans_Medium_32
@@ -971,9 +976,9 @@ lvgl:
               - label:
                   id: normal_device_5_context
                   align: top_mid
-                  y: 124
-                  width: 198
-                  height: 20
+                  y: ${ (124 * (ui_scale | float)) | round | int }
+                  width: ${ (198 * (ui_scale | float)) | round | int }
+                  height: ${ (20 * (ui_scale | float)) | round | int }
                   long_mode: dot
                   text_align: CENTER
                   text_font: fonts_MiSans_Medium_14
@@ -983,9 +988,9 @@ lvgl:
               - label:
                   id: normal_device_5_pagination
                   align: top_mid
-                  y: 212
-                  width: 120
-                  height: 16
+                  y: ${ (212 * (ui_scale | float)) | round | int }
+                  width: ${ (120 * (ui_scale | float)) | round | int }
+                  height: ${ (16 * (ui_scale | float)) | round | int }
                   text_align: CENTER
                   text_font: fonts_MiSans_Bold_12
                   text_color: 0xD2D2D2
@@ -993,10 +998,10 @@ lvgl:
               - image:
                   id: normal_device_5_index_icon
                   x: 0
-                  y: 190
+                  y: ${ (190 * (ui_scale | float)) | round | int }
                   align: top_mid
-                  width: 12
-                  height: 12
+                  width: ${ (12 * (ui_scale | float)) | round | int }
+                  height: ${ (12 * (ui_scale | float)) | round | int }
                   src: normal_device_icon_settings_img
                   hidden: true
     - id: device_6
@@ -1011,8 +1016,8 @@ lvgl:
             id: normal_device_6_shell
             x: 0
             y: 0
-            width: 240
-            height: 240
+            width: ${ (240 * (ui_scale | float)) | round | int }
+            height: ${ (240 * (ui_scale | float)) | round | int }
             radius: 0
             bg_color: 0x272727
             border_width: 0
@@ -1022,76 +1027,76 @@ lvgl:
               - image:
                   id: normal_device_6_icon_switch
                   x: 0
-                  y: 62
+                  y: ${ (62 * (ui_scale | float)) | round | int }
                   align: top_mid
                   src: normal_device_icon_switch_img
               - image:
                   id: normal_device_6_icon_switch_on
                   x: 0
-                  y: 62
+                  y: ${ (62 * (ui_scale | float)) | round | int }
                   align: top_mid
                   src: normal_device_icon_switch_on_img
                   hidden: true
               - image:
                   id: normal_device_6_icon_plug
                   x: 0
-                  y: 62
+                  y: ${ (62 * (ui_scale | float)) | round | int }
                   align: top_mid
                   src: normal_device_icon_plug_img
                   hidden: true
               - image:
                   id: normal_device_6_icon_plug_on
                   x: 0
-                  y: 62
+                  y: ${ (62 * (ui_scale | float)) | round | int }
                   align: top_mid
                   src: normal_device_icon_plug_on_img
                   hidden: true
               - image:
                   id: normal_device_6_icon_light
                   x: 0
-                  y: 62
+                  y: ${ (62 * (ui_scale | float)) | round | int }
                   align: top_mid
                   src: normal_device_icon_light_img
                   hidden: true
               - image:
                   id: normal_device_6_icon_light_on
                   x: 0
-                  y: 62
+                  y: ${ (62 * (ui_scale | float)) | round | int }
                   align: top_mid
                   src: normal_device_icon_light_on_img
                   hidden: true
               - image:
                   id: normal_device_6_icon_curtain
                   x: 0
-                  y: 62
+                  y: ${ (62 * (ui_scale | float)) | round | int }
                   align: top_mid
                   src: normal_device_icon_curtain_img
                   hidden: true
               - image:
                   id: normal_device_6_icon_settings
                   x: 0
-                  y: 62
+                  y: ${ (62 * (ui_scale | float)) | round | int }
                   align: top_mid
                   src: normal_device_icon_settings_img
                   hidden: true
               - label:
                   id: normal_device_6_title
                   x: 0
-                  y: 151
+                  y: ${ (151 * (ui_scale | float)) | round | int }
                   align: top_mid
                   text_font: fonts_MiSans_Medium_18
                   text_color: 0xFFFFFF
-                  width: 180
-                  height: 25
+                  width: ${ (180 * (ui_scale | float)) | round | int }
+                  height: ${ (25 * (ui_scale | float)) | round | int }
                   long_mode: dot
                   text_align: CENTER
                   text: "Plug"
               - label:
                   id: normal_device_6_value
                   align: top_mid
-                  y: 84
-                  width: 216
-                  height: 44
+                  y: ${ (84 * (ui_scale | float)) | round | int }
+                  width: ${ (216 * (ui_scale | float)) | round | int }
+                  height: ${ (44 * (ui_scale | float)) | round | int }
                   long_mode: dot
                   text_align: CENTER
                   text_font: fonts_MiSans_Medium_32
@@ -1101,9 +1106,9 @@ lvgl:
               - label:
                   id: normal_device_6_context
                   align: top_mid
-                  y: 124
-                  width: 198
-                  height: 20
+                  y: ${ (124 * (ui_scale | float)) | round | int }
+                  width: ${ (198 * (ui_scale | float)) | round | int }
+                  height: ${ (20 * (ui_scale | float)) | round | int }
                   long_mode: dot
                   text_align: CENTER
                   text_font: fonts_MiSans_Medium_14
@@ -1113,9 +1118,9 @@ lvgl:
               - label:
                   id: normal_device_6_pagination
                   align: top_mid
-                  y: 212
-                  width: 120
-                  height: 16
+                  y: ${ (212 * (ui_scale | float)) | round | int }
+                  width: ${ (120 * (ui_scale | float)) | round | int }
+                  height: ${ (16 * (ui_scale | float)) | round | int }
                   text_align: CENTER
                   text_font: fonts_MiSans_Bold_12
                   text_color: 0xD2D2D2
@@ -1123,10 +1128,10 @@ lvgl:
               - image:
                   id: normal_device_6_index_icon
                   x: 0
-                  y: 190
+                  y: ${ (190 * (ui_scale | float)) | round | int }
                   align: top_mid
-                  width: 12
-                  height: 12
+                  width: ${ (12 * (ui_scale | float)) | round | int }
+                  height: ${ (12 * (ui_scale | float)) | round | int }
                   src: normal_device_icon_settings_img
                   hidden: true
     - id: device_7
@@ -1141,8 +1146,8 @@ lvgl:
             id: normal_device_7_shell
             x: 0
             y: 0
-            width: 240
-            height: 240
+            width: ${ (240 * (ui_scale | float)) | round | int }
+            height: ${ (240 * (ui_scale | float)) | round | int }
             radius: 0
             bg_color: 0x272727
             border_width: 0
@@ -1152,76 +1157,76 @@ lvgl:
               - image:
                   id: normal_device_7_icon_switch
                   x: 0
-                  y: 62
+                  y: ${ (62 * (ui_scale | float)) | round | int }
                   align: top_mid
                   src: normal_device_icon_switch_img
               - image:
                   id: normal_device_7_icon_switch_on
                   x: 0
-                  y: 62
+                  y: ${ (62 * (ui_scale | float)) | round | int }
                   align: top_mid
                   src: normal_device_icon_switch_on_img
                   hidden: true
               - image:
                   id: normal_device_7_icon_plug
                   x: 0
-                  y: 62
+                  y: ${ (62 * (ui_scale | float)) | round | int }
                   align: top_mid
                   src: normal_device_icon_plug_img
                   hidden: true
               - image:
                   id: normal_device_7_icon_plug_on
                   x: 0
-                  y: 62
+                  y: ${ (62 * (ui_scale | float)) | round | int }
                   align: top_mid
                   src: normal_device_icon_plug_on_img
                   hidden: true
               - image:
                   id: normal_device_7_icon_light
                   x: 0
-                  y: 62
+                  y: ${ (62 * (ui_scale | float)) | round | int }
                   align: top_mid
                   src: normal_device_icon_light_img
                   hidden: true
               - image:
                   id: normal_device_7_icon_light_on
                   x: 0
-                  y: 62
+                  y: ${ (62 * (ui_scale | float)) | round | int }
                   align: top_mid
                   src: normal_device_icon_light_on_img
                   hidden: true
               - image:
                   id: normal_device_7_icon_curtain
                   x: 0
-                  y: 62
+                  y: ${ (62 * (ui_scale | float)) | round | int }
                   align: top_mid
                   src: normal_device_icon_curtain_img
                   hidden: true
               - image:
                   id: normal_device_7_icon_settings
                   x: 0
-                  y: 62
+                  y: ${ (62 * (ui_scale | float)) | round | int }
                   align: top_mid
                   src: normal_device_icon_settings_img
                   hidden: true
               - label:
                   id: normal_device_7_title
                   x: 0
-                  y: 151
+                  y: ${ (151 * (ui_scale | float)) | round | int }
                   align: top_mid
                   text_font: fonts_MiSans_Medium_18
                   text_color: 0xFFFFFF
-                  width: 180
-                  height: 25
+                  width: ${ (180 * (ui_scale | float)) | round | int }
+                  height: ${ (25 * (ui_scale | float)) | round | int }
                   long_mode: dot
                   text_align: CENTER
                   text: "Plug"
               - label:
                   id: normal_device_7_value
                   align: top_mid
-                  y: 84
-                  width: 216
-                  height: 44
+                  y: ${ (84 * (ui_scale | float)) | round | int }
+                  width: ${ (216 * (ui_scale | float)) | round | int }
+                  height: ${ (44 * (ui_scale | float)) | round | int }
                   long_mode: dot
                   text_align: CENTER
                   text_font: fonts_MiSans_Medium_32
@@ -1231,9 +1236,9 @@ lvgl:
               - label:
                   id: normal_device_7_context
                   align: top_mid
-                  y: 124
-                  width: 198
-                  height: 20
+                  y: ${ (124 * (ui_scale | float)) | round | int }
+                  width: ${ (198 * (ui_scale | float)) | round | int }
+                  height: ${ (20 * (ui_scale | float)) | round | int }
                   long_mode: dot
                   text_align: CENTER
                   text_font: fonts_MiSans_Medium_14
@@ -1243,9 +1248,9 @@ lvgl:
               - label:
                   id: normal_device_7_pagination
                   align: top_mid
-                  y: 212
-                  width: 120
-                  height: 16
+                  y: ${ (212 * (ui_scale | float)) | round | int }
+                  width: ${ (120 * (ui_scale | float)) | round | int }
+                  height: ${ (16 * (ui_scale | float)) | round | int }
                   text_align: CENTER
                   text_font: fonts_MiSans_Bold_12
                   text_color: 0xD2D2D2
@@ -1253,10 +1258,10 @@ lvgl:
               - image:
                   id: normal_device_7_index_icon
                   x: 0
-                  y: 190
+                  y: ${ (190 * (ui_scale | float)) | round | int }
                   align: top_mid
-                  width: 12
-                  height: 12
+                  width: ${ (12 * (ui_scale | float)) | round | int }
+                  height: ${ (12 * (ui_scale | float)) | round | int }
                   src: normal_device_icon_settings_img
                   hidden: true
     - id: device_8
@@ -1271,8 +1276,8 @@ lvgl:
             id: normal_device_8_shell
             x: 0
             y: 0
-            width: 240
-            height: 240
+            width: ${ (240 * (ui_scale | float)) | round | int }
+            height: ${ (240 * (ui_scale | float)) | round | int }
             radius: 0
             bg_color: 0x272727
             border_width: 0
@@ -1282,76 +1287,76 @@ lvgl:
               - image:
                   id: normal_device_8_icon_switch
                   x: 0
-                  y: 62
+                  y: ${ (62 * (ui_scale | float)) | round | int }
                   align: top_mid
                   src: normal_device_icon_switch_img
               - image:
                   id: normal_device_8_icon_switch_on
                   x: 0
-                  y: 62
+                  y: ${ (62 * (ui_scale | float)) | round | int }
                   align: top_mid
                   src: normal_device_icon_switch_on_img
                   hidden: true
               - image:
                   id: normal_device_8_icon_plug
                   x: 0
-                  y: 62
+                  y: ${ (62 * (ui_scale | float)) | round | int }
                   align: top_mid
                   src: normal_device_icon_plug_img
                   hidden: true
               - image:
                   id: normal_device_8_icon_plug_on
                   x: 0
-                  y: 62
+                  y: ${ (62 * (ui_scale | float)) | round | int }
                   align: top_mid
                   src: normal_device_icon_plug_on_img
                   hidden: true
               - image:
                   id: normal_device_8_icon_light
                   x: 0
-                  y: 62
+                  y: ${ (62 * (ui_scale | float)) | round | int }
                   align: top_mid
                   src: normal_device_icon_light_img
                   hidden: true
               - image:
                   id: normal_device_8_icon_light_on
                   x: 0
-                  y: 62
+                  y: ${ (62 * (ui_scale | float)) | round | int }
                   align: top_mid
                   src: normal_device_icon_light_on_img
                   hidden: true
               - image:
                   id: normal_device_8_icon_curtain
                   x: 0
-                  y: 62
+                  y: ${ (62 * (ui_scale | float)) | round | int }
                   align: top_mid
                   src: normal_device_icon_curtain_img
                   hidden: true
               - image:
                   id: normal_device_8_icon_settings
                   x: 0
-                  y: 62
+                  y: ${ (62 * (ui_scale | float)) | round | int }
                   align: top_mid
                   src: normal_device_icon_settings_img
                   hidden: true
               - label:
                   id: normal_device_8_title
                   x: 0
-                  y: 151
+                  y: ${ (151 * (ui_scale | float)) | round | int }
                   align: top_mid
                   text_font: fonts_MiSans_Medium_18
                   text_color: 0xFFFFFF
-                  width: 180
-                  height: 25
+                  width: ${ (180 * (ui_scale | float)) | round | int }
+                  height: ${ (25 * (ui_scale | float)) | round | int }
                   long_mode: dot
                   text_align: CENTER
                   text: "Plug"
               - label:
                   id: normal_device_8_value
                   align: top_mid
-                  y: 84
-                  width: 216
-                  height: 44
+                  y: ${ (84 * (ui_scale | float)) | round | int }
+                  width: ${ (216 * (ui_scale | float)) | round | int }
+                  height: ${ (44 * (ui_scale | float)) | round | int }
                   long_mode: dot
                   text_align: CENTER
                   text_font: fonts_MiSans_Medium_32
@@ -1361,9 +1366,9 @@ lvgl:
               - label:
                   id: normal_device_8_context
                   align: top_mid
-                  y: 124
-                  width: 198
-                  height: 20
+                  y: ${ (124 * (ui_scale | float)) | round | int }
+                  width: ${ (198 * (ui_scale | float)) | round | int }
+                  height: ${ (20 * (ui_scale | float)) | round | int }
                   long_mode: dot
                   text_align: CENTER
                   text_font: fonts_MiSans_Medium_14
@@ -1373,9 +1378,9 @@ lvgl:
               - label:
                   id: normal_device_8_pagination
                   align: top_mid
-                  y: 212
-                  width: 120
-                  height: 16
+                  y: ${ (212 * (ui_scale | float)) | round | int }
+                  width: ${ (120 * (ui_scale | float)) | round | int }
+                  height: ${ (16 * (ui_scale | float)) | round | int }
                   text_align: CENTER
                   text_font: fonts_MiSans_Bold_12
                   text_color: 0xD2D2D2
@@ -1383,10 +1388,10 @@ lvgl:
               - image:
                   id: normal_device_8_index_icon
                   x: 0
-                  y: 190
+                  y: ${ (190 * (ui_scale | float)) | round | int }
                   align: top_mid
-                  width: 12
-                  height: 12
+                  width: ${ (12 * (ui_scale | float)) | round | int }
+                  height: ${ (12 * (ui_scale | float)) | round | int }
                   src: normal_device_icon_settings_img
                   hidden: true
     - id: device_9
@@ -1401,8 +1406,8 @@ lvgl:
             id: normal_device_9_shell
             x: 0
             y: 0
-            width: 240
-            height: 240
+            width: ${ (240 * (ui_scale | float)) | round | int }
+            height: ${ (240 * (ui_scale | float)) | round | int }
             radius: 0
             bg_color: 0x272727
             border_width: 0
@@ -1412,76 +1417,76 @@ lvgl:
               - image:
                   id: normal_device_9_icon_switch
                   x: 0
-                  y: 62
+                  y: ${ (62 * (ui_scale | float)) | round | int }
                   align: top_mid
                   src: normal_device_icon_switch_img
               - image:
                   id: normal_device_9_icon_switch_on
                   x: 0
-                  y: 62
+                  y: ${ (62 * (ui_scale | float)) | round | int }
                   align: top_mid
                   src: normal_device_icon_switch_on_img
                   hidden: true
               - image:
                   id: normal_device_9_icon_plug
                   x: 0
-                  y: 62
+                  y: ${ (62 * (ui_scale | float)) | round | int }
                   align: top_mid
                   src: normal_device_icon_plug_img
                   hidden: true
               - image:
                   id: normal_device_9_icon_plug_on
                   x: 0
-                  y: 62
+                  y: ${ (62 * (ui_scale | float)) | round | int }
                   align: top_mid
                   src: normal_device_icon_plug_on_img
                   hidden: true
               - image:
                   id: normal_device_9_icon_light
                   x: 0
-                  y: 62
+                  y: ${ (62 * (ui_scale | float)) | round | int }
                   align: top_mid
                   src: normal_device_icon_light_img
                   hidden: true
               - image:
                   id: normal_device_9_icon_light_on
                   x: 0
-                  y: 62
+                  y: ${ (62 * (ui_scale | float)) | round | int }
                   align: top_mid
                   src: normal_device_icon_light_on_img
                   hidden: true
               - image:
                   id: normal_device_9_icon_curtain
                   x: 0
-                  y: 62
+                  y: ${ (62 * (ui_scale | float)) | round | int }
                   align: top_mid
                   src: normal_device_icon_curtain_img
                   hidden: true
               - image:
                   id: normal_device_9_icon_settings
                   x: 0
-                  y: 62
+                  y: ${ (62 * (ui_scale | float)) | round | int }
                   align: top_mid
                   src: normal_device_icon_settings_img
                   hidden: true
               - label:
                   id: normal_device_9_title
                   x: 0
-                  y: 151
+                  y: ${ (151 * (ui_scale | float)) | round | int }
                   align: top_mid
                   text_font: fonts_MiSans_Medium_18
                   text_color: 0xFFFFFF
-                  width: 180
-                  height: 25
+                  width: ${ (180 * (ui_scale | float)) | round | int }
+                  height: ${ (25 * (ui_scale | float)) | round | int }
                   long_mode: dot
                   text_align: CENTER
                   text: "Plug"
               - label:
                   id: normal_device_9_value
                   align: top_mid
-                  y: 84
-                  width: 216
-                  height: 44
+                  y: ${ (84 * (ui_scale | float)) | round | int }
+                  width: ${ (216 * (ui_scale | float)) | round | int }
+                  height: ${ (44 * (ui_scale | float)) | round | int }
                   long_mode: dot
                   text_align: CENTER
                   text_font: fonts_MiSans_Medium_32
@@ -1491,9 +1496,9 @@ lvgl:
               - label:
                   id: normal_device_9_context
                   align: top_mid
-                  y: 124
-                  width: 198
-                  height: 20
+                  y: ${ (124 * (ui_scale | float)) | round | int }
+                  width: ${ (198 * (ui_scale | float)) | round | int }
+                  height: ${ (20 * (ui_scale | float)) | round | int }
                   long_mode: dot
                   text_align: CENTER
                   text_font: fonts_MiSans_Medium_14
@@ -1503,9 +1508,9 @@ lvgl:
               - label:
                   id: normal_device_9_pagination
                   align: top_mid
-                  y: 212
-                  width: 120
-                  height: 16
+                  y: ${ (212 * (ui_scale | float)) | round | int }
+                  width: ${ (120 * (ui_scale | float)) | round | int }
+                  height: ${ (16 * (ui_scale | float)) | round | int }
                   text_align: CENTER
                   text_font: fonts_MiSans_Bold_12
                   text_color: 0xD2D2D2
@@ -1513,10 +1518,10 @@ lvgl:
               - image:
                   id: normal_device_9_index_icon
                   x: 0
-                  y: 190
+                  y: ${ (190 * (ui_scale | float)) | round | int }
                   align: top_mid
-                  width: 12
-                  height: 12
+                  width: ${ (12 * (ui_scale | float)) | round | int }
+                  height: ${ (12 * (ui_scale | float)) | round | int }
                   src: normal_device_icon_settings_img
                   hidden: true
     - id: device_settings
@@ -1531,8 +1536,8 @@ lvgl:
             id: normal_device_settings_shell
             x: 0
             y: 0
-            width: 240
-            height: 240
+            width: ${ (240 * (ui_scale | float)) | round | int }
+            height: ${ (240 * (ui_scale | float)) | round | int }
             radius: 0
             bg_color: 0x272727
             border_width: 0
@@ -1542,62 +1547,62 @@ lvgl:
               - image:
                   id: normal_device_settings_icon_switch
                   x: 0
-                  y: 62
+                  y: ${ (62 * (ui_scale | float)) | round | int }
                   align: top_mid
                   src: normal_device_icon_switch_img
               - image:
                   id: normal_device_settings_icon_switch_on
                   x: 0
-                  y: 62
+                  y: ${ (62 * (ui_scale | float)) | round | int }
                   align: top_mid
                   src: normal_device_icon_switch_on_img
                   hidden: true
               - image:
                   id: normal_device_settings_icon_plug
                   x: 0
-                  y: 62
+                  y: ${ (62 * (ui_scale | float)) | round | int }
                   align: top_mid
                   src: normal_device_icon_plug_img
                   hidden: true
               - image:
                   id: normal_device_settings_icon_plug_on
                   x: 0
-                  y: 62
+                  y: ${ (62 * (ui_scale | float)) | round | int }
                   align: top_mid
                   src: normal_device_icon_plug_on_img
                   hidden: true
               - image:
                   id: normal_device_settings_icon_light
                   x: 0
-                  y: 62
+                  y: ${ (62 * (ui_scale | float)) | round | int }
                   align: top_mid
                   src: normal_device_icon_light_img
                   hidden: true
               - image:
                   id: normal_device_settings_icon_light_on
                   x: 0
-                  y: 62
+                  y: ${ (62 * (ui_scale | float)) | round | int }
                   align: top_mid
                   src: normal_device_icon_light_on_img
                   hidden: true
               - image:
                   id: normal_device_settings_icon_curtain
                   x: 0
-                  y: 62
+                  y: ${ (62 * (ui_scale | float)) | round | int }
                   align: top_mid
                   src: normal_device_icon_curtain_img
                   hidden: true
               - image:
                   id: normal_device_settings_icon_settings
                   x: 0
-                  y: 62
+                  y: ${ (62 * (ui_scale | float)) | round | int }
                   align: top_mid
                   src: normal_device_icon_settings_img
                   hidden: true
               - label:
                   id: normal_device_settings_title
                   x: 0
-                  y: 151
+                  y: ${ (151 * (ui_scale | float)) | round | int }
                   align: top_mid
                   text_font: fonts_MiSans_Medium_18
                   text_color: 0xFFFFFF
@@ -1605,9 +1610,9 @@ lvgl:
               - label:
                   id: normal_device_settings_pagination
                   align: top_mid
-                  y: 212
-                  width: 120
-                  height: 16
+                  y: ${ (212 * (ui_scale | float)) | round | int }
+                  width: ${ (120 * (ui_scale | float)) | round | int }
+                  height: ${ (16 * (ui_scale | float)) | round | int }
                   text_align: CENTER
                   text_font: fonts_MiSans_Bold_12
                   text_color: 0xD2D2D2
@@ -1615,10 +1620,10 @@ lvgl:
               - image:
                   id: normal_device_settings_index_icon
                   x: 0
-                  y: 190
+                  y: ${ (190 * (ui_scale | float)) | round | int }
                   align: top_mid
-                  width: 12
-                  height: 12
+                  width: ${ (12 * (ui_scale | float)) | round | int }
+                  height: ${ (12 * (ui_scale | float)) | round | int }
                   src: normal_device_icon_settings_img
                   hidden: true
     - id: normal_switch_page
@@ -1633,9 +1638,9 @@ lvgl:
             id: normal_switch_detail_shell
             x: 0
             y: 0
-            width: 240
-            height: 240
-            radius: 120
+            width: ${ (240 * (ui_scale | float)) | round | int }
+            height: ${ (240 * (ui_scale | float)) | round | int }
+            radius: ${ (120 * (ui_scale | float)) | round | int }
             bg_color: 0x272727
             border_width: 0
             pad_all: 0
@@ -1644,47 +1649,47 @@ lvgl:
               - image:
                   id: normal_switch_entity_icon
                   align: top_mid
-                  y: 40
+                  y: ${ (40 * (ui_scale | float)) | round | int }
                   src: fallback_toggle_switch_img
                   scale: 1.0
               - image:
                   id: normal_device_detail_switch_off
                   x: 0
-                  y: 40
+                  y: ${ (40 * (ui_scale | float)) | round | int }
                   align: top_mid
                   src: normal_device_detail_switch_off_img
               - image:
                   id: normal_device_detail_switch_on
                   x: 0
-                  y: 40
+                  y: ${ (40 * (ui_scale | float)) | round | int }
                   align: top_mid
                   src: normal_device_detail_switch_on_img
                   hidden: true
               - image:
                   id: normal_device_detail_plug_off
                   x: 0
-                  y: 40
+                  y: ${ (40 * (ui_scale | float)) | round | int }
                   align: top_mid
                   src: normal_device_detail_plug_off_img
                   hidden: true
               - image:
                   id: normal_device_detail_plug_on
                   x: 0
-                  y: 40
+                  y: ${ (40 * (ui_scale | float)) | round | int }
                   align: top_mid
                   src: normal_device_detail_plug_on_img
                   hidden: true
               - image:
                   id: normal_device_detail_light_off
                   x: 0
-                  y: 40
+                  y: ${ (40 * (ui_scale | float)) | round | int }
                   align: top_mid
                   src: normal_device_detail_light_off_img
                   hidden: true
               - image:
                   id: normal_device_detail_light_on
                   x: 0
-                  y: 40
+                  y: ${ (40 * (ui_scale | float)) | round | int }
                   align: top_mid
                   src: normal_device_detail_light_on_img
                   hidden: true
@@ -1693,8 +1698,8 @@ lvgl:
                   x: 0
                   y: 0
                   align: center
-                  width: 224
-                  height: 224
+                  width: ${ (224 * (ui_scale | float)) | round | int }
+                  height: ${ (224 * (ui_scale | float)) | round | int }
                   adjustable: false
                   min_value: 0
                   max_value: 100
@@ -1702,25 +1707,25 @@ lvgl:
                   start_angle: 0
                   end_angle: 270
                   rotation: 135
-                  arc_width: 10
+                  arc_width: ${ (10 * (ui_scale | float)) | round | int }
                   arc_rounded: true
                   arc_color: 0x5A5A5A
                   indicator:
                     arc_color: 0x62B0FF
                   knob:
-                    width: 16
-                    height: 16
-                    radius: 8
+                    width: ${ (16 * (ui_scale | float)) | round | int }
+                    height: ${ (16 * (ui_scale | float)) | round | int }
+                    radius: ${ (8 * (ui_scale | float)) | round | int }
                     bg_color: 0xFFFFFF
                     bg_opa: COVER
                     border_width: 0
                     shadow_width: 0
-                    pad_all: 2
+                    pad_all: ${ (2 * (ui_scale | float)) | round | int }
                   hidden: true
               - label:
                   id: normal_switch_detail_state
                   x: 0
-                  y: 148
+                  y: ${ (148 * (ui_scale | float)) | round | int }
                   align: top_mid
                   text_font: fonts_MiSans_Medium_32
                   text_color: 0xFFFFFF
@@ -1728,12 +1733,12 @@ lvgl:
               - label:
                   id: normal_switch_detail_title
                   x: 0
-                  y: 192
+                  y: ${ (192 * (ui_scale | float)) | round | int }
                   align: top_mid
                   text_font: fonts_MiSans_Medium_18
                   text_color: 0xD2D2D2
-                  width: 125
-                  height: 25
+                  width: ${ (125 * (ui_scale | float)) | round | int }
+                  height: ${ (25 * (ui_scale | float)) | round | int }
                   long_mode: dot
                   text_align: CENTER
                   text: "Switch"
@@ -1741,9 +1746,9 @@ lvgl:
                   id: normal_switch_detail_offline_overlay
                   x: 0
                   y: 0
-                  width: 240
-                  height: 240
-                  radius: 120
+                  width: ${ (240 * (ui_scale | float)) | round | int }
+                  height: ${ (240 * (ui_scale | float)) | round | int }
+                  radius: ${ (120 * (ui_scale | float)) | round | int }
                   bg_color: 0x000000
                   bg_opa: 70%
                   border_width: 0
@@ -1768,10 +1773,10 @@ lvgl:
                           return std::string("Device Offline");
         - switch:
             id: hmi_gui_switch
-            x: -1000
-            y: -1000
-            width: 1
-            height: 1
+            x: ${ (-1000 * (ui_scale | float)) | round | int }
+            y: ${ (-1000 * (ui_scale | float)) | round | int }
+            width: ${ (1 * (ui_scale | float)) | round | int }
+            height: ${ (1 * (ui_scale | float)) | round | int }
             hidden: true
     - id: normal_automation_page
       bg_color: 0x000000
@@ -1785,9 +1790,9 @@ lvgl:
             id: normal_automation_detail_shell
             x: 0
             y: 0
-            width: 240
-            height: 240
-            radius: 120
+            width: ${ (240 * (ui_scale | float)) | round | int }
+            height: ${ (240 * (ui_scale | float)) | round | int }
+            radius: ${ (120 * (ui_scale | float)) | round | int }
             bg_color: 0x272727
             border_width: 0
             pad_all: 0
@@ -1796,8 +1801,8 @@ lvgl:
               - arc:
                   id: normal_media_progress_arc
                   align: center
-                  width: 240
-                  height: 240
+                  width: ${ (240 * (ui_scale | float)) | round | int }
+                  height: ${ (240 * (ui_scale | float)) | round | int }
                   pad_all: 0
                   border_width: 0
                   adjustable: false
@@ -1808,20 +1813,20 @@ lvgl:
                   start_angle: 0
                   end_angle: 360
                   rotation: 270
-                  arc_width: 4
+                  arc_width: ${ (4 * (ui_scale | float)) | round | int }
                   arc_color: 0x414850
                   arc_rounded: true
                   indicator:
-                    arc_width: 4
+                    arc_width: ${ (4 * (ui_scale | float)) | round | int }
                     arc_color: 0x62B0FF
                   hidden: true
               - arc:
                   id: normal_timer_detail_arc
                   x: 0
-                  y: 20
+                  y: ${ (20 * (ui_scale | float)) | round | int }
                   align: top_mid
-                  width: 194
-                  height: 194
+                  width: ${ (194 * (ui_scale | float)) | round | int }
+                  height: ${ (194 * (ui_scale | float)) | round | int }
                   adjustable: false
                   min_value: 0
                   max_value: 1000
@@ -1829,18 +1834,18 @@ lvgl:
                   start_angle: 0
                   end_angle: 300
                   rotation: 120
-                  arc_width: 9
+                  arc_width: ${ (9 * (ui_scale | float)) | round | int }
                   arc_color: 0x414850
                   indicator:
                     arc_color: 0x62B0FF
-                    arc_width: 9
+                    arc_width: ${ (9 * (ui_scale | float)) | round | int }
                   hidden: true
               - label:
                   id: normal_timer_detail_countdown
                   x: 0
-                  y: 83
+                  y: ${ (83 * (ui_scale | float)) | round | int }
                   align: top_mid
-                  width: 180
+                  width: ${ (180 * (ui_scale | float)) | round | int }
                   text_align: CENTER
                   text_font: fonts_MiSans_Medium_32
                   text_color: 0xFFFFFF
@@ -1849,9 +1854,9 @@ lvgl:
               - label:
                   id: normal_timer_detail_status
                   x: 0
-                  y: 133
+                  y: ${ (133 * (ui_scale | float)) | round | int }
                   align: top_mid
-                  width: 160
+                  width: ${ (160 * (ui_scale | float)) | round | int }
                   text_align: CENTER
                   text_font: fonts_MiSans_Medium_16
                   text_color: 0xD2D2D2
@@ -1859,10 +1864,10 @@ lvgl:
                   hidden: true
               - label:
                   id: normal_media_title
-                  y: 122
+                  y: ${ (122 * (ui_scale | float)) | round | int }
                   align: top_mid
-                  width: 196
-                  height: 21
+                  width: ${ (196 * (ui_scale | float)) | round | int }
+                  height: ${ (21 * (ui_scale | float)) | round | int }
                   long_mode: dot
                   text_align: CENTER
                   text_font: fonts_MiSans_Medium_16
@@ -1871,10 +1876,10 @@ lvgl:
                   hidden: true
               - label:
                   id: normal_media_artist
-                  y: 144
+                  y: ${ (144 * (ui_scale | float)) | round | int }
                   align: top_mid
-                  width: 196
-                  height: 20
+                  width: ${ (196 * (ui_scale | float)) | round | int }
+                  height: ${ (20 * (ui_scale | float)) | round | int }
                   long_mode: dot
                   text_align: CENTER
                   text_font: fonts_MiSans_Medium_16
@@ -1884,23 +1889,23 @@ lvgl:
               - image:
                   id: normal_media_cover
                   x: 0
-                  y: 18
+                  y: ${ (18 * (ui_scale | float)) | round | int }
                   align: top_mid
                   src: media_cover_image
                   hidden: true
               - image:
                   id: normal_automation_detail_icon
                   x: 0
-                  y: 40
+                  y: ${ (40 * (ui_scale | float)) | round | int }
                   align: top_mid
                   src: normal_device_automation_detail_img
               - obj:
                   id: normal_media_transport_overlay
                   align: top_mid
-                  y: 44
-                  width: 48
-                  height: 48
-                  radius: 24
+                  y: ${ (44 * (ui_scale | float)) | round | int }
+                  width: ${ (48 * (ui_scale | float)) | round | int }
+                  height: ${ (48 * (ui_scale | float)) | round | int }
+                  radius: ${ (24 * (ui_scale | float)) | round | int }
                   bg_color: 0x000000
                   bg_opa: 70%
                   border_width: 0
@@ -1915,10 +1920,10 @@ lvgl:
                         src: media_overlay_pause_img
               - obj:
                   id: normal_playlist_overlay
-                  radius: 120
+                  radius: ${ (120 * (ui_scale | float)) | round | int }
                   align: center
-                  width: 240
-                  height: 240
+                  width: ${ (240 * (ui_scale | float)) | round | int }
+                  height: ${ (240 * (ui_scale | float)) | round | int }
                   bg_color: 0x1A1A1A
                   bg_opa: COVER
                   border_width: 0
@@ -1930,8 +1935,8 @@ lvgl:
                     - label:
                         id: normal_playlist_heading
                         align: top_mid
-                        y: 18
-                        width: 196
+                        y: ${ (18 * (ui_scale | float)) | round | int }
+                        width: ${ (196 * (ui_scale | float)) | round | int }
                         text_align: CENTER
                         text_font: fonts_MiSans_Medium_18
                         text_color: 0xFFFFFF
@@ -1939,8 +1944,8 @@ lvgl:
                     - label:
                         id: normal_playlist_rows
                         align: top_mid
-                        y: 66
-                        width: 196
+                        y: ${ (66 * (ui_scale | float)) | round | int }
+                        width: ${ (196 * (ui_scale | float)) | round | int }
                         text_align: CENTER
                         text_font: fonts_MiSans_Medium_18
                         text_color: 0xFFFFFF
@@ -1948,9 +1953,9 @@ lvgl:
                     - roller:
                         id: normal_playlist_roller
                         x: 0
-                        y: 5
-                        width: 221
-                        height: 120
+                        y: ${ (5 * (ui_scale | float)) | round | int }
+                        width: ${ (221 * (ui_scale | float)) | round | int }
+                        height: ${ (120 * (ui_scale | float)) | round | int }
                         align: center
                         mode: NORMAL
                         visible_row_count: 3
@@ -1959,17 +1964,17 @@ lvgl:
                     - bar:
                         id: normal_playlist_hold_bar
                         align: top_mid
-                        y: 154
-                        width: 150
-                        height: 6
+                        y: ${ (154 * (ui_scale | float)) | round | int }
+                        width: ${ (150 * (ui_scale | float)) | round | int }
+                        height: ${ (6 * (ui_scale | float)) | round | int }
                         min_value: 0
                         max_value: 100
                         value: 0
                     - label:
                         id: normal_playlist_hint
                         align: top_mid
-                        y: 176
-                        width: 194
+                        y: ${ (176 * (ui_scale | float)) | round | int }
+                        width: ${ (194 * (ui_scale | float)) | round | int }
                         text_align: CENTER
                         text_font: fonts_MiSans_Medium_18
                         text_color: 0xFFFFFF
@@ -1977,9 +1982,9 @@ lvgl:
               - label:
                   id: normal_automation_detail_action
                   x: 0
-                  y: 148
+                  y: ${ (148 * (ui_scale | float)) | round | int }
                   align: top_mid
-                  width: 220
+                  width: ${ (220 * (ui_scale | float)) | round | int }
                   text_align: CENTER
                   text_font: fonts_MiSans_Medium_18
                   text_color: 0xFFFFFF
@@ -1987,9 +1992,9 @@ lvgl:
               - label:
                   id: normal_detail_badge
                   align: top_mid
-                  y: 36
-                  width: 156
-                  height: 22
+                  y: ${ (36 * (ui_scale | float)) | round | int }
+                  width: ${ (156 * (ui_scale | float)) | round | int }
+                  height: ${ (22 * (ui_scale | float)) | round | int }
                   text_align: CENTER
                   text_font: fonts_MiSans_Medium_16
                   text_color: 0xD2D2D2
@@ -1998,9 +2003,9 @@ lvgl:
               - label:
                   id: normal_detail_context
                   align: top_mid
-                  y: 119
-                  width: 200
-                  height: 22
+                  y: ${ (119 * (ui_scale | float)) | round | int }
+                  width: ${ (200 * (ui_scale | float)) | round | int }
+                  height: ${ (22 * (ui_scale | float)) | round | int }
                   text_align: CENTER
                   text_font: fonts_MiSans_Medium_16
                   text_color: 0xD2D2D2
@@ -2009,8 +2014,8 @@ lvgl:
               - label:
                   id: normal_detail_hint
                   align: top_mid
-                  y: 147
-                  width: 198
+                  y: ${ (147 * (ui_scale | float)) | round | int }
+                  width: ${ (198 * (ui_scale | float)) | round | int }
                   text_align: CENTER
                   text_font: fonts_MiSans_Medium_14
                   text_color: 0xAAAAAA
@@ -2019,12 +2024,12 @@ lvgl:
               - label:
                   id: normal_automation_detail_title
                   x: 0
-                  y: 192
+                  y: ${ (192 * (ui_scale | float)) | round | int }
                   align: top_mid
                   text_font: fonts_MiSans_Medium_18
                   text_color: 0xD2D2D2
-                  width: 125
-                  height: 25
+                  width: ${ (125 * (ui_scale | float)) | round | int }
+                  height: ${ (25 * (ui_scale | float)) | round | int }
                   long_mode: dot
                   text_align: CENTER
                   text: "Automation"
@@ -2032,9 +2037,9 @@ lvgl:
                   id: normal_automation_detail_offline_overlay
                   x: 0
                   y: 0
-                  width: 240
-                  height: 240
-                  radius: 120
+                  width: ${ (240 * (ui_scale | float)) | round | int }
+                  height: ${ (240 * (ui_scale | float)) | round | int }
+                  radius: ${ (120 * (ui_scale | float)) | round | int }
                   bg_color: 0x000000
                   bg_opa: 70%
                   border_width: 0
@@ -2062,9 +2067,9 @@ lvgl:
             id: normal_light_detail_shell
             x: 0
             y: 0
-            width: 240
-            height: 240
-            radius: 120
+            width: ${ (240 * (ui_scale | float)) | round | int }
+            height: ${ (240 * (ui_scale | float)) | round | int }
+            radius: ${ (120 * (ui_scale | float)) | round | int }
             bg_color: 0x272727
             border_width: 0
             pad_all: 0
@@ -2073,8 +2078,8 @@ lvgl:
               - label:
                   id: normal_light_control_label
                   align: top_mid
-                  y: 48
-                  width: 196
+                  y: ${ (48 * (ui_scale | float)) | round | int }
+                  width: ${ (196 * (ui_scale | float)) | round | int }
                   text_align: CENTER
                   text_font: fonts_MiSans_Medium_16
                   text_color: 0x62B0FF
@@ -2082,47 +2087,47 @@ lvgl:
               - image:
                   id: normal_light_entity_icon
                   align: top_mid
-                  y: 40
+                  y: ${ (40 * (ui_scale | float)) | round | int }
                   src: fallback_toggle_switch_img
                   scale: 1.0
               - image:
                   id: normal_light_device_detail_switch_off
                   x: 0
-                  y: 40
+                  y: ${ (40 * (ui_scale | float)) | round | int }
                   align: top_mid
                   src: normal_device_detail_switch_off_img
               - image:
                   id: normal_light_device_detail_switch_on
                   x: 0
-                  y: 40
+                  y: ${ (40 * (ui_scale | float)) | round | int }
                   align: top_mid
                   src: normal_device_detail_switch_on_img
                   hidden: true
               - image:
                   id: normal_light_device_detail_plug_off
                   x: 0
-                  y: 40
+                  y: ${ (40 * (ui_scale | float)) | round | int }
                   align: top_mid
                   src: normal_device_detail_plug_off_img
                   hidden: true
               - image:
                   id: normal_light_device_detail_plug_on
                   x: 0
-                  y: 40
+                  y: ${ (40 * (ui_scale | float)) | round | int }
                   align: top_mid
                   src: normal_device_detail_plug_on_img
                   hidden: true
               - image:
                   id: normal_light_device_detail_light_off
                   x: 0
-                  y: 40
+                  y: ${ (40 * (ui_scale | float)) | round | int }
                   align: top_mid
                   src: normal_device_detail_light_off_img
                   hidden: true
               - image:
                   id: normal_light_device_detail_light_on
                   x: 0
-                  y: 40
+                  y: ${ (40 * (ui_scale | float)) | round | int }
                   align: top_mid
                   src: normal_device_detail_light_on_img
                   hidden: true
@@ -2131,8 +2136,8 @@ lvgl:
                   x: 0
                   y: 0
                   align: center
-                  width: 240
-                  height: 240
+                  width: ${ (240 * (ui_scale | float)) | round | int }
+                  height: ${ (240 * (ui_scale | float)) | round | int }
                   pad_all: 0
                   border_width: 0
                   adjustable: false
@@ -2142,7 +2147,7 @@ lvgl:
                   start_angle: 0
                   end_angle: 360
                   rotation: 270
-                  arc_width: 4
+                  arc_width: ${ (4 * (ui_scale | float)) | round | int }
                   arc_rounded: true
                   arc_color: 0x5A5A5A
                   indicator:
@@ -2150,12 +2155,12 @@ lvgl:
                   knob:
                     width: 0
                     height: 0
-                    radius: 8
+                    radius: ${ (8 * (ui_scale | float)) | round | int }
                     bg_color: 0xFFFFFF
                     bg_opa: COVER
                     border_width: 0
                     shadow_width: 0
-                    pad_all: 2
+                    pad_all: ${ (2 * (ui_scale | float)) | round | int }
                   hidden: true
               - image:
                   id: normal_light_cct_gradient
@@ -2176,8 +2181,8 @@ lvgl:
                   x: 0
                   y: 0
                   align: center
-                  width: 240
-                  height: 240
+                  width: ${ (240 * (ui_scale | float)) | round | int }
+                  height: ${ (240 * (ui_scale | float)) | round | int }
                   pad_all: 0
                   border_width: 0
                   adjustable: true
@@ -2188,7 +2193,7 @@ lvgl:
                   start_angle: 0
                   end_angle: 270
                   rotation: 135
-                  arc_width: 10
+                  arc_width: ${ (10 * (ui_scale | float)) | round | int }
                   arc_rounded: true
                   arc_color: 0x000000
                   arc_opa: TRANSP
@@ -2196,22 +2201,22 @@ lvgl:
                     arc_color: 0x000000
                     arc_opa: TRANSP
                   knob:
-                    width: 16
-                    height: 16
-                    radius: 8
+                    width: ${ (16 * (ui_scale | float)) | round | int }
+                    height: ${ (16 * (ui_scale | float)) | round | int }
+                    radius: ${ (8 * (ui_scale | float)) | round | int }
                     bg_color: 0xFFFFFF
                     bg_opa: COVER
                     border_width: 0
                     shadow_width: 0
-                    pad_all: 2
+                    pad_all: ${ (2 * (ui_scale | float)) | round | int }
                   hidden: true
               - arc:
                   id: normal_light_rgb_value_arc
                   x: 0
                   y: 0
                   align: center
-                  width: 240
-                  height: 240
+                  width: ${ (240 * (ui_scale | float)) | round | int }
+                  height: ${ (240 * (ui_scale | float)) | round | int }
                   pad_all: 0
                   border_width: 0
                   adjustable: true
@@ -2222,7 +2227,7 @@ lvgl:
                   start_angle: 0
                   end_angle: 360
                   rotation: 0
-                  arc_width: 10
+                  arc_width: ${ (10 * (ui_scale | float)) | round | int }
                   arc_rounded: true
                   arc_color: 0x000000
                   arc_opa: TRANSP
@@ -2230,19 +2235,19 @@ lvgl:
                     arc_color: 0x000000
                     arc_opa: TRANSP
                   knob:
-                    width: 16
-                    height: 16
-                    radius: 8
+                    width: ${ (16 * (ui_scale | float)) | round | int }
+                    height: ${ (16 * (ui_scale | float)) | round | int }
+                    radius: ${ (8 * (ui_scale | float)) | round | int }
                     bg_color: 0xFFFFFF
                     bg_opa: COVER
                     border_width: 0
                     shadow_width: 0
-                    pad_all: 2
+                    pad_all: ${ (2 * (ui_scale | float)) | round | int }
                   hidden: true
               - label:
                   id: normal_light_detail_state
                   x: 0
-                  y: 120
+                  y: ${ (120 * (ui_scale | float)) | round | int }
                   align: top_mid
                   text_font: fonts_MiSans_Medium_32
                   text_color: 0xFFFFFF
@@ -2250,10 +2255,10 @@ lvgl:
               - obj:
                   id: normal_light_detail_mode_text_shell
                   x: 0
-                  y: 166
+                  y: ${ (166 * (ui_scale | float)) | round | int }
                   align: top_mid
-                  width: 90
-                  height: 20
+                  width: ${ (90 * (ui_scale | float)) | round | int }
+                  height: ${ (20 * (ui_scale | float)) | round | int }
                   layout: horizontal
                   bg_opa: TRANSP
                   border_width: 0
@@ -2262,10 +2267,10 @@ lvgl:
                   widgets:
                     - obj:
                         id: normal_light_detail_mode_icon_brightness
-                        width: 20
-                        height: 20
+                        width: ${ (20 * (ui_scale | float)) | round | int }
+                        height: ${ (20 * (ui_scale | float)) | round | int }
                         flex_grow: 0
-                        radius: 10
+                        radius: ${ (10 * (ui_scale | float)) | round | int }
                         bg_opa: TRANSP
                         border_width: 0
                         pad_all: 0
@@ -2277,10 +2282,10 @@ lvgl:
                               src: normal_light_mode_icon_bright_img
                     - obj:
                         id: normal_light_detail_mode_icon_cct
-                        width: 20
-                        height: 20
+                        width: ${ (20 * (ui_scale | float)) | round | int }
+                        height: ${ (20 * (ui_scale | float)) | round | int }
                         flex_grow: 0
-                        radius: 10
+                        radius: ${ (10 * (ui_scale | float)) | round | int }
                         bg_opa: TRANSP
                         border_width: 0
                         pad_all: 0
@@ -2292,10 +2297,10 @@ lvgl:
                               src: normal_light_mode_icon_cct_img
                     - obj:
                         id: normal_light_detail_mode_icon_color
-                        width: 20
-                        height: 20
+                        width: ${ (20 * (ui_scale | float)) | round | int }
+                        height: ${ (20 * (ui_scale | float)) | round | int }
                         flex_grow: 0
-                        radius: 10
+                        radius: ${ (10 * (ui_scale | float)) | round | int }
                         bg_opa: TRANSP
                         border_width: 0
                         pad_all: 0
@@ -2308,12 +2313,12 @@ lvgl:
               - label:
                   id: normal_light_detail_title
                   x: 0
-                  y: 192
+                  y: ${ (192 * (ui_scale | float)) | round | int }
                   align: top_mid
                   text_font: fonts_MiSans_Medium_18
                   text_color: 0xD2D2D2
-                  width: 125
-                  height: 25
+                  width: ${ (125 * (ui_scale | float)) | round | int }
+                  height: ${ (25 * (ui_scale | float)) | round | int }
                   long_mode: dot
                   text_align: CENTER
                   text: "Light"
@@ -2321,9 +2326,9 @@ lvgl:
                   id: normal_light_detail_offline_overlay
                   x: 0
                   y: 0
-                  width: 240
-                  height: 240
-                  radius: 120
+                  width: ${ (240 * (ui_scale | float)) | round | int }
+                  height: ${ (240 * (ui_scale | float)) | round | int }
+                  radius: ${ (120 * (ui_scale | float)) | round | int }
                   bg_color: 0x000000
                   bg_opa: 70%
                   border_width: 0
@@ -2358,9 +2363,9 @@ lvgl:
             id: normal_curtain_detail_shell
             x: 0
             y: 0
-            width: 240
-            height: 240
-            radius: 120
+            width: ${ (240 * (ui_scale | float)) | round | int }
+            height: ${ (240 * (ui_scale | float)) | round | int }
+            radius: ${ (120 * (ui_scale | float)) | round | int }
             bg_color: 0x232323
             border_width: 0
             pad_all: 0
@@ -2369,7 +2374,7 @@ lvgl:
               - image:
                   id: normal_curtain_entity_icon
                   align: top_mid
-                  y: 40
+                  y: ${ (40 * (ui_scale | float)) | round | int }
                   src: fallback_toggle_switch_img
                   scale: 1.0
               - arc:
@@ -2377,8 +2382,8 @@ lvgl:
                   x: 0
                   y: 0
                   align: center
-                  width: 220
-                  height: 220
+                  width: ${ (220 * (ui_scale | float)) | round | int }
+                  height: ${ (220 * (ui_scale | float)) | round | int }
                   adjustable: false
                   min_value: 0
                   max_value: 100
@@ -2386,27 +2391,27 @@ lvgl:
                   start_angle: 0
                   end_angle: 270
                   rotation: 135
-                  arc_width: 10
+                  arc_width: ${ (10 * (ui_scale | float)) | round | int }
                   arc_rounded: true
                   arc_color: 0x404040
                   indicator:
                     arc_color: 0xFABC3D
                   knob:
-                    width: 16
-                    height: 16
-                    radius: 8
+                    width: ${ (16 * (ui_scale | float)) | round | int }
+                    height: ${ (16 * (ui_scale | float)) | round | int }
+                    radius: ${ (8 * (ui_scale | float)) | round | int }
                     bg_color: 0xFFFFFF
                     bg_opa: COVER
                     border_width: 0
                     shadow_width: 0
-                    pad_all: 2
+                    pad_all: ${ (2 * (ui_scale | float)) | round | int }
               - arc:
                   id: normal_curtain_detail_target_arc
                   x: 0
                   y: 0
                   align: center
-                  width: 220
-                  height: 220
+                  width: ${ (220 * (ui_scale | float)) | round | int }
+                  height: ${ (220 * (ui_scale | float)) | round | int }
                   adjustable: true
                   clickable: false
                   min_value: 0
@@ -2415,7 +2420,7 @@ lvgl:
                   start_angle: 0
                   end_angle: 270
                   rotation: 135
-                  arc_width: 10
+                  arc_width: ${ (10 * (ui_scale | float)) | round | int }
                   arc_rounded: true
                   arc_color: 0x000000
                   arc_opa: TRANSP
@@ -2423,91 +2428,91 @@ lvgl:
                     arc_color: 0x000000
                     arc_opa: TRANSP
                   knob:
-                    width: 16
-                    height: 16
-                    radius: 8
+                    width: ${ (16 * (ui_scale | float)) | round | int }
+                    height: ${ (16 * (ui_scale | float)) | round | int }
+                    radius: ${ (8 * (ui_scale | float)) | round | int }
                     bg_color: 0xFFFFFF
                     bg_opa: COVER
                     border_width: 0
                     shadow_width: 0
-                    pad_all: 2
+                    pad_all: ${ (2 * (ui_scale | float)) | round | int }
               - image:
                   id: normal_curtain_detail_0_img
                   x: 0
-                  y: 45
+                  y: ${ (45 * (ui_scale | float)) | round | int }
                   align: top_mid
                   src: normal_device_detail_curtain_0_img
                   hidden: true
               - image:
                   id: normal_curtain_detail_100_img
                   x: 0
-                  y: 45
+                  y: ${ (45 * (ui_scale | float)) | round | int }
                   align: top_mid
                   src: normal_device_detail_curtain_100_img
                   hidden: true
               - image:
                   id: normal_curtain_detail_x_img
                   x: 0
-                  y: 45
+                  y: ${ (45 * (ui_scale | float)) | round | int }
                   align: top_mid
                   src: normal_device_detail_curtain_x_img
                   hidden: true
               - label:
                   id: normal_curtain_detail_state
                   x: 0
-                  y: 120
+                  y: ${ (120 * (ui_scale | float)) | round | int }
                   align: top_mid
                   text_font: fonts_MiSans_Medium_24
                   text_color: 0xFFFFFF
                   text: "50%"
               - image:
                   id: normal_curtain_detail_closing_off
-                  x: -45
-                  y: 160
+                  x: ${ (-45 * (ui_scale | float)) | round | int }
+                  y: ${ (160 * (ui_scale | float)) | round | int }
                   align: top_mid
                   src: normal_device_detail_curtain_no_closing_img
               - image:
                   id: normal_curtain_detail_closing_on
-                  x: -45
-                  y: 160
+                  x: ${ (-45 * (ui_scale | float)) | round | int }
+                  y: ${ (160 * (ui_scale | float)) | round | int }
                   align: top_mid
                   src: normal_device_detail_curtain_closing_img
                   hidden: true
               - image:
                   id: normal_curtain_detail_pause_off
                   x: 0
-                  y: 160
+                  y: ${ (160 * (ui_scale | float)) | round | int }
                   align: top_mid
                   src: normal_device_detail_curtain_no_pause_img
               - image:
                   id: normal_curtain_detail_pause_on
                   x: 0
-                  y: 160
+                  y: ${ (160 * (ui_scale | float)) | round | int }
                   align: top_mid
                   src: normal_device_detail_curtain_pause_img
                   hidden: true
               - image:
                   id: normal_curtain_detail_opening_off
-                  x: 45
-                  y: 160
+                  x: ${ (45 * (ui_scale | float)) | round | int }
+                  y: ${ (160 * (ui_scale | float)) | round | int }
                   align: top_mid
                   src: normal_device_detail_curtain_no_opening_img
               - image:
                   id: normal_curtain_detail_opening_on
-                  x: 45
-                  y: 160
+                  x: ${ (45 * (ui_scale | float)) | round | int }
+                  y: ${ (160 * (ui_scale | float)) | round | int }
                   align: top_mid
                   src: normal_device_detail_curtain_opening_img
                   hidden: true
               - label:
                   id: normal_curtain_detail_title
                   x: 0
-                  y: 192
+                  y: ${ (192 * (ui_scale | float)) | round | int }
                   align: top_mid
                   text_font: fonts_MiSans_Medium_18
                   text_color: 0xD2D2D2
-                  width: 125
-                  height: 25
+                  width: ${ (125 * (ui_scale | float)) | round | int }
+                  height: ${ (25 * (ui_scale | float)) | round | int }
                   long_mode: dot
                   text_align: CENTER
                   text: "Cover"
@@ -2515,9 +2520,9 @@ lvgl:
                   id: normal_curtain_detail_offline_overlay
                   x: 0
                   y: 0
-                  width: 240
-                  height: 240
-                  radius: 120
+                  width: ${ (240 * (ui_scale | float)) | round | int }
+                  height: ${ (240 * (ui_scale | float)) | round | int }
+                  radius: ${ (120 * (ui_scale | float)) | round | int }
                   bg_color: 0x000000
                   bg_opa: 70%
                   border_width: 0
@@ -2552,9 +2557,9 @@ lvgl:
             id: normal_settings_detail_shell
             x: 0
             y: 0
-            width: 240
-            height: 240
-            radius: 120
+            width: ${ (240 * (ui_scale | float)) | round | int }
+            height: ${ (240 * (ui_scale | float)) | round | int }
+            radius: ${ (120 * (ui_scale | float)) | round | int }
             bg_color: 0x1A1A1A
             border_width: 0
             pad_all: 0
@@ -2563,7 +2568,7 @@ lvgl:
               - label:
                   id: normal_settings_header_title
                   x: 0
-                  y: 18
+                  y: ${ (18 * (ui_scale | float)) | round | int }
                   align: top_mid
                   text_font: fonts_MiSans_Medium_18
                   text_color: 0xFFFFFF
@@ -2571,9 +2576,9 @@ lvgl:
               - roller:
                   id: normal_settings_roller
                   x: 0
-                  y: 5
-                  width: 221
-                  height: 120
+                  y: ${ (5 * (ui_scale | float)) | round | int }
+                  width: ${ (221 * (ui_scale | float)) | round | int }
+                  height: ${ (120 * (ui_scale | float)) | round | int }
                   align: center
                   mode: NORMAL
                   visible_row_count: 3
@@ -2584,11 +2589,11 @@ lvgl:
                     - KNOB
               - image:
                   id: normal_settings_arrow_hint
-                  x: 85
-                  y: 18
+                  x: ${ (85 * (ui_scale | float)) | round | int }
+                  y: ${ (18 * (ui_scale | float)) | round | int }
                   align: center
-                  width: 21
-                  height: 21
+                  width: ${ (21 * (ui_scale | float)) | round | int }
+                  height: ${ (21 * (ui_scale | float)) | round | int }
                   src: normal_settings_arrow_img
     - id: normal_settings_wifi_page
       bg_color: 0x1A1A1A
@@ -2602,9 +2607,9 @@ lvgl:
             id: normal_settings_wifi_shell
             x: 0
             y: 0
-            width: 240
-            height: 240
-            radius: 120
+            width: ${ (240 * (ui_scale | float)) | round | int }
+            height: ${ (240 * (ui_scale | float)) | round | int }
+            radius: ${ (120 * (ui_scale | float)) | round | int }
             bg_color: 0x1A1A1A
             border_width: 0
             pad_all: 0
@@ -2613,9 +2618,9 @@ lvgl:
               - obj:
                   id: normal_settings_wifi_header
                   x: 0
-                  y: 30
-                  width: 240
-                  height: 40
+                  y: ${ (30 * (ui_scale | float)) | round | int }
+                  width: ${ (240 * (ui_scale | float)) | round | int }
+                  height: ${ (40 * (ui_scale | float)) | round | int }
                   bg_opa: TRANSP
                   border_width: 0
                   pad_all: 0
@@ -2632,9 +2637,9 @@ lvgl:
                   id: normal_settings_wifi_card
                   x: 0
                   y: 0
-                  width: 210
-                  height: 64
-                  radius: 12
+                  width: ${ (210 * (ui_scale | float)) | round | int }
+                  height: ${ (64 * (ui_scale | float)) | round | int }
+                  radius: ${ (12 * (ui_scale | float)) | round | int }
                   bg_color: 0x000000
                   bg_opa: TRANSP
                   border_width: 0
@@ -2647,7 +2652,7 @@ lvgl:
                         x: 0
                         y: 0
                         width: 100%
-                        height: 32
+                        height: ${ (32 * (ui_scale | float)) | round | int }
                         radius: 0
                         bg_color: 0x3D3D3D
                         border_width: 0
@@ -2656,7 +2661,7 @@ lvgl:
                         widgets:
                           - label:
                               id: normal_settings_wifi_ssid
-                              x: 15
+                              x: ${ (15 * (ui_scale | float)) | round | int }
                               y: 0
                               align: left_mid
                               text_font: fonts_MiSans_Medium_14
@@ -2664,26 +2669,26 @@ lvgl:
                               text: "Not connected"
                           - image:
                               id: normal_settings_wifi_lock_icon
-                              x: -34
+                              x: ${ (-34 * (ui_scale | float)) | round | int }
                               y: 0
                               align: right_mid
-                              width: 14
-                              height: 14
+                              width: ${ (14 * (ui_scale | float)) | round | int }
+                              height: ${ (14 * (ui_scale | float)) | round | int }
                               src: normal_settings_wifi_lock_img
                           - image:
                               id: normal_settings_wifi_wifi_icon
-                              x: -12
+                              x: ${ (-12 * (ui_scale | float)) | round | int }
                               y: 0
                               align: right_mid
-                              width: 14
-                              height: 14
+                              width: ${ (14 * (ui_scale | float)) | round | int }
+                              height: ${ (14 * (ui_scale | float)) | round | int }
                               src: normal_settings_wifi_icon_img
                     - obj:
                         id: normal_settings_wifi_card_btm
                         x: 0
-                        y: 32
+                        y: ${ (32 * (ui_scale | float)) | round | int }
                         width: 100%
-                        height: 32
+                        height: ${ (32 * (ui_scale | float)) | round | int }
                         radius: 0
                         bg_color: 0x2D2D2D
                         border_width: 0
@@ -2692,7 +2697,7 @@ lvgl:
                         widgets:
                           - label:
                               id: normal_settings_wifi_ip
-                              x: 15
+                              x: ${ (15 * (ui_scale | float)) | round | int }
                               y: 0
                               align: left_mid
                               text_font: fonts_MiSans_Medium_12
@@ -2701,13 +2706,13 @@ lvgl:
               - button:
                   id: normal_settings_wifi_ok_btn
                   x: 0
-                  y: -25
-                  width: 90
-                  height: 36
+                  y: ${ (-25 * (ui_scale | float)) | round | int }
+                  width: ${ (90 * (ui_scale | float)) | round | int }
+                  height: ${ (36 * (ui_scale | float)) | round | int }
                   align: bottom_mid
                   bg_color: 0x0091FF
-                  radius: 10
-                  border_width: 1
+                  radius: ${ (10 * (ui_scale | float)) | round | int }
+                  border_width: ${ (1 * (ui_scale | float)) | round | int }
                   border_color: 0x66BFFF
                   shadow_width: 0
                   widgets:
@@ -2728,9 +2733,9 @@ lvgl:
             id: normal_settings_brightness_shell
             x: 0
             y: 0
-            width: 240
-            height: 240
-            radius: 120
+            width: ${ (240 * (ui_scale | float)) | round | int }
+            height: ${ (240 * (ui_scale | float)) | round | int }
+            radius: ${ (120 * (ui_scale | float)) | round | int }
             bg_color: 0x1A1A1A
             border_width: 0
             pad_all: 0
@@ -2739,9 +2744,9 @@ lvgl:
               - obj:
                   id: normal_settings_brightness_header
                   x: 0
-                  y: 30
-                  width: 240
-                  height: 40
+                  y: ${ (30 * (ui_scale | float)) | round | int }
+                  width: ${ (240 * (ui_scale | float)) | round | int }
+                  height: ${ (40 * (ui_scale | float)) | round | int }
                   bg_opa: TRANSP
                   border_width: 0
                   pad_all: 0
@@ -2757,9 +2762,9 @@ lvgl:
               - slider:
                   id: normal_settings_brightness_slider
                   x: 0
-                  y: -6
-                  width: 168
-                  height: 12
+                  y: ${ (-6 * (ui_scale | float)) | round | int }
+                  width: ${ (168 * (ui_scale | float)) | round | int }
+                  height: ${ (12 * (ui_scale | float)) | round | int }
                   align: center
                   value: 100
                   min_value: 10
@@ -2789,7 +2794,7 @@ lvgl:
               - label:
                   id: normal_settings_brightness_value_label
                   x: 0
-                  y: 18
+                  y: ${ (18 * (ui_scale | float)) | round | int }
                   align: center
                   text_font: fonts_MiSans_Medium_14
                   text_color: 0xFFFFFF
@@ -2806,9 +2811,9 @@ lvgl:
             id: normal_settings_knob_shell
             x: 0
             y: 0
-            width: 240
-            height: 240
-            radius: 120
+            width: ${ (240 * (ui_scale | float)) | round | int }
+            height: ${ (240 * (ui_scale | float)) | round | int }
+            radius: ${ (120 * (ui_scale | float)) | round | int }
             bg_color: 0x1A1A1A
             border_width: 0
             pad_all: 0
@@ -2817,9 +2822,9 @@ lvgl:
               - obj:
                   id: normal_settings_knob_header
                   x: 0
-                  y: 30
-                  width: 240
-                  height: 40
+                  y: ${ (30 * (ui_scale | float)) | round | int }
+                  width: ${ (240 * (ui_scale | float)) | round | int }
+                  height: ${ (40 * (ui_scale | float)) | round | int }
                   bg_opa: TRANSP
                   border_width: 0
                   pad_all: 0
@@ -2835,9 +2840,9 @@ lvgl:
               - roller:
                   id: normal_settings_knob_roller
                   x: 0
-                  y: -2
-                  width: 168
-                  height: 78
+                  y: ${ (-2 * (ui_scale | float)) | round | int }
+                  width: ${ (168 * (ui_scale | float)) | round | int }
+                  height: ${ (78 * (ui_scale | float)) | round | int }
                   align: center
                   mode: NORMAL
                   visible_row_count: 3
@@ -2864,29 +2869,29 @@ lvgl:
       pad_all: 0
       widgets:
         - label:
-            y: 20
+            y: ${ (20 * (ui_scale | float)) | round | int }
             align: top_mid
             text_font: fonts_MiSans_Medium_18
             text: "Home Assistant"
             text_color: 0xFFFFFF
         - label:
             id: normal_settings_connection_status
-            y: 60
+            y: ${ (60 * (ui_scale | float)) | round | int }
             align: top_mid
             text_font: fonts_MiSans_Medium_16
             text: "Waiting for connection"
             text_color: 0xFFFFFF
         - label:
             id: normal_settings_connection_url
-            y: 94
-            width: 208
+            y: ${ (94 * (ui_scale | float)) | round | int }
+            width: ${ (208 * (ui_scale | float)) | round | int }
             align: top_mid
             text_align: CENTER
             text_font: fonts_MiSans_Medium_16
             text: "Open the device's Visit link"
             text_color: 0xD2D2D2
         - label:
-            y: 157
+            y: ${ (157 * (ui_scale | float)) | round | int }
             align: top_mid
             text_align: CENTER
             text_font: fonts_MiSans_Medium_14
@@ -2917,7 +2922,7 @@ lvgl:
       widgets:
         - label:
             x: 0
-            y: 35
+            y: ${ (35 * (ui_scale | float)) | round | int }
             align: top_mid
             text_font: fonts_MiSans_Bold_24
             text_color: 0x000000
@@ -2925,12 +2930,12 @@ lvgl:
         - obj:
             id: ha_light_wrapper
             x: 0
-            y: 110
-            width: 200
-            height: 40
+            y: ${ (110 * (ui_scale | float)) | round | int }
+            width: ${ (200 * (ui_scale | float)) | round | int }
+            height: ${ (40 * (ui_scale | float)) | round | int }
             bg_color: 0x24323A
             bg_opa: 30%
-            radius: 12
+            radius: ${ (12 * (ui_scale | float)) | round | int }
             border_width: 0
             pad_all: 0
             scrollable: false
@@ -2941,14 +2946,14 @@ lvgl:
                   width: 0
                   height: 100%
                   bg_color: 0xFDBB13
-                  radius: 12
+                  radius: ${ (12 * (ui_scale | float)) | round | int }
                   border_width: 0
                   align: left_mid
               - obj:
                   id: ha_light_pill
-                  width: 4
-                  height: 16
-                  radius: 2
+                  width: ${ (4 * (ui_scale | float)) | round | int }
+                  height: ${ (16 * (ui_scale | float)) | round | int }
+                  radius: ${ (2 * (ui_scale | float)) | round | int }
                   bg_color: 0xFFFFFF
                   align: left_mid
                   x: 0
@@ -2956,13 +2961,13 @@ lvgl:
         - obj:
             id: ct_wrapper
             x: 0
-            y: 160
-            width: 200
-            height: 40
+            y: ${ (160 * (ui_scale | float)) | round | int }
+            width: ${ (200 * (ui_scale | float)) | round | int }
+            height: ${ (40 * (ui_scale | float)) | round | int }
             bg_color: 0x91C1FF
             bg_grad_color: 0xFFD699
             bg_grad_dir: HOR
-            radius: 12
+            radius: ${ (12 * (ui_scale | float)) | round | int }
             border_width: 0
             pad_all: 0
             scrollable: false
@@ -2970,9 +2975,9 @@ lvgl:
             widgets:
               - obj:
                   id: ct_pill
-                  width: 4
-                  height: 16
-                  radius: 2
+                  width: ${ (4 * (ui_scale | float)) | round | int }
+                  height: ${ (16 * (ui_scale | float)) | round | int }
+                  radius: ${ (2 * (ui_scale | float)) | round | int }
                   bg_color: 0xFFFFFF
                   align: left_mid
                   x: 0
@@ -2989,8 +2994,8 @@ lvgl:
         - arc:
             id: standby_seconds_arc
             align: center
-            width: 240
-            height: 240
+            width: ${ (240 * (ui_scale | float)) | round | int }
+            height: ${ (240 * (ui_scale | float)) | round | int }
             pad_all: 0
             border_width: 0
             adjustable: false
@@ -3001,166 +3006,166 @@ lvgl:
             start_angle: 0
             end_angle: 360
             rotation: 270
-            arc_width: 4
+            arc_width: ${ (4 * (ui_scale | float)) | round | int }
             arc_color: 0x414850
             indicator:
-              arc_width: 4
+              arc_width: ${ (4 * (ui_scale | float)) | round | int }
               arc_color: 0x62B0FF
             hidden: true
         - image:
             id: standby_wifi_online_widget
-            x: -13
-            y: 10
-            width: 20
+            x: ${ (-13 * (ui_scale | float)) | round | int }
+            y: ${ (10 * (ui_scale | float)) | round | int }
+            width: ${ (20 * (ui_scale | float)) | round | int }
             align: TOP_MID
             src: standby_wifi_online_img
             hidden: !lambda |-
               return !id(normal_wifi_connected);
         - image:
             id: standby_wifi_offline_widget
-            x: -13
-            y: 10
+            x: ${ (-13 * (ui_scale | float)) | round | int }
+            y: ${ (10 * (ui_scale | float)) | round | int }
             align: TOP_MID
             src: standby_wifi_offline_img
             hidden: !lambda |-
               return id(normal_wifi_connected);
         - image:
             id: standby_homeassistant_online_widget
-            x: 13
-            y: 10
+            x: ${ (13 * (ui_scale | float)) | round | int }
+            y: ${ (10 * (ui_scale | float)) | round | int }
             align: TOP_MID
             src: standby_homeassistant_online_img
             hidden: !lambda |-
               return !id(normal_ha_api_connected);
         - image:
             id: standby_homeassistant_offline_widget
-            x: 13
-            y: 10
+            x: ${ (13 * (ui_scale | float)) | round | int }
+            y: ${ (10 * (ui_scale | float)) | round | int }
             align: TOP_MID
             src: standby_homeassistant_offline_img
             hidden: !lambda |-
               return id(normal_ha_api_connected);
         - image:
             id: standby_weather_unknown_widget
-            x: 70
-            y: 41
+            x: ${ (70 * (ui_scale | float)) | round | int }
+            y: ${ (41 * (ui_scale | float)) | round | int }
             align: top_left
             src: standby_weather_icon_unknown_img
         - image:
             id: standby_weather_clear_night_widget
-            x: 70
-            y: 41
+            x: ${ (70 * (ui_scale | float)) | round | int }
+            y: ${ (41 * (ui_scale | float)) | round | int }
             align: top_left
             src: standby_weather_icon_clear_night_img
             hidden: true
         - image:
             id: standby_weather_cloudy_widget
-            x: 70
-            y: 41
+            x: ${ (70 * (ui_scale | float)) | round | int }
+            y: ${ (41 * (ui_scale | float)) | round | int }
             align: top_left
             src: standby_weather_icon_cloudy_img
             hidden: true
         - image:
             id: standby_weather_exceptional_widget
-            x: 70
-            y: 41
+            x: ${ (70 * (ui_scale | float)) | round | int }
+            y: ${ (41 * (ui_scale | float)) | round | int }
             align: top_left
             src: standby_weather_icon_exceptional_img
             hidden: true
         - image:
             id: standby_weather_fog_widget
-            x: 70
-            y: 41
+            x: ${ (70 * (ui_scale | float)) | round | int }
+            y: ${ (41 * (ui_scale | float)) | round | int }
             align: top_left
             src: standby_weather_icon_fog_img
             hidden: true
         - image:
             id: standby_weather_hail_widget
-            x: 70
-            y: 41
+            x: ${ (70 * (ui_scale | float)) | round | int }
+            y: ${ (41 * (ui_scale | float)) | round | int }
             align: top_left
             src: standby_weather_icon_hail_img
             hidden: true
         - image:
             id: standby_weather_lightning_widget
-            x: 70
-            y: 41
+            x: ${ (70 * (ui_scale | float)) | round | int }
+            y: ${ (41 * (ui_scale | float)) | round | int }
             align: top_left
             src: standby_weather_icon_lightning_img
             hidden: true
         - image:
             id: standby_weather_lightning_rainy_widget
-            x: 70
-            y: 41
+            x: ${ (70 * (ui_scale | float)) | round | int }
+            y: ${ (41 * (ui_scale | float)) | round | int }
             align: top_left
             src: standby_weather_icon_lightning_rainy_img
             hidden: true
         - image:
             id: standby_weather_partlycloudy_widget
-            x: 70
-            y: 41
+            x: ${ (70 * (ui_scale | float)) | round | int }
+            y: ${ (41 * (ui_scale | float)) | round | int }
             align: top_left
             src: standby_weather_icon_partlycloudy_img
             hidden: true
         - image:
             id: standby_weather_pouring_widget
-            x: 70
-            y: 41
+            x: ${ (70 * (ui_scale | float)) | round | int }
+            y: ${ (41 * (ui_scale | float)) | round | int }
             align: top_left
             src: standby_weather_icon_pouring_img
             hidden: true
         - image:
             id: standby_weather_rainy_widget
-            x: 70
-            y: 41
+            x: ${ (70 * (ui_scale | float)) | round | int }
+            y: ${ (41 * (ui_scale | float)) | round | int }
             align: top_left
             src: standby_weather_icon_rainy_img
             hidden: true
         - image:
             id: standby_weather_snowy_widget
-            x: 70
-            y: 41
+            x: ${ (70 * (ui_scale | float)) | round | int }
+            y: ${ (41 * (ui_scale | float)) | round | int }
             align: top_left
             src: standby_weather_icon_snowy_img
             hidden: true
         - image:
             id: standby_weather_snowy_rainy_widget
-            x: 70
-            y: 41
+            x: ${ (70 * (ui_scale | float)) | round | int }
+            y: ${ (41 * (ui_scale | float)) | round | int }
             align: top_left
             src: standby_weather_icon_snowy_rainy_img
             hidden: true
         - image:
             id: standby_weather_sunny_widget
-            x: 70
-            y: 41
+            x: ${ (70 * (ui_scale | float)) | round | int }
+            y: ${ (41 * (ui_scale | float)) | round | int }
             align: top_left
             src: standby_weather_icon_sunny_img
             hidden: true
         - image:
             id: standby_weather_windy_widget
-            x: 70
-            y: 41
+            x: ${ (70 * (ui_scale | float)) | round | int }
+            y: ${ (41 * (ui_scale | float)) | round | int }
             align: top_left
             src: standby_weather_icon_windy_img
             hidden: true
         - image:
             id: standby_weather_windy_variant_widget
-            x: 70
-            y: 41
+            x: ${ (70 * (ui_scale | float)) | round | int }
+            y: ${ (41 * (ui_scale | float)) | round | int }
             align: top_left
             src: standby_weather_icon_windy_variant_img
             hidden: true
         - image:
             id: standby_temperature_icon_widget
-            x: 121
-            y: 42
+            x: ${ (121 * (ui_scale | float)) | round | int }
+            y: ${ (42 * (ui_scale | float)) | round | int }
             align: top_left
             src: standby_weather_temp_icon_img
         - label:
             id: standby_temperature_widget
-            x: 137
-            y: 38
+            x: ${ (137 * (ui_scale | float)) | round | int }
+            y: ${ (38 * (ui_scale | float)) | round | int }
             align: top_left
             text_align: left
             text_font: fonts_MiSans_Medium_16
@@ -3169,14 +3174,14 @@ lvgl:
               return onx_clock_sensors::temperature_text(id(standby_weather_temperature), id(standby_weather_temperature_unit));
         - image:
             id: standby_humidity_icon_widget
-            x: 121
-            y: 62
+            x: ${ (121 * (ui_scale | float)) | round | int }
+            y: ${ (62 * (ui_scale | float)) | round | int }
             align: top_left
             src: standby_weather_humidity_icon_img
         - label:
             id: standby_humidity_widget
-            x: 138
-            y: 58
+            x: ${ (138 * (ui_scale | float)) | round | int }
+            y: ${ (58 * (ui_scale | float)) | round | int }
             align: top_left
             text_align: left
             text_font: fonts_MiSans_Medium_16
@@ -3186,7 +3191,7 @@ lvgl:
         - label:
             id: standby_date_widget
             x: 0
-            y: 168
+            y: ${ (168 * (ui_scale | float)) | round | int }
             align: top_mid
             text_font: fonts_MiSans_Medium_20
             text_color: 0xFFFFFF
@@ -3226,34 +3231,34 @@ lvgl:
         - image:
             id: ap_icon
             src: wifi_ap_img
-            width: 62
-            height: 62
+            width: ${ (62 * (ui_scale | float)) | round | int }
+            height: ${ (62 * (ui_scale | float)) | round | int }
             align: TOP_MID
-            y: 10
+            y: ${ (10 * (ui_scale | float)) | round | int }
         - label:
             id: normal_provisioning_title
             x: 0
-            y: 72
+            y: ${ (72 * (ui_scale | float)) | round | int }
             align: top_mid
             text_font: fonts_MiSans_Bold_16
             text_color: 0xFFFFFF
             text: "Connect to Device AP"
         - label:
             id: normal_provisioning_ssid
-            width: 214
-            height: 58
+            width: ${ (214 * (ui_scale | float)) | round | int }
+            height: ${ (58 * (ui_scale | float)) | round | int }
             align: TOP_MID
-            y: 103
+            y: ${ (103 * (ui_scale | float)) | round | int }
             text_align: CENTER
             text_font: fonts_MiSans_Bold_16
             text_color: 0x29E800
             text: "Preparing Wi-Fi setup"
         - label:
             id: normal_provisioning_hint
-            width: 200
-            height: 52
+            width: ${ (200 * (ui_scale | float)) | round | int }
+            height: ${ (52 * (ui_scale | float)) | round | int }
             align: TOP_MID
-            y: 166
+            y: ${ (166 * (ui_scale | float)) | round | int }
             text_align: CENTER
             text_font: fonts_MiSans_Medium_12
             text_color: 0xD8D8D8
@@ -3266,33 +3271,33 @@ lvgl:
       widgets:
         - image:
             src: homeassistant_img
-            width: 43
-            height: 43
+            width: ${ (43 * (ui_scale | float)) | round | int }
+            height: ${ (43 * (ui_scale | float)) | round | int }
             align: TOP_MID
-            y: 15
+            y: ${ (15 * (ui_scale | float)) | round | int }
         - label:
             id: normal_add_hmi_title
-            y: 68
+            y: ${ (68 * (ui_scale | float)) | round | int }
             align: TOP_MID
-            width: 214
+            width: ${ (214 * (ui_scale | float)) | round | int }
             text_align: CENTER
             text_font: fonts_MiSans_Bold_16
             text_color: 0xFFFFFF
             text: "Connecting to Wi-Fi"
         - label:
             id: normal_add_hmi_ssid
-            y: 102
+            y: ${ (102 * (ui_scale | float)) | round | int }
             align: TOP_MID
-            width: 218
+            width: ${ (218 * (ui_scale | float)) | round | int }
             text_align: CENTER
             text_font: fonts_MiSans_Bold_16
             text_color: 0x29E800
             text: "Please wait"
         - label:
             id: normal_add_hmi_hint
-            y: 139
+            y: ${ (139 * (ui_scale | float)) | round | int }
             align: TOP_MID
-            width: 204
+            width: ${ (204 * (ui_scale | float)) | round | int }
             text_align: CENTER
             text_font: fonts_MiSans_Medium_12
             text_color: 0xD8D8D8
@@ -3303,17 +3308,17 @@ lvgl:
       pad_all: 0
       widgets:
         - label:
-            y: 43
+            y: ${ (43 * (ui_scale | float)) | round | int }
             align: top_mid
-            width: 210
+            width: ${ (210 * (ui_scale | float)) | round | int }
             text_align: CENTER
             text_font: fonts_MiSans_Medium_18
             text_color: 0xFFFFFF
             text: "Add the ESPHome device\nin Home Assistant"
         - label:
-            y: 118
+            y: ${ (118 * (ui_scale | float)) | round | int }
             align: top_mid
-            width: 210
+            width: ${ (210 * (ui_scale | float)) | round | int }
             text_align: CENTER
             text_font: fonts_MiSans_Medium_16
             text_color: 0xD2D2D2

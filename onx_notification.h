@@ -2,6 +2,8 @@
 #include <algorithm>
 #include <cstdint>
 #include <cctype>
+#include <deque>
+#include <functional>
 #include <string>
 
 namespace onx_notification {
@@ -150,4 +152,66 @@ inline ImageState image;
 inline bool press_consumed{false};
 // Title and picture hidden while a long message is scrolled.
 inline bool expanded{false};
+
+// Notification centre (touch panels). When enabled, show_message adds to a
+// short history shown behind a corner bell instead of the knob's full-screen
+// popup; each entry can be opened and dismissed. Disabled on the knob.
+struct CenterItem {
+  uint32_t id{0},received_ms{0};
+  std::string title,body,image_url;
+  bool read{false};
+};
+struct Center {
+  static constexpr size_t LIMIT=12;
+  bool enabled{false};
+  std::deque<CenterItem> items;  // Newest first.
+  uint32_t next_id{1},revision{0},toast_id{0},toast_until{0};
+  std::function<void()> changed;
+  void notify() {++revision;if(changed)changed();}
+  // Returns the new item's id, or 0 for an empty message.
+  uint32_t add(const std::string &heading,const std::string &text,int seconds,const std::string &image,uint32_t now) {
+    if(text.empty() && heading.empty())return 0;
+    CenterItem item;
+    item.id=next_id++;item.received_ms=now;
+    item.title=plain_text(heading.empty()?"Reminder":heading,96);
+    for(char &ch:item.title)if(ch=='\r' || ch=='\n')ch=' ';
+    item.body=clipped(plain_text(text,2048),1024);
+    item.image_url=image.size()<=1024 && (image.rfind("http://",0)==0 || image.rfind("https://",0)==0) ? image : "";
+    items.push_front(std::move(item));
+    while(items.size()>LIMIT)items.pop_back();
+    // The banner stays briefly; timeout_seconds 0 keeps it until opened.
+    toast_id=items.front().id;
+    toast_until=now+static_cast<uint32_t>(seconds<=0?30:std::min(seconds,30))*1000;
+    if(toast_until==0)toast_until=1;
+    notify();
+    return toast_id;
+  }
+  CenterItem *find(uint32_t item_id) {
+    for(auto &item:items)if(item.id==item_id)return &item;
+    return nullptr;
+  }
+  bool dismiss(uint32_t item_id) {
+    for(auto it=items.begin();it!=items.end();++it)
+      if(it->id==item_id) {items.erase(it);if(toast_id==item_id)toast_id=0;notify();return true;}
+    return false;
+  }
+  void dismiss_latest() {if(!items.empty())dismiss(items.front().id);}
+  void clear() {items.clear();toast_id=0;notify();}
+  void mark_read(uint32_t item_id) {if(auto *item=find(item_id)){if(!item->read){item->read=true;notify();}}}
+  size_t unread() const {size_t n=0;for(const auto &item:items)if(!item.read)++n;return n;}
+  // True while the arrival banner should show.
+  bool toast_visible(uint32_t now) const {
+    return toast_id!=0 && static_cast<int32_t>(toast_until-now)>0;
+  }
+  void hide_toast() {if(toast_id){toast_id=0;notify();}}
+};
+inline Center center;
+// "5 min ago" style age for the list.
+inline std::string age_text(uint32_t received_ms,uint32_t now) {
+  const uint32_t seconds=(now-received_ms)/1000;
+  if(seconds<60)return "now";
+  if(seconds<3600)return std::to_string(seconds/60)+" min ago";
+  if(seconds<86400)return std::to_string(seconds/3600)+" h ago";
+  return std::to_string(seconds/86400)+" d ago";
+}
 }  // namespace onx_notification

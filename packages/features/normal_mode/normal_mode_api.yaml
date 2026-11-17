@@ -24,6 +24,11 @@ api:
           example: "60"
       then:
         - lambda: |-
+            // Touch panels keep a notification centre instead of the full-screen popup.
+            if(onx_notification::center.enabled) {
+              onx_notification::center.add(title,message,timeout_seconds,image_url,millis());
+              return;
+            }
             onx_notification::current.show(title,message,timeout_seconds,image_url);
             id(refresh_normal_message_popup).execute();
     - action: apply_preset
@@ -53,6 +58,7 @@ api:
       description: Dismiss the current or pending display reminder.
       then:
         - lambda: |-
+            if(onx_notification::center.enabled) {onx_notification::center.dismiss_latest();return;}
             onx_notification::current.dismiss();
             id(refresh_normal_message_popup).execute();
     - action: show_control_feedback

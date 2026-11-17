@@ -1,4 +1,7 @@
-# Tap once to talk; tap again to cancel. No always-listening microphone by default.
+# Home Assistant Assist satellite. Start it from a "[Local] Assist" control in
+# the carousel, the BOOT button, the Talk button entity, or the optional wake
+# word (examples/room-companion/wake-word.yaml). A full-screen overlay shows
+# what was heard and the reply; it takes the screen from the dashboard stream.
 globals:
   - id: assist_ready
     type: bool
@@ -13,13 +16,24 @@ switch:
     restore_mode: RESTORE_DEFAULT_OFF
     turn_on_action:
       - voice_assistant.stop:
-      - lvgl.label.update:
-          id: assist_status_label
-          text: Microphone muted
-    turn_off_action:
-      - lvgl.label.update:
-          id: assist_status_label
-          text: Tap to talk
+
+button:
+  - platform: template
+    name: Talk
+    icon: mdi:account-voice
+    on_press:
+      - script.execute: toggle_assist
+
+binary_sensor:
+  - id: !extend boot_btn
+    on_click:
+      max_length: 1s
+      then:
+        - if:
+            condition:
+              wifi.connected:
+            then:
+              - script.execute: toggle_assist
 
 voice_assistant:
   id: assist
@@ -36,54 +50,46 @@ voice_assistant:
     - globals.set:
         id: assist_ready
         value: 'true'
-    - lvgl.label.update:
-        id: connection_label
-        text: Home Assistant connected
   on_client_disconnected:
     - globals.set:
         id: assist_ready
         value: 'false'
     - voice_assistant.stop:
-    - lvgl.label.update:
-        id: connection_label
-        text: Connect Home Assistant
-    - lvgl.label.update:
-        id: assist_status_label
-        text: Assist disconnected
+    - script.execute:
+        id: assist_show
+        status: Assist disconnected
+    - script.execute: assist_finished
   on_listening:
-    - lvgl.label.update:
-        id: assist_status_label
-        text: Listening...
+    - script.stop: assist_finished
+    - script.execute:
+        id: assist_show
+        status: Listening...
   on_stt_end:
     - lvgl.label.update:
-        id: transcript_label
+        id: assist_transcript
         text: !lambda 'return onx_notification::plain_text(x, 384);'
     - lvgl.label.update:
-        id: assist_status_label
+        id: assist_status
         text: Thinking...
   on_tts_start:
     - lvgl.label.update:
-        id: response_label
+        id: assist_response
         text: !lambda 'return onx_notification::plain_text(x, 512);'
   on_tts_stream_start:
     - lvgl.label.update:
-        id: assist_status_label
+        id: assist_status
         text: Speaking...
   on_idle:
-    - lvgl.label.update:
-        id: assist_status_label
-        text: !lambda |-
-          if (id(microphone_muted).state) return std::string("Microphone muted");
-          return std::string(id(assist_ready) ? "Tap to talk" : "Assist disconnected");
+    - script.execute: assist_finished
   on_error:
     - lvgl.label.update:
-        id: assist_status_label
-        text: !lambda 'return onx_notification::clipped(code + ": " + message, 128);'
+        id: assist_status
+        text: !lambda 'return onx_notification::clipped(message, 128);'
+    - script.execute: assist_finished
 
 script:
   - id: toggle_assist
     then:
-      - lvgl.page.show: assist_page
       - if:
           condition:
             voice_assistant.is_running:
@@ -96,14 +102,130 @@ script:
                   lambda: 'return id(assist_ready) && !id(microphone_muted).state;'
                 then:
                   - lvgl.label.update:
-                      id: transcript_label
+                      id: assist_transcript
                       text: ""
                   - lvgl.label.update:
-                      id: response_label
+                      id: assist_response
                       text: ""
                   - voice_assistant.start:
                 else:
-                  - lvgl.label.update:
-                      id: assist_status_label
-                      text: !lambda |-
-                        return std::string(id(microphone_muted).state ? "Microphone muted" : "Connect Assist in Home Assistant");
+                  - script.execute:
+                      id: assist_show
+                      status: !lambda |-
+                        return std::string(id(microphone_muted).state ? "Microphone muted"
+                                           : "Select this panel as an Assist satellite in Home Assistant");
+                  - script.execute: assist_finished
+
+  # Shows the overlay, waking the panel and taking the screen from the stream.
+  - id: assist_show
+    parameters:
+      status: string
+    then:
+      - lambda: |-
+          if (onx_power::sleeping && id(low_power_sleep).state) id(low_power_sleep).turn_off();
+          id(ui_presenter)->notify_user_activity();
+          id(room_panel)->set_overlay(esphome::room_companion::OVERLAY_ASSIST, true);
+      - lvgl.label.update:
+          id: assist_status
+          text: !lambda 'return status;'
+      - lvgl.widget.show: assist_overlay
+
+  # Leave the reply on screen briefly, then return to the previous view.
+  - id: assist_finished
+    mode: restart
+    then:
+      - delay: 6s
+      - if:
+          condition:
+            not:
+              voice_assistant.is_running:
+          then:
+            - lvgl.widget.hide: assist_overlay
+            - lambda: 'id(room_panel)->set_overlay(esphome::room_companion::OVERLAY_ASSIST, false);'
+
+lvgl:
+  top_layer:
+    widgets:
+      - obj:
+          id: assist_overlay
+          hidden: true
+          x: 0
+          y: 0
+          width: ${display_width}
+          height: ${display_height}
+          radius: 0
+          bg_color: 0x101418
+          bg_opa: COVER
+          border_width: 0
+          pad_all: ${ (16 * (ui_scale | float)) | round | int }
+          scrollable: false
+          layout:
+            type: FLEX
+            flex_flow: COLUMN
+            flex_align_cross: CENTER
+            pad_row: ${ (10 * (ui_scale | float)) | round | int }
+          widgets:
+            - label:
+                text: "Assist"
+                text_font: fonts_MiSans_Bold_14
+                text_color: 0x62B0FF
+            - obj:
+                width: ${ (72 * (ui_scale | float)) | round | int }
+                height: ${ (72 * (ui_scale | float)) | round | int }
+                radius: ${ (36 * (ui_scale | float)) | round | int }
+                bg_color: 0x1F6FEB
+                border_width: 0
+                scrollable: false
+                clickable: false
+                widgets:
+                  - label:
+                      align: center
+                      text: "🎤"
+                      text_font: fonts_MiSans_Medium_32
+                      text_color: 0xFFFFFF
+            - label:
+                id: assist_status
+                text: ""
+                width: 100%
+                long_mode: WRAP
+                text_align: CENTER
+                text_font: fonts_MiSans_Medium_18
+                text_color: 0xFFFFFF
+            - label:
+                id: assist_transcript
+                text: ""
+                width: 100%
+                long_mode: WRAP
+                text_align: CENTER
+                text_font: fonts_MiSans_Medium_14
+                text_color: 0xB8B8B8
+            - label:
+                id: assist_response
+                text: ""
+                width: 100%
+                flex_grow: 1
+                long_mode: WRAP
+                text_align: CENTER
+                text_font: fonts_MiSans_Medium_16
+                text_color: 0xFFFFFF
+            - button:
+                width: 60%
+                height: ${ (40 * (ui_scale | float)) | round | int }
+                radius: ${ (20 * (ui_scale | float)) | round | int }
+                bg_color: 0x2A2F35
+                on_click:
+                  - if:
+                      condition:
+                        voice_assistant.is_running:
+                      then:
+                        - voice_assistant.stop:
+                        - speaker.stop: panel_speaker
+                  - script.stop: assist_finished
+                  - lvgl.widget.hide: assist_overlay
+                  - lambda: 'id(room_panel)->set_overlay(esphome::room_companion::OVERLAY_ASSIST, false);'
+                widgets:
+                  - label:
+                      align: center
+                      text: "Close"
+                      text_font: fonts_MiSans_Medium_16
+                      text_color: 0xFFFFFF

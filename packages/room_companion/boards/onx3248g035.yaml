@@ -1,11 +1,22 @@
+# ONX3248G035: 3.5-inch ST7796, 320x480 portrait.
+# The knob layout is scaled 4/3 to 320x320 at the top; the icon strip with the
+# selected control's name fills the remaining 160 px.
 substitutions:
   device_model: ONX3248G035
+  display_model: ST7796
   display_width: "320"
   display_height: "480"
-  display_model: ST7796
-  title_font: montserrat_24
-  card_width: "288"
-  card_height: "288"
+  ui_scale: 1.3333
+  font_scale: 1.3333
+  strip_center_y: "378"
+  strip_spacing: "64"
+  strip_icon: "30"
+  strip_marker: "60"
+  strip_label_y: "430"
+  strip_label_font: fonts_MiSans_Medium_16
+  notice_image_width: "280"
+  notice_image_height: "158"
+  stream_min_frame_interval: "120"
 
 packages:
   hardware: !include common.yaml

@@ -1,0 +1,70 @@
+# Optional Home Assistant dashboard, rendered by a Remote WebView server and
+# streamed as JPEG tiles (vendored strange-v/RemoteWebViewClient with a display
+# handoff). Open it from a "[Local] Dashboard" control in the carousel or the
+# Dashboard switch; hold the top-left corner for about a second to return.
+external_components:
+  - source:
+      type: local
+      path: ../../../my_components
+    components:
+      - remote_webview
+      - room_companion
+
+esp32:
+  framework:
+    # esp_websocket_client is already required by the knob packages.
+    components:
+      - name: bitbank2/jpegdec
+        source: https://github.com/strange-v/jpegdec-esphome
+        ref: d6dee1282535da1871d9c97c46537669719c51fd
+
+remote_webview:
+  id: dashboard_stream
+  display_id: lcd_display
+  touchscreen_id: panel_touch
+  tile_size: 32
+  full_frame_tile_count: 1
+  full_frame_area_threshold: 0.5
+  full_frame_every: 50
+  every_nth_frame: 1
+  # Lower bound between frames; at least one full-screen decode + SPI transfer.
+  min_frame_interval: ${stream_min_frame_interval}
+  jpeg_quality: 80
+  max_bytes_per_msg: 61440
+  current_url_sensor:
+    name: Dashboard page
+    entity_category: diagnostic
+
+room_companion:
+  id: room_panel
+  lvgl_id: lvgl_ui
+  stream_id: dashboard_stream
+  touchscreen_id: panel_touch
+  url_text: dashboard_url_text
+  dashboard_switch: dashboard_open_switch
+  default_server: ${default_dashboard_server}
+  default_url: ${default_dashboard_url}
+  on_message:
+    - lambda: |-
+        onx_notification::center.add("Dashboard", message, 8, "", millis());
+
+text:
+  - platform: template
+    id: dashboard_url_text
+    name: Dashboard address
+    icon: mdi:web
+    mode: text
+    max_length: 255
+    set_action:
+      - lambda: 'id(room_panel)->set_dashboard_url(std::string(x.c_str()));'
+
+switch:
+  - platform: template
+    id: dashboard_open_switch
+    name: Dashboard
+    icon: mdi:monitor-dashboard
+    # State is published by room_panel (corner hold closes it too).
+    turn_on_action:
+      - lambda: 'id(room_panel)->open_dashboard();'
+    turn_off_action:
+      - lambda: 'id(room_panel)->close_dashboard();'

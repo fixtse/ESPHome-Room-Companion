@@ -1,5 +1,12 @@
-# Optional local wake word. Import only after tap-to-talk audio is verified.
-# Start explicitly with the exposed switch; disabled on every boot.
+# Optional local wake word ("Okay Nabu"). Import only after tap-to-talk audio is
+# verified. The "Wake word enabled" switch remembers its state; set
+# wake_word_restore_mode: RESTORE_DEFAULT_ON in your root YAML to start enabled.
+# Detection runs whenever the switch is on, Assist is connected, the microphone
+# is not muted and no request is running. It keeps one CPU core busy, which
+# competes with dashboard-stream decoding.
+substitutions:
+  wake_word_restore_mode: RESTORE_DEFAULT_OFF
+
 micro_wake_word:
   id: local_wake_word
   microphone:
@@ -18,31 +25,31 @@ switch:
   - platform: template
     name: Wake word enabled
     id: wake_word_enabled
+    icon: mdi:microphone-message
     optimistic: true
-    restore_mode: ALWAYS_OFF
-    turn_on_action:
-      - if:
-          condition:
-            lambda: 'return id(assist_ready) && !id(microphone_muted).state;'
-          then:
-            - micro_wake_word.start:
-          else:
-            - switch.turn_off: wake_word_enabled
+    restore_mode: ${wake_word_restore_mode}
     turn_off_action:
       - micro_wake_word.stop:
   - id: !extend microphone_muted
     turn_on_action:
-      - switch.turn_off: wake_word_enabled
+      - micro_wake_word.stop:
 
 voice_assistant:
   micro_wake_word: local_wake_word
+  # The pipeline uses the microphone; detection resumes from the interval below.
   on_start:
     - micro_wake_word.stop:
-  on_idle:
-    - if:
-        condition:
-          lambda: 'return id(wake_word_enabled).state && id(assist_ready) && !id(microphone_muted).state;'
-        then:
-          - micro_wake_word.start:
-  on_client_disconnected:
-    - switch.turn_off: wake_word_enabled
+
+interval:
+  - interval: 1s
+    then:
+      - if:
+          condition:
+            and:
+              - lambda: 'return id(wake_word_enabled).state && id(assist_ready) && !id(microphone_muted).state;'
+              - not:
+                  voice_assistant.is_running:
+              - not:
+                  micro_wake_word.is_running:
+          then:
+            - micro_wake_word.start:

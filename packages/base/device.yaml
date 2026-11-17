@@ -2,10 +2,10 @@ esphome:
   name: ${project_name}
   friendly_name: ${project_friendly_name}
   project:
-    name: opennextion.onx2424g013
+    name: opennextion.${project_name}
     version: ${product_firmware_version}
   min_version: 2026.10.0
-  comment: "ONX2424G013"
+  comment: "${project_friendly_name}"
   on_boot:
     priority: -100
     then:

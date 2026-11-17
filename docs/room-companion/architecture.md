@@ -2,55 +2,93 @@
 
 The main software base is [fixtSE's OpenNextion Knob](https://github.com/fixtse/OpenNextion-Example-ESPHome_KNOB_Control),
 from local commit `6a710e2ce0258e3ced31da3177e00ed5f0b260e3`. Its Git history,
-headers, components and original entry point are preserved. New work lives in
-`packages/room_companion/`, avoiding a rewrite of the original knob firmware.
+headers, components and original round-knob entry point (`ONX2424G013.yaml`) are
+preserved. Rectangular firmware lives in `packages/room_companion/` and
+`my_components/room_companion/`; both model roots merge one `application.yaml`.
 
-Both rectangular entry points merge the same `application.yaml`. A board profile
-supplies dimensions, driver, title font and rendered-card dimensions. Shared
-hardware defines I2C, the expander, SPI, touch, backlight, microphone and speaker.
-The new application calls the original `onx_notification::Message`,
-`onx_notification::plain_text`, `onx_control::number` and
-`onx_media::volume_percent` implementations. Standard ESPHome YAML remains the
-extension interface. Existing knob features can be ported into shared packages
-without duplicating either screen's application.
+## Layers
 
-## Rendering choices
+| Layer | Where | Notes |
+|---|---|---|
+| Board profiles | `packages/room_companion/boards/` | Pins, display driver, sizes, stream frame interval. |
+| Platform | `platform.yaml` | ESP-IDF, PSRAM, UART0 logger, API, OTA, `web_server` (Visit link). |
+| Provisioning | `features/provisioning.yaml` | Improv Serial (CH340 UART) + Improv BLE with BOOT authorization. No AP. |
+| Core | `my_components/room_companion` + `features/companion.yaml` | Settings, presets, Visit page, display owner, sleep. |
+| Native UI | `features/interface.yaml` | LVGL Home, Music, Assist, More, setup and notification pages. |
+| Dashboard stream | `features/dashboard.yaml` + `my_components/remote_webview` | Optional, server-rendered HA dashboard. |
+| Assist | `features/assist.yaml` | Voice satellite: PDM mic, I2S speaker, tap/BOOT/HA button. |
+| Notifications | `features/notifications.yaml` | Knob `show_message` / `dismiss_message`, optional picture. |
+| Sleep | `features/sleep.yaml` + core | Connected low-power sleep, timeout and schedule. |
 
-Native LVGL owns the display and touch navigation. Normal controls and Assist do
-not depend on a rendering service. The optional Today page downloads an
-authenticated JPEG when explicitly requested. This first renderer draws bounded
-HA state cards with Pillow, not Chromium; it demonstrates the transport and
-resolution split rather than claiming to reproduce a Lovelace dashboard.
+## Reused from the knob
 
-[crow-ha](https://github.com/fintros/crow-ha/blob/master/crow_ws_panel/DOCS.md)
-provided the idea of rendering rich content on a server and returning input.
-Its documented client targets an ESP32-P4 panel; it is not the firmware base here.
+- `onx_notification.h` — message model, HTML-to-text, bounded timeouts, suspend.
+- `onx_subscriptions.h` — reference-counted Home Assistant subscriptions. Room
+  entities change at runtime from the settings page without leaking API rows.
+- `onx_control_state.h`, `onx_media_state.h` — value parsing and formatting.
+- Patterns re-implemented for the rectangular settings model (the knob's code is
+  bound to its 20-slot registry and round renderer): the nonce- and
+  Origin-checked configuration page executed on the main loop, NVS-backed
+  named presets with a Home Assistant **Preset** select that shows "Custom"
+  after manual edits, Improv BLE with a physical authorizer, and connected
+  low-power sleep (backlight off, LVGL paused, Wi-Fi modem sleep).
 
-The user-supplied [Waveshare example](https://github.com/ay129-35MR/Waveshare-ESP32-S3-Touch-LCD-4-Home-Assistant-Display)
-uses [RemoteWebViewClient](https://github.com/strange-v/RemoteWebViewClient), an
-ESPHome external component, and [RemoteWebViewServer](https://github.com/strange-v/RemoteWebViewServer).
-That is a more direct candidate for a future full-dashboard mode on ESP32-S3.
-The server supports per-client resolution and interactive touch forwarding.
+## Configuration page ("Visit")
 
-The Waveshare YAML is a hardware example, not a drop-in configuration: its actual
-YAML uses an ST7701S RGB display, GT911 touch and PCA9554 expander, while these
-OpenNextion boards use SPI ST7789/ST7796 displays, CST826 touch and PCF8574.
-Its README's ST7796 description differs from its YAML, so use verified board
-schematics and code when porting.
+`web_server` advertises port 80, so Home Assistant shows **Visit** on the device
+page; Improv Serial also reports the address after provisioning. The
+`room_companion` handler registers before `web_server` and owns every route once
+Wi-Fi is connected, so ESPHome's generic entity REST endpoints are not exposed.
+Changes are POSTed to `/rc/api` with a per-boot token embedded in the page and
+an `Origin` that must match `Host`; requests are queued to the ESPHome main loop.
+There is no login: anyone on the LAN who can open the page can change settings,
+as with ESPHome's own web server. Optional Home Assistant sign-in happens in the
+browser (OAuth with PKCE) only to list entities and dashboards; no token is
+stored on the panel.
 
-A later RemoteWebView package must explicitly arbitrate display ownership and
-touch routing with LVGL, stop or throttle JPEG work during Assist, handle renderer
-loss, and pin tested external-component revisions. Adding it alongside LVGL
-without that arbitration would let both renderers write to the same display.
-It is deliberately not advertised as implemented or tested in this first port.
+Settings are one JSON document in NVS namespace `rc`; presets are up to eight
+documents in `rc_presets`. A preset holds everything except the stream server
+and zoom.
 
-## Next ports from the knob
+## Display ownership
 
-1. Separate the 20-slot configuration/preset store from round-renderer callbacks.
-2. Map press/turn/held-turn actions to touch widgets, sliders and long presses.
-3. Port registry browsing, feature-aware entity controls and media artwork.
-4. Add standby, timers and notification-image scheduling around Assist priority.
-5. Benchmark an optional interactive RemoteWebView mode on both SPI displays.
+One renderer draws at a time. `RoomCompanion::update_owner_()` gives the panel
+to the stream only when the mode is *dashboard*, the stream is connected, the
+panel is awake and there is no overlay:
 
-The initial UI uses substituted HA entity IDs. It does not yet expose the knob's
-web editor on these rectangular firmware entry points.
+| Overlay | Set by |
+|---|---|
+| Setup | Wi-Fi not connected |
+| Assist | Pipeline listening; cleared 6 s after it ends |
+| Notice | `show_message`; cleared on dismiss/timeout |
+| Menu | Holding the top-left 56×56 px for 1.2 s; cleared by *Back to dashboard* or 30 s idle |
+
+Handing over pauses LVGL (`resume_on_input: false`) before the stream is
+activated; taking the panel back deactivates the stream, waits for any in-flight
+tile draw, then resumes LVGL with a full redraw. A lost stream keeps its last
+frame for 3 s, then the native UI returns.
+
+## Dashboard stream
+
+The ay129 Waveshare project streams a Lovelace dashboard with
+[RemoteWebViewClient](https://github.com/strange-v/RemoteWebViewClient) and
+[RemoteWebViewServer](https://github.com/strange-v/RemoteWebViewServer). The
+client must own its display, so it is vendored (MIT, `NOTICE.md`) with a small
+handoff patch: lazy task start, `set_active()`, frames discarded without
+decoding and no full-frame repair requests while inactive, and a full-frame
+request on activation. The Waveshare YAML targets an RGB ST7701S panel, GT911
+touch and PCA9554; these boards use SPI ST7789V/ST7796, CST826 and PCF8574, so
+only the software approach is reused.
+
+Expected cost on these SPI panels (estimates, not measured on hardware yet):
+a full 320×480 frame is 300 KB of RGB565, about 60 ms on the 40 MHz bus plus
+software JPEG decode, so full-screen changes run at roughly 5–10 fps; partial
+updates are much cheaper. The stream's tasks (32 KB decode stack, 8 KB socket
+task, 30 KB socket buffer) are created only when dashboard mode has a server.
+Wi-Fi power saving is off for latency; sleep switches to modem sleep.
+
+## Not ported
+
+The knob's encoder gestures, timers, artwork modes, sensor graphs and 20-slot
+entity editor are not part of the rectangular firmware. Its full emoji/font
+pipeline is not used; text uses built-in Montserrat glyphs.

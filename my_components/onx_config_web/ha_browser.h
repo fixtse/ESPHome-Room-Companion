@@ -3,7 +3,7 @@ namespace esphome::onx_config_web {
 static const char HA_BROWSER_JS[] = R"ONXJS(
 (()=>{
  const supported=/^(sensor|binary_sensor|light|switch|climate|media_player|timer|weather|cover|automation|script|fan|number|input_number|select|input_select|scene|button|input_button)\./;
- const local=()=>[10,11,17,18].map(pin=>({entity:'[Local] HMI IO'+pin,name:'HMI IO'+pin,area:'On this knob'}));
+ const local=()=>[10,11,17,18].map(pin=>({entity:'[Local] HMI IO'+pin,name:'HMI IO'+pin,area:'On this knob'})).concat(globalThis.ONX_PANEL?[{entity:'[Local] Dashboard',name:'Dashboard',area:'On this panel',icon:'mdi:monitor-dashboard'},{entity:'[Local] Assist',name:'Assist',area:'On this panel',icon:'mdi:microphone'}]:[]);
  const validIcon=value=>typeof value==='string'&&/^mdi:[a-z0-9-]{1,76}$/.test(value);
  function translatedIcon(definition,state){
   const exact=definition?.state?.[state];

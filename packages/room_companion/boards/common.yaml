@@ -1,10 +1,12 @@
+# Rectangular OpenNextion panel hardware, exposed under the IDs the knob
+# application uses (bus_spi, lcd_display, lcd_backlight, lvgl_ui).
 # Pin map verified against the official examples for both models.
 # PCF8574 pin numbers here are ZERO-based (vendor examples use one-based enums).
 i2c:
   id: board_i2c
   sda: GPIO8
   scl: GPIO7
-  frequency: 100kHz
+  frequency: 100kHz  # PCF8574 is rated for 100 kHz
   scan: true
 
 pcf8574:
@@ -13,23 +15,24 @@ pcf8574:
     address: 0x38
 
 spi:
-  id: display_spi
+  id: bus_spi
   clk_pin: GPIO5
   mosi_pin: GPIO1
 
 output:
   - platform: ledc
-    id: backlight_pwm
+    id: lcd_backlight_pwm
     pin: GPIO6
     frequency: 10000Hz
 
 light:
   - platform: monochromatic
-    id: backlight
-    name: Display backlight
-    output: backlight_pwm
-    restore_mode: ALWAYS_ON
+    id: lcd_backlight
+    output: lcd_backlight_pwm
+    restore_mode: ALWAYS_OFF
     default_transition_length: 0s
+    flash_transition_length: 0s
+    internal: true
 
 # The amplifier is NS4168, enabled by EXIO0, not an I2C audio codec.
 switch:
@@ -42,13 +45,16 @@ switch:
       mode: OUTPUT
     restore_mode: ALWAYS_ON
 
+# The knob's ili9xxx fork (orientation and panel-sleep commands).
 display:
-  - platform: mipi_spi
-    id: panel_display
+  - platform: ili9xxx
+    id: lcd_display
     model: ${display_model}
-    spi_id: display_spi
-    cs_pin: GPIO2
+    spi_id: bus_spi
+    data_rate: ${lcd_spi_data_rate}
+    color_order: BGR
     dc_pin: GPIO3
+    cs_pin: GPIO2
     reset_pin:
       pcf8574: board_expander
       number: 5
@@ -56,11 +62,9 @@ display:
     dimensions:
       width: ${display_width}
       height: ${display_height}
-    data_rate: 40MHz
-    color_order: BGR
     invert_colors: true
-    auto_clear_enabled: false
     update_interval: never
+    auto_clear_enabled: false
 
 # CST826 is supported by ESPHome's cst816 family driver. Polling avoids using
 # an expander input as an interrupt (touch INT is EXIO4).
@@ -68,7 +72,7 @@ touchscreen:
   - platform: cst816
     id: panel_touch
     i2c_id: board_i2c
-    display: panel_display
+    display: lcd_display
     address: 0x15
     update_interval: 20ms
     calibration:
@@ -107,3 +111,18 @@ speaker:
     channel: mono
     i2s_comm_fmt: stand_msb
     buffer_duration: 100ms
+
+# BOOT: Improv BLE authorization during setup, Assist afterwards (assist.yaml).
+binary_sensor:
+  - platform: gpio
+    id: boot_btn
+    internal: true
+    pin:
+      number: GPIO0
+      mode:
+        input: true
+        pullup: true
+      inverted: true
+    filters:
+      - delayed_on: 10ms
+      - delayed_off: 5ms

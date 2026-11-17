@@ -945,458 +945,524 @@ image:
     id: wifi_ap_img
     type: RGB565
     transparency: alpha_channel
+    resize: ${ (62 * (ui_scale | float)) | round | int }x${ (62 * (ui_scale | float)) | round | int }
   - platform: file
     file: "../../../assets/homeassistant.svg"
     id: homeassistant_img
     type: RGB565
     transparency: alpha_channel
+    resize: ${ (43 * (ui_scale | float)) | round | int }x${ (43 * (ui_scale | float)) | round | int }
   - platform: file
     file: "../../../assets/icons_wifi_online.svg"
     id: standby_wifi_online_img
     type: RGB565
     transparency: alpha_channel
+    resize: ${ (19 * (ui_scale | float)) | round | int }x${ (13 * (ui_scale | float)) | round | int }
   - platform: file
     file: "../../../assets/icons_wifi_offline.svg"
     id: standby_wifi_offline_img
     type: RGB565
     transparency: alpha_channel
+    resize: ${ (20 * (ui_scale | float)) | round | int }x${ (16 * (ui_scale | float)) | round | int }
   - platform: file
     file: "../../../assets/icons_homeassistant_online.svg"
     id: standby_homeassistant_online_img
     type: RGB565
     transparency: alpha_channel
+    resize: ${ (15 * (ui_scale | float)) | round | int }x${ (15 * (ui_scale | float)) | round | int }
   - platform: file
     file: "../../../assets/icons_homeassistant_offline.svg"
     id: standby_homeassistant_offline_img
     type: RGB565
     transparency: alpha_channel
+    resize: ${ (15 * (ui_scale | float)) | round | int }x${ (15 * (ui_scale | float)) | round | int }
   - platform: file
     file: "../../../assets/vector.svg"
     id: vector_img
     type: RGB565
     transparency: alpha_channel
+    resize: ${ (28 * (ui_scale | float)) | round | int }x${ (19 * (ui_scale | float)) | round | int }
   - platform: file
     file: "../../../assets/icon_edit.svg"
     id: icon_edit_img
     type: RGB565
     transparency: alpha_channel
+    resize: ${ (24 * (ui_scale | float)) | round | int }x${ (24 * (ui_scale | float)) | round | int }
   - platform: file
     file: "../../../assets/emojione_monotone_digit_one.svg"
     id: emojione_monotone_digit_one_img
     type: RGB565
     transparency: alpha_channel
+    resize: ${ (16 * (ui_scale | float)) | round | int }x${ (16 * (ui_scale | float)) | round | int }
   - platform: file
     file: "../../../assets/emojione_monotone_digit_three.svg"
     id: emojione_monotone_digit_three_img
     type: RGB565
     transparency: alpha_channel
+    resize: ${ (16 * (ui_scale | float)) | round | int }x${ (16 * (ui_scale | float)) | round | int }
   - platform: file
     file: "../../../assets/emojione_monotone_digit_two.svg"
     id: emojione_monotone_digit_two_img
     type: RGB565
     transparency: alpha_channel
+    resize: ${ (16 * (ui_scale | float)) | round | int }x${ (16 * (ui_scale | float)) | round | int }
   - platform: file
     file: "../../../assets/weather/weather_unknown.svg"
     id: standby_weather_icon_unknown_img
     type: RGB565
     transparency: alpha_channel
+    resize: ${ (37 * (ui_scale | float)) | round | int }x${ (37 * (ui_scale | float)) | round | int }
   - platform: file
     file: "../../../assets/weather/weather_clear-night.svg"
     id: standby_weather_icon_clear_night_img
     type: RGB565
     transparency: alpha_channel
+    resize: ${ (37 * (ui_scale | float)) | round | int }x${ (37 * (ui_scale | float)) | round | int }
   - platform: file
     file: "../../../assets/weather/weather_cloudy.svg"
     id: standby_weather_icon_cloudy_img
     type: RGB565
     transparency: alpha_channel
+    resize: ${ (37 * (ui_scale | float)) | round | int }x${ (37 * (ui_scale | float)) | round | int }
   - platform: file
     file: "../../../assets/weather/weather_exceptional.svg"
     id: standby_weather_icon_exceptional_img
     type: RGB565
     transparency: alpha_channel
+    resize: ${ (37 * (ui_scale | float)) | round | int }x${ (37 * (ui_scale | float)) | round | int }
   - platform: file
     file: "../../../assets/weather/weather_fog.svg"
     id: standby_weather_icon_fog_img
     type: RGB565
     transparency: alpha_channel
+    resize: ${ (37 * (ui_scale | float)) | round | int }x${ (37 * (ui_scale | float)) | round | int }
   - platform: file
     file: "../../../assets/weather/weather_hail.svg"
     id: standby_weather_icon_hail_img
     type: RGB565
     transparency: alpha_channel
+    resize: ${ (37 * (ui_scale | float)) | round | int }x${ (37 * (ui_scale | float)) | round | int }
   - platform: file
     file: "../../../assets/weather/weather_lightning.svg"
     id: standby_weather_icon_lightning_img
     type: RGB565
     transparency: alpha_channel
+    resize: ${ (37 * (ui_scale | float)) | round | int }x${ (37 * (ui_scale | float)) | round | int }
   - platform: file
     file: "../../../assets/weather/weather_lightning-rainy.svg"
     id: standby_weather_icon_lightning_rainy_img
     type: RGB565
     transparency: alpha_channel
+    resize: ${ (37 * (ui_scale | float)) | round | int }x${ (37 * (ui_scale | float)) | round | int }
   - platform: file
     file: "../../../assets/weather/weather_partlycloudy.svg"
     id: standby_weather_icon_partlycloudy_img
     type: RGB565
     transparency: alpha_channel
+    resize: ${ (37 * (ui_scale | float)) | round | int }x${ (37 * (ui_scale | float)) | round | int }
   - platform: file
     file: "../../../assets/weather/weather_pouring.svg"
     id: standby_weather_icon_pouring_img
     type: RGB565
     transparency: alpha_channel
+    resize: ${ (37 * (ui_scale | float)) | round | int }x${ (37 * (ui_scale | float)) | round | int }
   - platform: file
     file: "../../../assets/weather/weather_rainy.svg"
     id: standby_weather_icon_rainy_img
     type: RGB565
     transparency: alpha_channel
+    resize: ${ (37 * (ui_scale | float)) | round | int }x${ (37 * (ui_scale | float)) | round | int }
   - platform: file
     file: "../../../assets/weather/weather_snowy.svg"
     id: standby_weather_icon_snowy_img
     type: RGB565
     transparency: alpha_channel
+    resize: ${ (37 * (ui_scale | float)) | round | int }x${ (37 * (ui_scale | float)) | round | int }
   - platform: file
     file: "../../../assets/weather/weather_snowy-rainy.svg"
     id: standby_weather_icon_snowy_rainy_img
     type: RGB565
     transparency: alpha_channel
+    resize: ${ (37 * (ui_scale | float)) | round | int }x${ (37 * (ui_scale | float)) | round | int }
   - platform: file
     file: "../../../assets/weather/weather_sunny.svg"
     id: standby_weather_icon_sunny_img
     type: RGB565
     transparency: alpha_channel
+    resize: ${ (37 * (ui_scale | float)) | round | int }x${ (37 * (ui_scale | float)) | round | int }
   - platform: file
     file: "../../../assets/weather/weather_windy.svg"
     id: standby_weather_icon_windy_img
     type: RGB565
     transparency: alpha_channel
+    resize: ${ (37 * (ui_scale | float)) | round | int }x${ (37 * (ui_scale | float)) | round | int }
   - platform: file
     file: "../../../assets/weather/weather_windy-variant.svg"
     id: standby_weather_icon_windy_variant_img
     type: RGB565
     transparency: alpha_channel
+    resize: ${ (37 * (ui_scale | float)) | round | int }x${ (37 * (ui_scale | float)) | round | int }
   - platform: file
     file: "../../../assets/weather_icon_t.svg"
     id: standby_weather_temp_icon_img
     type: RGB565
     transparency: alpha_channel
+    resize: ${ (15 * (ui_scale | float)) | round | int }x${ (15 * (ui_scale | float)) | round | int }
   - platform: file
     file: "../../../assets/weather_icon_h.svg"
     id: standby_weather_humidity_icon_img
     type: RGB565
     transparency: alpha_channel
+    resize: ${ (15 * (ui_scale | float)) | round | int }x${ (15 * (ui_scale | float)) | round | int }
   - platform: file
     file: "../../../assets/plug_off.svg"
     id: normal_device_icon_plug_off_img
     type: RGB565
     transparency: alpha_channel
+    resize: ${ (64 * (ui_scale | float)) | round | int }x${ (64 * (ui_scale | float)) | round | int }
   - platform: file
     file: "../../../assets/device_list_plug.svg"
     id: normal_device_icon_plug_img
     type: RGB565
     transparency: alpha_channel
+    resize: ${ (64 * (ui_scale | float)) | round | int }x${ (64 * (ui_scale | float)) | round | int }
   - platform: file
     file: "../../../assets/device_list_plug_on.svg"
     id: normal_device_icon_plug_on_img
     type: RGB565
     transparency: alpha_channel
+    resize: ${ (64 * (ui_scale | float)) | round | int }x${ (64 * (ui_scale | float)) | round | int }
   - platform: file
     file: "../../../assets/plug_det_off.svg"
     id: normal_device_detail_plug_off_img
     type: RGB565
     transparency: alpha_channel
+    resize: ${ (69 * (ui_scale | float)) | round | int }x${ (69 * (ui_scale | float)) | round | int }
   - platform: file
     file: "../../../assets/device_list_light.svg"
     id: normal_device_icon_light_img
     type: RGB565
     transparency: alpha_channel
+    resize: ${ (67 * (ui_scale | float)) | round | int }x${ (58 * (ui_scale | float)) | round | int }
   - platform: file
     file: "../../../assets/device_list_light_on.svg"
     id: normal_device_icon_light_on_img
     type: RGB565
     transparency: alpha_channel
+    resize: ${ (61 * (ui_scale | float)) | round | int }x${ (58 * (ui_scale | float)) | round | int }
   - platform: file
     file: "../../../assets/device_list_curtain.svg"
     id: normal_device_icon_curtain_img
     type: RGB565
     transparency: alpha_channel
+    resize: ${ (70 * (ui_scale | float)) | round | int }x${ (70 * (ui_scale | float)) | round | int }
   - platform: file
     file: "../../../assets/device_list_curtain_open.svg"
     id: normal_device_icon_curtain_open_img
     type: RGB565
     transparency: alpha_channel
+    resize: ${ (68 * (ui_scale | float)) | round | int }x${ (65 * (ui_scale | float)) | round | int }
   - platform: file
     file: "../../../assets/device_list_curtain_closed.svg"
     id: normal_device_icon_curtain_closed_img
     type: RGB565
     transparency: alpha_channel
+    resize: ${ (68 * (ui_scale | float)) | round | int }x${ (65 * (ui_scale | float)) | round | int }
   - platform: file
     file: "../../../assets/settings.svg"
     id: normal_device_icon_settings_img
     type: RGB565
     transparency: alpha_channel
+    resize: ${ (66 * (ui_scale | float)) | round | int }x${ (66 * (ui_scale | float)) | round | int }
   - platform: file
     file: "../../../assets/ic_round-arrow-back-ios.svg"
     id: normal_settings_arrow_img
     type: RGB565
     transparency: alpha_channel
+    resize: ${ (21 * (ui_scale | float)) | round | int }x${ (21 * (ui_scale | float)) | round | int }
   - platform: file
     file: "../../../assets/wifi_icon.svg"
     id: normal_settings_wifi_icon_img
     type: RGB565
     transparency: alpha_channel
+    resize: ${ (14 * (ui_scale | float)) | round | int }x${ (14 * (ui_scale | float)) | round | int }
   - platform: file
     file: "../../../assets/wifi_lock.svg"
     id: normal_settings_wifi_lock_img
     type: RGB565
     transparency: alpha_channel
+    resize: ${ (14 * (ui_scale | float)) | round | int }x${ (14 * (ui_scale | float)) | round | int }
   - platform: file
     file: "../../../assets/plug_det_on.svg"
     id: normal_device_detail_plug_on_img
     type: RGB565
     transparency: alpha_channel
+    resize: ${ (69 * (ui_scale | float)) | round | int }x${ (69 * (ui_scale | float)) | round | int }
   - platform: file
     file: "../../../assets/device_list_switch.svg"
     id: normal_device_icon_switch_img
     type: RGB565
     transparency: alpha_channel
+    resize: ${ (49 * (ui_scale | float)) | round | int }x${ (67 * (ui_scale | float)) | round | int }
   - platform: file
     file: "../../../assets/device_list_switch_on.svg"
     id: normal_device_icon_switch_on_img
     type: RGB565
     transparency: alpha_channel
+    resize: ${ (49 * (ui_scale | float)) | round | int }x${ (67 * (ui_scale | float)) | round | int }
   - platform: file
     file: "../../../assets/automation.svg"
     id: normal_device_automation_img
     type: RGB565
     transparency: alpha_channel
+    resize: ${ (56 * (ui_scale | float)) | round | int }x${ (61 * (ui_scale | float)) | round | int }
   - platform: file
     file: "../../../assets/automation_detail.svg"
     id: normal_device_automation_detail_img
     type: RGB565
     transparency: alpha_channel
+    resize: ${ (67 * (ui_scale | float)) | round | int }x${ (74 * (ui_scale | float)) | round | int }
   - platform: file
     file: "../../../assets/automation_detail_press.svg"
     id: normal_device_automation_detail_press_img
     type: RGB565
     transparency: alpha_channel
+    resize: ${ (67 * (ui_scale | float)) | round | int }x${ (74 * (ui_scale | float)) | round | int }
   - platform: file
     file: "../../../assets/switch_det_on.svg"
     id: normal_device_detail_switch_on_img
     type: RGB565
     transparency: alpha_channel
+    resize: ${ (52 * (ui_scale | float)) | round | int }x${ (72 * (ui_scale | float)) | round | int }
   - platform: file
     file: "../../../assets/switch_det_off.svg"
     id: normal_device_detail_switch_off_img
     type: RGB565
     transparency: alpha_channel
+    resize: ${ (52 * (ui_scale | float)) | round | int }x${ (72 * (ui_scale | float)) | round | int }
   - platform: file
     file: "../../../assets/light_det_on.svg"
     id: normal_device_detail_light_on_img
     type: RGB565
     transparency: alpha_channel
+    resize: ${ (74 * (ui_scale | float)) | round | int }x${ (71 * (ui_scale | float)) | round | int }
   - platform: file
     file: "../../../assets/light_det_off.svg"
     id: normal_device_detail_light_off_img
     type: RGB565
     transparency: alpha_channel
+    resize: ${ (74 * (ui_scale | float)) | round | int }x${ (62 * (ui_scale | float)) | round | int }
   - platform: file
     file: "../../../assets/light_cct_gradient.svg"
     id: normal_light_cct_gradient_img
     type: RGB565
     transparency: alpha_channel
+    resize: ${ (224 * (ui_scale | float)) | round | int }x${ (224 * (ui_scale | float)) | round | int }
   - platform: file
     file: "../../../assets/light_rgb_gradient.svg"
     id: normal_light_rgb_gradient_img
     type: RGB565
     transparency: alpha_channel
+    resize: ${ (224 * (ui_scale | float)) | round | int }x${ (224 * (ui_scale | float)) | round | int }
   - platform: file
     file: "../../../assets/light_mode_icon_bright.svg"
     id: normal_light_mode_icon_bright_img
     type: RGB565
     transparency: alpha_channel
+    resize: ${ (20 * (ui_scale | float)) | round | int }x${ (20 * (ui_scale | float)) | round | int }
   - platform: file
     file: "../../../assets/light_mode_icon_cct.svg"
     id: normal_light_mode_icon_cct_img
     type: RGB565
     transparency: alpha_channel
+    resize: ${ (20 * (ui_scale | float)) | round | int }x${ (20 * (ui_scale | float)) | round | int }
   - platform: file
     file: "../../../assets/light_mode_icon_color.svg"
     id: normal_light_mode_icon_color_img
     type: RGB565
     transparency: alpha_channel
+    resize: ${ (20 * (ui_scale | float)) | round | int }x${ (20 * (ui_scale | float)) | round | int }
   - platform: file
     file: "../../../assets/curtain_0%.svg"
     id: normal_device_detail_curtain_0_img
     type: RGB565
     transparency: alpha_channel
+    resize: ${ (68 * (ui_scale | float)) | round | int }x${ (65 * (ui_scale | float)) | round | int }
   - platform: file
     file: "../../../assets/curtain_100%.svg"
     id: normal_device_detail_curtain_100_img
     type: RGB565
     transparency: alpha_channel
+    resize: ${ (68 * (ui_scale | float)) | round | int }x${ (65 * (ui_scale | float)) | round | int }
   - platform: file
     file: "../../../assets/curtain_x%.svg"
     id: normal_device_detail_curtain_x_img
     type: RGB565
     transparency: alpha_channel
+    resize: ${ (77 * (ui_scale | float)) | round | int }x${ (74 * (ui_scale | float)) | round | int }
   - platform: file
     file: "../../../assets/curtain_opening.svg"
     id: normal_device_detail_curtain_opening_img
     type: RGB565
     transparency: alpha_channel
+    resize: ${ (27 * (ui_scale | float)) | round | int }x${ (23 * (ui_scale | float)) | round | int }
   - platform: file
     file: "../../../assets/curtain_pause.svg"
     id: normal_device_detail_curtain_pause_img
     type: RGB565
     transparency: alpha_channel
+    resize: ${ (14 * (ui_scale | float)) | round | int }x${ (23 * (ui_scale | float)) | round | int }
   - platform: file
     file: "../../../assets/curtain_closing.svg"
     id: normal_device_detail_curtain_closing_img
     type: RGB565
     transparency: alpha_channel
+    resize: ${ (23 * (ui_scale | float)) | round | int }x${ (23 * (ui_scale | float)) | round | int }
   - platform: file
     file: "../../../assets/curtain_no_opening.svg"
     id: normal_device_detail_curtain_no_opening_img
     type: RGB565
     transparency: alpha_channel
+    resize: ${ (27 * (ui_scale | float)) | round | int }x${ (23 * (ui_scale | float)) | round | int }
   - platform: file
     file: "../../../assets/curtain_no_pause.svg"
     id: normal_device_detail_curtain_no_pause_img
     type: RGB565
     transparency: alpha_channel
+    resize: ${ (14 * (ui_scale | float)) | round | int }x${ (23 * (ui_scale | float)) | round | int }
   - platform: file
     file: "../../../assets/curtain_no_closing.svg"
     id: normal_device_detail_curtain_no_closing_img
     type: RGB565
     transparency: alpha_channel
+    resize: ${ (23 * (ui_scale | float)) | round | int }x${ (23 * (ui_scale | float)) | round | int }
 
   - platform: file
     file: "../../../assets/entity_icons/power-plug.svg"
     id: fallback_power_plug_img
-    resize: 80x80
+    resize: ${ (80 * (ui_scale | float)) | round | int }x${ (80 * (ui_scale | float)) | round | int }
     type: RGB565
     transparency: alpha_channel
   - platform: file
     file: "../../../assets/entity_icons/lightbulb.svg"
     id: fallback_lightbulb_img
-    resize: 80x80
+    resize: ${ (80 * (ui_scale | float)) | round | int }x${ (80 * (ui_scale | float)) | round | int }
     type: RGB565
     transparency: alpha_channel
   - platform: file
     file: "../../../assets/entity_icons/window-shutter.svg"
     id: fallback_window_shutter_img
-    resize: 80x80
+    resize: ${ (80 * (ui_scale | float)) | round | int }x${ (80 * (ui_scale | float)) | round | int }
     type: RGB565
     transparency: alpha_channel
   - platform: file
     file: "../../../assets/entity_icons/thermostat.svg"
     id: fallback_thermostat_img
-    resize: 80x80
+    resize: ${ (80 * (ui_scale | float)) | round | int }x${ (80 * (ui_scale | float)) | round | int }
     type: RGB565
     transparency: alpha_channel
   - platform: file
     file: "../../../assets/entity_icons/fan.svg"
     id: fallback_fan_img
-    resize: 80x80
+    resize: ${ (80 * (ui_scale | float)) | round | int }x${ (80 * (ui_scale | float)) | round | int }
     type: RGB565
     transparency: alpha_channel
   - platform: file
     file: "../../../assets/entity_icons/music-note.svg"
     id: fallback_music_note_img
-    resize: 80x80
+    resize: ${ (80 * (ui_scale | float)) | round | int }x${ (80 * (ui_scale | float)) | round | int }
     type: RGB565
     transparency: alpha_channel
   - platform: file
     file: "../../../assets/entity_icons/gauge.svg"
     id: fallback_gauge_img
-    resize: 80x80
+    resize: ${ (80 * (ui_scale | float)) | round | int }x${ (80 * (ui_scale | float)) | round | int }
     type: RGB565
     transparency: alpha_channel
   - platform: file
     file: "../../../assets/entity_icons/checkbox-marked-circle-outline.svg"
     id: fallback_checkbox_marked_circle_outline_img
-    resize: 80x80
+    resize: ${ (80 * (ui_scale | float)) | round | int }x${ (80 * (ui_scale | float)) | round | int }
     type: RGB565
     transparency: alpha_channel
   - platform: file
     file: "../../../assets/entity_icons/counter.svg"
     id: fallback_counter_img
-    resize: 80x80
+    resize: ${ (80 * (ui_scale | float)) | round | int }x${ (80 * (ui_scale | float)) | round | int }
     type: RGB565
     transparency: alpha_channel
   - platform: file
     file: "../../../assets/entity_icons/format-list-bulleted.svg"
     id: fallback_format_list_bulleted_img
-    resize: 80x80
+    resize: ${ (80 * (ui_scale | float)) | round | int }x${ (80 * (ui_scale | float)) | round | int }
     type: RGB565
     transparency: alpha_channel
   - platform: file
     file: "../../../assets/entity_icons/palette.svg"
     id: fallback_palette_img
-    resize: 80x80
+    resize: ${ (80 * (ui_scale | float)) | round | int }x${ (80 * (ui_scale | float)) | round | int }
     type: RGB565
     transparency: alpha_channel
   - platform: file
     file: "../../../assets/entity_icons/gesture-tap-button.svg"
     id: fallback_gesture_tap_button_img
-    resize: 80x80
+    resize: ${ (80 * (ui_scale | float)) | round | int }x${ (80 * (ui_scale | float)) | round | int }
     type: RGB565
     transparency: alpha_channel
   - platform: file
     file: "../../../assets/entity_icons/script-text.svg"
     id: fallback_script_text_img
-    resize: 80x80
+    resize: ${ (80 * (ui_scale | float)) | round | int }x${ (80 * (ui_scale | float)) | round | int }
     type: RGB565
     transparency: alpha_channel
   - platform: file
     file: "../../../assets/entity_icons/robot.svg"
     id: fallback_robot_img
-    resize: 80x80
+    resize: ${ (80 * (ui_scale | float)) | round | int }x${ (80 * (ui_scale | float)) | round | int }
     type: RGB565
     transparency: alpha_channel
   - platform: file
     file: "../../../assets/entity_icons/weather-partly-cloudy.svg"
     id: fallback_weather_partly_cloudy_img
-    resize: 80x80
+    resize: ${ (80 * (ui_scale | float)) | round | int }x${ (80 * (ui_scale | float)) | round | int }
     type: RGB565
     transparency: alpha_channel
   - platform: file
     file: "../../../assets/entity_icons/timer-outline.svg"
     id: fallback_timer_outline_img
-    resize: 80x80
+    resize: ${ (80 * (ui_scale | float)) | round | int }x${ (80 * (ui_scale | float)) | round | int }
     type: RGB565
     transparency: alpha_channel
   - platform: file
     file: "../../../assets/entity_icons/toggle-switch.svg"
     id: fallback_toggle_switch_img
-    resize: 80x80
+    resize: ${ (80 * (ui_scale | float)) | round | int }x${ (80 * (ui_scale | float)) | round | int }
     type: RGB565
     transparency: alpha_channel
 
   - platform: file
     file: "../../../assets/media_controls/pause.svg"
     id: media_overlay_pause_img
-    resize: 32x32
+    resize: ${ (32 * (ui_scale | float)) | round | int }x${ (32 * (ui_scale | float)) | round | int }
     type: RGB565
     transparency: alpha_channel
   - platform: file
     file: "../../../assets/media_controls/next.svg"
     id: media_overlay_next_img
-    resize: 32x32
+    resize: ${ (32 * (ui_scale | float)) | round | int }x${ (32 * (ui_scale | float)) | round | int }
     type: RGB565
     transparency: alpha_channel
   - platform: file
     file: "../../../assets/media_controls/previous.svg"
     id: media_overlay_previous_img
-    resize: 32x32
+    resize: ${ (32 * (ui_scale | float)) | round | int }x${ (32 * (ui_scale | float)) | round | int }
     type: RGB565
     transparency: alpha_channel
 
   - platform: file
     file: "../../../assets/feedback/action_sent.svg"
     id: action_sent_img
-    resize: 40x40
+    resize: ${ (40 * (ui_scale | float)) | round | int }x${ (40 * (ui_scale | float)) | round | int }
     type: RGB565
     transparency: alpha_channel
 
@@ -1405,7 +1471,7 @@ image:
     url: http://homeassistant.local:8123/
     format: AUTO
     type: RGB565
-    resize: 240x240
+    resize: ${ (240 * (ui_scale | float)) | round | int }x${ (240 * (ui_scale | float)) | round | int }
     update_interval: never
     on_download_finished:
       then:
@@ -1444,7 +1510,7 @@ image:
     url: http://homeassistant.local:8123/
     format: AUTO
     type: RGB565
-    resize: 112x64
+    resize: ${ (112 * (ui_scale | float)) | round | int }x${ (64 * (ui_scale | float)) | round | int }
     update_interval: never
     on_download_finished:
       then:

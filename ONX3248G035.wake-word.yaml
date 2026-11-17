@@ -1,0 +1,7 @@
+# 3.5-inch Room Companion with the local "Okay Nabu" wake word, enabled by default.
+substitutions:
+  wake_word_restore_mode: RESTORE_DEFAULT_ON
+
+packages:
+  device: !include ONX3248G035.yaml
+  wake_word: !include examples/room-companion/wake-word.yaml

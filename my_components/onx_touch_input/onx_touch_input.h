@@ -1,0 +1,120 @@
+#pragma once
+// Touch input for the knob application on rectangular panels.
+//
+// The knob UI is driven by encoder detents and one button. This component maps
+// touch onto exactly those events, so the knob's behaviour is reused unchanged:
+//   swipe (horizontal, or vertical on detail pages) -> encoder detents
+//   tap -> button press + release        hold -> button held (with swipes: held turn)
+//   tap on a strip icon -> jump that many carousel positions
+#include "esphome/core/automation.h"
+#include "esphome/core/component.h"
+#include "esphome/core/hal.h"
+#include "esphome/components/touchscreen/touchscreen.h"
+#include "esphome/components/onx_button/onx_button.h"
+#include <cstdlib>
+#include <functional>
+
+namespace esphome::onx_touch_input {
+
+class TouchInput : public Component, public touchscreen::TouchListener {
+ public:
+  void set_touchscreen(touchscreen::Touchscreen *touch) { touch_ = touch; }
+  void set_button(onx_button::BufferedButton *button) { button_ = button; }
+  void set_geometry(int width, int strip_top, int strip_spacing, int step_px) {
+    width_ = width; strip_top_ = strip_top; spacing_ = strip_spacing; step_px_ = step_px;
+  }
+  void set_hold_ms(uint32_t ms) { hold_ms_ = ms; }
+  // Touches starting inside this rectangle are left to LVGL (e.g. the
+  // notification bell). Several regions can be added.
+  void add_passthrough(int x0, int y0, int x1, int y1) {
+    if (passthrough_count_ < 4) passthrough_[passthrough_count_++] = {x0, y0, x1, y1};
+  }
+  // While false (dashboard stream, notification centre) touches are ignored.
+  void set_enabled_lambda(std::function<bool()> &&f) { enabled_ = std::move(f); }
+
+  Trigger<int> *get_turn_trigger() { return &turn_trigger_; }
+  Trigger<int> *get_strip_trigger() { return &strip_trigger_; }
+
+  void setup() override {
+    if (touch_ != nullptr) touch_->register_listener(this);
+  }
+  void loop() override {
+    // Hold is time-based: promote a still finger to a held button.
+    if (state_ == State::DOWN && millis() - down_ms_ >= hold_ms_) {
+      state_ = State::HELD;
+      press_(true);
+    }
+  }
+  float get_setup_priority() const override { return setup_priority::DATA; }
+
+  void update(const touchscreen::TouchPoints_t &points) override {
+    const touchscreen::TouchPoint *point = nullptr;
+    for (const auto &p : points)
+      if ((p.state & (touchscreen::STATE_PRESSED | touchscreen::STATE_UPDATED)) && !(p.state & touchscreen::STATE_RELEASING)) {
+        point = &p;
+        break;
+      }
+    if (point == nullptr) return;
+    if (state_ == State::IDLE) begin_(point->x, point->y);
+    else if (state_ != State::IGNORED) move_(point->x, point->y);
+  }
+  void release() override { end_(); }
+
+ protected:
+  enum class State { IDLE, IGNORED, DOWN, SWIPE, HELD };
+  struct Rect { int x0, y0, x1, y1; };
+
+  bool enabled_now_() { return !enabled_ || enabled_(); }
+  void begin_(int x, int y) {
+    for (int i = 0; i < passthrough_count_; ++i) {
+      const auto &r = passthrough_[i];
+      if (x >= r.x0 && x < r.x1 && y >= r.y0 && y < r.y1) { state_ = State::IGNORED; return; }
+    }
+    if (!enabled_now_()) { state_ = State::IGNORED; return; }
+    state_ = State::DOWN; x0_ = x; y0_ = y; x_ = x; y_ = y; down_ms_ = millis(); consumed_ = 0; axis_ = 0;
+  }
+  void move_(int x, int y) {
+    x_ = x; y_ = y;
+    const int dx = x - x0_, dy = y - y0_;
+    if (axis_ == 0) {
+      if (std::abs(dx) < SLOP && std::abs(dy) < SLOP) return;
+      axis_ = std::abs(dx) >= std::abs(dy) ? 1 : 2;
+      if (state_ == State::DOWN) state_ = State::SWIPE;  // A held finger keeps the button down.
+    }
+    // Swiping left/up moves forward (clockwise), right/down backward.
+    const int travel = axis_ == 1 ? -dx : -dy;
+    const int steps = travel / step_px_;
+    while (consumed_ < steps) { ++consumed_; turn_trigger_.trigger(1); }
+    while (consumed_ > steps) { --consumed_; turn_trigger_.trigger(-1); }
+  }
+  void end_() {
+    const State state = state_;
+    state_ = State::IDLE;
+    if (state == State::HELD) { press_(false); return; }
+    if (state != State::DOWN) return;  // Swipes and ignored touches end here.
+    if (y0_ >= strip_top_ && spacing_ > 0) {
+      const int offset = (x0_ - width_ / 2 + (x0_ >= width_ / 2 ? spacing_ / 2 : -spacing_ / 2)) / spacing_;
+      if (offset != 0) { strip_trigger_.trigger(offset); return; }
+    }
+    press_(true);
+    press_(false);
+  }
+  void press_(bool pressed) {
+    if (button_ != nullptr) button_->set_virtual_pressed(pressed);
+  }
+
+  static constexpr int SLOP = 14;
+  touchscreen::Touchscreen *touch_{nullptr};
+  onx_button::BufferedButton *button_{nullptr};
+  std::function<bool()> enabled_;
+  Trigger<int> turn_trigger_, strip_trigger_;
+  Rect passthrough_[4]{};
+  int passthrough_count_{0};
+  int width_{240}, strip_top_{100000}, spacing_{0}, step_px_{24};
+  uint32_t hold_ms_{350};
+  State state_{State::IDLE};
+  int x0_{0}, y0_{0}, x_{0}, y_{0}, consumed_{0}, axis_{0};
+  uint32_t down_ms_{0};
+};
+
+}  // namespace esphome::onx_touch_input

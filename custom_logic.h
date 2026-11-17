@@ -1256,8 +1256,16 @@ inline std::string trim_copy(const std::string &value) {
   return value.substr(begin, end - begin);
 }
 
+// Touch panels add two local controls (dashboard stream, Assist). They reuse
+// the local-switch path with reserved IO numbers; the knob never accepts them.
+inline bool panel_local_entries = false;
+constexpr int PANEL_LOCAL_DASHBOARD = 90, PANEL_LOCAL_ASSIST = 91;
+
 inline bool is_local_hmi_gpio_switch_preset_option(const std::string &option) {
   const std::string normalized_option = trim_copy(option);
+  if (panel_local_entries && (normalized_option == "[Local] Dashboard" || normalized_option == "[Local] Assist")) {
+    return true;
+  }
   for (const char *preset_option : LOCAL_HMI_GPIO_SWITCH_PRESET_OPTIONS) {
     if (normalized_option == preset_option) {
       return true;
@@ -1271,6 +1279,8 @@ inline bool is_local_hmi_gpio_switch_preset_option(const std::string &option) {
 
 inline int local_hmi_gpio_switch_io_from_entity_id(const std::string &entity_id) {
   const std::string normalized_entity_id = trim_copy(entity_id);
+  if (panel_local_entries && normalized_entity_id == "[Local] Dashboard") return PANEL_LOCAL_DASHBOARD;
+  if (panel_local_entries && normalized_entity_id == "[Local] Assist") return PANEL_LOCAL_ASSIST;
   if (normalized_entity_id == "[Local] HMI IO10" || normalized_entity_id == "[Preset] Local IO10") {
     return 10;
   }
@@ -1291,6 +1301,8 @@ inline std::string local_hmi_gpio_switch_display_name_from_entity_id(const std::
   if (io < 0) {
     return "";
   }
+  if (io == PANEL_LOCAL_DASHBOARD) return "Dashboard";
+  if (io == PANEL_LOCAL_ASSIST) return "Assist";
   return "HMI IO" + std::to_string(io);
 }
 

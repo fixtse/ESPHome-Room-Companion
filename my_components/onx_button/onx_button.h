@@ -13,9 +13,18 @@ class BufferedButton : public binary_sensor::BinarySensor, public Component {
  public:
   void set_pin(InternalGPIOPin *pin) {pin_=pin;}
   uint32_t event_time_ms() const {return event_ms_;}
-  bool is_physically_pressed() const {return pin_->digital_read();}
+  bool is_physically_pressed() const {return pin_!=nullptr?pin_->digital_read():virtual_pressed_;}
+  // Without a pin the button is virtual: a touch panel reports press/release.
+  // Automations then see the same state, timestamps and hold behaviour.
+  void set_virtual_pressed(bool pressed) {
+    virtual_pressed_=pressed;
+    if(pin_!=nullptr || pressed==accepted_)return;
+    accepted_=pressed;event_ms_=millis();
+    publish_state(pressed);
+  }
   float get_setup_priority() const override {return setup_priority::HARDWARE;}
   void setup() override {
+    if(pin_==nullptr) {event_ms_=millis();publish_initial_state(false);return;}
     pin_->setup();
     isr_pin_=pin_->to_isr();
     accepted_=pin_->digital_read();
@@ -24,6 +33,7 @@ class BufferedButton : public binary_sensor::BinarySensor, public Component {
     pin_->attach_interrupt(&BufferedButton::interrupt_,this,gpio::INTERRUPT_ANY_EDGE);
   }
   void loop() override {
+    if(pin_==nullptr)return;
     for(;;) {
       Edge edge{},next{};
       bool has_next,overflow;
@@ -79,5 +89,6 @@ class BufferedButton : public binary_sensor::BinarySensor, public Component {
   uint8_t head_{0},tail_{0};
   bool accepted_{false},overflow_{false},recovering_{false};
   uint32_t event_ms_{0};
+  bool virtual_pressed_{false};
 };
 }

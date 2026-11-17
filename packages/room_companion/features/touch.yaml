@@ -1,0 +1,59 @@
+# Touch drives the knob's input scripts (packages/base/input_actions.yaml).
+external_components:
+  - source:
+      type: local
+      path: ../../../my_components
+    components:
+      - onx_touch_input
+
+binary_sensor:
+  # Virtual knob button: no pin, pressed/released by onx_touch_input. The knob's
+  # press/release logic and hold timing run unchanged.
+  - platform: onx_button
+    id: key_btn
+    internal: true
+    on_press:
+      then:
+        - script.execute: onx_input_press
+    on_release:
+      then:
+        - script.execute: onx_input_release
+
+onx_touch_input:
+  id: touch_input
+  touchscreen_id: panel_touch
+  button_id: key_btn
+  width: ${display_width}
+  # Everything below the scaled 240x240 knob layout is the icon strip.
+  strip_top: ${ (240 * (ui_scale | float)) | round | int }
+  strip_spacing: ${strip_spacing}
+  step: ${ (22 * (ui_scale | float)) | round | int }
+  passthrough:
+    # Top-right corner: notification bell (LVGL).
+    - x0: ${ (display_width | int) - 56 }
+      y0: 0
+      x1: ${display_width}
+      y1: 56
+  enabled: |-
+    return id(room_panel)->knob_ui_has_touch();
+  on_turn:
+    - lambda: |-
+        if (direction > 0) id(onx_input_cw).execute();
+        else id(onx_input_ccw).execute();
+  on_strip_tap:
+    # Each carousel position needs the configured number of detents.
+    - lambda: |-
+        int detents = id(normal_knob_applied_value);
+        if (detents != 1 && detents != 2 && detents != 4) detents = 1;
+        for (int i = 0; i < std::abs(offset) * detents; ++i) {
+          if (offset > 0) id(onx_input_cw).execute();
+          else id(onx_input_ccw).execute();
+        }
+
+script:
+  # Sensitivity is applied by the detent accumulator in onx_input_cw/ccw.
+  - id: onx_input_apply_sensitivity
+    then:
+      - logger.log:
+          level: DEBUG
+          format: "Touch swipe sensitivity follows the dial setting"

@@ -38,6 +38,7 @@ esphome:
       - -DLV_USE_IMGFONT=1
       - -Wl,--wrap=panic_arch_fill_info,--wrap=panic_soc_fill_info
   includes:
+    - onx_geom.h
     - onx_power_state.h
     - onx_light_state.h
     - onx_memory.h

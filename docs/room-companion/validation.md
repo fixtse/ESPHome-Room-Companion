@@ -63,3 +63,48 @@ All three firmware configurations validated and compiled successfully:
 These build summaries do not measure peak PSRAM use, audio buffer headroom or
 runtime responsiveness. All three selected native C++ test programs and both
 renderer test cases passed. The renderer container built successfully.
+
+## 0.2.0 rework — 2026-11-17
+
+Execution host: **devserv**. Isolated checkout:
+`/home/fixt/agent-work/room-companion-rework-20261117`, synchronized from the
+uncommitted working tree with `rsync` (no `.git`, `.esphome` or `secrets.yaml`;
+temporary non-production secrets were generated there). Container:
+`ghcr.io/esphome/esphome:2026.10.2`, ESP-IDF 5.5.6.
+
+```sh
+docker run --rm -v $PWD:/config -w /config -e ESPHOME_ESP_IDF_PREFIX=/config/.esphome/idf \
+  --entrypoint bash ghcr.io/esphome/esphome:2026.10.2 scripts/validate-room-companion.sh --compile
+```
+
+| Configuration | Result | Static internal RAM | App flash |
+|---|---|---|---|
+| ONX2432G028 | config valid, compiled | 49.7% (170,015 B) | 23.5% |
+| ONX3248G035 | config valid, compiled | 49.7% (170,015 B) | 23.6% |
+| ONX2432G028 + wake word + extension example | config valid, compiled | 50.3% | 26.7% |
+
+For comparison, the 0.1.0 build used 43.5% static internal RAM. The settings
+page JavaScript was syntax-checked with `node --check` (node:22-alpine).
+
+**Not verified:** nothing was flashed. Runtime behaviour on hardware is
+untested: display handoff between LVGL and the stream, stream frame rate and
+heap headroom with Assist, Improv Serial/BLE provisioning with this build, the
+settings page, presets, sleep/wake and notification pictures. The dashboard
+performance figures in the documentation are estimates.
+
+### USB deployment, 3.5-inch with wake word — 2026-11-17
+
+`ONX3248G035.wake-word.yaml` (0.2.0 + `examples/room-companion/wake-word.yaml`
+with `wake_word_restore_mode: RESTORE_DEFAULT_ON`) was compiled on devserv with
+the panel's existing secrets (removed afterwards): 50.2% static internal RAM,
+26.7% app flash. The chip was put in download mode by toggling CH340 DTR/RTS,
+and the port was bridged to devserv over a loopback-only SSH tunnel. esptool
+`--no-stub` wrote the app, partition table and OTA data with verified hashes
+(the stub loader did not respond through the tunnel). NVS was not erased.
+
+Observed after reset: `setup() finished successfully`, Wi-Fi connected
+(192.168.10.184), settings page served on port 80, `/rc/api` state returned
+`home_assistant: true`, a foreign `Origin` got 403, 130 KB internal heap free.
+Over the API: *Wake word enabled* on, *Microphone muted* off, voice assistant
+flags 7. Not yet checked by a person: the display, touch, saying "Okay Nabu",
+speaker output, the dashboard stream, presets and sleep.

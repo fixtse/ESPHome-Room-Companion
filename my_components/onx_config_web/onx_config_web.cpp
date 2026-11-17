@@ -4,6 +4,7 @@
 #include "branding_assets.h"
 #include "config_app.h"
 #include "ha_browser.h"
+#include "panel_web.h"
 #include "esphome/components/wifi/wifi_component.h"
 #include <array>
 #include <charconv>
@@ -27,7 +28,7 @@ bool ConfigWeb::canHandle(AsyncWebServerRequest *request) const {
   // address open our app after Wi-Fi connects. Do not expose the generic server
   // entity-control endpoints alongside the configuration app.
   if (wifi::global_wifi_component != nullptr && wifi::global_wifi_component->is_connected()) return true;
-  return url == "/knob/favicon.svg" || url == "/knob/fixtse-logo.png" || url == "/knob" || url == "/knob/" || url == "/knob/api" || url == "/knob/result" || url == "/knob/ha.js" || url == "/knob/app.js";
+  return url == "/knob/favicon.svg" || url == "/knob/fixtse-logo.png" || url == "/knob" || url == "/knob/" || url == "/knob/api" || url == "/knob/result" || url == "/knob/ha.js" || url == "/knob/app.js" || url == "/knob/panel.js";
 }
 void ConfigWeb::respond_(AsyncWebServerRequest *request, int code, const char *data, size_t size) {
   auto *response = request->beginResponse(code, "application/json", reinterpret_cast<const uint8_t *>(data), size);
@@ -56,8 +57,8 @@ void ConfigWeb::handleRequest(AsyncWebServerRequest *request) {
     request->send(response);
     return;
   }
-  if ((url == "/knob/ha.js" || url == "/knob/app.js") && request->method() == HTTP_GET) {
-    const char *asset = url == "/knob/ha.js" ? HA_BROWSER_JS : CONFIG_APP_JS;
+  if ((url == "/knob/ha.js" || url == "/knob/app.js" || url == "/knob/panel.js") && request->method() == HTTP_GET) {
+    const char *asset = url == "/knob/ha.js" ? HA_BROWSER_JS : url == "/knob/panel.js" ? PANEL_JS : CONFIG_APP_JS;
     auto *response = request->beginResponse(200, "text/javascript; charset=utf-8",
         reinterpret_cast<const uint8_t *>(asset), std::strlen(asset));
     response->addHeader("Cache-Control", "no-store");

@@ -1,0 +1,61 @@
+# Optional dashboard renderer for Room Companion panels (dashboard screen mode).
+# Runs headless Chromium, renders the dashboard address set on each panel and
+# streams JPEG tiles over WebSocket. One server serves several panels; each
+# panel reports its own resolution.
+#
+#   docker compose up -d
+#   docker compose --profile devtools up -d   # once, to sign in to Home Assistant
+#
+# Then set "Remote WebView server" to <this-host>:8081 on each panel's settings
+# page. See docs/room-companion/dashboard-stream.md.
+services:
+  remote-webview:
+    image: strangev/remote-webview-server:1.3.0
+    container_name: remote-webview
+    restart: unless-stopped
+    environment:
+      TILE_SIZE: 32
+      FULL_FRAME_TILE_COUNT: 1
+      FULL_FRAME_AREA_THRESHOLD: 0.5
+      FULL_FRAME_EVERY: 50
+      EVERY_NTH_FRAME: 1
+      # SPI panels decode and push a full 320x480 frame in roughly 100 ms.
+      MIN_FRAME_INTERVAL_MS: 120
+      JPEG_QUALITY: 80
+      MAX_BYTES_PER_MESSAGE: 61440
+      # Fewer animation frames: much smoother on SPI panels.
+      PREFERS_REDUCED_MOTION: "true"
+      WS_PORT: 8081
+      DEBUG_PORT: 9221
+      HEALTH_PORT: 18080
+      USER_DATA_DIR: /pw-data
+    ports:
+      - "8081:8081"
+      # Published here because the devtools sidecar shares this network
+      # namespace; nothing listens on it unless that profile is running.
+      - "9222:9222"
+    expose:
+      - "9221"
+      - "18080"
+    volumes:
+      # Browser profile: keeps the Home Assistant login across restarts.
+      - ./pw-data:/pw-data
+    shm_size: 1gb
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://localhost:18080 || exit 1"]
+      interval: 30s
+      timeout: 3s
+      retries: 3
+      start_period: 15s
+
+  # Chrome DevTools access, used once to sign the server's browser in to Home
+  # Assistant. Anyone who can reach port 9222 controls that browser session:
+  # start it only when needed, on a trusted network, then stop it.
+  devtools:
+    profiles: [devtools]
+    image: alpine/socat:1.8.0.3
+    network_mode: "service:remote-webview"
+    depends_on:
+      remote-webview:
+        condition: service_healthy
+    command: ["TCP-LISTEN:9222,fork,reuseaddr,keepalive", "TCP:127.0.0.1:9221"]

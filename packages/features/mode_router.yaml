@@ -45,6 +45,13 @@ onx_icons:
 onx_config_web:
   id: entity_config_web
   handler: !lambda |-
+    #ifdef USE_ROOM_COMPANION
+    // Room Companion panels: dashboard stream settings (panel_state / panel_save).
+    if (esphome::room_companion::global_panel != nullptr) {
+      const auto panel = esphome::room_companion::global_panel->handle_web(query.op, query.data);
+      if (!panel.empty()) return panel;
+    }
+    #endif
     if (query.op == "state") return onx_entity_config::state(id(ha_host).state, id(normal_wifi_connected), id(normal_ha_api_connected), id(wifi_rssi).state, id(media_cover_image)->last_error());
     if (query.op == "preview") {
       return onx_entity_config::build_json([&](JsonObject root) {

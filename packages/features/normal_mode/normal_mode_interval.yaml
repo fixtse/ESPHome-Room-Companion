@@ -186,7 +186,7 @@ interval:
                 // Sensor icons replace the defaults once downloaded; both fit 16 px.
                 for (auto *w : {id(standby_temperature_icon_widget), id(standby_humidity_icon_widget)}) {
                   if (lv_obj_get_width(w) != 16) {
-                    lv_obj_set_size(w, 16, 16);
+                    lv_obj_set_size(w, onx_geom::S(16), onx_geom::S(16));
                     lv_image_set_inner_align(w, LV_IMAGE_ALIGN_CONTAIN);
                   }
                 }

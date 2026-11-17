@@ -1,3 +1,4 @@
+#include "onx_geom.h"
 #include "onx_icons.h"
 #include "onx_icon_state.h"
 #include "esphome/components/wifi/wifi_component.h"
@@ -32,7 +33,9 @@ static void *onx_svg_realloc(void *p, size_t size) { return heap_caps_realloc(p,
 #undef NSVG_FREE
 
 namespace esphome::onx_icons {
-static constexpr size_t SIZE = 80;
+// Icons are rasterised at the layout's 80 px icon size, scaled for the panel
+// (onx_geom::scale is 1 on the knob).
+static size_t icon_px() { return static_cast<size_t>(onx_geom::S(80)); }
 static constexpr size_t MAX_SVG_BYTES = 32768;
 static constexpr size_t CACHE_SIZE = 25;  // ~25 KB of PSRAM each.
 static const char *const TAG = "onx_icons";
@@ -82,15 +85,15 @@ static uint8_t *raster_bitmap(std::string svg, std::string &error) {
   uint8_t *pixels = nullptr;
   if (parsed->shapes && std::isfinite(parsed->width) && std::isfinite(parsed->height) &&
       parsed->width > 0 && parsed->height > 0 && parsed->width <= 4096 && parsed->height <= 4096) {
-    pixels = static_cast<uint8_t *>(heap_caps_calloc(SIZE * SIZE, 4, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT));
+    pixels = static_cast<uint8_t *>(heap_caps_calloc(icon_px() * icon_px(), 4, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT));
     auto *rasterizer = nsvgCreateRasterizer();
     if (pixels && rasterizer) {
-      const float scale = std::min(SIZE / parsed->width, SIZE / parsed->height);
-      nsvgRasterize(rasterizer, parsed, (SIZE - parsed->width * scale) / 2,
-                    (SIZE - parsed->height * scale) / 2, scale, pixels, SIZE, SIZE, SIZE * 4);
+      const float scale = std::min(icon_px() / parsed->width, icon_px() / parsed->height);
+      nsvgRasterize(rasterizer, parsed, (icon_px() - parsed->width * scale) / 2,
+                    (icon_px() - parsed->height * scale) / 2, scale, pixels, icon_px(), icon_px(), icon_px() * 4);
       // Monochrome icons: BGRA and RGBA have identical white channels for LVGL.
       bool visible = false;
-      for (size_t i = 0; i < SIZE * SIZE; ++i) {
+      for (size_t i = 0; i < icon_px() * icon_px(); ++i) {
         visible |= pixels[4 * i + 3] != 0;
         pixels[4 * i] = pixels[4 * i + 1] = pixels[4 * i + 2] = 255;
       }
@@ -115,7 +118,7 @@ static uint8_t *fetch_bitmap(const std::string &icon, std::string &error) {
   return nullptr;
 }
 IconDownloader::Bitmap::Bitmap(uint8_t *p)
-    : pixels(p), image(p, SIZE, SIZE, esphome::image::IMAGE_TYPE_RGB, esphome::image::TRANSPARENCY_ALPHA_CHANNEL) {}
+    : pixels(p), image(p, icon_px(), icon_px(), esphome::image::IMAGE_TYPE_RGB, esphome::image::TRANSPARENCY_ALPHA_CHANNEL) {}
 IconDownloader::Bitmap::~Bitmap() {
   // Bitmap destruction only occurs in loop()/bind(), on the UI task.
   lv_image_cache_drop(image.get_lv_image_dsc());

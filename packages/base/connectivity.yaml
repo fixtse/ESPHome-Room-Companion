@@ -26,7 +26,7 @@ wifi:
   # Native Wi-Fi restores and persists provisioned credentials. The mode manager
   # prepares only the AP name and optional compiled credentials before setup.
   ap:
-    ssid: "ONX2424G013"
+    ssid: "${project_friendly_name}"
     password: "${ap_password}"
     ap_timeout: 0s
   on_connect:

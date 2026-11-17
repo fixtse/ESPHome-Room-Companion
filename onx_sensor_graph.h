@@ -1,5 +1,6 @@
 #pragma once
 #include "onx_sensor_view.h"
+#include "onx_geom.h"
 #ifdef USE_LVGL
 namespace onx_sensor_graph {
 inline lv_obj_t *canvas=nullptr,*minimum_label=nullptr,*maximum_label=nullptr;
@@ -12,8 +13,9 @@ inline void draw(lv_event_t *event) {
   lv_area_t area;lv_obj_get_coords(canvas,&area);
   auto *layer=lv_event_get_layer(event);
   lv_draw_line_dsc_t line;lv_draw_line_dsc_init(&line);line.width=1;line.color=lv_color_hex(0x344653);
-  for(int y : {0,32,64}) {
-    line.p1.x=area.x1+plot_left;line.p1.y=area.y1+y;line.p2.x=area.x1+185;line.p2.y=area.y1+y;
+  using onx_geom::S;
+  for(int y : {0,S(32),S(64)}) {
+    line.p1.x=area.x1+plot_left;line.p1.y=area.y1+y;line.p2.x=area.x1+S(185);line.p2.y=area.y1+y;
     lv_draw_line(layer,&line);
   }
   line.width=2;line.color=lv_color_hex(ink);
@@ -29,7 +31,7 @@ inline void render(lv_obj_t *parent,const std::string &entity,uint32_t now,uint3
   const int i=onx_sensor_view::index(entity);
   if(i<0||!onx_sensor_view::configs[i].graph){hide();return;}
   if(!canvas) {
-    canvas=lv_obj_create(parent);lv_obj_set_size(canvas,186,65);lv_obj_align(canvas,LV_ALIGN_TOP_MID,0,104);
+    canvas=lv_obj_create(parent);lv_obj_set_size(canvas,onx_geom::S(186),onx_geom::S(65));lv_obj_align(canvas,LV_ALIGN_TOP_MID,0,onx_geom::S(104));
     lv_obj_set_style_bg_opa(canvas,LV_OPA_TRANSP,0);lv_obj_set_style_border_width(canvas,0,0);
     lv_obj_set_style_pad_all(canvas,0,0);lv_obj_clear_flag(canvas,LV_OBJ_FLAG_SCROLLABLE);lv_obj_clear_flag(canvas,LV_OBJ_FLAG_CLICKABLE);
     lv_obj_add_event_cb(canvas,draw,LV_EVENT_DRAW_MAIN,nullptr);
@@ -54,7 +56,7 @@ inline void render(lv_obj_t *parent,const std::string &entity,uint32_t now,uint3
     lv_point_t lower_size,upper_size;
     lv_text_get_size(&lower_size,labels.first.c_str(),font,0,0,LV_COORD_MAX,LV_TEXT_FLAG_NONE);
     lv_text_get_size(&upper_size,labels.second.c_str(),font,0,0,LV_COORD_MAX,LV_TEXT_FLAG_NONE);
-    plot_left=std::min(66,static_cast<int>(std::max(lower_size.x,upper_size.x))+5);
+    plot_left=std::min(onx_geom::S(66),static_cast<int>(std::max(lower_size.x,upper_size.x))+5);
     for(auto *label:{minimum_label,maximum_label}) {
       lv_obj_set_width(label,plot_left-5);
       lv_obj_clear_flag(label,LV_OBJ_FLAG_HIDDEN);
@@ -63,7 +65,8 @@ inline void render(lv_obj_t *parent,const std::string &entity,uint32_t now,uint3
     lv_obj_align(minimum_label,LV_ALIGN_BOTTOM_LEFT,0,0);
     for(const auto &p:history) {
       if(count>=pixels.size())break;
-      pixels[count++]={int16_t(185-(now-p.epoch)*(185-plot_left)/43200),int16_t(high>low?64-(p.value-low)*64/(high-low):32),p.epoch};
+      using onx_geom::S;
+      pixels[count++]={int16_t(S(185)-(now-p.epoch)*(S(185)-plot_left)/43200),int16_t(high>low?S(64)-(p.value-low)*S(64)/(high-low):S(32)),p.epoch};
     }
   }
   lv_obj_invalidate(canvas);
