@@ -2,11 +2,15 @@
 #include <cstdint>
 #include "onx_playlist.h"
 #include <string>
+#include <functional>
 #include <algorithm>
 #include <cmath>
 namespace onx_media {
 struct IdlePopup {bool visible{false};int previous_index{0};};
 inline IdlePopup idle_popup;
+// Artwork owner on the visible rectangular main page.
+inline std::string main_entity;
+inline std::function<void()> detach_main_artwork;
 inline std::string volume_percent(float level) {
   if (!std::isfinite(level)) return "--";
   return std::to_string(static_cast<int>(std::lround(std::clamp(level, 0.0f, 1.0f) * 100.0f))) + "%";

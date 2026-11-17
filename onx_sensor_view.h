@@ -34,21 +34,22 @@ struct State {
   std::string primary, secondary, value, unit;
   time_t secondary_epoch{0};
   bool received{false}, available{false}, pending{false}, requested{false};
-  uint32_t requested_ms{0};
+  uint32_t requested_ms{0}, range_seconds{43200};
+  std::string range_label() const { return range_seconds == 3600 ? "1 h" : range_seconds == 86400 ? "24 h" : range_seconds == 604800 ? "7 d" : "12 h"; }
   std::array<Point,73> points{};
   void bind(const Config &c) {
     if(primary!=c.primary || secondary!=c.secondary) { *this=State{};primary=c.primary;secondary=c.secondary; }
   }
   void sample(uint32_t epoch, float value) {
     if(epoch<1577836800 || !std::isfinite(value)) return;
-    const uint32_t bucket=epoch/600;
+    const uint32_t bucket=epoch/std::max<uint32_t>(1,range_seconds/72);
     auto &p=points[bucket%points.size()];
-    if(p.epoch/600==bucket && p.epoch>epoch)return;
+    if(p.epoch/std::max<uint32_t>(1,range_seconds/72)==bucket && p.epoch>epoch)return;
     p={epoch,value};
   }
   std::vector<Point> history(uint32_t now) const {
     std::vector<Point> out;
-    for(const auto &p:points) if(p.epoch && p.epoch<=now && now-p.epoch<=43200 && std::isfinite(p.value))out.push_back(p);
+    for(const auto &p:points) if(p.epoch && p.epoch<=now && now-p.epoch<=range_seconds && std::isfinite(p.value))out.push_back(p);
     std::sort(out.begin(),out.end(),[](const Point&a,const Point&b){return a.epoch<b.epoch;});
     return out;
   }

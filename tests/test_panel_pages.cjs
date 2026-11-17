@@ -76,6 +76,34 @@ const {chromium}=require('playwright');
   assert.equal(await page.locator('#device-preview').getAttribute('viewBox'),'0 0 480 320');
   assert.match(await page.locator('#device-preview').innerHTML(),/bell-outline/,'Main view shows the bell');
   await page.screenshot({path:'/config/tests/artifacts/panel-pages-35-landscape.png',fullPage:true});
+  // Domain previews follow rectangular controls instead of the old text-only view.
+  for(const [width,height]of [[320,480],[240,320]])for(const orientation of ['0','90']){
+   await page.evaluate(({width,height,orientation})=>{
+    ONX_PANEL_SIZE={width,height};
+    const slot={entity:'weather.madrid',name:'Madrid'},view={entity:slot.entity,icon:'mdi:weather-rainy',layout:'weather',lines:[{text:'Weather'},{text:'16°C'},{text:'Rainy · Feels 14°C'},{text:'Humidity 86% Turn for more'},{text:'Madrid'}],panel:{state:'rainy',temperature:'16',feels_like:'14',humidity:'86',wind:'12',wind_unit:'km/h',forecast:[{date:'2026-11-17',low:'10',high:'18',rain:'60'}]},carousel:{navigator:[]}};
+    ONX_PANEL_PREVIEW(document.getElementById('device-preview'),slot,view,[view],'detail',{orientation});
+   },{width,height,orientation});
+   assert.match(await page.locator('#device-preview').textContent(),/Humidity/);
+   assert.match(await page.locator('#device-preview').textContent(),/16°/);
+   assert.match(await page.locator('#device-preview').textContent(),/Today/);
+   assert.doesNotMatch(await page.locator('#device-preview').textContent(),/Turn for more/);
+   assert.equal(await page.locator('[data-weather-forecast]').count(),1);
+  }
+  await page.locator('#device-preview').screenshot({path:'/config/tests/artifacts/panel-weather-preview.png'});
+  await page.evaluate(()=>{
+   ONX_PANEL_SIZE={width:320,height:480};
+   const slot={entity:'media_player.room',name:'Room'},view={entity:slot.entity,layout:'media',playing:true,artwork:'https://example.test/cover.png',panel:{title:'Track title',artist:'Artist'},carousel:{navigator:[]}};
+   ONX_PANEL_PREVIEW(document.getElementById('device-preview'),slot,view,[view],'main',{});
+  });
+  assert.equal(await page.locator('[data-panel-artwork]').count(),1);
+  assert.match(await page.locator('[data-panel-artwork]').getAttribute('clip-path'),/url/);
+  assert.equal(await page.locator('[data-panel-control]').count(),3);
+  await page.evaluate(()=>{
+   const slot={entity:'weather.home',name:'Home'},view={entity:slot.entity,panel:{temperature:'16',state:'cloudy'},carousel:{navigator:[]}};
+   ONX_PANEL_PREVIEW(document.getElementById('device-preview'),slot,view,[view],'main',{background_color:'#FFFFFF'});
+  });
+  assert.equal(await page.locator('#device-preview > rect').first().getAttribute('fill'),'#FFFFFF');
+  assert.notEqual(await page.locator('#device-preview text').first().getAttribute('fill'),'#ffffff','Light backgrounds need dark readable text');
   await page.evaluate(()=>{ONX_PANEL_EDITOR(testSlots,0,false,testDraw,true)});
   assert.equal(await page.locator('#panel-page-layout').isVisible(),false,'Editing a preset must not accidentally save a live-device page layout');
   console.log('Panel pages: full-height previews, grouped live values, editing, save payloads, duplicate rejection and both model geometries passed');

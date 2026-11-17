@@ -20,6 +20,7 @@ inline const char *const LARGE_BODY_MARKER = "\x01onx-large-body";
 struct Query {
   std::string playlists;
   std::string op, entity, action, search, domain, name, area, action_name, type, icon, icon_override;
+  std::string background_color;
   std::string brightness, standby, sensitivity, sleep_enabled, sleep_start, sleep_end, sleep_timeout;
   std::string data, total;  // Chunked preset restore.
   std::string clock_seconds_ring, hold_cue, clock_temperature, clock_humidity, notifications_cover_timers, gestures, orientation, media_view, idle_view, timer_hidden, media_color, standby_scope, date_format, hour_format, show_ampm, secondary, secondary_text, sensor_graph;

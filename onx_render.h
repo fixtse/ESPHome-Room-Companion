@@ -2,6 +2,10 @@
 #include <cstring>
 #include "lvgl.h"
 #include "onx_emoji.h"
+#include "onx_display_settings.h"
+#include <array>
+#include <algorithm>
+#include <new>
 
 // Avoid reallocating label buffers or invalidating image caches for unchanged UI.
 namespace onx_render {
@@ -28,8 +32,86 @@ inline constexpr PalettePair DARK_TEXTS[] = {
   {0xFFFFFF, 0xE4E4E6}, {0xD2D2D2, 0x9C9C9E}, {0xD8D8D8, 0xA2A2A4},
   {0xB8B8B8, 0x858587}, {0xAAAAAA, 0x7A7A7C},
 };
+inline bool panel_palette = false;
+struct PanelColors { uint32_t bg, surface, control, track, text, muted; };
+inline std::array<PanelColors,8> panel_history{};
+inline size_t panel_history_count=0;
+inline const PanelColors *panel_source=nullptr;
+inline PanelColors panel_colors() {
+  using namespace onx_display_settings;
+  return {background(),surface(),control_surface(),track_surface(),foreground(),muted_text()};
+}
+inline void remember_panel_colors() {
+  const auto c=panel_colors();
+  if(panel_history_count && panel_history[(panel_history_count-1)%panel_history.size()].bg==c.bg)return;
+  panel_history[panel_history_count++%panel_history.size()]=c;
+}
+inline uint32_t panel_color(uint32_t c,bool text) {
+  const auto now=panel_colors();
+  if(text?(c==now.text||c==now.muted):(c==now.bg||c==now.surface||c==now.control||c==now.track))return c;
+  if(panel_source){const auto &old=*panel_source;
+    if(text){if(c==old.text)return now.text;if(c==old.muted)return now.muted;}
+    else {if(c==old.bg)return now.bg;if(c==old.surface)return now.surface;if(c==old.control)return now.control;if(c==old.track)return now.track;}
+  }
+  for(size_t i=0;i<std::min(panel_history_count,panel_history.size());++i){
+    const auto &old=panel_history[i];
+    if(text){if(c==old.text)return now.text;if(c==old.muted)return now.muted;}
+    else {if(c==old.bg)return now.bg;if(c==old.surface)return now.surface;if(c==old.control)return now.control;if(c==old.track)return now.track;}
+  }
+  if(text){
+    if(c==0xFFFFFF||c==0xE4E4E6||c==0)return now.text;
+    for(const auto &p:DARK_TEXTS)if(c==p.normal||c==p.dark)return now.muted;
+    if(c==0x9C9C9E)return now.muted;
+  }else{
+    if(c==0||c==0x1A1A1A||c==0x010101||c==0x101418||c==0x020304)return now.bg;
+    for(size_t i=0;i<std::size(DARK_SURFACES);++i){const auto &p=DARK_SURFACES[i];if(c==p.normal||c==p.dark)return i<=3?now.surface:i<=7?now.control:now.track;}
+  }
+  return c;
+}
+inline uint32_t panel_property_color(lv_obj_t *obj,lv_style_prop_t prop,uint32_t color) {
+  const bool text=prop==LV_STYLE_TEXT_COLOR||prop==LV_STYLE_IMAGE_RECOLOR;
+  if(text && obj){
+    auto *parent=lv_obj_get_parent(obj);lv_style_value_t value;
+    if(parent && lv_obj_get_local_style_prop(parent,LV_STYLE_BG_COLOR,&value,LV_PART_MAIN)==LV_STYLE_RES_FOUND){
+      const auto bg=lv_color_to_u32(value.color)&0xFFFFFF;
+      if(bg==onx_display_settings::accent()||bg==onx_display_settings::accent_strong())
+        return onx_display_settings::light_color(bg)?0x161B22:0xFFFFFF;
+    }
+  }
+  return panel_color(color,text);
+}
+inline void apply_panel_palette(lv_obj_t *obj) {
+  if(!panel_palette||!obj)return;
+  for(auto part:{LV_PART_MAIN,LV_PART_INDICATOR,LV_PART_KNOB,LV_PART_ITEMS})
+    for(auto prop:{LV_STYLE_BG_COLOR,LV_STYLE_BG_GRAD_COLOR,LV_STYLE_BORDER_COLOR,LV_STYLE_ARC_COLOR,LV_STYLE_LINE_COLOR,LV_STYLE_OUTLINE_COLOR,LV_STYLE_TEXT_COLOR,LV_STYLE_IMAGE_RECOLOR}){
+      lv_style_value_t value;
+      if(lv_obj_get_local_style_prop(obj,prop,&value,part)!=LV_STYLE_RES_FOUND){
+        if(prop!=LV_STYLE_TEXT_COLOR||part!=LV_PART_MAIN||!lv_obj_check_type(obj,&lv_label_class))continue;
+        value.color=lv_obj_get_style_text_color(obj,part);
+      }
+      const auto from=lv_color_to_u32(value.color)&0xFFFFFF;
+      const auto to=panel_property_color(obj,prop,from);
+      if(from!=to){value.color=lv_color_hex(to);lv_obj_set_local_style_prop(obj,prop,value,part);}
+    }
+  for(uint32_t i=0;i<lv_obj_get_child_count(obj);++i)apply_panel_palette(lv_obj_get_child(obj,i));
+}
+inline void register_panel_screen(lv_obj_t *screen) {
+  auto *colors=new(std::nothrow) PanelColors(panel_colors());
+  if(!colors)return;
+  lv_obj_add_event_cb(screen,[](lv_event_t *event){
+    auto *colors=static_cast<PanelColors *>(lv_event_get_user_data(event));
+    if(lv_event_get_code(event)==LV_EVENT_DELETE){delete colors;return;}
+    if(lv_event_get_code(event)!=LV_EVENT_SCREEN_LOAD_START)return;
+    auto *screen=static_cast<lv_obj_t *>(lv_event_get_target(event));
+    panel_source=colors;apply_panel_palette(screen);panel_source=nullptr;
+    lv_obj_set_style_bg_color(screen,lv_color_hex(onx_display_settings::background()),0);
+    lv_obj_set_style_text_color(screen,lv_color_hex(onx_display_settings::foreground()),0);
+    *colors=panel_colors();
+  },LV_EVENT_ALL,colors);
+}
 inline bool dark_palette = false;
-inline lv_color_t themed(lv_style_prop_t prop, lv_color_t color) {
+inline lv_color_t themed(lv_style_prop_t prop, lv_color_t color,lv_obj_t *obj=nullptr) {
+  if(panel_palette)return lv_color_hex(panel_property_color(obj,prop,lv_color_to_u32(color)&0xFFFFFF));
   if (!dark_palette) return color;
   const uint32_t c = lv_color_to_u32(color) & 0xFFFFFF;
   const bool text = prop == LV_STYLE_TEXT_COLOR || prop == LV_STYLE_IMAGE_RECOLOR;
@@ -39,7 +121,7 @@ inline lv_color_t themed(lv_style_prop_t prop, lv_color_t color) {
 }
 inline void style_color(lv_obj_t *widget, lv_style_prop_t prop, lv_color_t color,
                         lv_style_selector_t selector) {
-  color = themed(prop, color);
+  color = themed(prop, color,widget);
   lv_style_value_t old;
   if (lv_obj_get_local_style_prop(widget, prop, &old, selector) == LV_STYLE_RES_FOUND && lv_color_eq(old.color, color)) return;
   lv_style_value_t value{}; value.color = color;

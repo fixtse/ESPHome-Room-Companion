@@ -234,6 +234,32 @@ int main() {
   assert(feedback_text(d.entity_id).empty());
   assert(text(d.entity_id).find("Turn to adjust") == std::string::npos);
 
+  // The main card need not be the entity selected by the detail carousel.
+  std::vector<std::string> visible={"light.main", "switch.secondary"};
+  main_control_visible=[&](const std::string &entity) {
+    return std::find(visible.begin(),visible.end(),entity)!=visible.end();
+  };
+  for (const auto &entity:visible) {
+    cancel_controls();d=EntityDetailState{};d.entity_id=entity;d.received=d.available=true;d.state="off";
+    select_control_entity(entity);
+    request_control(entity,domain(entity)+".toggle",{{"panel_power","","on"}});
+    clock_ms+=100;
+    auto before=api.sent.size();
+    tick(&api,dispatch_target(true,false,"unrelated.detail"),true);
+    assert(api.sent.size()==before+1 && api.sent.back().data[0].value.value==entity);
+  }
+  // Leaving the page, sleeping and losing HA connectivity still cancel a tap.
+  for (int reason=0;reason<3;++reason) {
+    cancel_controls();select_control_entity(d.entity_id);
+    request_control(d.entity_id,"switch.toggle",{{"panel_power","","on"}});
+    if(reason==0)visible.clear();else visible={d.entity_id};
+    auto before=api.sent.size();clock_ms+=100;
+    tick(&api,dispatch_target(reason!=1,false,"unrelated.detail"),reason!=2);
+    assert(api.sent.size()==before && control_commands.empty());
+  }
+  assert(dispatch_target(true,true,"detail.entity")=="detail.entity");
+  main_control_visible={};assert(dispatch_target(true,false,"").empty());
+
 }
 '''.replace('CACHE', cache).replace('HANDLERS', handlers).replace('PRESENTATION', presentation)
         with tempfile.TemporaryDirectory() as directory:

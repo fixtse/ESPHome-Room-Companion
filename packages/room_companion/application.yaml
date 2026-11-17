@@ -25,6 +25,8 @@ esphome:
   platformio_options:
     build_flags:
       - -DLV_USE_IMGFONT=1
+      # Keep Xtensa literal pools beside their code as the shared UI grows.
+      - -mtext-section-literals
       - -Wl,--wrap=panic_arch_fill_info,--wrap=panic_soc_fill_info
   includes:
     - ../../onx_geom.h

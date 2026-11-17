@@ -8,6 +8,8 @@ struct Settings {
   uint8_t standby_scope{0}; // 0 main carousel only, 1 all views, 2 disabled
 };
 inline Settings current;
+struct BackgroundSettings { uint32_t magic{0x4F4E5842}, color{0x101418}; };
+inline BackgroundSettings background_settings;
 struct Orientation {uint32_t magic{0x4F4E584F};uint8_t turns{0};};
 inline Orientation orientation;
 inline bool parse_orientation(const std::string &text,uint8_t &turns) {
@@ -95,8 +97,17 @@ inline uint32_t mix(uint32_t a, uint32_t b, unsigned weight) {
   }
   return out;
 }
+inline uint32_t background() { return background_settings.color & 0xFFFFFF; }
+inline bool light_color(uint32_t c) {return ((c>>16)*299+((c>>8)&255)*587+(c&255)*114)>150000;
+}
+inline bool light_background() {return light_color(background());}
+inline uint32_t foreground() { return light_background()?0x161B22:0xFFFFFF; }
+inline uint32_t surface() { return mix(light_background()?0x000000:0xFFFFFF,background(),8); }
+inline uint32_t control_surface() { return mix(light_background()?0x000000:0xFFFFFF,background(),13); }
+inline uint32_t track_surface() { return mix(light_background()?0x000000:0xFFFFFF,background(),23); }
+inline uint32_t muted_text() { return mix(foreground(),background(),68); }
 inline uint32_t accent_strong() { return mix(accent(), 0x000000, 80); }  // Filled buttons (white symbol).
-inline uint32_t accent_soft() { return mix(accent(), 0x101418, 28); }    // Tinted selection surfaces.
+inline uint32_t accent_soft() { return mix(accent(), background(), 28); }    // Tinted selection surfaces.
 inline std::string color_text(uint32_t color) {
   char text[8]; snprintf(text, sizeof(text), "#%06X", static_cast<unsigned>(color & 0xFFFFFF)); return text;
 }

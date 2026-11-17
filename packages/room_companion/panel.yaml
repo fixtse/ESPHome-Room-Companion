@@ -81,13 +81,6 @@ number:
     restore_value: true
     initial_value: 20
 
-switch:
-  - platform: template
-    id: panel_dark_mode
-    name: Dark mode
-    optimistic: true
-    restore_mode: RESTORE_DEFAULT_OFF
-
 interval:
   # Rectangular-panel UI (onx_panel_ui.h): bell, media layout, idle screen.
   - interval: 100ms
@@ -118,7 +111,14 @@ interval:
           const bool entity_detail = detail && (id(normal_device_detail_kind)==NORMAL_DEVICE_DETAIL_KIND_AUTOMATION ||
               id(normal_device_detail_kind)==NORMAL_DEVICE_DETAIL_KIND_LIGHT || id(normal_device_detail_kind)==NORMAL_DEVICE_DETAIL_KIND_SWITCH ||
               id(normal_device_detail_kind)==NORMAL_DEVICE_DETAIL_KIND_PLUG || id(normal_device_detail_kind)==NORMAL_DEVICE_DETAIL_KIND_CURTAIN);
-          const bool normal = id(ui_presenter)->is_normal_mode_active() && !id(ui_presenter)->is_standby_active() &&
+          const bool standby = id(ui_presenter)->is_standby_active();
+          // Load a fully populated clock before hiding the opaque card layer.
+          // The periodic standby refresh remains responsible for later updates.
+          if (standby && !id(screen_off_state) && !id(sleep_mode_state) &&
+              id(panel_idle_screen).active_index().value_or(0) == onx_panel_ui::IDLE_CLOCK &&
+              lv_scr_act() != id(standby_page)->obj)
+            id(refresh_normal_standby_page).execute();
+          const bool normal = id(ui_presenter)->is_normal_mode_active() && !standby &&
               !id(screen_off_state) && !id(sleep_mode_state) && id(room_panel)->native_ui_has_touch() &&
               // Timer popups open the timer detail, drawn here like any other.
               !onx_notification::current.visible && !onx_playlist::browser.open &&
@@ -130,7 +130,11 @@ interval:
               id(apply_normal_entity_icon).execute(icon,target,"",false);
             });
           } else onx_panel_pages::hide();
-          const bool standby = id(ui_presenter)->is_standby_active();
+          static uint32_t last_main_artwork = 0;
+          if (!detail && normal && !onx_media::main_entity.empty() && millis() - last_main_artwork >= 1000) {
+            last_main_artwork = millis();
+            id(refresh_normal_media_cover).execute();
+          }
           // The bell (with its unread count) belongs to the main carousel; other
           // screens open the centre by pulling down from the top edge. The
           // dashboard is a "[Local] Dashboard" item in the bottom bar.
@@ -195,11 +199,9 @@ interval:
   - interval: 50ms
     then:
       - lambda: |-
-          // Dark mode remaps the base palette (grey surfaces, white text) to
-          // near-black on every widget, including overlays. Each dark colour is
-          // unique, so turning it off maps back to the original exactly, and
-          // re-applying is harmless for widgets that repaint themselves.
-          // Shared with onx_render::style_color (onx_render.h).
+          // Keep legacy widgets and overlays on the same saved background
+          // palette as the rectangular cards. Runtime setters use this mapper
+          // too, so periodic refreshes cannot restore a different palette.
           using Pair = onx_render::PalettePair;
           const auto &surfaces = onx_render::DARK_SURFACES;
           const auto &texts = onx_render::DARK_TEXTS;
@@ -222,11 +224,15 @@ interval:
           const uint32_t accent = onx_display_settings::accent();
           const uint32_t strong = onx_display_settings::accent_strong();
           auto *page = lv_scr_act();
-          const bool enabled = id(panel_dark_mode).state;
-          onx_render::dark_palette = enabled;
+          const bool enabled = true;
+          onx_render::dark_palette = false;
+          onx_render::panel_palette = true;
+          static uint32_t applied_background = 0xFFFFFFFF;
+          const bool background_changed = applied_background != onx_display_settings::background();
+          if(background_changed){onx_render::remember_panel_colors();applied_background=onx_display_settings::background();}
           const bool accent_changed = accent != applied_accent;
-          const bool changed = page != previous || enabled != (previous_mode == 1) || accent_changed;
-          // While dark, re-sweep once a second to catch colours set at runtime.
+          const bool changed = page != previous || enabled != (previous_mode == 1) || accent_changed || background_changed;
+          // Re-sweep once a second to catch raw runtime style changes.
           if (!changed && !(enabled && ++ticks >= 20)) return;
           ticks = 0;
           // Never treat a palette surface/text colour as a former accent.
@@ -258,15 +264,13 @@ interval:
             auto remap = [&](lv_obj_t *obj, lv_style_prop_t prop, lv_style_selector_t sel,
                              const Pair *table, size_t n, bool to_dark) {
               lv_style_value_t v;
-              if (lv_obj_get_local_style_prop(obj, prop, &v, sel) != LV_STYLE_RES_FOUND) return;
-              const uint32_t c = lv_color_to_u32(v.color) & 0xFFFFFF;
-              for (size_t i = 0; i < n; ++i) {
-                const uint32_t from = to_dark ? table[i].normal : table[i].dark;
-                if (c != from) continue;
-                v.color = lv_color_hex(to_dark ? table[i].dark : table[i].normal);
-                lv_obj_set_local_style_prop(obj, prop, v, sel);
-                return;
+              if (lv_obj_get_local_style_prop(obj, prop, &v, sel) != LV_STYLE_RES_FOUND) {
+                if(prop!=LV_STYLE_TEXT_COLOR||sel!=LV_PART_MAIN||!lv_obj_check_type(obj,&lv_label_class))return;
+                v.color=lv_obj_get_style_text_color(obj,LV_PART_MAIN);
               }
+              const uint32_t c = lv_color_to_u32(v.color) & 0xFFFFFF;
+              const auto to=onx_render::panel_property_color(obj,prop,c);
+              if(to!=c){v.color=lv_color_hex(to);lv_obj_set_local_style_prop(obj,prop,v,sel);}
             };
             std::function<void(lv_obj_t *)> walk = [&](lv_obj_t *obj) {
               for (auto part : parts) {
@@ -285,6 +289,8 @@ interval:
             // rectangular main and detail screens keep their own palette: they
             // are rebuilt on every change, so remapping them flashed on touch.
             walk(page);
+            onx_render::style_bg_color(page,lv_color_hex(onx_display_settings::background()),0);
+            onx_render::style_text_color(page,lv_color_hex(onx_display_settings::foreground()),0);
             auto *top = lv_layer_top();
             for (uint32_t i = 0; i < lv_obj_get_child_count(top); ++i) {
               auto *child = lv_obj_get_child(top, i);
@@ -319,6 +325,12 @@ esphome:
     - priority: 1100
       then:
         - lambda: |-
+            onx_render::panel_palette = true;
+            onx_display_settings::BackgroundSettings background{};
+            auto bg_preference=global_preferences->make_preference<onx_display_settings::BackgroundSettings>(fnv1_hash("onx.background.v1"));
+            if(bg_preference.load(&background) && background.magic==0x4F4E5842 && background.color<=0xFFFFFF)
+              onx_display_settings::background_settings=background;
+            onx_render::remember_panel_colors();
             onx_display_settings::Orientation saved{};
             auto preference = global_preferences->make_preference<onx_display_settings::Orientation>(
                 fnv1_hash("onx.orientation.v1"));
@@ -424,9 +436,20 @@ script:
           // Redesigned detail screens (onx_panel_detail.h).
           // Board fonts are scaled by font_scale while the detail layout scales
           // by P(); these sizes keep text in proportion on both panels.
+          // Theme every page before LVGL can display its first frame.
+          for(auto *screen:{id(device_empty)->obj,id(device_0)->obj,id(device_1)->obj,id(device_2)->obj,id(device_3)->obj,id(device_4)->obj,id(device_5)->obj,id(device_6)->obj,id(device_7)->obj,id(device_8)->obj,id(device_9)->obj,id(device_settings)->obj,id(normal_switch_page)->obj,id(normal_automation_page)->obj,id(normal_light_page)->obj,id(normal_curtain_page)->obj,id(normal_settings_page)->obj,id(normal_settings_wifi_page)->obj,id(normal_settings_brightness_page)->obj,id(normal_settings_input_page)->obj,id(normal_settings_connection_page)->obj,id(normal_halight_conf_page)->obj,id(normal_halight_page)->obj,id(standby_page)->obj,id(normal_provisioning_page)->obj,id(normal_add_hmi_page)->obj,id(normal_setup_help_page)->obj})
+            onx_render::register_panel_screen(screen);
           onx_panel_detail::fonts = {id(fonts_MiSans_Medium_12)->get_lv_font(), id(fonts_MiSans_Medium_15)->get_lv_font(),
               id(fonts_MiSans_Bold_18)->get_lv_font(), id(fonts_MiSans_Medium_32)->get_lv_font(), &lv_font_montserrat_28,
               id(fonts_MiSans_Medium_64)->get_lv_font(), id(fonts_MiSans_Medium_12)->get_lv_font()};
+          onx_controls::main_control_visible = [](const std::string &entity) {
+            if (!onx_panel_pages::showing || onx_panel_pages::detail_view ||
+                onx_notification::current.visible || onx_notification_ui::owns_screen() ||
+                onx_panel_detail::timers.overlay || !lv_obj_has_flag(id(assist_overlay), LV_OBJ_FLAG_HIDDEN)) return false;
+            for (int i = 0; i < onx_panel_pages::count; ++i)
+              if (onx_panel_pages::entities[i] == entity && onx_panel_pages::configured(entity) >= 0) return true;
+            return false;
+          };
           onx_panel_detail::blocked = []() { return id(touch_input)->suppress_click() || onx_notification_ui::owns_screen(); };
           onx_panel_detail::activity = []() { id(ui_presenter)->notify_user_activity(); };
           onx_panel_detail::light_state = [](const std::string &entity) {
@@ -441,7 +464,9 @@ script:
             static uint32_t refreshed = 0;
             if (previous != entity || millis() - refreshed >= 1000 || !onx_sensor_graph::canvas) {
               onx_sensor_graph::render(parent,entity,id(ha_time).now().timestamp,
-                  onx_display_settings::current.media_color,id(fonts_MiSans_Medium_12)->get_lv_font());
+                  onx_display_settings::current.media_color,id(fonts_MiSans_Medium_12)->get_lv_font(),
+                  entity.rfind("sensor.",0)==0 && parent!=onx_panel_detail::root ? lv_obj_get_style_width(parent,LV_PART_MAIN)-onx_panel_detail::P(24) : 0,
+                  entity.rfind("sensor.",0)==0 && parent!=onx_panel_detail::root ? lv_obj_get_style_height(parent,LV_PART_MAIN)-onx_panel_detail::P(40) : 0);
               previous = entity; refreshed = millis();
             }
             if (onx_sensor_graph::canvas) {
@@ -466,6 +491,32 @@ script:
           };
           onx_panel_detail::shortcut_title = [](const std::string &action) {
             return onx_media::display_text(custom_logic::ha_entity_title_from_registry_cache(action));
+          };
+          onx_media::detach_main_artwork = []() { onx_panel_detail::detach_artwork(); };
+          onx_panel_detail::artwork_source = [](const std::string &entity) -> const void * {
+            const auto *d = custom_logic_entity_sub::entity_detail(entity);
+            if (!d || !d->available || !onx_media::has_playback(d->state)) return nullptr;
+            auto origin = custom_logic::build_ha_http_state_url(id(ha_host).state, "media_player.cover");
+            const auto path = origin.find("/api/states/");
+            if (path != std::string::npos) origin.resize(path);
+            const auto url = onx_media::artwork_url(origin, d->picture);
+            return !url.empty() && url == onx_media::ready_url ? id(media_cover_image)->get_lv_image_dsc() : nullptr;
+          };
+          onx_panel_detail::quick_actions = [](const std::string &entity) {
+            const int config = onx_panel_pages::configured(entity);
+            return config < 0 ? nullptr : onx_entity_config::playlists_for_ui(custom_logic::normal_ui_slot_for_device_config_slot(config), entity);
+          };
+          onx_panel_detail::run_quick_action = [](const std::string &action) { id(emit_normal_playlist_action).execute(action); };
+          onx_panel_detail::request_history = [](const std::string &entity) { id(request_normal_sensor_history).execute(entity); };
+          onx_panel_ui::has_quick_actions = []() {
+            const auto entity = id(ui_presenter)->get_normal_device_entity_id(id(normal_device_detail_index));
+            return onx_entity_config::playlists_for_ui(id(normal_device_detail_index), entity) != nullptr;
+          };
+          onx_panel_ui::open_quick_actions = []() {
+            if (id(touch_input)->suppress_click()) return;
+            const auto entity = id(ui_presenter)->get_normal_device_entity_id(id(normal_device_detail_index));
+            onx_playlist::browser.toggle(entity);
+            id(refresh_normal_playlist).execute();
           };
           onx_panel_detail::run_shortcut = []() { id(emit_configured_press_action).execute(id(normal_device_detail_index)); };
           onx_panel_pages::open = [](const std::string &entity) {

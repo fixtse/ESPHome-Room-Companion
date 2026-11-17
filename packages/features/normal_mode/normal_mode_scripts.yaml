@@ -1,4 +1,83 @@
 script:
+  - id: refresh_normal_standby_page
+    mode: restart
+    then:
+      - lambda: |-
+          auto set_hidden = [](lv_obj_t *obj, bool hidden) {
+            if (hidden) {
+              lv_obj_add_flag(obj, LV_OBJ_FLAG_HIDDEN);
+            } else {
+              lv_obj_clear_flag(obj, LV_OBJ_FLAG_HIDDEN);
+            }
+          };
+          const std::string &state = id(standby_weather_state);
+          const bool known =
+              state == "clear-night" ||
+              state == "cloudy" ||
+              state == "exceptional" ||
+              state == "fog" ||
+              state == "hail" ||
+              state == "lightning" ||
+              state == "lightning-rainy" ||
+              state == "partlycloudy" ||
+              state == "pouring" ||
+              state == "rainy" ||
+              state == "snowy" ||
+              state == "snowy-rainy" ||
+              state == "sunny" ||
+              state == "windy" ||
+              state == "windy-variant";
+          set_hidden(id(standby_weather_unknown_widget), known);
+          set_hidden(id(standby_weather_clear_night_widget), state != "clear-night");
+          set_hidden(id(standby_weather_cloudy_widget), state != "cloudy");
+          set_hidden(id(standby_weather_exceptional_widget), state != "exceptional");
+          set_hidden(id(standby_weather_fog_widget), state != "fog");
+          set_hidden(id(standby_weather_hail_widget), state != "hail");
+          set_hidden(id(standby_weather_lightning_widget), state != "lightning");
+          set_hidden(id(standby_weather_lightning_rainy_widget), state != "lightning-rainy");
+          set_hidden(id(standby_weather_partlycloudy_widget), state != "partlycloudy");
+          set_hidden(id(standby_weather_pouring_widget), state != "pouring");
+          set_hidden(id(standby_weather_rainy_widget), state != "rainy");
+          set_hidden(id(standby_weather_snowy_widget), state != "snowy");
+          set_hidden(id(standby_weather_snowy_rainy_widget), state != "snowy-rainy");
+          set_hidden(id(standby_weather_sunny_widget), state != "sunny");
+          set_hidden(id(standby_weather_windy_widget), state != "windy");
+          set_hidden(id(standby_weather_windy_variant_widget), state != "windy-variant");
+      - lambda: |-
+          onx_render::label(id(standby_temperature_widget), onx_clock_sensors::temperature_text(
+              id(standby_weather_temperature), id(standby_weather_temperature_unit)).c_str());
+          onx_render::label(id(standby_humidity_widget), onx_clock_sensors::humidity_text(
+              id(standby_weather_humidity)).c_str());
+      - lambda: |-
+          // Sensor icons replace the defaults once downloaded; both fit 16 px.
+          for (auto *w : {id(standby_temperature_icon_widget), id(standby_humidity_icon_widget)}) {
+            if (lv_obj_get_width(w) != 16) {
+              lv_obj_set_size(w, onx_geom::S(16), onx_geom::S(16));
+              lv_image_set_inner_align(w, LV_IMAGE_ALIGN_CONTAIN);
+            }
+          }
+          id(entity_icon_downloader)->bind(id(standby_temperature_icon_widget), onx_clock_sensors::first_icon(), id(standby_weather_temp_icon_img), false);
+          id(entity_icon_downloader)->bind(id(standby_humidity_icon_widget), onx_clock_sensors::second_icon(), id(standby_weather_humidity_icon_img), false);
+      - lambda: |-
+          lv_obj_add_flag(id(normal_device_wifi_online_widget), LV_OBJ_FLAG_HIDDEN);
+          lv_obj_add_flag(id(normal_device_wifi_offline_widget), LV_OBJ_FLAG_HIDDEN);
+          lv_obj_add_flag(id(normal_device_homeassistant_online_widget), LV_OBJ_FLAG_HIDDEN);
+          lv_obj_add_flag(id(normal_device_homeassistant_offline_widget), LV_OBJ_FLAG_HIDDEN);
+      - lambda: |-
+          onx_render::style_text_font(id(standby_time_widget), onx_display_settings::datetime.hour_format == 1 && onx_display_settings::datetime.show_ampm ?
+              id(fonts_MiSans_Medium_32)->get_lv_font() : id(fonts_MiSans_Bold_64)->get_lv_font(), 0);
+      - lambda: |-
+          auto now = id(ha_time).now();
+          const bool ready = id(ha_time_ready) && now.is_valid();
+          onx_render::label(id(standby_time_widget), ready ? now.strftime(onx_display_settings::time_pattern()).c_str() : "--:--");
+          onx_render::label(id(standby_date_widget), ready ? now.strftime(onx_display_settings::date_pattern()).c_str() : "----");
+      - lambda: |-
+          #ifdef USE_ROOM_COMPANION
+          onx_render::apply_panel_palette(id(standby_page)->obj);
+          onx_render::style_bg_color(id(standby_page)->obj,lv_color_hex(onx_display_settings::background()),0);
+          #endif
+      - lvgl.page.show: standby_page
+
   - id: request_normal_sensor_history
     mode: parallel
     max_runs: 2
@@ -18,15 +97,20 @@ script:
                 action: recorder.get_statistics
                 variables:
                   sensor_entity: !lambda return onx_sensor_view::history_entity(entity);
+                  history_hours: !lambda return std::to_string(onx_sensor_view::states[onx_sensor_view::index(entity)].range_seconds / 3600);
+                  history_period: !lambda |-
+                    return onx_sensor_view::states[onx_sensor_view::index(entity)].range_seconds <= 43200 ? std::string("5minute") : std::string("hour");
                 data_template:
                   statistic_ids: "{{ [sensor_entity] }}"
-                  start_time: "{{ (now() - timedelta(hours=12)).isoformat() }}"
-                  period: 5minute
+                  start_time: "{{ (now() - timedelta(hours=history_hours | int)).isoformat() }}"
+                  period: "{{ history_period }}"
                   types: "{{ ['mean', 'state'] }}"
                 capture_response: true
                 response_template: !lambda |-
                   const auto history_entity=onx_sensor_view::history_entity(entity);
-                  return "{% set ns = namespace(points=[]) %}{% for p in response.get('statistics', response).get('"+history_entity+"', [])[::2][:73] %}{% set y = p.get('mean') if p.get('mean') is not none else p.get('state') %}{% if y is number %}{% set ns.points = ns.points + [dict(t=as_timestamp(p['start']), y=y)] %}{% endif %}{% endfor %}{{ dict(points=ns.points) | to_json }}";
+                  const auto range=onx_sensor_view::states[onx_sensor_view::index(entity)].range_seconds;
+                  const std::string stride=range==604800 ? "3" : range==43200 ? "2" : "1";
+                  return "{% set ns = namespace(points=[]) %}{% for p in response.get('statistics', response).get('"+history_entity+"', [])[::"+stride+"][:73] %}{% set y = p.get('mean') if p.get('mean') is not none else p.get('state') %}{% if y is number %}{% set ns.points = ns.points + [dict(t=as_timestamp(p['start']), y=y)] %}{% endif %}{% endfor %}{{ dict(points=ns.points) | to_json }}";
                 on_success:
                   - lambda: |-
                       const int i=onx_sensor_view::index(entity);if(i<0)return;
@@ -302,6 +386,10 @@ script:
             for (auto *icon : {w.icon_switch_on, w.icon_plug, w.icon_plug_on,
                               w.icon_light, w.icon_light_on, w.icon_curtain}) set_hidden(icon, true);
             set_hidden(w.icon_settings, !settings_entry);
+            #ifdef USE_ROOM_COMPANION
+            onx_render::style_image_recolor(w.icon_settings,lv_color_hex(onx_display_settings::foreground()),0);
+            onx_render::style_image_recolor_opa(w.icon_settings,LV_OPA_COVER,0);
+            #endif
             set_hidden(w.icon_switch, settings_entry);
             if (!settings_entry) {
               bool local_state = false;
@@ -449,6 +537,17 @@ script:
             }
           }
 
+          #ifdef USE_ROOM_COMPANION
+          if (id(room_panel)->native_ui_has_touch()) {
+            // Cards live on the top layer. Finish the base-page handoff before
+            // hiding them; animating the base exposes its stale entity body.
+            onx_render::apply_panel_palette(target);
+            onx_render::style_bg_color(target,lv_color_hex(onx_display_settings::background()),0);
+            if (lv_scr_act() != target) lv_scr_load(target);
+            if (selected >= total) onx_panel_pages::hide();
+            return;
+          }
+          #endif
           if (lv_scr_act() == target) {
             return;
           }
@@ -1298,7 +1397,7 @@ script:
             lv_obj_set_flex_flow(menu, LV_FLEX_FLOW_COLUMN);
             lv_obj_set_scroll_dir(menu, LV_DIR_VER);
             lv_obj_set_scrollbar_mode(menu, LV_SCROLLBAR_MODE_AUTO);
-            static const char *labels[] = {"Home Assistant", "Wireless network", "Display", "Swipe sensitivity", "Dark mode"};
+            static const char *labels[] = {"Home Assistant", "Wireless network", "Display", "Swipe sensitivity", "Background"};
             for (int i = 0; i < 5; ++i) {
               auto *row = lv_button_create(menu);
               lv_obj_set_size(row, LV_PCT(100), (lv_display_get_vertical_resolution(nullptr) - 108) / 5);
@@ -1319,16 +1418,24 @@ script:
                   case 2: id(enter_normal_settings_brightness_detail).execute(); break;
                   case 3: id(enter_normal_settings_input_detail).execute(); break;
                   case 4:
-                    id(panel_dark_mode).toggle();
-                    lv_label_set_text(lv_obj_get_child(static_cast<lv_obj_t *>(lv_event_get_target(event)), 0),
-                                      id(panel_dark_mode).state ? "Dark mode: On" : "Dark mode: Off");
+                    {
+                      static const uint32_t colors[]={0x101418,0x000000,0x232323,0x14283D,0x23372C,0xF4F4F4};
+                      const auto current=onx_display_settings::background();size_t next=0;
+                      for(size_t i=0;i<std::size(colors);++i)if(colors[i]==current)next=(i+1)%std::size(colors);
+                      if(onx_entity_config::save_background_color(onx_display_settings::color_text(colors[next]))) {
+                        onx_render::remember_panel_colors();
+                        onx_render::apply_panel_palette(id(normal_settings_page)->obj);
+                      }
+                      const auto label=std::string("Background ")+onx_display_settings::color_text(onx_display_settings::background());
+                      lv_label_set_text(lv_obj_get_child(static_cast<lv_obj_t *>(lv_event_get_target(event)), 0),label.c_str());
+                    }
                     break;
                 }
               }, LV_EVENT_CLICKED, reinterpret_cast<void *>(static_cast<intptr_t>(i)));
             }
           }
-          lv_label_set_text(lv_obj_get_child(lv_obj_get_child(menu, 4), 0),
-                            id(panel_dark_mode).state ? "Dark mode: On" : "Dark mode: Off");
+          const auto background_label=std::string("Background ")+onx_display_settings::color_text(onx_display_settings::background());
+          lv_label_set_text(lv_obj_get_child(lv_obj_get_child(menu, 4), 0),background_label.c_str());
           return;
           #endif
 
@@ -3248,7 +3355,8 @@ script:
           // Notification pictures take priority over cosmetic media fetches.
           if(onx_notification::current.visible || onx_notification::image.downloading)return;
           onx_media::artwork_wait_reason.clear();
-          const auto entity = id(ui_presenter)->get_normal_device_entity_id(id(normal_device_detail_index));
+          const bool main_art = !id(normal_device_detail_active) && !onx_media::main_entity.empty();
+          const auto entity = main_art ? onx_media::main_entity : id(ui_presenter)->get_normal_device_entity_id(id(normal_device_detail_index));
           auto *detail = custom_logic_entity_sub::entity_detail(entity);
           const bool media = id(normal_device_detail_active) &&
                              id(normal_device_detail_kind) == NORMAL_DEVICE_DETAIL_KIND_AUTOMATION &&
@@ -3267,8 +3375,8 @@ script:
             lv_obj_add_flag(id(normal_media_title), LV_OBJ_FLAG_HIDDEN);
             lv_obj_add_flag(id(normal_media_artist), LV_OBJ_FLAG_HIDDEN);
           }
-          const bool playable = media && detail->available && id(normal_ha_api_connected) &&
-              id(normal_device_detail_online) && !id(screen_off_state) && !id(sleep_mode_state) &&
+          const bool playable = (media || main_art) && detail != nullptr && detail->available && id(normal_ha_api_connected) &&
+              (main_art || id(normal_device_detail_online)) && !id(screen_off_state) && !id(sleep_mode_state) &&
               !id(ui_presenter)->is_standby_active() && onx_media::has_playback(detail->state);
           const std::string desired = playable ? onx_media::artwork_url(origin, detail->picture) : "";
           if (desired != onx_media::candidate_url) {
@@ -3278,6 +3386,7 @@ script:
             // Detach the LVGL source before release invalidates the pixel buffer.
             lv_obj_add_flag(id(normal_media_cover), LV_OBJ_FLAG_HIDDEN);
             onx_render::image(id(normal_media_cover), id(fallback_music_note_img)->get_lv_image_dsc());
+            if (onx_media::detach_main_artwork) onx_media::detach_main_artwork();
             lv_image_cache_drop(id(media_cover_image)->get_lv_image_dsc());
             lv_image_header_cache_drop(id(media_cover_image)->get_lv_image_dsc());
             id(media_cover_image)->release();
@@ -3289,7 +3398,7 @@ script:
             onx_runtime::record("artwork_cancelled", entity);
           }
           const bool ready = !desired.empty() && desired == onx_media::ready_url;
-          if (ready) {
+          if (ready && !main_art) {
             onx_render::image(id(normal_media_cover), id(media_cover_image)->get_lv_image_dsc());
             lv_obj_clear_flag(id(normal_media_cover), LV_OBJ_FLAG_HIDDEN);
             lv_obj_add_flag(id(normal_automation_detail_icon), LV_OBJ_FLAG_HIDDEN);
@@ -3297,7 +3406,7 @@ script:
             lv_obj_add_flag(id(normal_media_cover), LV_OBJ_FLAG_HIDDEN);
           }
           if (desired.empty() || ready || onx_media::downloading ||
-              !id(normal_ha_api_connected) || !id(normal_device_detail_online) ||
+              !id(normal_ha_api_connected) || (!main_art && !id(normal_device_detail_online)) ||
               id(screen_off_state) || id(ui_presenter)->is_standby_active()) return;
           // Wait for a stable URL and keep concurrent TLS clients off the small
           // internal heap. Cosmetic artwork must not crowd out API/Wi-Fi buffers.
@@ -3320,6 +3429,7 @@ script:
           onx_media::retry_at_ms = 0;
           // Hidden LVGL widgets still retain their source. Detach it explicitly.
           onx_render::image(id(normal_media_cover), id(fallback_music_note_img)->get_lv_image_dsc());
+          if (onx_media::detach_main_artwork) onx_media::detach_main_artwork();
           lv_image_cache_drop(id(media_cover_image)->get_lv_image_dsc());
           lv_image_header_cache_drop(id(media_cover_image)->get_lv_image_dsc());
           onx_media::ready_url.clear();

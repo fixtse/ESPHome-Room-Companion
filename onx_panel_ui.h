@@ -105,6 +105,9 @@ inline lv_obj_t *media_bar = nullptr, *media_row = nullptr, *media_play = nullpt
 inline std::function<void(bool previous)> on_track;
 inline std::function<void()> on_play_pause;
 inline std::function<bool()> is_playing;
+inline std::function<bool()> has_quick_actions;
+inline std::function<void()> open_quick_actions;
+inline lv_obj_t *media_actions = nullptr, *media_actions_label = nullptr, *media_art_frame = nullptr;
 // Top of the artwork: there is no header on details any more.
 inline int media_top() { return S(12); }
 inline void create_media_controls(lv_obj_t *shell, const lv_font_t *font) {
@@ -117,6 +120,15 @@ inline void create_media_controls(lv_obj_t *shell, const lv_font_t *font) {
   lv_obj_set_style_radius(media_bar, S(3), LV_PART_INDICATOR);
   lv_obj_remove_flag(media_bar, LV_OBJ_FLAG_CLICKABLE);
 
+  media_actions = round_button(shell, S(40), 0x2A2F35);
+  media_actions_label = symbol(media_actions, LV_SYMBOL_LIST, font);
+  lv_obj_add_event_cb(media_actions, [](lv_event_t *) { if (open_quick_actions) open_quick_actions(); }, LV_EVENT_CLICKED, nullptr);
+  media_art_frame = lv_obj_create(shell);
+  lv_obj_remove_style_all(media_art_frame);
+  lv_obj_set_style_radius(media_art_frame, S(18), 0);
+  lv_obj_set_style_clip_corner(media_art_frame, true, 0);
+  lv_obj_remove_flag(media_art_frame, LV_OBJ_FLAG_SCROLLABLE);
+  lv_obj_remove_flag(media_art_frame, LV_OBJ_FLAG_CLICKABLE);
   media_row = lv_obj_create(shell);
   lv_obj_set_size(media_row, width, S(64));
   lv_obj_set_style_bg_opa(media_row, LV_OPA_TRANSP, 0);
@@ -146,6 +158,9 @@ inline void sync_media(const Media &m, const lv_font_t *font) {
   }
   const bool playlist = !hidden(m.playlist);
   show(media_row, media && !playlist);
+  show(media_art_frame, media && !hidden(m.cover));
+  const bool actions = media && !playlist && has_quick_actions && has_quick_actions();
+  show(media_actions, actions);
   if (!media) { show(media_bar, false); return; }
   const int w = width, h = height, top = media_top(), row_h = S(64), row_gap = S(12);
   // Square shell covering the whole screen (detail pages hide the strip).
@@ -164,11 +179,17 @@ inline void sync_media(const Media &m, const lv_font_t *font) {
   const int col_dx = col_x + col_w / 2 - w / 2;                 // Offset from the screen centre.
   lv_image_header_t header{};
   if (lv_image_decoder_get_info(lv_image_get_src(m.cover), &header) == LV_RESULT_OK && header.w && header.h) {
+    lv_image_set_pivot(m.cover, header.w / 2, header.h / 2);
     const int scale = cover_size * 256 / std::max(header.w,header.h);
     if (lv_image_get_scale_x(m.cover) != scale) lv_image_set_scale(m.cover,scale);
   }
   const int cover_dx = wide ? top + cover_size / 2 - w / 2 : 0;
-  place(m.cover, LV_ALIGN_TOP_MID, cover_dx, top);
+  lv_obj_set_size(media_art_frame, cover_size, cover_size);
+  place(media_art_frame, LV_ALIGN_TOP_MID, cover_dx, top);
+  if (lv_obj_get_parent(m.cover) != media_art_frame) lv_obj_set_parent(m.cover, media_art_frame);
+  place(m.cover, LV_ALIGN_CENTER, 0, 0);
+  place(media_actions, LV_ALIGN_TOP_RIGHT, -S(12), top);
+  if (actions) lv_obj_move_foreground(media_actions);
   place(m.icon, LV_ALIGN_TOP_MID, cover_dx, top);
   place(m.transport, LV_ALIGN_TOP_MID, cover_dx, top + cover_size / 2);
   const int text_y = wide ? top + S(8) : top + cover_size + 12;
@@ -184,7 +205,7 @@ inline void sync_media(const Media &m, const lv_font_t *font) {
   // play/pause button. Its own refresh keeps un-hiding it while paused, so
   // hiding it here each tick made it flicker: keep it transparent instead.
   onx_render::style_opa(m.transport, LV_OPA_TRANSP, 0);
-  show(media_bar, progress || lv_bar_get_value(media_bar) > 0);
+  show(media_bar, !playlist && progress);
   if (m.arc != nullptr) lv_bar_set_value(media_bar, lv_arc_get_value(m.arc), LV_ANIM_OFF);
   if (lv_obj_get_style_width(media_bar, LV_PART_MAIN) != col_w - S(40)) lv_obj_set_size(media_bar, col_w - S(40), S(5));
   place(media_bar, LV_ALIGN_TOP_MID, col_dx, h - row_h - row_gap - 20);

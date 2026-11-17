@@ -35,7 +35,7 @@ template<typename F> inline std::string build_json(F &&fill) {
 
 inline esphome::ESPPreferenceObject behavior_preference;
 inline esphome::ESPPreferenceObject hold_cue_preference;
-inline esphome::ESPPreferenceObject display_preference;
+inline esphome::ESPPreferenceObject display_preference, background_preference;
 inline esphome::ESPPreferenceObject orientation_preference;
 inline esphome::ESPPreferenceObject idle_preference;
 inline esphome::ESPPreferenceObject media_style_preference;
@@ -78,10 +78,16 @@ inline void load_display_settings() {
   onx_display_settings::HoldCue hold_saved{};
   if(hold_cue_preference.load(&hold_saved) && hold_saved.magic==0x4F4E5848 && hold_saved.show<=1)
     onx_display_settings::hold_cue=hold_saved;
+  background_preference=esphome::global_preferences->make_preference<onx_display_settings::BackgroundSettings>(esphome::fnv1_hash("onx.background.v1"));
+  onx_display_settings::BackgroundSettings background_saved{};
+  if(background_preference.load(&background_saved) && background_saved.magic==0x4F4E5842 && background_saved.color<=0xFFFFFF)
+    onx_display_settings::background_settings=background_saved;
   display_settings_loaded = true;
 }
-inline bool save_display_settings(const std::string &color, const std::string &scope, const std::string &date_format, const std::string &hour_format, bool show_ampm,const std::string &idle_view="",const std::string &media_view="",const std::string &orientation="",const std::string &notifications_cover_timers="",const std::string &clock_seconds_ring="") {
+inline bool save_display_settings(const std::string &color, const std::string &scope, const std::string &date_format, const std::string &hour_format, bool show_ampm,const std::string &idle_view="",const std::string &media_view="",const std::string &orientation="",const std::string &notifications_cover_timers="",const std::string &clock_seconds_ring="",const std::string &background_color="") {
   load_display_settings();
+  auto background_next=onx_display_settings::background_settings;
+  if(!background_color.empty() && !onx_display_settings::parse_color(background_color,background_next.color))return false;
   auto notification_next=onx_display_settings::behavior;
   if(!notifications_cover_timers.empty()) {
     if(notifications_cover_timers!="0" && notifications_cover_timers!="1")return false;
@@ -110,11 +116,21 @@ inline bool save_display_settings(const std::string &color, const std::string &s
   if (!onx_display_settings::parse_date_format(date_format, date_next.date_format) ||
       !onx_display_settings::parse_hour_format(hour_format, date_next.hour_format)) return false;
   date_next.show_ampm = show_ampm ? 1 : 0;
-  if (next.media_color == onx_display_settings::current.media_color && next.standby_scope == onx_display_settings::current.standby_scope &&
+  if (background_next.color==onx_display_settings::background_settings.color && next.media_color == onx_display_settings::current.media_color && next.standby_scope == onx_display_settings::current.standby_scope &&
       date_next.date_format == onx_display_settings::datetime.date_format && date_next.hour_format == onx_display_settings::datetime.hour_format && date_next.show_ampm == onx_display_settings::datetime.show_ampm && idle_next.media==onx_display_settings::idle.media && media_next.material==onx_display_settings::media_style.material && orientation_next.turns==onx_display_settings::orientation.turns && notification_next.cover_timers==onx_display_settings::behavior.cover_timers && notification_next.clock_seconds==onx_display_settings::behavior.clock_seconds) return true;
-  if (!behavior_preference.save(&notification_next) || !orientation_preference.save(&orientation_next) || !media_style_preference.save(&media_next) || !idle_preference.save(&idle_next) || !datetime_preference.save(&date_next) || !display_preference.save(&next) || !esphome::global_preferences->sync()) return false;
+  if (!background_preference.save(&background_next) || !behavior_preference.save(&notification_next) || !orientation_preference.save(&orientation_next) || !media_style_preference.save(&media_next) || !idle_preference.save(&idle_next) || !datetime_preference.save(&date_next) || !display_preference.save(&next) || !esphome::global_preferences->sync()) return false;
+  onx_display_settings::background_settings=background_next;
   onx_display_settings::behavior=notification_next;
   onx_display_settings::current = next; onx_display_settings::datetime = date_next; onx_display_settings::idle=idle_next; onx_display_settings::media_style=media_next; onx_display_settings::orientation=orientation_next; return true;
+}
+
+inline bool save_background_color(const std::string &value) {
+  load_display_settings();
+  auto next=onx_display_settings::background_settings;
+  if(!display_settings_loaded||!onx_display_settings::parse_color(value,next.color))return false;
+  if(next.color==onx_display_settings::background_settings.color)return true;
+  if(!background_preference.save(&next)||!esphome::global_preferences->sync())return false;
+  onx_display_settings::background_settings=next;return true;
 }
 
 inline bool save_hold_cue(const std::string &value) {

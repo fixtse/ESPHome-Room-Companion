@@ -9,9 +9,10 @@ interval:
           if(!id(ui_presenter)->is_normal_mode_active() || id(ui_presenter)->is_standby_active() ||
               id(normal_page_index)!=0 || id(normal_device_detail_active) || id(screen_off_state) || id(sleep_mode_state))
             onx_navigation::hide();
-          const bool active = id(normal_device_detail_active) && !id(screen_off_state) &&
+          const bool active = !id(screen_off_state) && !id(sleep_mode_state) &&
                               id(ui_presenter)->is_normal_mode_active() && !id(ui_presenter)->is_standby_active();
-          const auto entity = active ? id(ui_presenter)->get_normal_device_entity_id(id(normal_device_detail_index)) : std::string("");
+          const auto entity = onx_controls::dispatch_target(active, id(normal_device_detail_active),
+              id(ui_presenter)->get_normal_device_entity_id(id(normal_device_detail_index)));
           onx_controls::tick(id(api_server), entity, id(normal_ha_api_connected));
           custom_logic_entity_sub::tick_subscriptions(id(api_server));
           custom_logic_entity_sub::recover_entity_states(id(api_server), id(normal_ha_api_connected));
@@ -139,76 +140,7 @@ interval:
                      !id(sleep_mode_state) &&
                      id(ui_presenter)->is_standby_active();
           then:
-            - lambda: |-
-                auto set_hidden = [](lv_obj_t *obj, bool hidden) {
-                  if (hidden) {
-                    lv_obj_add_flag(obj, LV_OBJ_FLAG_HIDDEN);
-                  } else {
-                    lv_obj_clear_flag(obj, LV_OBJ_FLAG_HIDDEN);
-                  }
-                };
-                const std::string &state = id(standby_weather_state);
-                const bool known =
-                    state == "clear-night" ||
-                    state == "cloudy" ||
-                    state == "exceptional" ||
-                    state == "fog" ||
-                    state == "hail" ||
-                    state == "lightning" ||
-                    state == "lightning-rainy" ||
-                    state == "partlycloudy" ||
-                    state == "pouring" ||
-                    state == "rainy" ||
-                    state == "snowy" ||
-                    state == "snowy-rainy" ||
-                    state == "sunny" ||
-                    state == "windy" ||
-                    state == "windy-variant";
-                set_hidden(id(standby_weather_unknown_widget), known);
-                set_hidden(id(standby_weather_clear_night_widget), state != "clear-night");
-                set_hidden(id(standby_weather_cloudy_widget), state != "cloudy");
-                set_hidden(id(standby_weather_exceptional_widget), state != "exceptional");
-                set_hidden(id(standby_weather_fog_widget), state != "fog");
-                set_hidden(id(standby_weather_hail_widget), state != "hail");
-                set_hidden(id(standby_weather_lightning_widget), state != "lightning");
-                set_hidden(id(standby_weather_lightning_rainy_widget), state != "lightning-rainy");
-                set_hidden(id(standby_weather_partlycloudy_widget), state != "partlycloudy");
-                set_hidden(id(standby_weather_pouring_widget), state != "pouring");
-                set_hidden(id(standby_weather_rainy_widget), state != "rainy");
-                set_hidden(id(standby_weather_snowy_widget), state != "snowy");
-                set_hidden(id(standby_weather_snowy_rainy_widget), state != "snowy-rainy");
-                set_hidden(id(standby_weather_sunny_widget), state != "sunny");
-                set_hidden(id(standby_weather_windy_widget), state != "windy");
-                set_hidden(id(standby_weather_windy_variant_widget), state != "windy-variant");
-            - lambda: |-
-                onx_render::label(id(standby_temperature_widget), onx_clock_sensors::temperature_text(
-                    id(standby_weather_temperature), id(standby_weather_temperature_unit)).c_str());
-                onx_render::label(id(standby_humidity_widget), onx_clock_sensors::humidity_text(
-                    id(standby_weather_humidity)).c_str());
-            - lambda: |-
-                // Sensor icons replace the defaults once downloaded; both fit 16 px.
-                for (auto *w : {id(standby_temperature_icon_widget), id(standby_humidity_icon_widget)}) {
-                  if (lv_obj_get_width(w) != 16) {
-                    lv_obj_set_size(w, onx_geom::S(16), onx_geom::S(16));
-                    lv_image_set_inner_align(w, LV_IMAGE_ALIGN_CONTAIN);
-                  }
-                }
-                id(entity_icon_downloader)->bind(id(standby_temperature_icon_widget), onx_clock_sensors::first_icon(), id(standby_weather_temp_icon_img), false);
-                id(entity_icon_downloader)->bind(id(standby_humidity_icon_widget), onx_clock_sensors::second_icon(), id(standby_weather_humidity_icon_img), false);
-            - lambda: |-
-                lv_obj_add_flag(id(normal_device_wifi_online_widget), LV_OBJ_FLAG_HIDDEN);
-                lv_obj_add_flag(id(normal_device_wifi_offline_widget), LV_OBJ_FLAG_HIDDEN);
-                lv_obj_add_flag(id(normal_device_homeassistant_online_widget), LV_OBJ_FLAG_HIDDEN);
-                lv_obj_add_flag(id(normal_device_homeassistant_offline_widget), LV_OBJ_FLAG_HIDDEN);
-            - lvgl.page.show: standby_page
-            - lambda: |-
-                onx_render::style_text_font(id(standby_time_widget), onx_display_settings::datetime.hour_format == 1 && onx_display_settings::datetime.show_ampm ?
-                    id(fonts_MiSans_Medium_32)->get_lv_font() : id(fonts_MiSans_Bold_64)->get_lv_font(), 0);
-            - lambda: |-
-                auto now = id(ha_time).now();
-                const bool ready = id(ha_time_ready) && now.is_valid();
-                onx_render::label(id(standby_time_widget), ready ? now.strftime(onx_display_settings::time_pattern()).c_str() : "--:--");
-                onx_render::label(id(standby_date_widget), ready ? now.strftime(onx_display_settings::date_pattern()).c_str() : "----");
+            - script.execute: refresh_normal_standby_page
       - if:
           condition:
             lambda: |-
@@ -367,6 +299,7 @@ interval:
             onx_render::image(id(normal_media_cover), id(fallback_music_note_img)->get_lv_image_dsc());
             lv_image_cache_drop(id(media_cover_image)->get_lv_image_dsc());
             lv_image_header_cache_drop(id(media_cover_image)->get_lv_image_dsc());
+            if (onx_media::detach_main_artwork) onx_media::detach_main_artwork();
             id(media_cover_image)->release();
             onx_media::downloading = false; onx_media::ready_url.clear();
             id(entity_icon_downloader)->set_artwork_busy(false);

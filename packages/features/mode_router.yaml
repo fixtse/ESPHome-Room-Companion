@@ -136,6 +136,32 @@ onx_config_web:
             }
           }
           if (const auto *detail = custom_logic_entity_sub::entity_detail(entity)) {
+            #ifdef USE_ROOM_COMPANION
+            auto panel = slot["panel"].to<JsonObject>();
+            panel["state"] = detail->state; panel["unit"] = detail->unit;
+            panel["temperature"] = detail->target; panel["current"] = detail->current;
+            panel["humidity"] = detail->humidity; panel["feels_like"] = detail->apparent_temperature;
+            panel["wind"] = detail->wind_speed; panel["wind_unit"] = detail->wind_unit;
+            panel["pressure"] = detail->pressure; panel["pressure_unit"] = detail->pressure_unit;
+            panel["visibility"] = detail->visibility; panel["visibility_unit"] = detail->visibility_unit;
+            panel["uv"] = detail->uv_index; panel["title"] = detail->media_title; panel["artist"] = detail->media_artist;
+            panel["forecast_pending"] = detail->forecast_pending;
+            if(entity.rfind("light.",0)==0) {
+              const auto light=id(app_storage)->normal_device_slot(custom_logic::normal_ui_slot_for_device_config_slot(i)).light();
+              panel["brightness"] = light.brightness_pct; panel["dimmable"] = light.supports_brightness();
+            }
+            auto forecast=panel["forecast"].to<JsonArray>();
+            for(int f=0;f<detail->forecast_count;++f) {
+              auto day=forecast.add<JsonObject>();
+              day["date"]=detail->forecast[f].date;day["condition"]=detail->forecast[f].condition;
+              day["high"]=detail->forecast[f].high;day["low"]=detail->forecast[f].low;day["rain"]=detail->forecast[f].rain;
+            }
+            auto actions=panel["actions"].to<JsonArray>();
+            if(const auto *list=onx_entity_config::playlists_for_ui(custom_logic::normal_ui_slot_for_device_config_slot(i),entity))
+              for(int a=0;a<list->count;++a)actions.add(list->entries[a].name);
+            const int sensor=onx_sensor_view::index(entity);
+            if(sensor>=0)panel["history_range"]=onx_sensor_view::states[sensor].range_seconds;
+            #endif
             if (custom_logic_entity_sub::is_timer_detail(entity)) {
               time_t finish = 0;
               const bool has_finish = custom_logic_entity_sub::parse_ha_datetime_epoch(detail->timer_finishes_at, &finish);
@@ -232,6 +258,7 @@ onx_config_web:
         root["clock_humidity"] = std::string(onx_clock_sensors::config.humidity);
         root["notifications_cover_timers"] = onx_display_settings::behavior.cover_timers?"1":"0";
         root["idle_view"] = onx_display_settings::idle.media?"media":"clock";
+        root["background_color"] = onx_display_settings::color_text(onx_display_settings::background());
         root["standby_scope"] = onx_display_settings::scope_text(onx_display_settings::current.standby_scope);
         root["sensitivity"] = std::to_string(id(normal_input_applied_value));
         root["sleep_enabled"] = id(ui_presenter)->get_sleep_mode_enabled() ? "1" : "0";
@@ -242,7 +269,7 @@ onx_config_web:
     }
     if (query.op == "settings") {
       unsigned brightness, standby, sensitivity, sleep_timeout;
-      uint32_t media_color; uint8_t standby_scope, date_format, hour_format, orientation;
+      uint32_t media_color, background_color; uint8_t standby_scope, date_format, hour_format, orientation;
       const auto date_text = query.date_format.empty() ? onx_display_settings::date_format_text(onx_display_settings::datetime.date_format) : query.date_format;
       const auto hour_text = query.hour_format.empty() ? (onx_display_settings::datetime.hour_format == 1 ? "12" : "24") : query.hour_format;
       if ((!query.orientation.empty() && !onx_display_settings::parse_orientation(query.orientation,orientation)) ||
@@ -257,6 +284,7 @@ onx_config_web:
           !onx_display_settings::parse_date_format(date_text, date_format) ||
           !onx_display_settings::parse_hour_format(hour_text, hour_format) ||
           !onx_display_settings::parse_color(query.media_color, media_color) ||
+          (!query.background_color.empty() && !onx_display_settings::parse_color(query.background_color, background_color)) ||
           !onx_display_settings::parse_scope(query.standby_scope, standby_scope) ||
           !onx_config::integer_in_range(query.brightness, 10, 100, brightness) ||
           !onx_config::integer_in_range(query.standby, 1, 900, standby) ||
@@ -272,7 +300,7 @@ onx_config_web:
       if (!id(app_storage)->set_standby_timeout_ms(standby * 1000U) ||
           !id(app_storage)->set_sleep_mode_config(enabled, start_minutes, end_minutes, sleep_timeout * 1000U))
         return onx_entity_config::error("Could not persist display settings; retry");
-      if (!onx_entity_config::save_display_settings(query.media_color, query.standby_scope, date_text, hour_text, query.show_ampm.empty() ? onx_display_settings::datetime.show_ampm!=0 : query.show_ampm=="1",query.idle_view,query.media_view,query.orientation,query.notifications_cover_timers,query.clock_seconds_ring))
+      if (!onx_entity_config::save_display_settings(query.media_color, query.standby_scope, date_text, hour_text, query.show_ampm.empty() ? onx_display_settings::datetime.show_ampm!=0 : query.show_ampm=="1",query.idle_view,query.media_view,query.orientation,query.notifications_cover_timers,query.clock_seconds_ring,query.background_color))
         return onx_entity_config::error("Could not persist appearance settings; retry");
       if (!onx_clock_sensors::save(id(api_server), query.clock_temperature, query.clock_humidity))
         return onx_entity_config::error("Could not save the clock sensors; retry");

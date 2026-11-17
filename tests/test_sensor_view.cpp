@@ -22,6 +22,15 @@ int main() {
   s.sample(1735690800,30);assert(s.history(1735690800).size()==2);
   s.sample(1735690801,NAN);assert(s.history(1735690801).size()==2);
   assert(s.history(1735734000).size()==1);
+  State ranged;
+  ranged.range_seconds=604800;
+  ranged.sample(1735689600,10);
+  ranged.sample(1735689600+3*86400,20);
+  assert(ranged.history(1735689600+6*86400).size()==2);
+  assert(ranged.history(1735689600+8*86400).size()==1);
+  ranged.range_seconds=3600;ranged.points={};
+  ranged.sample(1735689600,10);ranged.sample(1735693200,20);
+  assert(ranged.history(1735693201).size()==1);
   Config other=c;snprintf(other.secondary,sizeof(other.secondary),"sensor.other");s.bind(other);
   assert(!s.received&&s.history(1735690801).empty());
 }

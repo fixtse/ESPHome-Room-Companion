@@ -38,17 +38,21 @@ static const char HA_BROWSER_JS[] = R"ONXJS(
  }
  function baseUrl(value){const u=new URL(value.includes('://')?value:'http://'+value);if(!['http:','https:'].includes(u.protocol)||u.username||u.password)throw Error('Enter a Home Assistant HTTP or HTTPS address');return u.origin;}
  class Client{
-  constructor(storage=window.sessionStorage){this.storage=storage;this.items=local();this.ready=false;}
-  read(key){try{return JSON.parse(this.storage.getItem(key)||'null')}catch{return null}}
+  constructor(storage=window.localStorage||window.sessionStorage){
+   this.storage=storage;this.flowStorage=window.sessionStorage||storage;this.items=local();this.ready=false;
+   // Keep an existing login when upgrading from session-only storage.
+   try{const old=this.flowStorage.getItem('onx.ha.auth');if(old&&!storage.getItem('onx.ha.auth'))storage.setItem('onx.ha.auth',old);if(storage!==this.flowStorage)this.flowStorage.removeItem('onx.ha.auth')}catch{}
+  }
+  read(key){try{return JSON.parse((key==='onx.ha.flow'?this.flowStorage:this.storage).getItem(key)||'null')}catch{return null}}
   async login(value){
    const base=baseUrl(value);const state=Array.from(crypto.getRandomValues(new Uint8Array(24)),x=>x.toString(16).padStart(2,'0')).join('');
    const flow={base,state,time:Date.now()};const params=new URLSearchParams({client_id:location.origin+'/',redirect_uri:location.origin+'/panel',state});
    if(crypto.subtle){flow.verifier=Array.from(crypto.getRandomValues(new Uint8Array(32)),x=>x.toString(16).padStart(2,'0')).join('');const hash=new Uint8Array(await crypto.subtle.digest('SHA-256',new TextEncoder().encode(flow.verifier)));params.set('code_challenge',btoa(String.fromCharCode(...hash)).replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/,''));params.set('code_challenge_method','S256');}
-   this.storage.setItem('onx.ha.flow',JSON.stringify(flow));location.assign(base+'/auth/authorize?'+params);
+   this.flowStorage.setItem('onx.ha.flow',JSON.stringify(flow));location.assign(base+'/auth/authorize?'+params);
   }
   async finishLogin(){
    const params=new URLSearchParams(location.search);if(!params.has('code'))return;
-   const flow=this.read('onx.ha.flow');history.replaceState(null,'','/panel');this.storage.removeItem('onx.ha.flow');
+   const flow=this.read('onx.ha.flow');history.replaceState(null,'','/panel');this.flowStorage.removeItem('onx.ha.flow');
    if(!flow||params.get('state')!==flow.state||Date.now()-flow.time>900000)throw Error('Home Assistant sign-in expired. Connect again.');
    const body={grant_type:'authorization_code',code:params.get('code'),client_id:location.origin+'/'};if(flow.verifier)body.code_verifier=flow.verifier;
    await this.exchange(flow.base,body);
@@ -86,7 +90,7 @@ static const char HA_BROWSER_JS[] = R"ONXJS(
      this.items=catalogue(states,registry,areas,devices,{entity:entity.resources,entity_component:component.resources});this.ready=true;return this.items;}finally{clearTimeout(timeout)}
    }finally{socket.close();}
   }
-  disconnect(){this.storage.removeItem('onx.ha.auth');this.items=local();this.ready=false;}
+  disconnect(){this.storage.removeItem('onx.ha.auth');this.flowStorage.removeItem('onx.ha.auth');this.flowStorage.removeItem('onx.ha.flow');this.items=local();this.ready=false;}
  }
  globalThis.OnxHA={catalogue,search,baseUrl,Client};
 })();

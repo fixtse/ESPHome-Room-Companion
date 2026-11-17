@@ -3,6 +3,11 @@
 #include <utility>
 int main() {
   using namespace onx_display_settings;
+  const auto initial=background_settings;
+  background_settings.color=0xFFFFFF;assert(light_background()&&foreground()==0x161B22);
+  assert(surface()!=background()&&muted_text()!=background());
+  background_settings.color=0x000000;assert(!light_background()&&foreground()==0xFFFFFF);
+  background_settings=initial;
   uint8_t format=255;
   assert(parse_date_format("dd-mm",format)&&format==0);
   assert(format_iso_date("2026-12-31T12:00:00Z")=="31-12");

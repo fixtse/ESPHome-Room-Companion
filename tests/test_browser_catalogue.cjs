@@ -47,6 +47,14 @@ vm.runInNewContext(js,context);const {catalogue,search,Client,baseUrl}=context.O
  context.location.search='';await client.login('http://ha.local:8123');const flow=JSON.parse(sessionStorage.getItem('onx.ha.flow'));assert(flow.state.length>=32);assert(flow.verifier);assert(urls.at(-1).includes('code_challenge='));
  context.location.search='?code=valid&state='+flow.state;await client.finishLogin();assert.equal(http.length,2);assert(http[1].options.body.has('code_verifier'));assert.equal(sessionStorage.getItem('onx.ha.flow'),null);
  assert.throws(()=>baseUrl('javascript:alert(1)'));assert.throws(()=>baseUrl('https://user:pass@ha.local'));
+ // Session-only logins migrate; closing the tab must not discard refresh credentials.
+ const durable=new Map();context.window.localStorage={getItem:k=>durable.get(k)||null,setItem:(k,v)=>durable.set(k,v),removeItem:k=>durable.delete(k)};
+ const remembered=new Client();assert(remembered.read('onx.ha.auth'));assert.equal(sessionStorage.getItem('onx.ha.auth'),null);
+ storage.clear();const reopened=new Client();const redirects=urls.filter(u=>u.includes('/auth/authorize')).length;
+ await reopened.load();assert(reopened.ready);assert.equal(urls.filter(u=>u.includes('/auth/authorize')).length,redirects);
+ const stored=reopened.read('onx.ha.auth');stored.expires=0;context.window.localStorage.setItem('onx.ha.auth',JSON.stringify(stored));
+ await reopened.token();assert(reopened.read('onx.ha.auth').expires>Date.now());
+ reopened.disconnect();assert.equal(context.window.localStorage.getItem('onx.ha.auth'),null);assert.equal(new Client().read('onx.ha.auth'),null);
  const page=fs.readFileSync('my_components/onx_config_web/config_page.h','utf8');for(const script of page.matchAll(/<script>([\s\S]*?)<\/script>/g))new vm.Script(script[1]);
  assert(!page.includes("op:'search'"));assert(!page.includes("op:'refresh'"));
  const interval=fs.readFileSync('packages/features/normal_mode/normal_mode_interval.yaml','utf8');assert(!interval.includes('maintain_ha_websocket('));

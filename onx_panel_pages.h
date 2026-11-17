@@ -141,7 +141,7 @@ inline const lv_font_t *small=nullptr,*normal=nullptr,*large=nullptr;
 inline void setup(const lv_font_t *s,const lv_font_t *n,const lv_font_t *l) {
   small=s;normal=n;large=l;
   layer=lv_obj_create(lv_layer_top());lv_obj_remove_flag(layer,static_cast<lv_obj_flag_t>(LV_OBJ_FLAG_CLICKABLE|LV_OBJ_FLAG_SCROLLABLE));
-  lv_obj_set_style_bg_color(layer,lv_color_hex(0x101418),0);lv_obj_set_style_bg_opa(layer,LV_OPA_COVER,0);
+  lv_obj_set_style_bg_color(layer,lv_color_hex(onx_display_settings::background()),0);lv_obj_set_style_bg_opa(layer,LV_OPA_COVER,0);
   lv_obj_set_style_border_width(layer,0,0);lv_obj_set_style_pad_all(layer,0,0);lv_obj_set_style_radius(layer,0,0);
   for(auto &c:cards) {
     c.box=lv_obj_create(layer);lv_obj_remove_flag(c.box,static_cast<lv_obj_flag_t>(LV_OBJ_FLAG_CLICKABLE|LV_OBJ_FLAG_SCROLLABLE));
@@ -191,6 +191,7 @@ inline void label(lv_obj_t *obj,const std::string &text,int x,int y,int w,const 
 template<typename Bind> void render(const std::string &entity,int width,int height,bool detail,Bind bind) {
   if(!layer)return;
   suspend_underlay();
+  onx_render::style_bg_color(layer,lv_color_hex(onx_display_settings::background()),0);
   const auto p=detail?Page{}:page(entity);const auto kind=p.kind;
   rects=onx_panel_layout::geometry(kind,width,height,detail);
   entities[0]=entity;count=kind==Kind::TWO_CONTROLS?2:kind==Kind::CONTROL_SENSORS?4:1;
@@ -224,6 +225,7 @@ template<typename Bind> void render(const std::string &entity,int width,int heig
 inline void show_timers(int width,int height) {
   if(!layer)return;
   suspend_underlay();
+  onx_render::style_bg_color(layer,lv_color_hex(onx_display_settings::background()),0);
   for(auto &c:cards){lv_obj_add_flag(c.box,LV_OBJ_FLAG_HIDDEN);c.initialized=false;}
   lv_obj_set_size(layer,width,height);lv_obj_set_pos(layer,0,0);
   lv_obj_move_foreground(layer);lv_obj_remove_flag(layer,LV_OBJ_FLAG_HIDDEN);showing=true;detail_view=true;
