@@ -25,6 +25,7 @@ const { chromium } = require('playwright');
   await page.route('http://knob.test/**',async route=>{
    const request=route.request(),url=new URL(request.url());
    if(url.pathname==='/'||url.pathname==='/knob'){await route.fulfill({contentType:'text/html',body:html});return}
+   if(url.pathname==='/knob/panel.js'){await route.fulfill({contentType:'text/javascript',body:''});return}
    if(url.pathname==='/knob/ha.js'){
     const source=fs.readFileSync('my_components/onx_config_web/ha_browser.h','utf8').split('R"ONXJS(')[1].split(')ONXJS"')[0];
     const mock=`OnxHA.Client=class {constructor(){this.items=${JSON.stringify(entities)};this.ready=true}read(){return {base:'http://ha.test:8123'}}async finishLogin(){}async load(){return this.items}disconnect(){this.items=[];this.ready=false}};`;
@@ -168,9 +169,9 @@ const { chromium } = require('playwright');
   assert.equal(await page.locator('.playlist-row').count(),1,'Cancelling the picker must not add an empty entry');
   await page.locator('#add-playlist').click();
   await page.locator('#results').getByRole('button',{name:'Welcome home'}).click();
-  await page.getByRole('button',{name:'Move up playlist 2',exact:true}).click();
+  await page.getByRole('button',{name:'Move up quick action 2',exact:true}).click();
   assert.equal(await page.getByRole('textbox',{name:'Quick action 1 name',exact:true}).inputValue(),'Welcome home');
-  await page.getByRole('button',{name:'Remove playlist 1',exact:true}).click();
+  await page.getByRole('button',{name:'Remove quick action 1',exact:true}).click();
   assert.equal(await page.getByRole('textbox',{name:'Quick action 1 name',exact:true}).inputValue(),'Jazz radio');
 
   await page.locator('#device-preview text').filter({hasText:'Christina Aguilera'}).waitFor();

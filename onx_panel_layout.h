@@ -1,5 +1,6 @@
 #pragma once
 #include <array>
+#include <cstdint>
 #include <string>
 #include <cstring>
 #include "onx_config_rules.h"
@@ -24,6 +25,8 @@ inline bool parse(const std::string &s, Kind &k) {
 inline bool sensor(const std::string &s) { return s.rfind("sensor.",0)==0 || s.rfind("binary_sensor.",0)==0; }
 inline bool valid(const Page &p) {
   if(p.magic!=0x52435031 || !onx_config::valid_entity(p.primary) || static_cast<unsigned>(p.kind)>2)return false;
+  if(p.kind!=Kind::SINGLE && sensor(p.primary))return false;
+  if(p.kind==Kind::TWO_CONTROLS && sensor(p.members[0]))return false;
   const int count=p.kind==Kind::TWO_CONTROLS?1:p.kind==Kind::CONTROL_SENSORS?3:0;
   for(int i=0;i<count;++i) {
     if(!onx_config::valid_entity(p.members[i]) || std::strcmp(p.primary,p.members[i])==0)return false;

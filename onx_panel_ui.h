@@ -164,15 +164,21 @@ inline void sync_media(const Media &m, const lv_font_t *font) {
   // Square shell covering the whole screen (detail pages hide the strip).
   if (lv_obj_get_style_width(m.shell, LV_PART_MAIN) != w || lv_obj_get_style_height(m.shell, LV_PART_MAIN) != h)
     lv_obj_set_size(m.shell, w, h);
-  // Full-width cover art on top, text and controls in the space below.
-  place(m.cover, LV_ALIGN_TOP_MID, 0, S(50));
-  place(m.icon, LV_ALIGN_TOP_MID, 0, S(50));
-  place(m.transport, LV_ALIGN_TOP_MID, 0, w / 2 - S(24));
-  const int text_y = S(136);
+  // Reserve transport and text space before sizing artwork for either model.
+  const int cover_size = std::max(48, std::min({w - 24, h * 40 / 100, h - 56 - S(64) - S(12) - 20 - 84}));
+  lv_image_header_t header{};
+  if (lv_image_decoder_get_info(lv_image_get_src(m.cover), &header) == LV_RESULT_OK && header.w && header.h) {
+    const int scale = cover_size * 256 / std::max(header.w,header.h);
+    if (lv_image_get_scale_x(m.cover) != scale) lv_image_set_scale(m.cover,scale);
+  }
+  place(m.cover, LV_ALIGN_TOP_MID, 0, 56);
+  place(m.icon, LV_ALIGN_TOP_MID, 0, 56);
+  place(m.transport, LV_ALIGN_TOP_MID, 0, 56 + cover_size / 2);
+  const int text_y = 56 + cover_size + 12;
   place(m.title, LV_ALIGN_TOP_MID, 0, text_y);
-  place(m.artist, LV_ALIGN_TOP_MID, 0, text_y + S(24));
-  place(m.action, LV_ALIGN_TOP_MID, 0, text_y + S(48));
-  place(m.room, LV_ALIGN_TOP_MID, 0, text_y + S(70));
+  place(m.artist, LV_ALIGN_TOP_MID, 0, text_y + 28);
+  place(m.action, LV_ALIGN_TOP_MID, 0, text_y + 52);
+  show(m.room, false);
   set_width(m.action, w - S(24));
   set_width(m.room, w - S(24));
   set_width(m.title, w - S(24));
@@ -184,7 +190,7 @@ inline void sync_media(const Media &m, const lv_font_t *font) {
   show(media_bar, progress || lv_bar_get_value(media_bar) > 0);
   if (m.arc != nullptr) lv_bar_set_value(media_bar, lv_arc_get_value(m.arc), LV_ANIM_OFF);
   lv_obj_set_size(media_bar, w - S(40), S(5));
-  place(media_bar, LV_ALIGN_TOP_MID, 0, text_y + S(96));
+  place(media_bar, LV_ALIGN_TOP_MID, 0, h - S(64) - S(12) - 20);
   place(media_row, LV_ALIGN_BOTTOM_MID, 0, -S(12));
   if (media_play_label && is_playing) {
     const char *want = is_playing() ? LV_SYMBOL_PAUSE : LV_SYMBOL_PLAY;

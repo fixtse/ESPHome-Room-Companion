@@ -96,6 +96,14 @@ interval:
           if (onx_panel_ui::dash_button == nullptr) return;
           // Native rectangular pages reuse the existing HA state and actions.
           const bool detail = id(normal_device_detail_active);
+          if (!detail && !onx_panel_pages::parent_entity.empty()) {
+            const int config = onx_panel_pages::configured(onx_panel_pages::parent_entity);
+            onx_panel_pages::parent_entity.clear();
+            if (config >= 0) {
+              id(normal_device_selected_index) = custom_logic::normal_ui_slot_for_device_config_slot(config);
+              id(show_normal_device_entry_page).execute(0);
+            }
+          }
           const int index = detail ? id(normal_device_detail_index) : id(normal_device_selected_index);
           const auto entity = index >= 0 && index < id(normal_device_count) ?
               id(ui_presenter)->get_normal_device_entity_id(index) : std::string();
@@ -242,6 +250,7 @@ interval:
 esphome:
   includes:
     - ../../onx_panel_ui.h
+    - ../../onx_panel_layout.h
     - ../../onx_panel_pages.h
   on_boot:
     # After the knob (-100) and the notification centre (-200) built their UI.
@@ -322,8 +331,37 @@ script:
       - lambda: |-
           onx_panel_pages::setup(id(fonts_MiSans_Medium_14)->get_lv_font(),
               id(fonts_MiSans_Medium_24)->get_lv_font(), id(fonts_MiSans_Medium_32)->get_lv_font());
+          onx_panel_pages::view_for = [](const std::string &entity,bool detail) {
+            auto title = custom_logic::ha_entity_title_from_registry_cache(entity);
+            auto view = detail ? onx_detail_view::build(entity,title) : onx_detail_view::carousel(entity,title);
+            const int config = onx_panel_pages::configured(entity);
+            const int ui = custom_logic::normal_ui_slot_for_device_config_slot(config);
+            if (detail && config >= 0) {
+              if (entity.rfind("light.",0)==0)
+                view = onx_detail_view::light_view(entity,title,id(app_storage)->normal_device_slot(ui).light(),id(normal_detail_light_mode));
+              else onx_entity_config::customize_control_view(ui,entity,view);
+            }
+            if (detail && custom_logic_entity_sub::is_timer_detail(entity)) view=onx_panel_pages::timer_view(entity,title);
+            return view;
+          };
+          onx_panel_pages::draw_graph = [](lv_obj_t *parent,const std::string &entity,int y) {
+            static std::string previous;
+            static uint32_t refreshed = 0;
+            if (previous != entity || millis() - refreshed >= 1000 || !onx_sensor_graph::canvas) {
+              onx_sensor_graph::render(parent,entity,id(ha_time).now().timestamp,
+                  onx_display_settings::current.media_color,id(fonts_MiSans_Medium_12)->get_lv_font());
+              previous = entity; refreshed = millis();
+            }
+            if (onx_sensor_graph::canvas) {
+              lv_obj_remove_flag(onx_sensor_graph::canvas,LV_OBJ_FLAG_HIDDEN);
+              if (lv_obj_get_parent(onx_sensor_graph::canvas)!=parent) lv_obj_set_parent(onx_sensor_graph::canvas,parent);
+              onx_render::align(onx_sensor_graph::canvas,LV_ALIGN_TOP_MID,0,y);
+            }
+          };
           onx_panel_pages::open = [](const std::string &entity) {
-            if (id(touch_input)->suppress_click()) return;
+            if (id(touch_input)->suppress_click() || onx_notification::current.visible ||
+                onx_timer::popup.visible || onx_notification_ui::owns_screen() ||
+                id(ui_presenter)->is_standby_active()) return;
             const int config = onx_panel_pages::configured(entity);
             if (config < 0) return;
             id(normal_device_selected_index) = custom_logic::normal_ui_slot_for_device_config_slot(config);

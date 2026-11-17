@@ -60,7 +60,7 @@ onx_config_web:
         const auto clock = id(ha_time).now();
         root["clock_epoch"] = clock.is_valid() ? double(clock.timestamp) : 0;
         #ifdef USE_ROOM_COMPANION
-        root["panel_width"] = ${display_width}; root["panel_height"] = ${display_height};
+        root["panel_width"] = id(lcd_display)->get_width(); root["panel_height"] = id(lcd_display)->get_height();
         #endif
         JsonArray slots = root["slots"].to<JsonArray>();
         auto encode = [&](JsonObject target, const onx_detail_view::View &view) {
@@ -79,7 +79,12 @@ onx_config_web:
         for (size_t i = 0; i < 20; ++i) {
           const auto entity = custom_logic::cached_device_entity_id(i);
           if (entity.empty()) continue;
-          #ifndef USE_ROOM_COMPANION
+          #ifdef USE_ROOM_COMPANION
+          const auto page = onx_panel_pages::page(query.entity);
+          bool member = entity == query.entity;
+          for (const auto &other : page.members) member |= entity == other;
+          if (!member) continue;
+          #else
           if (entity != query.entity) continue;
           #endif
           const auto title = custom_logic::ha_entity_title_from_registry_cache(entity);
@@ -90,6 +95,9 @@ onx_config_web:
             const int mode=id(normal_device_detail_active) && id(normal_device_detail_index)==ui ? id(normal_detail_light_mode) : 0;
             view=onx_detail_view::light_view(entity,title,id(app_storage)->normal_device_slot(ui).light(),mode);
           }
+          #ifdef USE_ROOM_COMPANION
+          if (custom_logic_entity_sub::is_timer_detail(entity)) view=onx_panel_pages::timer_view(entity,title);
+          #endif
           auto slot = slots.add<JsonObject>();
           slot["entity"] = entity; encode(slot, view);
           if(view.layout=="graph") {

@@ -59,6 +59,7 @@ function fitted(text,size,width){measure.font=size+'px Arial';let out=String(tex
 function drawPreview(slot){
  clearTimeout(overlayTimer);
  const svg=$('device-preview');let view=liveViews.find(item=>item.entity===slot.entity);
+ if(globalThis.ONX_PANEL_PREVIEW){globalThis.ONX_PANEL_PREVIEW(svg,slot,view,liveViews,$('preview-screen').value,settings);return}
  if(view&&$('preview-screen').value==='main')view={...view,...view.carousel};
  svg.replaceChildren(svgNode('circle',{cx:120,cy:120,r:120,fill:'#000'}));
  svg.setAttribute('aria-label',(slot.name||slot.entity||'Empty slot')+' device display preview');
@@ -119,7 +120,7 @@ function drawPreview(slot){
  for(const [i,original] of (view.lines||[]).entries()){const line=material?{...original,y:[36,184,136,160,206][i],size:i===1||i===4?14:original.size,width:[156,160,200,188,112][i]}:original;const name=i===4;text(name&&!slot.secondary?(slot.name||line.text):line.text,line.y,line.size,line.width,line.color,line.x||0,name&&view.layout!=='media',material&&i>0)}
  $('preview-status').textContent=view.available?'Live device view':'Device view · waiting for entity data';
 }
-async function refreshPreview(){if(previewBusy||busy||!initialized||document.hidden||$('entity-picker').open)return;previewBusy=true;lastPreviewAt=Date.now();try{const data=await rpc({op:'preview',entity:slots[active].entity});liveViews=Array.isArray(data.slots)?data.slots:[];drawPreview(slots[active])}catch{$('preview-status').textContent='Live preview unavailable. Check the knob connection.'}finally{previewBusy=false}}
+async function refreshPreview(){if(previewBusy||busy||!initialized||document.hidden||$('entity-picker').open)return;previewBusy=true;lastPreviewAt=Date.now();try{const data=await rpc({op:'preview',entity:slots[active].entity});globalThis.ONX_PANEL_SIZE={width:data.panel_width||320,height:data.panel_height||480};liveViews=Array.isArray(data.slots)?data.slots:[];drawPreview(slots[active])}catch{$('preview-status').textContent='Live preview unavailable. Check the knob connection.'}finally{previewBusy=false}}
 function preview(){const s=slots[active],d=s.entity.split('.')[0];drawPreview(s);
  const rotates={light:'Adjust the selected light control',cover:'Browse; hold and rotate to adjust position',climate:'Adjust the selected setting; hold and turn to choose a setting',fan:'Adjust speed; hold and turn for presets, oscillation or direction',number:'Adjust value within minimum, maximum and step',input_number:'Adjust value within minimum, maximum and step',select:'Choose an option',input_select:'Choose an option',media_player:'Adjust volume; press + turn for next/previous track; hold 0.5s and release for playlists'};
  $('rotate-hint').textContent=s.gestures.cw||s.gestures.ccw||s.gestures.events==='1'?'Run configured gesture actions':s.entity?(rotates[d]||'No adjustment; hold to return'):'Browse your devices';
@@ -232,7 +233,7 @@ function render(){
  for(const id of ['timer-hidden','choose-secondary','secondary-entity','secondary-text','sensor-presentation','choose-entity','clear','display-name','import','export','ha-connect','ha-disconnect','discard-settings'])$(id).disabled=busy||!initialized;
  $('save-settings').disabled=busy||!initialized||!dirtySettings();
  $('display-binding').classList.toggle('active',slotTab==='display');$('action-binding').classList.toggle('active',slotTab==='action');$('action-hint').hidden=!isActionPicker();$('search-title').textContent=isActionPicker()?'Automations & scripts':mode==='secondary'?'Secondary entities':'Available entities';$('picker-title').textContent=mode==='gesture'?'Choose a gesture action':mode==='gestureFeedback'?'Choose a feedback entity':mode==='playlist'?'Choose a quick action':mode==='action'?'Choose a press action':mode==='secondary'?'Choose a secondary entity':'Choose a display entity';$('picker-context').textContent=mode==='playlist'?(slots[active].playlists[playlistTarget]?.name||'Playlist '+(playlistTarget+1)):slots[active].name||'Slot '+(active+1);
- $('filters').replaceChildren(...(isActionPicker()?[['actions','All actions'],['automation','Automations'],['script','Scripts']]:domains).map(([value,title])=>{const b=element('button',title);b.setAttribute('aria-pressed',String(value===domain));b.onclick=()=>{domain=value;render();search()};return b}));preview();
+ $('filters').replaceChildren(...(isActionPicker()?[['actions','All actions'],['automation','Automations'],['script','Scripts']]:domains).map(([value,title])=>{const b=element('button',title);b.setAttribute('aria-pressed',String(value===domain));b.onclick=()=>{domain=value;render();search()};return b}));globalThis.ONX_PANEL_EDITOR?.(slots,active,busy,()=>drawPreview(slots[active]),!!editTarget);preview();
 }
 function changed(){if(recovery){recovery=null;$('draft-notice').hidden=true}persistDraft();render();message('Changes not saved. Review and save when ready.')}
 function selectMode(value,index=-1){

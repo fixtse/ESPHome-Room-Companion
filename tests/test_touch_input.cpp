@@ -39,4 +39,12 @@ int main() {
   test_ms+=200;
   down(160,330); touch.release();
   assert(!touch.suppress_click() && button.edges.empty()); // An ordinary tap remains LVGL's.
+  // Composed cards intercept taps without swallowing carousel swipes or holds.
+  touch.set_passthrough_fn([](int,int){return false;});
+  int card_taps=0;
+  touch.set_tap_fn([&](int x,int y){if(y>56 && y<436){++card_taps;return true;}return false;});
+  test_ms+=200;down(150,200);touch.release();assert(card_taps==1 && button.edges.empty());
+  test_ms+=200;down(270,200);move(160,200);touch.release();assert(card_taps==1 && turns==1);
+  test_ms+=200;down(150,200);test_ms+=1000;touch.loop();touch.release();
+  assert(card_taps==1 && button.edges.size()==2);
 }

@@ -28,13 +28,18 @@ hardware-tested status separate from configuration/build validation.
   Enabled/configured does not mean microphone, wake-word and speaker operation
   have all been hardware-tested.
 - Latest successful build/flash: ESPHome **2026.10.2**, production config hash
-  `0x13065dbc`, source `3edd3e4` plus the main-loop improvements in the working
-  tree. Version text remains `2026.10.2.72-panel.1`; that text alone cannot
-  identify which local build is installed.
+  `0x02b96553`, build timestamp `2026-11-17 13:25:32 UTC`, source `8199e15`
+  plus the rectangular-page follow-ups in the working tree. Version text remains
+  `2026.10.2.72-panel.1`. Neither that text nor the YAML config hash alone can
+  distinguish local builds after C++ header changes; record source hashes and
+  the build timestamp too.
 - USB flash hash verification, boot and repeated Wi-Fi HTTP 200 checks passed.
-  Settled maximum-loop samples were **57–61 ms**, with about 56 KB internal heap
-  free. Startup/download peaks are higher. This does not certify every screen,
-  gesture or audio feature. See `docs/room-companion/loop-performance.md`.
+  The rectangular-page build also passed a real two-control page save, hardware
+  reset, reload and restoration of the original configuration. Settled maximum
+  loop samples were **84–92 ms**, with about 45 KB internal heap free; startup,
+  downloads and configuration/NVS writes have higher peaks. This does not certify
+  visual appearance, every gesture or audio operation. See
+  `docs/room-companion/panel-ui.md` and `docs/room-companion/loop-performance.md`.
 
 ## Building and flashing this panel
 

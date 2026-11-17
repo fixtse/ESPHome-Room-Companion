@@ -3168,9 +3168,7 @@ script:
             lv_obj_set_height(id(normal_automation_detail_action),onx_geom::S(22));
             lv_obj_set_height(id(normal_automation_detail_title),onx_geom::S(22));
             lv_label_set_long_mode(id(normal_automation_detail_title),LV_LABEL_LONG_DOT);
-            const int dimension=std::max(id(media_cover_image)->get_width(),id(media_cover_image)->get_height());
             lv_image_set_pivot(id(normal_media_cover),id(media_cover_image)->get_width()/2,0);
-            lv_image_set_scale(id(normal_media_cover),dimension>0?onx_geom::S(80)*256/dimension:256);
             onx_panel_ui::sync_media({id(normal_automation_detail_shell),id(normal_media_cover),id(normal_media_title),
                 id(normal_media_artist),id(normal_media_progress_arc),id(normal_media_transport_overlay),
                 id(normal_automation_detail_icon),id(normal_playlist_overlay),id(normal_automation_detail_action),

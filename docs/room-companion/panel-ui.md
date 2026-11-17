@@ -55,3 +55,86 @@ server and is limited by the stream's frame rate.
 
 - Configurable page layouts (two controls per page, or one control plus three
   sensor values). The knob pages are still one control per page.
+
+## Rectangular pages and grouped items
+
+Normal entity pages now use the full portrait display above the navigation dock,
+with a header reserved for the dashboard and notification buttons. Generic
+entity details use the full height; numeric progress is a straight bar rather
+than the knob's circular ring. The physical knob keeps its original presentation.
+Media retains its artwork and transport view, with artwork sized after reserving
+space for the text and controls. The configuration preview uses the panel's
+actual dimensions, including the outer frame, instead of a 240×240 circle.
+
+In **Display & actions → Display → Page layout**, choose the layout for the
+selected control's main page:
+
+- **One control**: the selected entity occupies the page (also used for a sensor
+  or other read-only entity on its own).
+- **Two controls**: the selected control and another configured control occupy
+  two stacked areas.
+- **One control + three sensors**: the selected control appears above three
+  compact sensor/binary-sensor readings.
+
+Add and save the entities in the normal slots first, then choose the other page
+items and select **Save page layout**. Layout saving is separate from saving an
+entity slot. Items reuse those slots' existing Home Assistant subscriptions and
+control logic; page membership does not create additional subscriptions or
+silently change the configured entities. A member may still have its own page.
+Tap an area to open that item's normal controls, swipe horizontally to change
+pages, and use the left-edge back gesture to return to the grouped page. Sensor
+areas also open their existing detail/graph views. Holds and swipe adjustments
+continue through the existing input router.
+
+Page layouts are stored in NVS by the primary entity's identity, so rebooting or
+reordering slots does not reassign a layout to an unrelated entity. Duplicate
+members, unconfigured entities and non-sensors in sensor positions are rejected.
+Removing a configured member displays an explicit missing-item state until its
+page configuration is updated. Layouts are device settings, independent of the
+existing entity preset/backup documents.
+
+The layout model is `onx_panel_layout.h`; the panel renderer, persistent bindings
+and page RPC handlers are in `onx_panel_pages.h`. `panel_pages` reads the saved
+bindings and `panel_page_save` validates/persists one page. Layout state is kept
+in PSRAM. The browser's panel extension implements matching portrait geometry.
+Run `mise exec -- bash scripts/test_panel_pages.sh` on devserv for geometry,
+validation, tap-versus-swipe routing and browser editor/preview tests.
+
+### Validation on 2026-11-17
+
+Work ran under the task lease in
+`192.168.31.35:~/agent-work/room-companion-pages-20261117`, based on `8199e15`
+plus the synchronized working changes. Source hashes matched locally and on
+that checkout, including the generated firmware header copy. Commands run there:
+
+```sh
+mise exec -- bash scripts/test_panel_pages.sh
+mise exec -- bash scripts/test_config_web.sh
+docker run --rm -v "$PWD":/config ghcr.io/esphome/esphome:2026.10.2 config ONX2432G028.yaml
+# Use a unique container/cache name and clean stale copied framework metadata.
+docker run --rm -v "$PWD":/config -v rc-pages-pio-20261117:/root/.platformio \
+  ghcr.io/esphome/esphome:2026.10.2 compile ONX3248G035.wake-word.yaml
+```
+
+The native geometry/validation/touch tests and both browser suites passed.
+The 2.8-inch model validated; only the 3.5-inch wake-word firmware was compiled,
+following the requested model restriction. Final build timestamp:
+`2026-11-17 13:25:32 UTC`; YAML config hash: `0x02b96553`.
+
+The connected 3.5-inch board passed USB flash hash verification, boot, repeated
+Wi-Fi HTTP 200 checks and a real device API persistence test: a temporary
+two-control page was saved, survived a hardware reset, and its original page
+configuration was restored afterward. No HA entity actions were invoked by that
+test. UART observation showed no panic/abort, approximately 45 KB internal heap
+free and settled maximum-loop samples of 84, 86 and 92 ms. Startup, icon downloads
+and configuration writes produced larger peaks (including 2474 ms during the
+configuration test); these are not normal interaction latency measurements.
+Unchanged native cards are cached, and the covered knob body is hidden while the
+rectangular page is displayed to avoid redundant rendering and touch handling.
+
+Hardware verification covers boot, networking and saved layout persistence.
+The browser geometry was visually inspected; the actual screen appearance,
+physical gestures, audio and all entity combinations still require device review.
+Build/test logs remain in `~/agent-work/room-companion-pages-*.log` on devserv;
+private UART/flash captures and firmware are outside Git in
+`/tmp/room-companion-pages-20261117/` on the attached PC.
