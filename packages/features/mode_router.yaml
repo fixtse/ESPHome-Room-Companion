@@ -224,7 +224,7 @@ onx_config_web:
       if ((query.search.rfind("http://", 0) != 0 && query.search.rfind("https://", 0) != 0) ||
           custom_logic::build_ha_http_state_url(query.search, "sensor.placeholder").empty())
         return onx_entity_config::error("Enter a valid Home Assistant address");
-      id(ha_host).publish_state(query.search);
+      { auto ha_host_call = id(ha_host).make_call(); ha_host_call.set_value(query.search); ha_host_call.perform(); }  // control() persists; publish_state() would not
       return std::string("{\"ok\":true}");
     }
     if (query.op == "retry") {
@@ -459,4 +459,4 @@ interval:
           const auto url = id(entity_config_web)->auto_ha_url(millis());
           if (url.empty() || custom_logic::build_ha_http_state_url(url, "sensor.placeholder").empty()) return;
           ESP_LOGI("ha_host", "Using discovered Home Assistant at %s", url.c_str());
-          id(ha_host).publish_state(url);
+          { auto ha_host_call = id(ha_host).make_call(); ha_host_call.set_value(url); ha_host_call.perform(); }  // control() persists; publish_state() would not
