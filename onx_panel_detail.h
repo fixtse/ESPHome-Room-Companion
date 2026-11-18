@@ -125,10 +125,16 @@ inline void clear_pending_if(const std::string &entity, const std::string &key, 
 struct Change { std::string state; time_t at{0}; };
 struct Changes { std::string entity, last; std::vector<Change> items; };
 inline std::vector<Changes> changes;
+// Scripts, scenes and buttons log their runs the same way: a script turning
+// on, or a scene/button's state (its last-activated time) changing.
+inline bool runnable_entity(const std::string &e) {
+  return has_prefix(e, "script.") || has_prefix(e, "scene.") || has_prefix(e, "button.") || has_prefix(e, "input_button.");
+}
 inline void track(time_t now) {
   if (now < 1577836800) return;
   for (const auto &d : custom_logic_entity_sub::entity_details) {
-    if (!has_prefix(d.entity_id, "binary_sensor.") || !d.received || !d.available) continue;
+    const bool runs = runnable_entity(d.entity_id);
+    if ((!runs && !has_prefix(d.entity_id, "binary_sensor.")) || !d.received || !d.available) continue;
     auto it = std::find_if(changes.begin(), changes.end(), [&](const Changes &c) { return c.entity == d.entity_id; });
     if (it == changes.end()) {
       if (changes.size() >= 20) changes.erase(changes.begin());
@@ -137,8 +143,14 @@ inline void track(time_t now) {
     }
     if (it->last == d.state) continue;
     it->last = d.state;
-    it->items.insert(it->items.begin(), {d.state, now});
-    if (it->items.size() > 5) it->items.pop_back();
+    if (runs && has_prefix(d.entity_id, "script.") && d.state != "on") continue;  // Only starts count.
+    time_t at = now;
+    if (runs && !has_prefix(d.entity_id, "script.")) {
+      time_t stamp = 0;
+      if (custom_logic_entity_sub::parse_ha_datetime_epoch(d.state, &stamp) && stamp <= now && stamp > now - 3600) at = stamp;
+    }
+    it->items.insert(it->items.begin(), {d.state, at});
+    if (it->items.size() > (runs ? 16U : 5U)) it->items.pop_back();
   }
 }
 inline const Changes *changes_for(const std::string &entity) {
@@ -1868,6 +1880,40 @@ inline void card_generic(lv_obj_t *c, const Tile &t, const EntityDetailState *d)
   const bool switchable = available && (domain == "switch" || domain == "input_boolean" || domain == "automation" ||
                                         domain == "fan");
   const bool runnable = available && (domain == "scene" || domain == "script" || domain == "button" || domain == "input_button");
+  // Percentages in a short card: a ring with the value, the name beside it and
+  // a sparkline below the name.
+  const float pv = d != nullptr ? num(d->state) : NAN;
+  if (available && !switchable && d->unit == "%" && std::isfinite(pv) && pv >= 0 && pv <= 100 && r.h < P(300) &&
+      r.h >= P(110)) {
+    const int size = std::min(r.h - 2 * pad, r.w * 42 / 100);
+    lv_obj_t *arc = lv_arc_create(c);
+    lv_obj_set_size(arc, size, size);
+    lv_obj_set_pos(arc, pad, (r.h - size) / 2);
+    lv_arc_set_rotation(arc, 270);
+    lv_arc_set_bg_angles(arc, 0, 360);
+    lv_arc_set_range(arc, 0, 1000);
+    lv_arc_set_value(arc, int(pv * 10));
+    const int aw = std::max(P(8), size / 10);
+    lv_obj_set_style_arc_width(arc, aw, LV_PART_MAIN);
+    lv_obj_set_style_arc_width(arc, aw, LV_PART_INDICATOR);
+    lv_obj_set_style_arc_color(arc, lv_color_hex(CONTROL()), LV_PART_MAIN);
+    lv_obj_set_style_arc_color(arc, lv_color_hex(accent()), LV_PART_INDICATOR);
+    lv_obj_set_style_arc_rounded(arc, true, LV_PART_INDICATOR);
+    lv_obj_set_style_bg_opa(arc, LV_OPA_TRANSP, LV_PART_KNOB);
+    lv_obj_set_style_pad_all(arc, 0, LV_PART_KNOB);
+    lv_obj_set_style_bg_opa(arc, LV_OPA_TRANSP, LV_PART_MAIN);
+    lv_obj_set_style_border_width(arc, 0, LV_PART_MAIN);
+    lv_obj_set_style_pad_all(arc, 0, LV_PART_MAIN);
+    lv_obj_remove_flag(arc, static_cast<lv_obj_flag_t>(LV_OBJ_FLAG_CLICKABLE | LV_OBJ_FLAG_SCROLLABLE));
+    const std::string v = fmt(pv, pv < 10 ? 1 : 0) + "%";
+    const lv_font_t *vf = fit(v, size - 2 * aw - P(8), {fonts.big, fonts.title, fonts.body});
+    text(c, v, vf, TEXT(), pad, (r.h - line(vf)) / 2, size, LV_TEXT_ALIGN_CENTER);
+    const int nx = pad + size + P(14), nw = r.w - nx - pad;
+    int y = titled(c, t, nx, pad + P(4), nw) + P(10);
+    const int gh = std::min(P(60), r.h - pad - y);
+    if (gh >= P(24)) chart(c, nx, y, nw, gh, e, card_history(e), accent(), false);
+    return;
+  }
   chip_icon(c, e, pad, pad, cs, t.on);
   titled(c, t, tx, pad + P(2), r.w - tx - pad - (switchable ? P(62) : 0));
   if (switchable) {
@@ -1880,14 +1926,40 @@ inline void card_generic(lv_obj_t *c, const Tile &t, const EntityDetailState *d)
     else onx_controls::press(e);
   };
   // Tall cards: one large round target in the middle instead of a thin pill.
-  const int top = pad + cs + P(10), room = bottom - top - line(fonts.body) - P(10);
+  const int top = pad + cs + P(10);
+  const int strip = P(16) + 2 * line(fonts.small) + P(14);
+  int room = bottom - top - line(fonts.body) - P(10);
+  if (room - strip >= P(140)) room -= strip;
   if (runnable && room >= P(140)) {
     const int s = std::min({P(150), room - P(16), r.w - 2 * pad});
     const int cy = top + P(8) + (room - P(16)) / 2;
     lv_obj_t *b = circle(c, r.w / 2, cy, s, accent(), LV_SYMBOL_PLAY, TEXT(), run);
     lv_obj_set_style_border_width(b, P(8), 0);
     lv_obj_set_style_border_color(b, lv_color_hex(CONTROL()), 0);
-    text(c, "Run", fonts.body, TEXT(), 0, cy + s / 2 + P(10), r.w, LV_TEXT_ALIGN_CENTER);
+    // Last run: the state of a scene/button is its activation time; scripts
+    // use the starts recorded on the panel.
+    const time_t now = std::time(nullptr);
+    const auto *log = changes_for(e);
+    time_t last = log != nullptr && !log->items.empty() ? log->items.front().at : 0;
+    if (!last && domain != "script") custom_logic_entity_sub::parse_ha_datetime_epoch(d->state, &last);
+    const std::string caption = last ? "Last run " + onx_sensor_view::relative(last, now) : std::string("Run");
+    const int ty = cy + s / 2 + P(10);
+    text(c, caption, fonts.body, TEXT(), pad, ty, r.w - 2 * pad, LV_TEXT_ALIGN_CENTER);
+    // Runs over the last 24 h as ticks on a strip along the bottom.
+    const int sh = P(16), sy = r.h - pad - sh - line(fonts.small) - P(4);
+    if (sy >= ty + line(fonts.body) + P(8) + line(fonts.small) && now > 1577836800) {
+      text(c, "Runs, last 24 h", fonts.small, MUTED(), pad, sy - line(fonts.small) - P(2), r.w - 2 * pad);
+      const int sw = r.w - 2 * pad;
+      auto *strip = box(c, pad, sy, sw, sh, INSET(), P(4));
+      if (log != nullptr)
+        for (const auto &run : log->items) {
+          if (run.at > now || now - run.at >= 86400) continue;
+          const int x = int(int64_t(86400 - (now - run.at)) * (sw - P(4)) / 86400);
+          box(strip, x, 0, P(4), sh, accent(), P(2));
+        }
+      text(c, "-24 h", fonts.small, MUTED(), pad, sy + sh + P(4), sw / 2);
+      text(c, "now", fonts.small, MUTED(), pad + sw / 2, sy + sh + P(4), sw / 2, LV_TEXT_ALIGN_RIGHT);
+    }
     return;
   }
   if (runnable && bottom - P(48) >= pad + cs + P(8)) {
