@@ -150,7 +150,7 @@ footer a:hover{color:var(--ink)}
 .field-grid>.field{margin:0}
 .field-grid>.field-note,.field-grid>.checkbox-field{grid-column:1/-1}
 .field-note{margin-top:-6px}
-#sensor-options,#timer-options{border-top:1px solid var(--line);padding-top:20px;margin-top:24px}
+#sensor-options{border-top:1px solid var(--line);padding-top:20px;margin-top:24px}
 #sensor-options h3{font-size:16px}
 /* preview */
 .preview{position:sticky;top:20px;display:flex;flex-direction:column;gap:12px;padding:18px;border:1px solid var(--line);border-radius:18px;background:var(--paper);box-shadow:var(--shadow)}
@@ -344,7 +344,7 @@ body.rail-collapsed{grid-template-columns:76px minmax(0,1fr)}
 <section id="slot-panel-display" class="editor-pane" role="tabpanel" aria-labelledby="slot-tab-display"><p class="help-links"><a href="https://github.com/fixtse/OpenNextion-Room-Companion/blob/main/docs/web-configuration.md#add-and-arrange-controls" target="_blank" rel="noopener noreferrer">How to add and arrange controls<span class="sr"> (opens in a new tab)</span></a></p>
 <article class="binding active" id="display-binding"><h3>Show on the display</h3><strong id="entity-name">Empty slot</strong><small id="entity-id"></small><button id="choose-entity">Choose entity</button><button id="clear" class="quiet">Clear</button></article>
 <label class="field">Display name<input id="display-name" maxlength="96" placeholder="Use the Home Assistant name"></label>
-<div id="timer-options" hidden><label><input id="timer-hidden" type="checkbox"> Hide timer from carousel</label><p class="hint">For timers and voice timer sensors. Automatic timer popups still work. Still uses one of the twenty configuration slots.</p><p class="help-links"><a href="https://github.com/fixtse/OpenNextion-Room-Companion/blob/main/docs/web-configuration.md#timers-without-clutter" target="_blank" rel="noopener noreferrer">Keep timer popups without a page<span class="sr"> (opens in a new tab)</span></a></p></div>
+
 <div id="sensor-options" hidden><h3 id="secondary-heading">Secondary reading</h3><label class="field">Sensor view<select id="sensor-presentation"><option value="0">Value</option><option value="1">12-hour graph when opened</option></select></label><label class="field">Secondary entity (optional)<input id="secondary-entity" maxlength="128" placeholder="sensor.openai_codex_5_hour_reset"></label><button type="button" id="choose-secondary">Choose secondary entity</button><label class="field">Secondary text<input id="secondary-text" maxlength="160" placeholder="Resets {relative} ({time})"></label><p class="hint" id="secondary-help">Replaces the sensor name below the value. Use {value}, {unit}, {relative}, {time}, {date}, or {datetime}. Example: Resets {relative} ({time}). Graphs use recorded statistics where available, otherwise readings collected since boot.</p><p class="help-links"><a href="https://github.com/fixtse/OpenNextion-Room-Companion/blob/main/docs/web-configuration.md#sensors-and-graphs" target="_blank" rel="noopener noreferrer">Sensor graphs and secondary text<span class="sr"> (opens in a new tab)</span></a></p></div>
 </section>
 <section id="slot-panel-action" class="editor-pane" role="tabpanel" aria-labelledby="slot-tab-action" hidden><p class="help-links"><a href="https://github.com/fixtse/OpenNextion-Room-Companion/blob/main/docs/web-configuration.md#press-actions" target="_blank" rel="noopener noreferrer">Choose what a press does<span class="sr"> (opens in a new tab)</span></a></p>

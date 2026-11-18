@@ -43,19 +43,24 @@ static const char PANEL_JS[] = R"ONXPANEL(
  const slotOf=e=>editorSlots.findIndex(s=>s.entity===e);
  const dirtyPages=()=>JSON.stringify(pageConfigs)!==savedPages;
  const editor=document.createElement('section');editor.className='panel-page-layout';editor.id='panel-page-layout';
- editor.innerHTML='<h3>Pages</h3><p class="hint">Each page is one carousel stop. Drag entities from the entity list onto a position, drag between positions to swap, or drag one out to remove it. Select a placed entity to edit its shortcut, gestures and quick actions.</p><ol id="page-list" class="page-list" aria-label="Carousel pages"></ol><button type="button" id="add-page">Add page</button><div id="page-detail"><label class="field">Page name<input id="page-name" maxlength="48" placeholder="Living room"></label><label class="field">Carousel icon<input id="page-icon" maxlength="64" placeholder="mdi:sofa"></label><label class="field">Layout<select id="page-kind"></select></label><div id="page-grid" class="page-grid"></div><button type="button" id="delete-page" class="quiet">Delete page</button></div><button type="button" id="save-page-layout">Save pages</button><p class="hint" id="page-layout-status" role="status"></p>';
+ editor.innerHTML='<h3>Pages</h3><p class="hint">Each page is one carousel stop. Drag entities from the entity list onto a position, drag between positions to swap, or drag one out to remove it. Select a placed entity to edit its shortcut, gestures and quick actions.</p><ol id="page-list" class="page-list" aria-label="Carousel pages"></ol><button type="button" id="add-page">Add page</button><div id="page-detail"><label class="field">Page name<input id="page-name" maxlength="48" placeholder="Living room"></label><label class="field">Carousel icon<input id="page-icon" maxlength="64" placeholder="mdi:sofa"></label><label class="field">Layout<select id="page-kind"></select></label><div id="page-grid" class="page-grid"></div><button type="button" id="delete-page" class="quiet">Delete page</button></div><h3>Timers</h3><p class="hint">Registered timers (timer.* or timer sensors) need no page: their popups and the timer screen still show them. A timer can also be placed on pages.</p><ul id="timer-list" class="page-list" aria-label="Registered timers"></ul><button type="button" id="add-timer">Add timer</button><button type="button" id="save-page-layout">Save pages</button><p class="hint" id="page-layout-status" role="status"></p>';
  ($('page-entities')?.querySelector('.slot-column')||$('slot-panel-display'))?.prepend(editor);
  $('page-kind').replaceChildren(...Object.entries(LAYOUTS).map(([v,l])=>new Option(l.label,v)));
  const status=t=>{$('page-layout-status').textContent=t};
  const touch=()=>{renderPageEditor();redraw();status(dirtyPages()?'Pages not saved.':'')};
  function place(page,pos,item){
   const e=item.entity;if(page.entities.includes(e)&&page.entities[pos]!==e){status(nameOf(e)+' is already on this page.');return}
-  const other=pageConfigs.find(p=>p!==page&&p.entities.includes(e));if(other){status(nameOf(e)+' is already on “'+(other.name||'another page')+'”.');return}
+  // The same entity may appear on several pages: one entry, one subscription.
+  const other=pos===0&&pageConfigs.find(p=>p!==page&&p.entities[0]===e);if(other){status(nameOf(e)+' already leads “'+(other.name||'another page')+'”. Place it in another position.');return}
   if(pos>0&&page.layout==='control_sensors'&&!compact(e)){status('Compact positions show sensors and binary sensors.');return}
   try{if(slotOf(e)<0)app()?.add(item)}catch(error){status(error.message);return}
   page.entities[pos]=e;if(!page.icon&&pos===0)page.icon=item.icon||app()?.item(e)?.icon||'';touch();
  }
- function removeAt(page,pos){const e=page.entities[pos];page.entities[pos]='';const i=slotOf(e);if(i>=0&&!pageConfigs.some(p=>p.entities.includes(e)))app()?.clear(i);touch()}
+ const isTimer=e=>/^(timer|sensor)\./.test(e);
+ const registered=()=>editorSlots.filter(s=>s.entity&&s.timerHidden==='1');
+ // Entries stay while a page or the timer list still uses them.
+ function release(e){const i=slotOf(e);if(e&&i>=0&&editorSlots[i].timerHidden!=='1'&&!pageConfigs.some(p=>p.entities.includes(e)))app()?.clear(i)}
+ function removeAt(page,pos){const e=page.entities[pos];page.entities[pos]='';release(e);touch()}
  function cell(page,pos){
   const e=page.entities[pos]||'',c=document.createElement('div');c.className='page-cell'+(pos>0&&page.layout==='control_sensors'?' compact':'')+(e?'':' empty');c.dataset.member=pos;c.tabIndex=0;
   const label=document.createElement('small');label.textContent=LAYOUTS[page.layout].slots[pos];
@@ -77,18 +82,25 @@ static const char PANEL_JS[] = R"ONXPANEL(
   editor.hidden=editorPreset;
   const list=$('page-list');list.replaceChildren(...pageConfigs.map((p,i)=>{const li=document.createElement('li'),b=document.createElement('button');b.type='button';b.textContent=(p.name||nameOf(p.entities[0])||'Page '+(i+1))+' · '+LAYOUTS[p.layout].n;b.setAttribute('aria-current',String(i===selectedPage));b.onclick=()=>{selectedPage=i;const s=slotOf(p.entities.find(Boolean));if(s>=0)app()?.select(s);else touch()};
    li.draggable=true;li.ondragstart=ev=>ev.dataTransfer.setData('application/x-onx-page',String(i));li.ondragover=ev=>ev.preventDefault();li.ondrop=ev=>{const f=ev.dataTransfer.getData('application/x-onx-page');if(f==='')return;ev.preventDefault();const [m]=pageConfigs.splice(+f,1);pageConfigs.splice(i,0,m);selectedPage=i;touch()};li.append(b);return li}));
+  $('timer-list').replaceChildren(...registered().map(t=>{const li=document.createElement('li'),open=document.createElement('button'),rm=document.createElement('button');
+   open.type=rm.type='button';open.textContent=nameOf(t.entity);open.onclick=()=>app()?.select(slotOf(t.entity));rm.className='quiet';rm.textContent='Remove';rm.dataset.timer=t.entity;
+   rm.onclick=()=>{app()?.setTimer(slotOf(t.entity),false);release(t.entity);touch()};li.append(open,rm);return li}));
+  $('add-timer').disabled=editorBusy||editorPreset;
   const p=pageConfigs[selectedPage];$('page-detail').hidden=!p;
   if(p){$('page-name').value=p.name||'';$('page-icon').value=p.icon||'';$('page-kind').value=p.layout;$('page-grid').className='page-grid '+p.layout;$('page-grid').replaceChildren(...Array.from({length:LAYOUTS[p.layout].n},(_,i)=>cell(p,i)))}
   for(const id of ['add-page','delete-page','page-name','page-icon','page-kind'])$(id).disabled=editorBusy||editorPreset;
-  $('save-page-layout').disabled=editorBusy||editorPreset||!dirtyPages();
+  $('save-page-layout').disabled=editorBusy||editorPreset;
   if(pageError)status(pageError);
  }
+ $('add-timer').onclick=()=>app()?.pick(isTimer,item=>{try{let i=slotOf(item.entity);if(i<0)i=app().add(item);app().setTimer(i,true);touch()}catch(error){status(error.message)}});
  $('add-page').onclick=()=>{pageConfigs.push({name:'',icon:'',layout:'single',entities:['']});selectedPage=pageConfigs.length-1;touch()};
- $('delete-page').onclick=()=>{const p=pageConfigs[selectedPage];if(!p)return;pageConfigs.splice(selectedPage,1);for(const e of p.entities)if(e&&!pageConfigs.some(q=>q.entities.includes(e))){const i=slotOf(e);if(i>=0)app()?.clear(i)}selectedPage=Math.max(0,selectedPage-1);touch()};
+ $('delete-page').onclick=()=>{const p=pageConfigs[selectedPage];if(!p)return;pageConfigs.splice(selectedPage,1);for(const e of p.entities)release(e);selectedPage=Math.max(0,selectedPage-1);touch()};
  $('page-name').oninput=()=>{const p=pageConfigs[selectedPage];if(p){p.name=$('page-name').value;touch()}};
  $('page-icon').oninput=()=>{const p=pageConfigs[selectedPage];if(p){p.icon=$('page-icon').value.trim();touch()}};
  $('page-kind').onchange=()=>{const p=pageConfigs[selectedPage];if(!p)return;const n=LAYOUTS[$('page-kind').value].n;p.layout=$('page-kind').value;
   for(let i=n;i<p.entities.length;i++)if(p.entities[i])removeAt(p,i);p.entities=Array.from({length:n},(_,i)=>p.entities[i]||'');touch()};
+ // Import/export bridge (config_app.h): saved list, or replace the draft.
+ globalThis.ONX_PAGES={saved:()=>JSON.parse(savedPages),set:list=>{pageConfigs=structuredClone(list);selectedPage=0;touch()}};
  globalThis.ONX_PANEL_EDITOR=(slots,active,busy,refresh,isPreset=false)=>{
   editorSlots=slots;editorActive=active;editorBusy=busy;editorPreset=isPreset;redraw=refresh;
   const owner=pageConfigs.findIndex(p=>p.entities.includes(slots[active]?.entity));if(owner>=0)selectedPage=owner;renderPageEditor();

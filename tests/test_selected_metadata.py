@@ -12,12 +12,12 @@ code=r'''
 #include "onx_config_rules.h"
 namespace esphome::onx_config_web { struct Query {std::string entity,action,name,area,action_name;}; }
 namespace custom_logic {
-constexpr size_t MAX_HA_ENTITY_COUNT=41;  // 20 slots, 20 press actions, standby weather
+constexpr size_t MAX_HA_ENTITY_COUNT=81;  // 40 entries, 40 press actions, standby weather
 constexpr unsigned HA_ENTITIES_MAGIC=42;
 struct StoredHaEntity {char entity_id[129]{},friendly_name[65]{},area_name[65]{};};
 struct StoredHaEntities {unsigned magic{};unsigned count{};StoredHaEntity entities[MAX_HA_ENTITY_COUNT]{};};
 StoredHaEntities cache;
-std::array<std::string,20> ids;
+std::array<std::string,40> ids;
 std::string cached_standby_weather_entity_id;
 void load_ha_entities_if_needed(){}
 void load_device_config_if_needed(size_t){}
@@ -28,16 +28,16 @@ template<class T> auto make_ram_allocated(){return std::make_unique<T>();}
 template<size_t N> void copy_string_to_fixed_buffer(const std::string &s,char (&out)[N]){std::strncpy(out,s.c_str(),N-1);out[N-1]=0;}
 bool save_ha_entities(const StoredHaEntities &next){cache=next;return true;}
 }
-std::array<std::string,20> actions;
+std::array<std::string,40> actions;
 std::string action_for_slot(size_t i){return actions[i];}
 REDUCER
 int main(){
  using namespace custom_logic;
- for(size_t i=0;i<20;++i){ids[i]="sensor.selected_"+std::to_string(i);actions[i]="script.action_"+std::to_string(i);}
+ for(size_t i=0;i<40;++i){ids[i]="sensor.selected_"+std::to_string(i);actions[i]="script.action_"+std::to_string(i);}
  cached_standby_weather_entity_id="weather.home";
  cache.count=1;copy_string_to_fixed_buffer("sensor.unselected",cache.entities[0].entity_id);
  esphome::onx_config_web::Query query{ids[0],actions[0],"Living room","Lounge","Comfort"};
- assert(save_selected_metadata(query));assert(cache.count==41);
+ assert(save_selected_metadata(query));assert(cache.count==81);
  bool found=false;
  for(size_t i=0;i<cache.count;++i){
   assert(std::string(cache.entities[i].entity_id)!="sensor.unselected");

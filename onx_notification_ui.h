@@ -56,6 +56,22 @@ inline lv_obj_t *toast_icon = nullptr, *toast_bar = nullptr;
 inline uint32_t detail_id = 0, built_revision = 0;
 inline bool panel_open = false;
 inline bool bell_wanted = false;  // Only the main carousel shows the bell.
+// Running timers (Assist's own and Home Assistant ones, with or without a page)
+// as a chip left of the bell; tapping it opens the timer screen.
+inline lv_obj_t *timer_chip = nullptr, *timer_label = nullptr;
+inline std::string timer_text;
+inline std::function<void()> on_timer_chip;
+inline void update_timer_chip() {
+  if (timer_chip == nullptr) return;
+  if (bell_wanted && !timer_text.empty()) lv_obj_remove_flag(timer_chip, LV_OBJ_FLAG_HIDDEN);
+  else lv_obj_add_flag(timer_chip, LV_OBJ_FLAG_HIDDEN);
+}
+inline void set_timer_chip(const std::string &text) {
+  if (text == timer_text) return;
+  timer_text = text;
+  if (timer_label != nullptr) lv_label_set_text(timer_label, text.c_str());
+  update_timer_chip();
+}
 
 constexpr uint32_t BG = 0x1A1D21, CARD = 0x272B30, TEXT = 0xFFFFFF, MUTED = 0xB8B8B8;
 inline uint32_t accent() { return onx_display_settings::accent(); }
@@ -235,6 +251,17 @@ inline void init(int screen_width, int screen_height, Fonts f, Hooks h) {
     lv_obj_center(text(bell, fonts.body, TEXT, "!"));
   }
   lv_obj_add_event_cb(bell, on_bell, LV_EVENT_CLICKED, nullptr);
+  timer_chip = box(top, CARD, S(14));
+  lv_obj_set_size(timer_chip, LV_SIZE_CONTENT, S(28));
+  lv_obj_set_style_pad_hor(timer_chip, S(10), 0);
+  lv_obj_add_flag(timer_chip, LV_OBJ_FLAG_CLICKABLE);
+  lv_obj_set_ext_click_area(timer_chip, S(6));
+  timer_label = text(timer_chip, fonts.body, TEXT, "");
+  lv_obj_remove_flag(timer_label, LV_OBJ_FLAG_CLICKABLE);
+  lv_obj_center(timer_label);
+  lv_obj_align_to(timer_chip, bell, LV_ALIGN_OUT_LEFT_MID, -S(4), 0);
+  lv_obj_add_event_cb(timer_chip, [](lv_event_t *) { if (on_timer_chip) on_timer_chip(); }, LV_EVENT_CLICKED, nullptr);
+  lv_obj_add_flag(timer_chip, LV_OBJ_FLAG_HIDDEN);
   badge = box(top, 0xE5484D, S(9));
   lv_obj_set_size(badge, LV_SIZE_CONTENT, S(18));
   lv_obj_set_style_min_width(badge, S(18), 0);
@@ -557,6 +584,7 @@ inline bool bell_hit(int x, int y) {
 inline void set_bell_visible(bool visible) {
   if (bell == nullptr || visible == bell_wanted) return;
   bell_wanted = visible;
+  update_timer_chip();
   refresh();
 }
 

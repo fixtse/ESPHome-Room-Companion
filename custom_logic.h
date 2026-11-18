@@ -31,7 +31,7 @@
 namespace custom_logic {
 
 static const char *const TAG = "CustomLogic";
-static constexpr size_t MAX_HA_ENTITY_COUNT = 41;
+static constexpr size_t MAX_HA_ENTITY_COUNT = 81;  // 40 entries, 40 press actions, standby weather
 static constexpr size_t LOCAL_HMI_GPIO_SWITCH_PRESET_OPTION_COUNT = 4;
 static constexpr size_t MAX_HA_ENTITY_OPTION_COUNT =
     MAX_HA_ENTITY_COUNT + 1 + LOCAL_HMI_GPIO_SWITCH_PRESET_OPTION_COUNT;
@@ -398,6 +398,8 @@ inline void load_device_config_if_needed(size_t slot);
 inline void ensure_device_config_pref_ready(size_t slot);
 inline bool apply_device_config_options(size_t slot, esphome::select::Select *my_select);
 inline bool apply_standby_weather_config_options(esphome::select::Select *my_select);
+// Bumped on every entity change, whatever the path (web, HA select, preset).
+inline uint32_t entity_revision = 0;
 inline bool save_device_config_entity_id(size_t slot, const std::string &entity_id);
 inline bool save_standby_weather_config_entity_id(const std::string &entity_id);
 inline bool save_device_custom_config(size_t slot, const std::string &custom_type, uint32_t custom_light_capability_mask);
@@ -3593,6 +3595,7 @@ inline std::string ha_entity_title_from_registry_cache(const std::string &entity
 }
 
 inline bool save_device_config_entity_id(size_t slot, const std::string &raw_entity_id) {
+  ++entity_revision;
   std::string entity_id = trim_copy(raw_entity_id);
   if (!entity_id.empty() && !is_supported_normal_device_entity_id(entity_id.c_str())) {
     ESP_LOGW(TAG, "%s config ignored unsupported entity: %s", device_slot_label(slot).c_str(), entity_id.c_str());

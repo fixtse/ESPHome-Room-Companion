@@ -11,7 +11,7 @@ const raw=(file,tag)=>fs.readFileSync('my_components/onx_config_web/'+file,'utf8
  const html=raw('config_page.h','ONXHTML').replace('__ONX_TOKEN__','test'),panel=raw('panel_web.h','ONXPANEL'),
   app=raw('config_app.h','ONXJS'),ha=raw('ha_browser.h','ONXJS');
  const empty=()=>({entity:'',name:'',area:'',action:'',actionName:'',typeOption:'',icon:'',iconOverride:'0',secondary:'',secondaryText:'{value}',sensorGraph:'0',timerHidden:'0',playlists:[],gestures:{cw:'',ccw:'',holdCw:'',holdCcw:'',feedback:'',popup:'1',responses:'0',pressResponses:'0',events:'0',step:'1'}});
- const slots=Array.from({length:20},empty);
+ const slots=Array.from({length:40},empty);
  Object.assign(slots[0],{entity:'weather.home',name:'Madrid',type:'weather'});
  Object.assign(slots[1],{entity:'media_player.bedroom',name:'Bedroom'});
  Object.assign(slots[2],{entity:'sensor.codex_remaining',name:'Codex 5 hour remaining',secondary:'sensor.codex_usage'});

@@ -111,10 +111,19 @@ Missing data is shown explicitly rather than as a made-up reading.
 
 ## Timers without clutter
 
-Add a Home Assistant timer or a supported voice/speaker timer sensor to a slot.
-Then select **Hide timer from carousel** in **Display** if you do not want a
-regular page for it. It still counts toward the **20 configured slots**, and its
-automatic popup stays active.
+Use **Add timer** under **Timers** in the page editor to register a Home
+Assistant `timer.*` or a supported timer sensor without giving it a page. Its
+automatic popup and the timer screen still show it. A registered timer can
+also be placed on pages. Each timer counts once toward the **40 entities**.
+
+The same entity can appear on several pages and in the timer list. It keeps a
+single entry (one shortcut, gesture and quick-action setup) and one Home
+Assistant subscription. Only one page can use it as its leading (large/top)
+entity.
+
+Active timers, including the ones Assist sets on the panel itself, appear as a
+countdown chip beside the bell on the main screen. Tap it to open the timer
+screen, even for timers that have no page.
 
 The panel supports Home Assistant `timer.*`, compatible Voice PE/SoundSense voice
 timer sensors and Google Home integration timer sensors. Ordinary text sensors

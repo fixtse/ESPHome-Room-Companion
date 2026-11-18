@@ -184,6 +184,21 @@ interval:
           // screens open the centre by pulling down from the top edge. The
           // dashboard also has an automatic shortcut when a URL is configured.
           onx_notification_ui::set_bell_visible(normal && !detail && onx_navigation::visible);
+          // Timer chip: Assist's local timers and every HA timer entry (paged or
+          // registered), so timers without a page stay one tap away.
+          static uint32_t last_chip = 0;
+          if (millis() - last_chip >= 1000) {
+            last_chip = millis();
+            // Only active (or ringing) timers; paused ones stay on the timer screen.
+            int count = 0; double soonest = -1;
+            for (const auto &t : onx_panel_detail::all_timers()) {
+              if (t.state != "active" && t.state != "ringing") continue;
+              ++count;
+              if (soonest < 0 || t.left < soonest) soonest = t.left;
+            }
+            onx_notification_ui::set_timer_chip(count == 0 ? std::string() :
+                onx_timer::countdown(soonest) + (count > 1 ? " +" + std::to_string(count - 1) : std::string()));
+          }
           const auto &dash = id(room_panel)->stream_settings();
           onx_navigation::update_shortcut(id(panel_dashboard_icon)->get_lv_image_dsc(),
               normal && !detail && !dash.url.empty(), dash.toolbar_side == "right");

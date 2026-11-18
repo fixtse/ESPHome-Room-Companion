@@ -30,6 +30,11 @@ esphome:
               id(entity_icon_downloader)->set_artwork_busy(onx_media::downloading);
             };
             hooks.activity = []() { id(ui_presenter)->notify_user_activity(); };
+            // Timer chip opens the shared timer screen (features/assist.yaml).
+            onx_notification_ui::on_timer_chip = []() {
+              if (id(touch_input)->suppress_click()) return;
+              id(timer_show).execute();
+            };
             onx_notification_ui::init(onx_panel_ui::width, onx_panel_ui::height, fonts, hooks);
 
 image:

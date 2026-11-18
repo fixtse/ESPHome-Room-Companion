@@ -215,6 +215,11 @@ inline void load() {
   active = store_read("active", stored) && find(stored) != nullptr ? find(stored)->name : "";
 }
 
+// Pages (onx_panel_pages.h) reference entries by index, so a preset carries its
+// own page list. Presets without one (older backups) get one page per entity.
+inline std::function<void(JsonArray)> encode_pages;
+inline std::function<void(const std::string &)> apply_pages;
+inline std::string pending_pages;
 inline void encode_current(JsonArray slots) {
   onx_entity_config::load_icons();
   onx_entity_config::load_playlists();
@@ -239,7 +244,7 @@ inline bool slot_query(size_t index, JsonObjectConst slot, esphome::onx_config_w
   query.secondary = slot["secondary"] | std::string();
   query.secondary_text = slot["secondaryText"] | std::string("{value}");
   query.sensor_graph = slot["sensorGraph"] | std::string("0");
-  query.timer_hidden = slot["timerHidden"] | std::string("0");
+  query.timer_hidden = slot["timerHidden"] | std::string("0");  // Registered timer: no page of its own.
   // Canonical gestures and playlists: fixed key order and defaults, so a backup
   // that omits or reorders them compares equal to the same saved slot.
   {
@@ -331,6 +336,7 @@ inline std::string save_current(const std::string &raw_name) {
   ONX_PRESET_TRACE("preset_capture", raw_name);
   auto doc = custom_logic::make_psram_json_document();
   encode_current(doc["slots"].to<JsonArray>());
+  if (encode_pages) encode_pages(doc["pages"].to<JsonArray>());
   if (doc.overflowed()) return "Not enough memory to capture the current controls";
   return store_document(raw_name, doc, true);
 }
@@ -445,6 +451,8 @@ inline void finish(const std::string &name) {
     ESP_LOGW(TAG, "Preset \"%s\" applied with %u of %u slots failing", applying.c_str(), unsigned(apply_failed),
              unsigned(apply_total));
   }
+  if (apply_pages) apply_pages(pending_pages);
+  pending_pages.clear();
   applying.clear();
   persist_active();
   publish_select();
@@ -491,6 +499,13 @@ inline std::string apply(const std::string &raw_name) {
       if (same_query(query, present)) continue;
       queries.push_back(std::move(query));
     }
+  }
+  pending_pages.clear();
+  {
+    auto pages = custom_logic::make_psram_json_document();
+    if (stored["pages"].is<JsonArrayConst>()) pages["pages"] = stored["pages"];
+    else pages["pages"].to<JsonArray>();
+    serializeJson(pages, pending_pages);
   }
   web->clear_internal();  // A newer apply replaces an unfinished one.
   applying = name;

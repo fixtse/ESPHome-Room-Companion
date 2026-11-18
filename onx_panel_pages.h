@@ -5,6 +5,7 @@
 #include <cstring>
 #include <vector>
 #include "onx_entity_config.h"
+#include "onx_presets.h"
 #include "onx_render.h"
 #include "onx_navigation.h"
 #include "onx_panel_ui.h"
@@ -66,14 +67,16 @@ inline void reconcile(StoredPages &list) {
     list.pages[out++]=page;
   }
   list.count=out;
+  // Registered timers (timer./sensor. with the timer flag) need no page: their
+  // popups and the timer screen find them without a carousel stop.
   for(int e=0;e<int(onx_memory::ENTRY_COUNT) && list.count<MAX_PAGES;++e)
-    if(!entry_entity(e).empty() && !placed(list,e)){StoredPage single{};single.entries[0]=e;list.pages[list.count++]=single;}
+    if(!entry_entity(e).empty() && !placed(list,e) && !onx_entity_config::timer_hidden(e,entry_entity(e))){StoredPage single{};single.entries[0]=e;list.pages[list.count++]=single;}
 }
 // One-time migration from per-entity layouts (rc.page.v1.<entity>).
 inline void migrate() {
   stored=StoredPages{};
   for(int e=0;e<int(onx_memory::ENTRY_COUNT);++e) {
-    const auto entity=entry_entity(e);if(entity.empty() || placed(stored,e))continue;
+    const auto entity=entry_entity(e);if(entity.empty() || placed(stored,e) || onx_entity_config::timer_hidden(e,entity))continue;
     StoredPage page{};page.entries[0]=e;
     auto old_pref=esphome::global_preferences->make_preference<Page>(esphome::fnv1_hash("rc.page.v1."+entity));
     Page old{};
@@ -94,10 +97,14 @@ inline bool load() {
   for(auto &p:stored.pages){p.name[48]=0;p.icon[64]=0;if(p.kind>2)p.kind=0;}
   loaded=true;return true;
 }
-inline void refresh(){if(dirty){reconcile(stored);dirty=false;}}
+inline uint32_t seen_revision=0;
+inline void refresh(){if(dirty || seen_revision!=custom_logic::entity_revision){reconcile(stored);dirty=false;seen_revision=custom_logic::entity_revision;}}
 inline int page_index(const std::string &entity) {
   if(!load())return -1;refresh();
   const int entry=configured(entity);if(entry<0)return -1;
+  // An entity may appear on several pages (one entry, one subscription); the
+  // page it leads wins.
+  for(int p=0;p<stored.count;++p)if(stored.pages[p].entries[0]==entry)return p;
   for(int p=0;p<stored.count;++p)for(auto e:stored.pages[p].entries)if(e==entry)return p;
   return -1;
 }
@@ -125,6 +132,25 @@ inline std::vector<int> order() {
   return out;
 }
 inline const bool order_installed=(onx_entity_config::page_order=&order,true);
+inline std::string rpc(const std::string &op,const std::string &data);
+inline void encode(JsonArray out) {
+  if(!load())return;refresh();
+  for(int p=0;p<stored.count;++p) {
+    const auto &page=stored.pages[p];auto item=out.add<JsonObject>();
+    item["name"]=std::string(page.name);item["icon"]=std::string(page.icon);
+    item["layout"]=onx_panel_layout::name(Kind(page.kind));
+    auto entities=item["entities"].to<JsonArray>();
+    for(int i=0;i<size_of(Kind(page.kind));++i)entities.add(entry_entity(page.entries[i]));
+  }
+}
+// A preset's pages, or {"pages":[]} for one page per entity. Invalid lists
+// (e.g. an entry failed to save) fall back to one page per entity.
+inline void apply(const std::string &json) {
+  dirty=true;
+  const auto result=rpc("panel_pages_save",json.empty()?std::string("{\"pages\":[]}"):json);
+  if(result.find("\"error\"")!=std::string::npos)rpc("panel_pages_save","{\"pages\":[]}");
+}
+inline const bool presets_installed=(onx_presets::encode_pages=&encode,onx_presets::apply_pages=&apply,true);
 inline bool valid_icon(const std::string &icon) {
   if(icon.empty())return true;
   if(icon.size()>64 || icon.rfind("mdi:",0)!=0 || icon.size()<5)return false;
@@ -159,8 +185,10 @@ inline std::string rpc(const std::string &op,const std::string &data) {
       for(int i=0;i<size_of(kind);++i) {
         const std::string entity=entities[i] | "";const int entry=configured(entity);
         if(entry<0)return "{\"error\":\"Save the page entities before the pages\"}";
-        if(placed(next,entry))return "{\"error\":\"Each entity can be on one page only\"}";
-        for(int j=0;j<i;++j)if(page.entries[j]==entry)return "{\"error\":\"Each entity can be on one page only\"}";
+        // Reuse is fine (same entry, same subscription), but a carousel stop
+        // needs one leading entity and a page shows an entity once.
+        if(i==0)for(int p=0;p<next.count;++p)if(next.pages[p].entries[0]==entry)return "{\"error\":\"An entity can lead only one page\"}";
+        for(int j=0;j<i;++j)if(page.entries[j]==entry)return "{\"error\":\"A page shows each entity once\"}";
         if(kind==Kind::CONTROL_SENSORS && i>0 && !onx_panel_layout::sensor(entity))return "{\"error\":\"Compact positions show sensors and binary sensors\"}";
         page.entries[i]=uint8_t(entry);
       }
