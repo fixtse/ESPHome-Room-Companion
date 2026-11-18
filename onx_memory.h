@@ -11,6 +11,8 @@
 #endif
 
 namespace onx_memory {
+// Configuration entries (page-placed entities); was 20 before pages.
+constexpr std::size_t ENTRY_COUNT = 40;
 #ifdef USE_ESP32
 // Large per-entity records belong in the board's PSRAM. Allocate on first use,
 // after PSRAM initialization, rather than consuming internal .bss at boot.

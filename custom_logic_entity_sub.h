@@ -156,13 +156,13 @@ inline const std::array<const char *, 12> &weather_attributes() {
   return attrs;
 }
 
-inline std::array<std::string, 20> &automation_last_triggered_values() {
-  static std::array<std::string, 20> values{};
+inline std::array<std::string, onx_memory::ENTRY_COUNT> &automation_last_triggered_values() {
+  static std::array<std::string, onx_memory::ENTRY_COUNT> values{};
   return values;
 }
 
-inline std::array<std::string, 20> &automation_last_triggered_entity_ids() {
-  static std::array<std::string, 20> entity_ids{};
+inline std::array<std::string, onx_memory::ENTRY_COUNT> &automation_last_triggered_entity_ids() {
+  static std::array<std::string, onx_memory::ENTRY_COUNT> entity_ids{};
   return entity_ids;
 }
 
@@ -1116,7 +1116,7 @@ inline void subscribe_field(esphome::api::APIServer *api_server, size_t slot, co
 
 inline void subscribe_secondary(esphome::api::APIServer *api_server,size_t slot,const std::string &primary) {
 #ifdef USE_API_HOMEASSISTANT_STATES
-  if(slot>=20)return;
+  if(slot>=onx_memory::ENTRY_COUNT)return;
   const auto who=onx_subs::owner(onx_subs::Kind::SECONDARY,slot);
   const auto &config=onx_sensor_view::configs[slot];
   if(!api_server || primary.empty() || primary!=config.primary || !config.secondary[0]) {onx_subs::registry.release(who);return;}
@@ -1138,7 +1138,7 @@ inline void subscribe_secondary(esphome::api::APIServer *api_server,size_t slot,
 #endif
 }
 inline void sample_sensor_history(time_t now) {
-  for(size_t i=0;i<20;++i) {
+  for(size_t i=0;i<onx_memory::ENTRY_COUNT;++i) {
     const auto &c=onx_sensor_view::configs[i];if(!c.graph || custom_logic::cached_device_entity_id(i)!=c.primary)continue;
     auto &s=onx_sensor_view::states[i];s.bind(c);
     if(std::string(c.primary).rfind("switch.",0)==0) {
@@ -1152,7 +1152,7 @@ inline void sample_sensor_history(time_t now) {
 
 inline void subscribe_gesture_feedback(esphome::api::APIServer *api,size_t slot,const std::string &primary) {
 #ifdef USE_API_HOMEASSISTANT_STATES
-  if(slot>=20)return;
+  if(slot>=onx_memory::ENTRY_COUNT)return;
   const auto who=onx_subs::owner(onx_subs::Kind::GESTURE,slot);
   const auto &config=onx_gesture::configs[slot];
   bool enabled=!primary.empty() && primary==config.entity && (config.events || config.responses || config.feedback[0]);
@@ -1198,7 +1198,7 @@ inline void release_slot(size_t slot) {
   if(slot>=custom_logic::CONFIGURABLE_DEVICE_SLOT_COUNT)return;
   for(auto kind:{onx_subs::Kind::PRIMARY,onx_subs::Kind::SECONDARY,onx_subs::Kind::GESTURE})
     onx_subs::registry.release(onx_subs::owner(kind,slot));
-  if(slot<20) onx_gesture::states[slot]=onx_gesture::State{};
+  if(slot<onx_memory::ENTRY_COUNT) onx_gesture::states[slot]=onx_gesture::State{};
   release_slot_runtime(slot,"");
 }
 
@@ -1273,7 +1273,7 @@ inline void tick_subscriptions(esphome::api::APIServer *api) {
 
 // Recovery reads use existing callbacks and one-shot Native API requests. They do not
 // add subscriptions, reconnect Wi-Fi, replay actions, or grow the subscription table.
-inline std::array<onx_recovery::Retry, 20> &recovery_policy = onx_memory::psram_object<std::array<onx_recovery::Retry, 20>>();
+inline std::array<onx_recovery::Retry,onx_memory::ENTRY_COUNT> &recovery_policy = onx_memory::psram_object<std::array<onx_recovery::Retry,onx_memory::ENTRY_COUNT>>();
 inline std::vector<std::string> recovery_queue;
 inline std::string recovering_entity;
 inline size_t recovery_cursor{0};
@@ -1292,7 +1292,7 @@ inline bool queue_entity_refresh(const std::string &entity, bool manual) {
 inline void recover_entity_states(esphome::api::APIServer *api, bool connected) {
 #ifdef USE_API_HOMEASSISTANT_STATES
   const uint32_t now = millis();
-  static auto &secondary_recovery = onx_memory::psram_object<std::array<onx_recovery::Retry,20>>();
+  static auto &secondary_recovery = onx_memory::psram_object<std::array<onx_recovery::Retry,onx_memory::ENTRY_COUNT>>();
   if (!api || !connected) {
     recovery_queue.clear(); recovering_entity.clear(); recovery_cursor = 0;
     for (auto &retry : recovery_policy) { retry.since = now; retry.delay = 10000; }
@@ -1307,7 +1307,7 @@ inline void recover_entity_states(esphome::api::APIServer *api, bool connected) 
       recovery_policy[slot].attempted(now);
     }
   }
-  for(size_t i=0;i<20;++i) {
+  for(size_t i=0;i<onx_memory::ENTRY_COUNT;++i) {
     const auto &c=onx_sensor_view::configs[i];const auto &s=onx_sensor_view::states[i];
     if(custom_logic::cached_device_entity_id(i)!=c.primary)continue;
     if(secondary_recovery[i].due(c.secondary,s.received&&s.available,now)) {

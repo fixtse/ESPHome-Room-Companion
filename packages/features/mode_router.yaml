@@ -76,7 +76,7 @@ onx_config_web:
             item["size"] = line->size; item["width"] = line->width; item["color"] = line->color;
           }
         };
-        for (size_t i = 0; i < 20; ++i) {
+        for (size_t i = 0; i < (int)custom_logic::CONFIGURABLE_DEVICE_SLOT_COUNT; ++i) {
           const auto entity = custom_logic::cached_device_entity_id(i);
           if (entity.empty()) continue;
           #ifdef USE_ROOM_COMPANION
@@ -193,7 +193,7 @@ onx_config_web:
     if (query.op == "icon_status") {
       return onx_entity_config::build_json([&](JsonObject root) {
         JsonArray slots = root["slots"].to<JsonArray>();
-        for (size_t i = 0; i < 20; ++i) {
+        for (size_t i = 0; i < (int)custom_logic::CONFIGURABLE_DEVICE_SLOT_COUNT; ++i) {
           const auto entity = custom_logic::cached_device_entity_id(i);
           if (entity.empty()) continue;
           const auto &meta = onx_icon_state::metadata[i];
@@ -210,7 +210,7 @@ onx_config_web:
       });
     }
     if (query.op == "icon") {
-      if (query.slot < 0 || query.slot >= 20 || query.entity != custom_logic::cached_device_entity_id(query.slot) ||
+      if (query.slot < 0 || query.slot >= (int)custom_logic::CONFIGURABLE_DEVICE_SLOT_COUNT || query.entity != custom_logic::cached_device_entity_id(query.slot) ||
           (!query.icon.empty() && !onx_icon_state::valid_icon(query.icon)) ||
           (query.icon_override != "0" && query.icon_override != "1"))
         return onx_entity_config::error("Entity changed; reload configuration before syncing icons");
@@ -234,7 +234,7 @@ onx_config_web:
       retried = true; last_retry = millis();
       custom_logic_entity_sub::cancel_controls();
       id(entity_icon_downloader)->retry();
-      for (size_t slot = 0; slot < 20; ++slot)
+      for (size_t slot = 0; slot < (int)custom_logic::CONFIGURABLE_DEVICE_SLOT_COUNT; ++slot)
         custom_logic_entity_sub::queue_entity_refresh(custom_logic::cached_device_entity_id(slot), false);
       custom_logic_entity_sub::queue_entity_refresh(custom_logic::cached_standby_weather_entity_id, false);
       custom_logic::disconnect_all_clients_for_refresh(id(api_server));
@@ -362,7 +362,7 @@ onx_config_web:
       onx_presets::finish(query.name);
       return std::string("{\"ok\":true}");
     }
-    if (query.op != "save" || query.slot < 0 || query.slot >= 20)
+    if (query.op != "save" || query.slot < 0 || query.slot >= (int)custom_logic::CONFIGURABLE_DEVICE_SLOT_COUNT)
       return onx_entity_config::error("Unknown configuration request");
     if ((!query.entity.empty() && ((!onx_config::valid_entity(query.entity) && !custom_logic::is_local_hmi_gpio_switch_preset_option(query.entity)) ||
           !custom_logic::is_supported_normal_device_entity_id(query.entity.c_str()))) ||
@@ -432,6 +432,9 @@ onx_config_web:
       custom_logic::apply_device_type_options(query.slot, types[query.slot]);
     }
     id(normal_device_count) = static_cast<int>(custom_logic::configured_normal_device_count());
+    #ifdef USE_ROOM_COMPANION
+    onx_panel_pages::dirty = true;  // Pages drop cleared entries and add new ones.
+    #endif
     id(normal_device_detail_active) = false;
     id(normal_device_detail_kind) = NORMAL_DEVICE_DETAIL_KIND_NONE;
     id(normal_page_index) = 0;

@@ -1,7 +1,7 @@
 #pragma once
 // Named control presets.
 //
-// A preset is a snapshot of all 20 slots in the same shape the configuration
+// A preset is a snapshot of all configuration entries in the same shape the configuration
 // page saves (entity, name, press action, type, icon, secondary sensor, timer
 // visibility, gestures and playlists). Presets live in their own NVS namespace
 // and only their names stay in RAM; a preset's slots are read when it is applied.
@@ -41,7 +41,7 @@ static const char *const TAG = "onx_presets";
 constexpr size_t MAX_PRESETS = 8;
 constexpr size_t MAX_NAME = 32;
 constexpr size_t MAX_BYTES = 32768;
-constexpr size_t SLOT_COUNT = 20;
+constexpr size_t SLOT_COUNT = onx_memory::ENTRY_COUNT;
 // Shown by the Home Assistant select when the slots match no stored preset.
 inline const char *const CUSTOM = "Custom";
 inline const char *const NAMESPACE = "onx_presets";

@@ -16,7 +16,7 @@ struct Config {
   uint8_t count{0};
   Entry entries[MAX_ENTRIES]{};
 };
-inline onx_memory::StateArray<Config, 20> configs;
+inline onx_memory::StateArray<Config, onx_memory::ENTRY_COUNT> configs;
 struct Browser {
   std::string entity;
   int selected{0};

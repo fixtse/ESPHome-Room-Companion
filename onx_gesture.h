@@ -19,8 +19,8 @@ struct State {
   bool received{false},press_request{false};
   uint32_t requested_ms{0},feedback_ms{0},token{0};
 };
-inline onx_memory::StateArray<Config,20> configs;
-inline onx_memory::StateArray<State,20> states;
+inline onx_memory::StateArray<Config,onx_memory::ENTRY_COUNT> configs;
+inline onx_memory::StateArray<State,onx_memory::ENTRY_COUNT> states;
 // Swipe up/left steps up, down/right steps down; "held" = touch held first.
 inline const char *names[]={"up","down","held_up","held_down"};
 inline int gesture(int direction,bool pressed) {return (pressed?2:0)+(direction<0?1:0);}
@@ -29,7 +29,7 @@ inline std::deque<Request> pending;
 inline int accumulator{0},accumulator_kind{-1},accumulator_slot{-1};
 inline void clear_pending() {pending.clear();accumulator=0;accumulator_slot=accumulator_kind=-1;}
 inline bool routes(int slot,int kind) {
-  return slot>=0 && slot<20 && kind>=0 && kind<4 && (configs[slot].actions[kind][0] || configs[slot].events);
+  return slot>=0 && slot<onx_memory::ENTRY_COUNT && kind>=0 && kind<4 && (configs[slot].actions[kind][0] || configs[slot].events);
 }
 inline void queue(int slot,int kind,int threshold) {
   if(std::string(configs[slot].actions[kind])=="none" && !configs[slot].events)return;
@@ -46,7 +46,7 @@ inline void queue(int slot,int kind,int threshold) {
   if(pending.size()<8)pending.push_back({slot,kind,delta});
 }
 inline void feedback(int slot,const std::string &value,const std::string &unit,uint32_t now,bool response=false) {
-  if(slot<0 || slot>=20)return;
+  if(slot<0 || slot>=onx_memory::ENTRY_COUNT)return;
   auto &state=states[slot];
   const auto text=onx_notification::clipped(value,128);
   const bool changed=state.received && (text!=state.value || unit!=state.unit);

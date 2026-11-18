@@ -35,7 +35,7 @@ static constexpr size_t MAX_HA_ENTITY_COUNT = 41;
 static constexpr size_t LOCAL_HMI_GPIO_SWITCH_PRESET_OPTION_COUNT = 4;
 static constexpr size_t MAX_HA_ENTITY_OPTION_COUNT =
     MAX_HA_ENTITY_COUNT + 1 + LOCAL_HMI_GPIO_SWITCH_PRESET_OPTION_COUNT;
-static constexpr size_t CONFIGURABLE_DEVICE_SLOT_COUNT = 20;
+static constexpr size_t CONFIGURABLE_DEVICE_SLOT_COUNT = onx_memory::ENTRY_COUNT;
 enum NormalDeviceDetailKind : int {
   NORMAL_DEVICE_DETAIL_KIND_NONE = 0,
   NORMAL_DEVICE_DETAIL_KIND_SWITCH = 1,
@@ -706,7 +706,7 @@ inline void set_normal_ui_device_online_state(size_t slot, bool online) {
   if (!is_configurable_device_slot(slot)) {
     return;
   }
-  const uint32_t bit = 1u << slot;
+  const uint64_t bit = 1ull << slot;
   if (online) {
     id(normal_device_online_mask) |= bit;
   } else {

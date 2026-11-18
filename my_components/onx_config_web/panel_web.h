@@ -27,48 +27,81 @@ static const char PANEL_JS[] = R"ONXPANEL(
   throw Error('The panel did not confirm this change.');
  }
 
- // Pages compose configured entities: subscriptions remain owned by slots.
- let pageConfigs=[],pageError='',editorSlots=[],editorActive=0,editorPreset=false,redraw=()=>{};
- const drafts=new Map();
- const pageFor=entity=>drafts.get(entity)||pageConfigs.find(p=>p.entity===entity)||{entity,layout:'single',members:[]};
+ // Pages: the carousel shows pages, each with its own icon and name. A page
+ // holds 1, 2 or 4 entities by placement (full, half, main + three compact);
+ // there is no "main entity". Every placed entity is its own configuration
+ // entry with its own shortcut, gestures and quick actions (40 in total).
+ // Wire format (firmware: see docs/room-companion/pages-handoff.md):
+ //   panel_pages -> {pages:[{name,icon,layout,entities:[...]}]}
+ //   panel_pages_save data=JSON {pages:[...]} (whole list: order, add, delete)
+ const LAYOUTS={single:{n:1,label:'One entity',slots:['Full screen']},two_controls:{n:2,label:'Two entities',slots:['Top','Bottom']},control_sensors:{n:4,label:'One large + three compact',slots:['Large','Compact 1','Compact 2','Compact 3']}};
+ const compact=e=>/^(sensor|binary_sensor)\./.test(e);
+ let pageConfigs=[],savedPages='[]',pageError='',editorSlots=[],editorActive=0,editorPreset=false,editorBusy=false,selectedPage=0,redraw=()=>{};
+ const pageFor=entity=>{const p=pageConfigs.find(p=>p.entities[0]===entity);return p?{layout:p.layout,members:p.entities.slice(1)}:{layout:'single',members:[]}};
+ const app=()=>globalThis.ONX_APP;
+ const nameOf=e=>editorSlots.find(s=>s.entity===e)?.name||app()?.item(e)?.name||e;
+ const slotOf=e=>editorSlots.findIndex(s=>s.entity===e);
+ const dirtyPages=()=>JSON.stringify(pageConfigs)!==savedPages;
  const editor=document.createElement('section');editor.className='panel-page-layout';editor.id='panel-page-layout';
- editor.innerHTML='<h3>Page layout</h3><p class="hint">Use the full rectangular screen. Add and save entities in the slots first, then group them on this page. Tap an item to open its controls; swipe to change pages.</p><label class="field">Layout<select id="page-kind"><option value="single">One control</option><option value="two_controls">Two controls</option><option value="control_sensors">One control + three sensors</option></select></label><div id="page-members"></div><button type="button" id="save-page-layout">Save page layout</button><p class="hint" id="page-layout-status" role="status"></p>';
- $('slot-panel-display')?.append(editor);
- const labelOf=s=>s.name||s.entity;
- function renderPageEditor(){
-  const slot=editorSlots[editorActive];editor.hidden=editorPreset||!slot?.entity;if(!slot?.entity)return;
-  const p=pageFor(slot.entity);$('page-kind').value=p.layout;
-  for(const option of $('page-kind').options)option.disabled=option.value!=='single'&&/^(sensor|binary_sensor)\./.test(slot.entity);
-  const options=p.layout==='control_sensors'?editorSlots.filter(s=>/^(sensor|binary_sensor)\./.test(s.entity)):editorSlots.filter(s=>s.entity&&!/^(sensor|binary_sensor)\./.test(s.entity));
-  const count=p.layout==='two_controls'?1:p.layout==='control_sensors'?3:0;
-  $('page-members').replaceChildren();
-  for(let i=0;i<count;i++){
-   const label=document.createElement('label');label.className='field';label.textContent=p.layout==='two_controls'?'Second control':'Sensor '+(i+1);
-   const select=document.createElement('select');select.setAttribute('aria-label',label.textContent);select.dataset.member=i;
-   select.add(new Option('Choose an entity',''));
-   for(const s of options)if(s.entity!==slot.entity)select.add(new Option(labelOf(s),s.entity));
-   if(p.members[i]&&!options.some(s=>s.entity===p.members[i]))select.add(new Option('Missing: '+p.members[i],p.members[i]));
-   select.value=p.members[i]||'';select.onchange=()=>{const d=structuredClone(pageFor(slot.entity));d.members[i]=select.value;drafts.set(slot.entity,d);redraw();$('page-layout-status').textContent='Page layout not saved.'};
-   label.append(select);$('page-members').append(label);
-  }
-  $('page-layout-status').textContent=pageError|| (drafts.has(slot.entity)?'Page layout not saved.':'Layout saved separately from entity settings.');
+ editor.innerHTML='<h3>Pages</h3><p class="hint">Each page is one carousel stop. Drag entities from the entity list onto a position, drag between positions to swap, or drag one out to remove it. Select a placed entity to edit its shortcut, gestures and quick actions.</p><ol id="page-list" class="page-list" aria-label="Carousel pages"></ol><button type="button" id="add-page">Add page</button><div id="page-detail"><label class="field">Page name<input id="page-name" maxlength="48" placeholder="Living room"></label><label class="field">Carousel icon<input id="page-icon" maxlength="64" placeholder="mdi:sofa"></label><label class="field">Layout<select id="page-kind"></select></label><div id="page-grid" class="page-grid"></div><button type="button" id="delete-page" class="quiet">Delete page</button></div><button type="button" id="save-page-layout">Save pages</button><p class="hint" id="page-layout-status" role="status"></p>';
+ ($('page-entities')?.querySelector('.slot-column')||$('slot-panel-display'))?.prepend(editor);
+ $('page-kind').replaceChildren(...Object.entries(LAYOUTS).map(([v,l])=>new Option(l.label,v)));
+ const status=t=>{$('page-layout-status').textContent=t};
+ const touch=()=>{renderPageEditor();redraw();status(dirtyPages()?'Pages not saved.':'')};
+ function place(page,pos,item){
+  const e=item.entity;if(page.entities.includes(e)&&page.entities[pos]!==e){status(nameOf(e)+' is already on this page.');return}
+  const other=pageConfigs.find(p=>p!==page&&p.entities.includes(e));if(other){status(nameOf(e)+' is already on “'+(other.name||'another page')+'”.');return}
+  if(pos>0&&page.layout==='control_sensors'&&!compact(e)){status('Compact positions show sensors and binary sensors.');return}
+  try{if(slotOf(e)<0)app()?.add(item)}catch(error){status(error.message);return}
+  page.entities[pos]=e;if(!page.icon&&pos===0)page.icon=item.icon||app()?.item(e)?.icon||'';touch();
  }
- $('page-kind').onchange=()=>{const entity=editorSlots[editorActive]?.entity;if(!entity)return;drafts.set(entity,{entity,layout:$('page-kind').value,members:[]});renderPageEditor();redraw()};
+ function removeAt(page,pos){const e=page.entities[pos];page.entities[pos]='';const i=slotOf(e);if(i>=0&&!pageConfigs.some(p=>p.entities.includes(e)))app()?.clear(i);touch()}
+ function cell(page,pos){
+  const e=page.entities[pos]||'',c=document.createElement('div');c.className='page-cell'+(pos>0&&page.layout==='control_sensors'?' compact':'')+(e?'':' empty');c.dataset.member=pos;c.tabIndex=0;
+  const label=document.createElement('small');label.textContent=LAYOUTS[page.layout].slots[pos];
+  const title=document.createElement('strong');title.textContent=e?nameOf(e):'Drop an entity here';c.append(label,title);
+  if(e){const id=document.createElement('small');id.textContent=e;c.append(id);c.draggable=true;c.ondragstart=ev=>{ev.dataTransfer.setData('application/x-onx-cell',String(pos));ev.dataTransfer.effectAllowed='move'};
+   c.onclick=()=>{const i=slotOf(e);if(i>=0)app()?.select(i)};c.setAttribute('aria-current',String(slotOf(e)===editorActive))}
+  const pick=document.createElement('button');pick.type='button';pick.className='quiet';pick.textContent=e?'Replace':'Choose entity';
+  pick.onclick=ev=>{ev.stopPropagation();app()?.pick(x=>!(pos>0&&page.layout==='control_sensors')||compact(x),item=>place(page,pos,item))};c.append(pick);
+  if(e){const rm=document.createElement('button');rm.type='button';rm.className='quiet';rm.textContent='Remove';rm.onclick=ev=>{ev.stopPropagation();removeAt(page,pos)};c.append(rm)}
+  c.ondragover=ev=>{ev.preventDefault();c.classList.add('drop')};c.ondragleave=()=>c.classList.remove('drop');
+  c.ondrop=ev=>{ev.preventDefault();c.classList.remove('drop');const from=ev.dataTransfer.getData('application/x-onx-cell'),item=ev.dataTransfer.getData('application/x-onx-entity');
+   if(from!==''){const f=+from,a=page.entities[f];if(f===pos)return;if(page.layout==='control_sensors'&&(f===0||pos===0)&&((page.entities[pos]&&!compact(page.entities[pos]))||!compact(a))&&(f===0?pos:f)>0){status('Compact positions show sensors and binary sensors.');return}page.entities[f]=page.entities[pos]||'';page.entities[pos]=a;touch()}
+   else if(item)place(page,pos,JSON.parse(item))};
+  return c;
+ }
+ // Dropping a placed entity outside the grid removes it.
+ editor.addEventListener('dragend',ev=>{if(ev.dataTransfer.dropEffect==='none'&&ev.target.dataset?.member!==undefined){const p=pageConfigs[selectedPage];if(p)removeAt(p,+ev.target.dataset.member)}});
+ function renderPageEditor(){
+  editor.hidden=editorPreset;
+  const list=$('page-list');list.replaceChildren(...pageConfigs.map((p,i)=>{const li=document.createElement('li'),b=document.createElement('button');b.type='button';b.textContent=(p.name||nameOf(p.entities[0])||'Page '+(i+1))+' · '+LAYOUTS[p.layout].n;b.setAttribute('aria-current',String(i===selectedPage));b.onclick=()=>{selectedPage=i;const s=slotOf(p.entities.find(Boolean));if(s>=0)app()?.select(s);else touch()};
+   li.draggable=true;li.ondragstart=ev=>ev.dataTransfer.setData('application/x-onx-page',String(i));li.ondragover=ev=>ev.preventDefault();li.ondrop=ev=>{const f=ev.dataTransfer.getData('application/x-onx-page');if(f==='')return;ev.preventDefault();const [m]=pageConfigs.splice(+f,1);pageConfigs.splice(i,0,m);selectedPage=i;touch()};li.append(b);return li}));
+  const p=pageConfigs[selectedPage];$('page-detail').hidden=!p;
+  if(p){$('page-name').value=p.name||'';$('page-icon').value=p.icon||'';$('page-kind').value=p.layout;$('page-grid').className='page-grid '+p.layout;$('page-grid').replaceChildren(...Array.from({length:LAYOUTS[p.layout].n},(_,i)=>cell(p,i)))}
+  for(const id of ['add-page','delete-page','page-name','page-icon','page-kind'])$(id).disabled=editorBusy||editorPreset;
+  $('save-page-layout').disabled=editorBusy||editorPreset||!dirtyPages();
+  if(pageError)status(pageError);
+ }
+ $('add-page').onclick=()=>{pageConfigs.push({name:'',icon:'',layout:'single',entities:['']});selectedPage=pageConfigs.length-1;touch()};
+ $('delete-page').onclick=()=>{const p=pageConfigs[selectedPage];if(!p)return;pageConfigs.splice(selectedPage,1);for(const e of p.entities)if(e&&!pageConfigs.some(q=>q.entities.includes(e))){const i=slotOf(e);if(i>=0)app()?.clear(i)}selectedPage=Math.max(0,selectedPage-1);touch()};
+ $('page-name').oninput=()=>{const p=pageConfigs[selectedPage];if(p){p.name=$('page-name').value;touch()}};
+ $('page-icon').oninput=()=>{const p=pageConfigs[selectedPage];if(p){p.icon=$('page-icon').value.trim();touch()}};
+ $('page-kind').onchange=()=>{const p=pageConfigs[selectedPage];if(!p)return;const n=LAYOUTS[$('page-kind').value].n;p.layout=$('page-kind').value;
+  for(let i=n;i<p.entities.length;i++)if(p.entities[i])removeAt(p,i);p.entities=Array.from({length:n},(_,i)=>p.entities[i]||'');touch()};
  globalThis.ONX_PANEL_EDITOR=(slots,active,busy,refresh,isPreset=false)=>{
-  editorSlots=slots;editorActive=active;editorPreset=isPreset;redraw=refresh;renderPageEditor();
-  $('save-page-layout').disabled=busy||isPreset||!slots[active]?.entity;
+  editorSlots=slots;editorActive=active;editorBusy=busy;editorPreset=isPreset;redraw=refresh;
+  const owner=pageConfigs.findIndex(p=>p.entities.includes(slots[active]?.entity));if(owner>=0)selectedPage=owner;renderPageEditor();
  };
  $('save-page-layout').onclick=async()=>{
-  const entity=editorSlots[editorActive]?.entity;if(!entity)return;
-  const p=pageFor(entity),count=p.layout==='two_controls'?1:p.layout==='control_sensors'?3:0;
-  const members=p.members.slice(0,count);
-  if(members.length!==count||members.some(m=>!m)||new Set([entity,...members]).size!==count+1){$('page-layout-status').textContent='Choose a different entity for every position.';return}
+  for(const [i,p] of pageConfigs.entries())if(p.entities.some(e=>!e)){selectedPage=i;renderPageEditor();status('Fill every position on “'+(p.name||'Page '+(i+1))+'”, or choose a smaller layout.');return}
+  if(pageConfigs.some(p=>p.icon&&!/^mdi:[a-z0-9-]+$/.test(p.icon))){status('Icons use the mdi:name form, for example mdi:sofa.');return}
   $('save-page-layout').disabled=true;
-  try{const result=await rpc({op:'panel_page_save',data:JSON.stringify({...p,members})});pageConfigs=result.pages||[];drafts.delete(entity);pageError='';renderPageEditor();$('page-layout-status').textContent='Page layout saved.';redraw()}
-  catch(error){$('page-layout-status').textContent=error.message}
-  finally{$('save-page-layout').disabled=false}
+  try{await app()?.saveAll();const result=await rpc({op:'panel_pages_save',data:JSON.stringify({pages:pageConfigs})});pageConfigs=result.pages||[];savedPages=JSON.stringify(pageConfigs);pageError='';renderPageEditor();status('Pages saved.');redraw()}
+  catch(error){status(error.message)}
+  finally{renderPageEditor()}
  };
- rpc({op:'panel_pages'}).then(result=>{pageConfigs=result.pages||[];renderPageEditor();redraw()}).catch(error=>{pageError=error.message;renderPageEditor()});
+ rpc({op:'panel_pages'}).then(result=>{pageConfigs=(result.pages||[]).map(p=>({name:p.name||'',icon:p.icon||'',layout:LAYOUTS[p.layout]?p.layout:'single',entities:p.entities||[p.entity,...(p.members||[])]}));savedPages=JSON.stringify(pageConfigs);renderPageEditor();redraw()}).catch(error=>{pageError=error.message;renderPageEditor()});
  // Mirrors onx_panel_layout::geometry (portrait and landscape).
  globalThis.ONX_PANEL_GEOMETRY=(kind,w,h,detail=false)=>{
   const top=detail?12:40,bottom=detail?12:52,gap=8,pad=12,body=h-top-bottom,inner=w-pad*2;

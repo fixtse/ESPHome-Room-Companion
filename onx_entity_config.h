@@ -1,5 +1,7 @@
 #pragma once
 #include <vector>
+#include <algorithm>
+#include <cstdint>
 #include "custom_logic.h"
 #include "onx_gesture.h"
 #include "onx_detail_view.h"
@@ -145,12 +147,12 @@ inline bool save_hold_cue(const std::string &value) {
 
 // Keep subscriptions and compact runtime indices intact; hide only carousel entries.
 struct TimerVisibility { char entity[129]{}; bool hidden{false}; };
-inline std::array<TimerVisibility,20> &timer_visibility=onx_memory::psram_object<std::array<TimerVisibility,20>>();
-inline std::array<esphome::ESPPreferenceObject,20> timer_visibility_preferences;
+inline std::array<TimerVisibility,onx_memory::ENTRY_COUNT> &timer_visibility=onx_memory::psram_object<std::array<TimerVisibility,onx_memory::ENTRY_COUNT>>();
+inline std::array<esphome::ESPPreferenceObject,onx_memory::ENTRY_COUNT> timer_visibility_preferences;
 inline bool timer_visibility_loaded=false;
 inline void load_timer_visibility() {
   if(timer_visibility_loaded || esphome::global_preferences==nullptr)return;
-  for(size_t i=0;i<20;++i) {
+  for(size_t i=0;i<onx_memory::ENTRY_COUNT;++i) {
     timer_visibility_preferences[i]=esphome::global_preferences->make_preference<TimerVisibility>(
         esphome::fnv1_hash("onx.timer.visibility.v1."+std::to_string(i)));
     TimerVisibility saved{};
@@ -163,56 +165,71 @@ inline void load_timer_visibility() {
 }
 inline bool timer_hidden(size_t slot,const std::string &entity) {
   load_timer_visibility();
-  return slot<20 && !entity.empty() && timer_visibility[slot].hidden && entity==timer_visibility[slot].entity;
+  return slot<onx_memory::ENTRY_COUNT && !entity.empty() && timer_visibility[slot].hidden && entity==timer_visibility[slot].entity;
 }
 inline bool save_timer_visibility(size_t slot,const std::string &entity,bool hidden) {
   load_timer_visibility();
-  if(!timer_visibility_loaded || slot>=20)return false;
+  if(!timer_visibility_loaded || slot>=onx_memory::ENTRY_COUNT)return false;
   TimerVisibility next{};
   snprintf(next.entity,sizeof(next.entity),"%s",entity.c_str());next.hidden=hidden;
   if(!timer_visibility_preferences[slot].save(&next)||!esphome::global_preferences->sync())return false;
   timer_visibility[slot]=next;return true;
 }
-inline bool carousel_hidden(int ui_slot) {
-  for(size_t slot=0;slot<20;++slot)
+inline bool timer_hidden_ui(int ui_slot) {
+  for(size_t slot=0;slot<onx_memory::ENTRY_COUNT;++slot)
     if(custom_logic::normal_ui_slot_for_device_config_slot(slot)==static_cast<size_t>(ui_slot))
       return timer_hidden(slot,custom_logic::cached_device_entity_id(slot));
   return false;
 }
-// Settings remains at 'total', including when every configured timer is hidden.
+// Carousel stops are pages (onx_panel_pages.h installs page_order): the UI
+// slot of each page's first entity, in page order. Other entries are only
+// reachable from their page. Without pages, every non-hidden entry is a stop.
+inline std::vector<int> (*page_order)()=nullptr;
+inline std::vector<int> carousel_order(int total) {
+  std::vector<int> out;
+  if(page_order) {for(int i:page_order())if(i>=0 && i<total)out.push_back(i);return out;}
+  for(int i=0;i<total;++i)if(!timer_hidden_ui(i))out.push_back(i);
+  return out;
+}
+inline bool carousel_hidden(int ui_slot) {
+  const auto order=carousel_order(INT32_MAX);
+  return std::find(order.begin(),order.end(),ui_slot)==order.end();
+}
+// 'selected' is the candidate (previous+direction); Settings remains at 'total'.
 inline int carousel_selection(int selected,int total,int direction) {
-  while(selected>=0 && selected<total && carousel_hidden(selected))selected+=direction<0?-1:1;
-  if(selected<0) {
-    selected=0;
-    while(selected<total && carousel_hidden(selected))++selected;
-  }
-  return selected;
+  const auto order=carousel_order(total);
+  if(selected==total || std::find(order.begin(),order.end(),selected)!=order.end())return selected;
+  const int step=direction<0?-1:1;
+  const auto from=std::find(order.begin(),order.end(),selected-step);
+  if(from==order.end())return order.empty()?total:order.front();
+  const int next=int(from-order.begin())+step;
+  return next<0?order.front():next>=int(order.size())?total:order[next];
 }
 inline std::vector<int> carousel_entries(int total) {
-  std::vector<int> entries;entries.reserve(total+1);
-  for(int i=0;i<total;++i)if(!carousel_hidden(i))entries.push_back(i);
+  auto entries=carousel_order(total);
   entries.push_back(total);  // Settings is always reachable.
   return entries;
 }
-
 // A missing neighbour is -1; the settings gear remains the final landmark.
 inline int carousel_neighbour(int selected,int total,int direction) {
-  int index=selected+direction;
-  while(index>=0 && index<total && carousel_hidden(index))index+=direction;
-  return index<0 || index>total ? -1 : index;
+  const auto order=carousel_order(total);
+  if(selected==total)return direction<0 && !order.empty()?order.back():-1;
+  const auto at=std::find(order.begin(),order.end(),selected);
+  if(at==order.end())return -1;
+  const int next=int(at-order.begin())+direction;
+  return next<0?-1:next>=int(order.size())?total:order[next];
 }
-
 inline int carousel_position(int index) {
-  int visible=0;
-  for(int i=0;i<index;++i)if(!carousel_hidden(i))++visible;
-  return visible;
+  const auto order=carousel_order(INT32_MAX);
+  const auto at=std::find(order.begin(),order.end(),index);
+  return at==order.end()?int(order.size()):int(at-order.begin());
 }
 
 inline bool sensor_configs_loaded=false;
-inline std::array<esphome::ESPPreferenceObject,20> sensor_preferences;
+inline std::array<esphome::ESPPreferenceObject,onx_memory::ENTRY_COUNT> sensor_preferences;
 inline void load_sensor_configs() {
   if(sensor_configs_loaded || esphome::global_preferences==nullptr)return;
-  for(size_t i=0;i<20;++i) {
+  for(size_t i=0;i<onx_memory::ENTRY_COUNT;++i) {
     const auto key="onx.sensor.v1."+std::to_string(i);
     sensor_preferences[i]=esphome::global_preferences->make_preference<onx_sensor_view::Config>(esphome::fnv1_hash(key.c_str()));
     onx_sensor_view::Config saved{};
@@ -235,10 +252,10 @@ inline bool save_sensor_config(size_t i,const std::string &primary,const std::st
 }
 
 inline bool playlists_loaded=false;
-inline esphome::ESPPreferenceObject playlist_preferences[20];
+inline esphome::ESPPreferenceObject playlist_preferences[onx_memory::ENTRY_COUNT];
 inline void load_playlists() {
   if(playlists_loaded || esphome::global_preferences==nullptr) return;
-  for(size_t i=0;i<20;++i) {
+  for(size_t i=0;i<onx_memory::ENTRY_COUNT;++i) {
     playlist_preferences[i]=esphome::global_preferences->make_preference<onx_playlist::Config>(esphome::fnv1_hash("onx.playlists.v1."+std::to_string(i)));
     onx_playlist::Config saved{};
     if(!playlist_preferences[i].load(&saved) || saved.magic!=0x4F4E5851 || saved.count>onx_playlist::MAX_ENTRIES) continue;
@@ -269,7 +286,7 @@ inline bool parse_playlists(const std::string &entity,const std::string &raw,onx
 }
 inline bool save_playlists(size_t slot,const onx_playlist::Config &next) {
   load_playlists();
-  if(!playlists_loaded || slot>=20) return false;
+  if(!playlists_loaded || slot>=onx_memory::ENTRY_COUNT) return false;
   if(!playlist_preferences[slot].save(&next) || !esphome::global_preferences->sync()) return false;
   onx_playlist::configs[slot]=next;
   onx_playlist::browser.clear();
@@ -277,17 +294,17 @@ inline bool save_playlists(size_t slot,const onx_playlist::Config &next) {
 }
 inline const onx_playlist::Config *playlists_for_ui(int ui_slot,const std::string &entity) {
   load_playlists();
-  for(size_t i=0;i<20;++i) {
+  for(size_t i=0;i<onx_memory::ENTRY_COUNT;++i) {
     const auto &config=onx_playlist::configs[i];
     if(custom_logic::normal_ui_slot_for_device_config_slot(i)==static_cast<size_t>(ui_slot) && entity==config.entity && config.count) return &config;
   }
   return nullptr;
 }
 inline bool gestures_loaded=false;
-inline std::array<esphome::ESPPreferenceObject,20> gesture_preferences;
+inline std::array<esphome::ESPPreferenceObject,onx_memory::ENTRY_COUNT> gesture_preferences;
 inline void load_gestures() {
   if(gestures_loaded || esphome::global_preferences==nullptr)return;
-  for(size_t i=0;i<20;++i) {
+  for(size_t i=0;i<onx_memory::ENTRY_COUNT;++i) {
     gesture_preferences[i]=esphome::global_preferences->make_preference<onx_gesture::Config>(esphome::fnv1_hash("onx.gestures.v2."+std::to_string(i)));
     onx_gesture::Config saved{};
     if(!gesture_preferences[i].load(&saved)) {
@@ -333,7 +350,7 @@ inline bool parse_gestures(const std::string &entity,const std::string &raw,onx_
   next.step=step;return true;
 }
 inline bool save_gestures(size_t slot,const onx_gesture::Config &next) {
-  load_gestures();if(!gestures_loaded || slot>=20)return false;
+  load_gestures();if(!gestures_loaded || slot>=onx_memory::ENTRY_COUNT)return false;
   if(!gesture_preferences[slot].save(&next) || !esphome::global_preferences->sync())return false;
   const bool same=std::string(next.entity)==onx_gesture::configs[slot].entity && std::string(next.feedback)==onx_gesture::configs[slot].feedback;
   const uint32_t next_token=onx_gesture::states[slot].token+1;
@@ -344,7 +361,7 @@ inline bool save_gestures(size_t slot,const onx_gesture::Config &next) {
 }
 inline int gesture_slot_for_ui(int ui_slot) {
   load_gestures();
-  for(size_t i=0;i<20;++i)
+  for(size_t i=0;i<onx_memory::ENTRY_COUNT;++i)
     if(custom_logic::normal_ui_slot_for_device_config_slot(i)==static_cast<size_t>(ui_slot) &&
         !custom_logic::cached_device_entity_id(i).empty() && custom_logic::cached_device_entity_id(i)==onx_gesture::configs[i].entity)return i;
   return -1;
@@ -356,18 +373,28 @@ struct PressBinding {
 };
 struct StoredBindings {
   uint32_t magic{0x4F4E5850};
-  PressBinding slots[20]{};
+  PressBinding slots[onx_memory::ENTRY_COUNT]{};
 };
 static StoredBindings &bindings = onx_memory::psram_object<StoredBindings>();
 static esphome::ESPPreferenceObject preference;
 static bool loaded = false;
 inline void load() {
   if (loaded || esphome::global_preferences == nullptr) return;
-  preference = esphome::global_preferences->make_preference<StoredBindings>(esphome::fnv1_hash("onx.press_bindings.v2"));
+  preference = esphome::global_preferences->make_preference<StoredBindings>(esphome::fnv1_hash("onx.press_bindings.v3"));
   auto stored_buffer=custom_logic::make_ram_allocated<StoredBindings>();
   if(!stored_buffer)return;
   auto &stored=*stored_buffer;
   bool restored=preference.load(&stored) && stored.magic==bindings.magic;
+  // v3 holds 40 entries; v2 held 20 and v1 held 10.
+  if(!restored) {
+    struct V2Bindings {uint32_t magic;PressBinding slots[20];};
+    auto v2_pref=esphome::global_preferences->make_preference<V2Bindings>(esphome::fnv1_hash("onx.press_bindings.v2"));
+    auto v2_buffer=custom_logic::make_ram_allocated<V2Bindings>();
+    if(v2_buffer && v2_pref.load(v2_buffer.get()) && v2_buffer->magic==bindings.magic) {
+      std::copy(std::begin(v2_buffer->slots),std::end(v2_buffer->slots),std::begin(stored.slots));
+      restored=true;
+    }
+  }
   if(!restored) {
     struct LegacyBindings {uint32_t magic;PressBinding slots[10];};
     auto legacy_pref=esphome::global_preferences->make_preference<LegacyBindings>(esphome::fnv1_hash("onx.press_bindings.v1"));
@@ -390,20 +417,20 @@ inline void load() {
 }
 inline std::string action_for_slot(size_t slot) {
   load();
-  if (slot >= 20) return "";
+  if (slot >= onx_memory::ENTRY_COUNT) return "";
   custom_logic::load_device_config_if_needed(slot);
   return onx_config::binding_matches(bindings.slots[slot].source, custom_logic::cached_device_entity_id(slot))
              ? bindings.slots[slot].action : "";
 }
 inline std::string action_for_ui(int ui_slot) {
-  if (ui_slot < 0 || ui_slot >= 20) return "";
-  for (size_t slot = 0; slot < 20; ++slot)
+  if (ui_slot < 0 || ui_slot >= onx_memory::ENTRY_COUNT) return "";
+  for (size_t slot = 0; slot < onx_memory::ENTRY_COUNT; ++slot)
     if (custom_logic::normal_ui_slot_for_device_config_slot(slot) == static_cast<size_t>(ui_slot)) return action_for_slot(slot);
   return "";
 }
 inline bool save_action(size_t slot, const std::string &entity, const std::string &action) {
   load();
-  if (!loaded || slot >= 20 || !onx_config::valid_press_action(entity,action)) return false;
+  if (!loaded || slot >= onx_memory::ENTRY_COUNT || !onx_config::valid_press_action(entity,action)) return false;
   auto next_buffer=custom_logic::make_ram_allocated<StoredBindings>();
   if(!next_buffer)return false;
   auto &next=*next_buffer;next=bindings;
@@ -438,10 +465,10 @@ struct StoredIcon {
   bool registry_override{false};
 };
 inline bool icons_loaded{false};
-inline esphome::ESPPreferenceObject icon_preferences[20];
+inline esphome::ESPPreferenceObject icon_preferences[onx_memory::ENTRY_COUNT];
 inline void load_icons() {
   if (icons_loaded || esphome::global_preferences == nullptr) return;
-  for (size_t i = 0; i < 20; ++i) {
+  for (size_t i = 0; i < onx_memory::ENTRY_COUNT; ++i) {
     icon_preferences[i] = esphome::global_preferences->make_preference<StoredIcon>(
         esphome::fnv1_hash("onx.entity_icon.v1." + std::to_string(i)));
     StoredIcon stored;
@@ -457,7 +484,7 @@ inline void load_icons() {
 }
 inline bool save_icon(size_t slot, const std::string &entity, const std::string &icon, bool override) {
   load_icons();
-  if (!icons_loaded || slot >= 20 || (!icon.empty() && !onx_icon_state::valid_icon(icon))) return false;
+  if (!icons_loaded || slot >= onx_memory::ENTRY_COUNT || (!icon.empty() && !onx_icon_state::valid_icon(icon))) return false;
   const auto &existing = onx_icon_state::metadata[slot];
   if (existing.entity == entity && existing.configured == icon && existing.registry_override == override) return true;
   StoredIcon stored;
@@ -561,7 +588,7 @@ inline std::string state(const std::string &host = "", bool wifi_connected = fal
     root["reset_reason"] = static_cast<int>(esp_reset_reason());
 #endif
     JsonArray slots = root["slots"].to<JsonArray>();
-    for (size_t i = 0; i < 20; ++i) encode_slot(i, slots.add<JsonObject>());
+    for (size_t i = 0; i < onx_memory::ENTRY_COUNT; ++i) encode_slot(i, slots.add<JsonObject>());
   });
 }
 inline bool save_selected_metadata(const esphome::onx_config_web::Query &query) {
@@ -583,7 +610,7 @@ inline bool save_selected_metadata(const esphome::onx_config_web::Query &query) 
     }
     if (entity == query.action) custom_logic::copy_string_to_fixed_buffer(query.action_name, item.friendly_name);
   };
-  for (size_t i = 0; i < 20; ++i) {
+  for (size_t i = 0; i < onx_memory::ENTRY_COUNT; ++i) {
     custom_logic::load_device_config_if_needed(i);
     add(custom_logic::cached_device_entity_id(i));
     add(action_for_slot(i));

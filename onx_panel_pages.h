@@ -2,6 +2,8 @@
 #include "onx_panel_layout.h"
 #include <functional>
 #include <cstdio>
+#include <cstring>
+#include <vector>
 #include "onx_entity_config.h"
 #include "onx_render.h"
 #include "onx_navigation.h"
@@ -11,27 +13,123 @@
 namespace onx_panel_pages {
 using onx_panel_layout::Page;
 using onx_panel_layout::Kind;
-inline onx_memory::StateArray<Page,20> pages;
-inline std::array<esphome::ESPPreferenceObject,20> preferences;
+// Pages are the carousel stops, in the editor's order. Each has its own name and
+// carousel icon and places 1, 2 or 4 configuration entries (full; top/bottom;
+// large + three compact). Entries keep their own shortcut, gestures and quick
+// actions. Entries are stored by configuration index (stable), not UI index.
+constexpr size_t MAX_PAGES=onx_memory::ENTRY_COUNT;
+constexpr uint8_t NO_ENTRY=0xFF;
+struct StoredPage {
+  char name[49]{}, icon[65]{};
+  uint8_t kind{0};
+  uint8_t entries[4]{NO_ENTRY,NO_ENTRY,NO_ENTRY,NO_ENTRY};
+};
+struct StoredPages {
+  uint32_t magic{0x52435032};
+  uint8_t count{0};
+  StoredPage pages[MAX_PAGES]{};
+};
+inline StoredPages &stored=onx_memory::psram_object<StoredPages>();
+inline esphome::ESPPreferenceObject preference;
+inline bool loaded=false;
+// Set when entries change (slot save, preset, import); reconciled lazily.
+inline bool dirty=true;
+inline int size_of(Kind k){return k==Kind::TWO_CONTROLS?2:k==Kind::CONTROL_SENSORS?4:1;}
 inline int configured(const std::string &entity) {
   if(entity.empty())return -1;
-  for(int i=0;i<20;++i)if(custom_logic::cached_device_entity_id(i)==entity)return i;
+  for(int i=0;i<int(onx_memory::ENTRY_COUNT);++i)if(custom_logic::cached_device_entity_id(i)==entity)return i;
   return -1;
 }
-inline Page page(const std::string &entity) {
-  const int slot=configured(entity);
-  Page empty;snprintf(empty.primary,sizeof(empty.primary),"%s",entity.c_str());
-  if(slot<0 || !esphome::global_preferences)return empty;
-  if(entity!=pages[slot].primary) {
-    preferences[slot]=esphome::global_preferences->make_preference<Page>(esphome::fnv1_hash("rc.page.v1."+entity));
-    Page saved{};
-    if(preferences[slot].load(&saved)) {
-      saved.primary[128]=0;for(auto &m:saved.members)m[128]=0;
-      if(entity==saved.primary && onx_panel_layout::valid(saved))empty=saved;
+inline std::string entry_entity(uint8_t entry) {
+  return entry<onx_memory::ENTRY_COUNT?custom_logic::cached_device_entity_id(entry):std::string();
+}
+inline bool placed(const StoredPages &list,int entry) {
+  for(int p=0;p<list.count;++p)for(auto e:list.pages[p].entries)if(e==entry)return true;
+  return false;
+}
+// Drops entries that were cleared and gives every unplaced entry its own page,
+// so nothing configured becomes unreachable.
+inline void reconcile(StoredPages &list) {
+  int out=0;
+  for(int p=0;p<list.count;++p) {
+    auto page=list.pages[p];bool complete=true;
+    for(int i=0;i<size_of(Kind(page.kind));++i)complete&=!entry_entity(page.entries[i]).empty();
+    if(!complete) {
+      // Keep what remains as single pages rather than a broken layout.
+      for(int i=0;i<4;++i)if(!entry_entity(page.entries[i]).empty() && out<int(MAX_PAGES)) {
+        StoredPage single{};if(i==0){std::memcpy(single.name,page.name,sizeof(single.name));std::memcpy(single.icon,page.icon,sizeof(single.icon));}
+        single.entries[0]=page.entries[i];list.pages[out++]=single;
+      }
+      continue;
     }
-    pages[slot]=empty;
+    for(int i=size_of(Kind(page.kind));i<4;++i)page.entries[i]=NO_ENTRY;
+    list.pages[out++]=page;
   }
-  return pages[slot];
+  list.count=out;
+  for(int e=0;e<int(onx_memory::ENTRY_COUNT) && list.count<MAX_PAGES;++e)
+    if(!entry_entity(e).empty() && !placed(list,e)){StoredPage single{};single.entries[0]=e;list.pages[list.count++]=single;}
+}
+// One-time migration from per-entity layouts (rc.page.v1.<entity>).
+inline void migrate() {
+  stored=StoredPages{};
+  for(int e=0;e<int(onx_memory::ENTRY_COUNT);++e) {
+    const auto entity=entry_entity(e);if(entity.empty() || placed(stored,e))continue;
+    StoredPage page{};page.entries[0]=e;
+    auto old_pref=esphome::global_preferences->make_preference<Page>(esphome::fnv1_hash("rc.page.v1."+entity));
+    Page old{};
+    if(old_pref.load(&old) && entity==old.primary && onx_panel_layout::valid(old)) {
+      bool ok=true;uint8_t members[3]{NO_ENTRY,NO_ENTRY,NO_ENTRY};
+      for(int i=0;i<size_of(old.kind)-1;++i){const int m=configured(old.members[i]);ok&=m>=0 && !placed(stored,m);members[i]=m<0?NO_ENTRY:m;}
+      if(ok){page.kind=uint8_t(old.kind);for(int i=0;i<3;++i)page.entries[i+1]=members[i];}
+    }
+    stored.pages[stored.count++]=page;
+  }
+}
+inline bool load() {
+  if(loaded)return true;
+  if(!esphome::global_preferences)return false;
+  preference=esphome::global_preferences->make_preference<StoredPages>(esphome::fnv1_hash("rc.pages.v2"));
+  const uint32_t magic=StoredPages{}.magic;
+  if(!preference.load(&stored) || stored.magic!=magic || stored.count>MAX_PAGES)migrate();
+  for(auto &p:stored.pages){p.name[48]=0;p.icon[64]=0;if(p.kind>2)p.kind=0;}
+  loaded=true;return true;
+}
+inline void refresh(){if(dirty){reconcile(stored);dirty=false;}}
+inline int page_index(const std::string &entity) {
+  if(!load())return -1;refresh();
+  const int entry=configured(entity);if(entry<0)return -1;
+  for(int p=0;p<stored.count;++p)for(auto e:stored.pages[p].entries)if(e==entry)return p;
+  return -1;
+}
+// The page drawn when the carousel stops at 'entity' (a page's first entity).
+inline Page page(const std::string &entity) {
+  Page out;snprintf(out.primary,sizeof(out.primary),"%s",entity.c_str());
+  const int p=page_index(entity);
+  if(p<0 || entry_entity(stored.pages[p].entries[0])!=entity)return out;
+  out.kind=Kind(stored.pages[p].kind);
+  for(int i=1;i<size_of(out.kind);++i)snprintf(out.members[i-1],sizeof(out.members[i-1]),"%s",entry_entity(stored.pages[p].entries[i]).c_str());
+  return out;
+}
+// Page name/icon for the carousel; empty when the page uses its entity's.
+inline const StoredPage *info(const std::string &entity) {
+  const int p=page_index(entity);return p<0?nullptr:&stored.pages[p];
+}
+inline std::vector<int> order() {
+  std::vector<int> out;
+  if(!load()) {
+    for(int e=0;e<int(onx_memory::ENTRY_COUNT);++e)if(!entry_entity(e).empty())out.push_back(int(custom_logic::normal_ui_slot_for_device_config_slot(e)));
+    return out;
+  }
+  refresh();
+  for(int p=0;p<stored.count;++p)out.push_back(int(custom_logic::normal_ui_slot_for_device_config_slot(stored.pages[p].entries[0])));
+  return out;
+}
+inline const bool order_installed=(onx_entity_config::page_order=&order,true);
+inline bool valid_icon(const std::string &icon) {
+  if(icon.empty())return true;
+  if(icon.size()>64 || icon.rfind("mdi:",0)!=0 || icon.size()<5)return false;
+  for(size_t i=4;i<icon.size();++i){const char c=icon[i];if(!((c>='a'&&c<='z')||(c>='0'&&c<='9')||c=='-'))return false;}
+  return true;
 }
 inline std::string rpc(const std::string &op,const std::string &data) {
   // Native (portrait) size and the orientation in use since boot, so the
@@ -40,36 +138,49 @@ inline std::string rpc(const std::string &op,const std::string &data) {
     root["width"]=onx_panel_ui::native_width;root["height"]=onx_panel_ui::native_height;
     root["orientation"]=onx_panel_ui::turns*90;
   });
-  if(op!="panel_pages" && op!="panel_page_save")return "";
-  if(op=="panel_page_save") {
+  if(op!="panel_pages" && op!="panel_pages_save")return "";
+  if(!load())return "{\"error\":\"Page storage is not ready\"}";
+  if(op=="panel_pages_save") {
     JsonDocument doc;
     if(deserializeJson(doc,data)!=DeserializationError::Ok)return "{\"error\":\"Invalid page configuration\"}";
-    Page next;const std::string entity=doc["entity"] | "";
-    const int slot=configured(entity);
-    snprintf(next.primary,sizeof(next.primary),"%s",entity.c_str());
-    if(slot<0 || !onx_panel_layout::parse(doc["layout"] | "",next.kind))return "{\"error\":\"Choose a configured page and layout\"}";
-    auto members=doc["members"].as<JsonArrayConst>();
-    const int count=next.kind==Kind::TWO_CONTROLS?1:next.kind==Kind::CONTROL_SENSORS?3:0;
-    if(members.size()!=static_cast<size_t>(count))return "{\"error\":\"Complete every position in this layout\"}";
-    for(int i=0;i<count;++i) {
-      const std::string member=members[i] | "";
-      if(configured(member)<0 || member.size()>128)return "{\"error\":\"Page items must be configured entities\"}";
-      snprintf(next.members[i],sizeof(next.members[i]),"%s",member.c_str());
+    auto pages=doc["pages"].as<JsonArrayConst>();
+    if(pages.size()>MAX_PAGES)return "{\"error\":\"Too many pages\"}";
+    auto next_buffer=custom_logic::make_ram_allocated<StoredPages>();
+    if(!next_buffer)return "{\"error\":\"Not enough memory to save pages\"}";
+    auto &next=*next_buffer;next=StoredPages{};
+    for(JsonObjectConst item:pages) {
+      StoredPage page{};Kind kind;
+      const std::string name=item["name"] | "",icon=item["icon"] | "";
+      if(!onx_panel_layout::parse(item["layout"] | "",kind))return "{\"error\":\"Choose a layout for every page\"}";
+      if(name.size()>48)return "{\"error\":\"Page names are limited to 48 bytes\"}";
+      if(!valid_icon(icon))return "{\"error\":\"Icons use the mdi:name form\"}";
+      auto entities=item["entities"].as<JsonArrayConst>();
+      if(entities.size()!=size_t(size_of(kind)))return "{\"error\":\"Fill every position on each page\"}";
+      for(int i=0;i<size_of(kind);++i) {
+        const std::string entity=entities[i] | "";const int entry=configured(entity);
+        if(entry<0)return "{\"error\":\"Save the page entities before the pages\"}";
+        if(placed(next,entry))return "{\"error\":\"Each entity can be on one page only\"}";
+        for(int j=0;j<i;++j)if(page.entries[j]==entry)return "{\"error\":\"Each entity can be on one page only\"}";
+        if(kind==Kind::CONTROL_SENSORS && i>0 && !onx_panel_layout::sensor(entity))return "{\"error\":\"Compact positions show sensors and binary sensors\"}";
+        page.entries[i]=uint8_t(entry);
+      }
+      page.kind=uint8_t(kind);
+      snprintf(page.name,sizeof(page.name),"%s",name.c_str());snprintf(page.icon,sizeof(page.icon),"%s",icon.c_str());
+      next.pages[next.count++]=page;
     }
-    if(!onx_panel_layout::valid(next))return "{\"error\":\"Use distinct entities and sensors in the sensor positions\"}";
-    page(entity);
-    if(!esphome::global_preferences || !preferences[slot].save(&next) || !esphome::global_preferences->sync())return "{\"error\":\"Could not save this page\"}";
-    pages[slot]=next;
+    reconcile(next);
+    if(!preference.save(&next) || !esphome::global_preferences->sync())return "{\"error\":\"Could not save pages\"}";
+    stored=next;
   }
+  reconcile(stored);
   return onx_entity_config::build_json([](JsonObject root) {
     auto out=root["pages"].to<JsonArray>();
-    for(int i=0;i<20;++i) {
-      const auto entity=custom_logic::cached_device_entity_id(i);if(entity.empty())continue;
-      const auto p=page(entity);auto item=out.add<JsonObject>();
-      item["entity"]=entity;item["layout"]=onx_panel_layout::name(p.kind);
-      auto members=item["members"].to<JsonArray>();
-      const int count=p.kind==Kind::TWO_CONTROLS?1:p.kind==Kind::CONTROL_SENSORS?3:0;
-      for(int j=0;j<count;++j)members.add(std::string(p.members[j]));
+    for(int p=0;p<stored.count;++p) {
+      const auto &page=stored.pages[p];auto item=out.add<JsonObject>();
+      item["name"]=std::string(page.name);item["icon"]=std::string(page.icon);
+      item["layout"]=onx_panel_layout::name(Kind(page.kind));
+      auto entities=item["entities"].to<JsonArray>();
+      for(int i=0;i<size_of(Kind(page.kind));++i)entities.add(entry_entity(page.entries[i]));
     }
   });
 }

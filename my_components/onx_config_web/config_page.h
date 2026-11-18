@@ -199,6 +199,15 @@ dl.info{display:grid;grid-template-columns:180px 1fr;margin:14px 0 18px;font-siz
 #color-value{display:block;margin-top:4px;font-family:var(--mono)}
 .panel-page-layout{margin:18px 0;padding:16px;border:1px solid var(--line);border-radius:12px;background:var(--raised)}
 .panel-page-layout select{width:100%}
+.page-list{list-style:none;margin:8px 0;padding:0;display:flex;flex-direction:column;gap:6px}
+.page-list li{cursor:grab}.page-list button{width:100%;text-align:left}.page-list button[aria-current=true]{outline:2px solid var(--accent)}
+.page-grid{display:grid;gap:8px;margin:12px 0;aspect-ratio:2/3;max-width:260px}
+.page-grid.single{grid-template-rows:1fr}.page-grid.two_controls{grid-template-rows:1fr 1fr}
+.page-grid.control_sensors{grid-template-rows:55fr 15fr 15fr 15fr}
+.page-cell{display:flex;flex-direction:column;gap:2px;padding:8px;border:1px solid var(--line);border-radius:10px;background:var(--paper);overflow:hidden;cursor:pointer;min-height:0}
+.page-cell.empty{border-style:dashed;cursor:default}.page-cell.compact{flex-direction:row;align-items:center;flex-wrap:wrap}
+.page-cell.drop{outline:2px dashed var(--accent)}.page-cell[aria-current=true]{outline:2px solid var(--accent)}
+.page-cell small{opacity:.7;font-size:11px}.page-cell button{padding:2px 8px;font-size:12px}
 /* combo */
 .combo{position:relative;min-width:0;margin-top:2px}
 .combo>select{display:none}

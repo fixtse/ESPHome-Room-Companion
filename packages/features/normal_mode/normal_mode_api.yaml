@@ -69,7 +69,7 @@ api:
         unit: string
       then:
         - lambda: |-
-            for(int slot=0;slot<20;++slot)
+            for(int slot=0;slot<(int)custom_logic::CONFIGURABLE_DEVICE_SLOT_COUNT;++slot)
               if(entity_id==std::string(onx_gesture::configs[slot].entity) &&
                   custom_logic::cached_device_entity_id(slot)==onx_gesture::configs[slot].entity)
                 onx_gesture::feedback(slot,value,unit,millis(),true);

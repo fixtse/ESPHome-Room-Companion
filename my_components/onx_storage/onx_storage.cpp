@@ -157,12 +157,12 @@ static constexpr size_t STORED_AUTH_SHA256_MAX_LENGTH = 64;
 
 static const uint32_t FACTORY_WIFI_PREF_KEY = fnv1_hash("onx-storage-factory-wifi");
 static const uint32_t AUTH_RECORD_PREF_KEY = fnv1_hash("onx-storage-auth-record");
-static const uint32_t NORMAL_UI_PREF_KEY = fnv1_hash("onx-storage-normal-ui-config-v2");
-static const uint32_t NORMAL_UI_STATE_PREF_KEY = fnv1_hash("onx-storage-normal-ui-state-v3");
+static const uint32_t NORMAL_UI_PREF_KEY = fnv1_hash("onx-storage-normal-ui-config-v3");
+static const uint32_t NORMAL_UI_STATE_PREF_KEY = fnv1_hash("onx-storage-normal-ui-state-v4");
 static const uint32_t NORMAL_UI_STATE_LEGACY_PREF_KEY = fnv1_hash("onx-storage-normal-ui-state");
 static const uint32_t POWER_POLICY_PREF_KEY = fnv1_hash("onx-storage-power-policy-v1");
 static constexpr uint32_t POWER_POLICY_MAGIC = 0x4F4E5850;  // ONXP
-static constexpr size_t NORMAL_UI_DEVICE_MAX_COUNT = 20;
+static constexpr size_t NORMAL_UI_DEVICE_MAX_COUNT = 40;  // v3 config / v4 state; v2/v3 held 20
 static constexpr size_t NORMAL_UI_TITLE_MAX_LENGTH = 128;
 static constexpr size_t NORMAL_UI_ICON_MAX_LENGTH = 16;
 static constexpr size_t NORMAL_UI_ENTITY_ID_MAX_LENGTH = 128;
@@ -460,6 +460,20 @@ void OnxStorage::setup() {
   auto &stored_normal_ui=*ui_buffer;
   bool restored_ui=this->normal_ui_pref_.load(&stored_normal_ui);
   if(!restored_ui) {
+    // 20-entry layout from before pages.
+    struct Config20 {char titles[20][NORMAL_UI_TITLE_MAX_LENGTH+1];char types[20][NORMAL_UI_ICON_MAX_LENGTH+1];char entity_ids[20][NORMAL_UI_ENTITY_ID_MAX_LENGTH+1];};
+    auto pref=global_preferences->make_preference<Config20>(fnv1_hash("onx-storage-normal-ui-config-v2"),true);
+    auto old=allocate_record<Config20>();
+    if(old && pref.load(old.get())) {
+      for(size_t i=0;i<20;++i) {
+        memcpy(stored_normal_ui.titles[i],old->titles[i],sizeof(old->titles[i]));
+        memcpy(stored_normal_ui.types[i],old->types[i],sizeof(old->types[i]));
+        memcpy(stored_normal_ui.entity_ids[i],old->entity_ids[i],sizeof(old->entity_ids[i]));
+      }
+      restored_ui=true;
+    }
+  }
+  if(!restored_ui) {
     struct LegacyConfig {char titles[10][NORMAL_UI_TITLE_MAX_LENGTH+1];char types[10][NORMAL_UI_ICON_MAX_LENGTH+1];char entity_ids[10][NORMAL_UI_ENTITY_ID_MAX_LENGTH+1];};
     auto pref=global_preferences->make_preference<LegacyConfig>(fnv1_hash("onx-storage-normal-ui-config"),true);
     auto legacy_buffer=allocate_record<LegacyConfig>();
@@ -488,6 +502,12 @@ void OnxStorage::setup() {
 
   StoredNormalUiStateV2 stored_state{};
   bool restored_state=this->normal_ui_state_pref_.load(&stored_state);
+  if(!restored_state) {
+    struct State20 {NormalUiDeviceState states[20];};
+    auto pref=global_preferences->make_preference<State20>(fnv1_hash("onx-storage-normal-ui-state-v3"),true);
+    State20 old{};
+    if(pref.load(&old)) {std::copy(std::begin(old.states),std::end(old.states),std::begin(stored_state.states));restored_state=true;}
+  }
   if(!restored_state) {
     struct LegacyStateV2 {NormalUiDeviceState states[10];};
     auto pref=global_preferences->make_preference<LegacyStateV2>(fnv1_hash("onx-storage-normal-ui-state-v2"),true);
@@ -618,6 +638,8 @@ bool OnxStorage::reset_normal_mode_config() {
 #ifdef USE_ESP32
   ok = erase_preference_key(fnv1_hash("onx-storage-normal-ui-config"), "old normal UI config") && ok;
   ok = erase_preference_key(fnv1_hash("onx-storage-normal-ui-state-v2"), "old normal UI state") && ok;
+  ok = erase_preference_key(fnv1_hash("onx-storage-normal-ui-config-v2"), "20-entry normal UI config") && ok;
+  ok = erase_preference_key(fnv1_hash("onx-storage-normal-ui-state-v3"), "20-entry normal UI state") && ok;
   ok = erase_preference_key(NORMAL_UI_PREF_KEY, "normal UI config") && ok;
   ok = erase_preference_key(NORMAL_UI_STATE_PREF_KEY, "normal UI state") && ok;
   ok = erase_preference_key(NORMAL_UI_STATE_LEGACY_PREF_KEY, "legacy normal UI state") && ok;
@@ -631,7 +653,7 @@ bool OnxStorage::reset_normal_mode_config() {
   return ok;
 }
 
-bool OnxStorage::set_normal_ui_config(const std::array<NormalUiDeviceConfig, 20> &devices) {
+bool OnxStorage::set_normal_ui_config(const std::array<NormalUiDeviceConfig, 40> &devices) {
   const auto previous_devices = this->normal_ui_devices_;
   for (size_t i = 0; i < this->normal_ui_devices_.size(); i++) {
     this->normal_ui_devices_[i].title = truncate_string(devices[i].title, NORMAL_UI_TITLE_MAX_LENGTH);

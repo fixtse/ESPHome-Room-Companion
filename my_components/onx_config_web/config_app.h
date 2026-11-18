@@ -49,7 +49,7 @@ $('ha-discover').onclick=()=>discoverHA(false);
 const copy=value=>JSON.parse(JSON.stringify(value));
 const emptyGestures=()=>({cw:'',ccw:'',holdCw:'',holdCcw:'',feedback:'',popup:'1',responses:'0',pressResponses:'0',events:'0',step:'1'});
 const empty=()=>({entity:'',name:'',area:'',action:'',actionName:'',typeOption:'',icon:'',iconOverride:'0',secondary:'',secondaryText:'{value}',sensorGraph:'0',timerHidden:'0',gestures:emptyGestures(),playlists:[]});
-const MAX_SLOTS=20;
+const MAX_SLOTS=40;let pagePick=null;
 let visibleSlots=1,editTarget=null;  // null: the panel; {name,isNew}: a saved or new preset
 let slots=Array.from({length:MAX_SLOTS},empty),saved=copy(slots),active=0,mode='entity',domain='',next=-1,revision=0,debounce,busy=false,initialized=false,device={},settings={},savedSettings={},savedWeather='',recovery=null,lastLoaded=null,statusBusy=false,previewBusy=false,liveViews=[],overlayTimer=0,lastPreviewAt=0,slotTab='display',playlistTarget=-1,gestureTarget='cw';
 function element(tag,text,className){const e=document.createElement(tag);e.textContent=text;if(className)e.className=className;return e}
@@ -273,7 +273,7 @@ function render(){
  $('move-up').disabled=busy||active===0;$('move-down').disabled=busy||active===MAX_SLOTS-1;$('duplicate').disabled=busy||!s.entity||!slots.some(s=>!s.entity);
  for(const id of ['timer-hidden','choose-secondary','secondary-entity','secondary-text','sensor-presentation','choose-entity','clear','display-name','import','export','ha-connect','ha-disconnect','discard-settings'])$(id).disabled=busy||!initialized;
  $('save-settings').disabled=busy||!initialized||!dirtySettings();
- $('display-binding').classList.toggle('active',slotTab==='display');$('action-binding').classList.toggle('active',slotTab==='action');$('action-hint').hidden=!isActionPicker();$('search-title').textContent=isActionPicker()?'Automations & scripts':mode==='secondary'?'Secondary entities':'Available entities';$('picker-title').textContent=mode==='gesture'?'Choose a gesture action':mode==='gestureFeedback'?'Choose a feedback entity':mode==='playlist'?'Choose a quick action':mode==='action'?'Choose a press action':mode==='secondary'?'Choose a secondary entity':'Choose a display entity';$('picker-context').textContent=mode==='playlist'?(slots[active].playlists[playlistTarget]?.name||'Playlist '+(playlistTarget+1)):slots[active].name||'Slot '+(active+1);
+ $('display-binding').classList.toggle('active',slotTab==='display');$('action-binding').classList.toggle('active',slotTab==='action');$('action-hint').hidden=!isActionPicker();$('search-title').textContent=isActionPicker()?'Automations & scripts':mode==='secondary'?'Secondary entities':'Available entities';$('picker-title').textContent=mode==='gesture'?'Choose a gesture action':mode==='gestureFeedback'?'Choose a feedback entity':mode==='playlist'?'Choose a quick action':mode==='action'?'Choose a press action':mode==='secondary'?'Choose a secondary entity':mode==='page'?'Place an entity on this page':'Choose a display entity';$('picker-context').textContent=mode==='playlist'?(slots[active].playlists[playlistTarget]?.name||'Playlist '+(playlistTarget+1)):slots[active].name||'Slot '+(active+1);
  $('filters').replaceChildren(...(isActionPicker()?[['actions','All actions'],['automation','Automations'],['script','Scripts']]:domains).map(([value,title])=>{const b=element('button',title);b.setAttribute('aria-pressed',String(value===domain));b.onclick=()=>{domain=value;render();search()};return b}));globalThis.ONX_PANEL_EDITOR?.(slots,active,busy,()=>drawPreview(slots[active]),!!editTarget);preview();
 }
 function changed(){if(recovery){recovery=null;$('draft-notice').hidden=true}persistDraft();render();message('Changes not saved. Review and save when ready.')}
@@ -283,7 +283,8 @@ function selectMode(value,index=-1){
  if(!$('entity-picker').open)$('entity-picker').showModal();$('search').focus();
 }
 function choose(item){
- if(busy)return;const s=slots[active];
+ if(busy)return;
+ if(mode==='page'){const pick=pagePick;pagePick=null;mode='entity';closePicker();search();pick?.done(item);return}const s=slots[active];
  if(isActionPicker()&&!/^(automation|script)\./.test(item.entity))return;
  const target=playlistTarget,chosenMode=mode;
  if(mode==='gesture')s.gestures[gestureTarget]=item.entity;
@@ -306,9 +307,9 @@ function choose(item){
 }
 function isManualEntity(value){return /^[a-z0-9_]+\.[a-z0-9_]+$/.test(value)&&value.length<=128&&/^(sensor|binary_sensor|light|switch|climate|media_player|timer|weather|cover|automation|script|fan|number|input_number|select|input_select|scene|button|input_button)\./.test(value)&&mode!=='playlist'&&(!isActionPicker()||/^(automation|script)\./.test(value))}
 function search(append=false){const mine=++revision,offset=append?next:0,query=$('search').value.trim();if(!append)$('results').replaceChildren();$('manual').replaceChildren();$('more').hidden=true;
- const available=isActionPicker()?ha.items.filter(i=>/^(automation|script)\./.test(i.entity)):mode==='secondary'&&slots[active].entity.startsWith('switch.')?ha.items.filter(i=>i.entity.startsWith('sensor.')&&(i.unit===undefined||['W','kWh'].includes(i.unit))):ha.items;const items=$('room').value?available.filter(i=>i.area===$('room').value):available,data=OnxHA.search(items,query,domain,offset);if(mine!==revision)return;$('count').textContent=data.total+' matches';
+ const available=mode==='page'?ha.items.filter(i=>!pagePick||pagePick.accept(i.entity)):isActionPicker()?ha.items.filter(i=>/^(automation|script)\./.test(i.entity)):mode==='secondary'&&slots[active].entity.startsWith('switch.')?ha.items.filter(i=>i.entity.startsWith('sensor.')&&(i.unit===undefined||['W','kWh'].includes(i.unit))):ha.items;const items=$('room').value?available.filter(i=>i.area===$('room').value):available,data=OnxHA.search(items,query,domain,offset);if(mine!==revision)return;$('count').textContent=data.total+' matches';
  if(!data.items.length&&!append){$('results').append(element('p',ha.ready?'No matches. Try another name, room, or entity type.':mode==='playlist'?'Sign in on the Home Assistant page to choose a script or automation.':'Sign in on the Home Assistant page to browse entities, or enter a full entity ID.','empty'));if(!ha.ready){const b=element('button','Open Home Assistant setup');b.onclick=()=>{closePicker();page('connection')};$('results').append(b)}}
- for(const item of data.items){const row=element('button','','result'),text=element('span','');text.append(element('strong',item.name||item.entity),element('small',item.entity));row.append(text,element('em',item.area||item.entity.split('.')[0]));row.classList.toggle('selected',selectedPickerEntity()===item.entity);row.disabled=busy||(mode==='action'&&(!slots[active].entity||nativePress(slots[active].entity)));row.onclick=()=>choose(item);$('results').append(row)}
+ for(const item of data.items){const row=element('button','','result'),text=element('span','');text.append(element('strong',item.name||item.entity),element('small',item.entity));row.append(text,element('em',item.area||item.entity.split('.')[0]));row.classList.toggle('selected',selectedPickerEntity()===item.entity);row.disabled=busy||(mode==='action'&&(!slots[active].entity||nativePress(slots[active].entity)));row.onclick=()=>choose(item);row.draggable=true;row.ondragstart=e=>{e.dataTransfer.setData('application/x-onx-entity',JSON.stringify(item));e.dataTransfer.effectAllowed='copy'};$('results').append(row)}
  next=data.next;$('more').hidden=next<0;if(isManualEntity(query)&&!ha.items.some(i=>i.entity===query)){const b=element('button','Use entity ID: '+query);b.disabled=busy;b.onclick=()=>choose({entity:query,name:query});$('manual').append(b)}
 }
 
@@ -509,6 +510,15 @@ $('theme').onchange=()=>{const theme=$('theme').value;if(theme==='system')delete
  const draft=safeRead(DRAFT);if(draft){try{recovery=validateDocument(draft);$('draft-notice').hidden=false}catch{message('An older recovery draft could not be read. Your saved configuration is unchanged.',true)}}
  await ha.finishLogin();const auth=ha.read('onx.ha.auth');if(auth)$('ha-url').value=auth.base;browserStatus();render();search();if(auth)await refreshCatalogue();else message('Panel settings loaded. Sign in to Home Assistant to browse entities.');await refreshPreview();if(!auth&&!$('page-connection').hidden)void discoverHA(true);
  }catch(error){if(!initialized)deviceStatus(false);message(error.message,true);render();browserStatus()}
+ globalThis.ONX_APP={
+  pick:(accept,done)=>{pagePick={accept,done};selectMode('page')},
+  item:entity=>ha.items.find(i=>i.entity===entity),
+  slots:()=>slots,select:i=>{active=i;slotTab='display';render();search();refreshPreview()},
+  // A new entity becomes its own configuration entry (shortcut, gestures, quick actions), saved with Save all.
+  add:item=>{const i=slots.findIndex((s,j)=>!s.entity&&!saved[j].entity);if(i<0)throw Error('All '+MAX_SLOTS+' entities are in use. Remove one from a page first.');slots[i]={...empty(),entity:item.entity,name:item.name||item.entity,area:item.area||'',icon:item.icon||'',iconOverride:item.iconOverride||'0'};changed();return i},
+  clear:i=>{slots[i]=empty();changed()},
+  saveAll:()=>saveSlots(slots.map((_,i)=>i).filter(i=>dirtySlot(i)))
+ };
  document.addEventListener('visibilitychange',()=>{if(!document.hidden){refreshStatus();refreshPreview()}});setInterval(()=>{if(slots[active].entity.startsWith('media_player.')||Date.now()-lastPreviewAt>=2000)refreshPreview()},500);setInterval(()=>{if(!document.hidden)refreshStatus()},30000);
 })();
 })();

@@ -563,7 +563,7 @@ script:
           // Timer slots, listed below the focused timer on the timer screen.
           onx_panel_detail::timer_entities = []() {
             std::vector<std::string> out;
-            for (int i = 0; i < id(normal_device_count) && i < 20; ++i) {
+            for (int i = 0; i < id(normal_device_count) && i < (int)custom_logic::CONFIGURABLE_DEVICE_SLOT_COUNT; ++i) {
               const auto entity = id(ui_presenter)->get_normal_device_entity_id(i);
               if (custom_logic_entity_sub::is_timer_detail(entity)) out.push_back(entity);
             }
