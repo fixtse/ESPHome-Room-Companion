@@ -190,7 +190,8 @@ inline void label(lv_obj_t *obj,const std::string &text,int x,int y,int w,const 
 }
 template<typename Bind> void render(const std::string &entity,int width,int height,bool detail,Bind bind) {
   if(!layer)return;
-  suspend_underlay();
+  if (detail) suspend_underlay();
+  else if (suspended_page) restore_underlay();
   onx_render::style_bg_color(layer,lv_color_hex(onx_display_settings::background()),0);
   const auto p=detail?Page{}:page(entity);const auto kind=p.kind;
   rects=onx_panel_layout::geometry(kind,width,height,detail);
@@ -224,7 +225,7 @@ template<typename Bind> void render(const std::string &entity,int width,int heig
 // The carousel's Settings item, on the same base as the other main pages.
 inline void render_settings(int width,int height) {
   if(!layer)return;
-  suspend_underlay();
+  if (suspended_page) restore_underlay();
   onx_render::style_bg_color(layer,lv_color_hex(onx_display_settings::background()),0);
   for(auto &c:cards){lv_obj_add_flag(c.box,LV_OBJ_FLAG_HIDDEN);c.initialized=false;}
   rects=onx_panel_layout::geometry(Kind::SINGLE,width,height,false);

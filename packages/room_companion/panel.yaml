@@ -129,6 +129,8 @@ interval:
     then:
       - lambda: |-
           if (onx_panel_pages::layer == nullptr) return;
+          // Fully covered native content keeps its last frame without rebuilding.
+          if (onx_notification_ui::panel_open || onx_notification_ui::detail_id != 0) return;
           // The panel's own Assist timers (features/assist.yaml) cover the
           // screen, except while Assist itself is on screen.
           if (onx_panel_detail::timers.overlay && lv_obj_has_flag(id(assist_overlay), LV_OBJ_FLAG_HIDDEN)) {
@@ -170,7 +172,7 @@ interval:
             onx_panel_pages::render(entity, onx_panel_ui::width, onx_panel_ui::height, detail, [](lv_obj_t *icon, const std::string &target) {
               id(apply_normal_entity_icon).execute(icon,target,"",false);
             });
-          } else if (normal && !detail && id(normal_page_index)==0 && lv_scr_act() == id(device_settings)->obj) {
+          } else if (normal && !detail && id(normal_page_index)==0 && lv_scr_act() == id(normal_panel_page)->obj) {
             onx_panel_pages::render_settings(onx_panel_ui::width, onx_panel_ui::height);
           } else onx_panel_pages::hide();
           static uint32_t last_main_artwork = 0;
@@ -504,7 +506,7 @@ script:
           // Board fonts are scaled by font_scale while the detail layout scales
           // by P(); these sizes keep text in proportion on both panels.
           // Theme every page before LVGL can display its first frame.
-          for(auto *screen:{id(device_empty)->obj,id(device_0)->obj,id(device_1)->obj,id(device_2)->obj,id(device_3)->obj,id(device_4)->obj,id(device_5)->obj,id(device_6)->obj,id(device_7)->obj,id(device_8)->obj,id(device_9)->obj,id(device_settings)->obj,id(normal_switch_page)->obj,id(normal_automation_page)->obj,id(normal_light_page)->obj,id(normal_curtain_page)->obj,id(normal_settings_page)->obj,id(normal_settings_wifi_page)->obj,id(normal_settings_brightness_page)->obj,id(normal_settings_input_page)->obj,id(normal_settings_connection_page)->obj,id(normal_halight_conf_page)->obj,id(normal_halight_page)->obj,id(standby_page)->obj,id(normal_provisioning_page)->obj,id(normal_add_hmi_page)->obj,id(normal_setup_help_page)->obj})
+          for(auto *screen:{id(device_empty)->obj,id(normal_panel_page)->obj,id(normal_switch_page)->obj,id(normal_automation_page)->obj,id(normal_light_page)->obj,id(normal_curtain_page)->obj,id(normal_settings_page)->obj,id(normal_settings_wifi_page)->obj,id(normal_settings_brightness_page)->obj,id(normal_settings_input_page)->obj,id(normal_settings_connection_page)->obj,id(normal_halight_conf_page)->obj,id(normal_halight_page)->obj,id(standby_page)->obj,id(normal_provisioning_page)->obj,id(normal_add_hmi_page)->obj,id(normal_setup_help_page)->obj})
             onx_render::register_panel_screen(screen);
           onx_panel_detail::fonts = {id(fonts_MiSans_Medium_12)->get_lv_font(), id(fonts_MiSans_Medium_15)->get_lv_font(),
               id(fonts_MiSans_Bold_18)->get_lv_font(), id(fonts_MiSans_Medium_32)->get_lv_font(), &lv_font_montserrat_28,

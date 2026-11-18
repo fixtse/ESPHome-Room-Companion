@@ -3,6 +3,13 @@
 The rectangular panels run the shared application and add a thin panel
 layer on top (`onx_panel_ui.h`, `packages/room_companion/panel.yaml`).
 
+The carousel uses one `normal_panel_page` host and the native card renderer.
+The retired `device_0`–`device_9` and Settings body widgets are no longer
+allocated or refreshed. Shared selection, entity state, subscriptions and
+control actions remain independent of card rendering. Opening the notification
+centre pauses native card updates until it closes; it does not activate a
+second carousel renderer.
+
 ## Gestures
 
 | Where | Gesture | Result |
@@ -26,9 +33,9 @@ layer on top (`onx_panel_ui.h`, `packages/room_companion/panel.yaml`).
   nothing and showing the unread count. On every screen, **pull down from the
   top edge** to open the notification centre. Its header shows
   *Notifications · count* and *Clear all*; each card has an accent bar while
-  unread, the title with its time (*now*, *5 min*, then the time of day), up to
-  two lines of the message, a picture placeholder when it has a picture, and ×
-  to dismiss. Tap a card for its detail with the picture. Swipe up (or tap the
+  unread, a thumbnail with its time underneath (*now*, *5 min*, then the time
+  of day), a full-width text-column title, up to two lines of the message, and ×
+  to dismiss. Tap a card for its detail with the small title thumbnail. Swipe up (or tap the
   handle) to close. A banner announces new notifications. Home Assistant sends
   them with the device's *show message* action.
 - **Settings uses the main-page base.** The carousel's Settings item is a card

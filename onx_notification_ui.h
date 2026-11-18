@@ -394,7 +394,18 @@ inline void rebuild_list() {
     lv_obj_set_pos(bar, -pad_l + S(7), 0);
     lv_obj_set_size(bar, S(3), lv_pct(100));
     lv_obj_remove_flag(bar, LV_OBJ_FLAG_CLICKABLE);
-    notification_icon(card, item.id, 44);
+    auto *metadata = box(card, surface(), 0);
+    lv_obj_set_style_bg_opa(metadata, LV_OPA_TRANSP, 0);
+    lv_obj_set_size(metadata, thumb, LV_SIZE_CONTENT);
+    lv_obj_set_flex_flow(metadata, LV_FLEX_FLOW_COLUMN);
+    lv_obj_set_flex_align(metadata, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+    lv_obj_set_style_pad_row(metadata, S(4), 0);
+    lv_obj_remove_flag(metadata, LV_OBJ_FLAG_CLICKABLE);
+    notification_icon(metadata, item.id, 44);
+    auto *age = text(metadata, fonts.small, muted(), when(item.received_ms, now).c_str());
+    lv_obj_set_width(age, lv_pct(100));
+    lv_obj_set_style_text_align(age, LV_TEXT_ALIGN_CENTER, 0);
+    lv_label_set_long_mode(age, LV_LABEL_LONG_DOT);
     lv_obj_t *column = box(card, surface(), 0);
     lv_obj_set_style_bg_opa(column, LV_OPA_TRANSP, 0);
     lv_obj_set_flex_grow(column, 1);
@@ -403,7 +414,7 @@ inline void rebuild_list() {
     lv_obj_set_style_pad_row(column, S(2), 0);
     lv_obj_remove_flag(column, LV_OBJ_FLAG_CLICKABLE);
     lv_obj_add_flag(column, LV_OBJ_FLAG_EVENT_BUBBLE);
-    // Title and time on one line.
+    // Title uses the full text column; age is beneath the icon.
     lv_obj_t *top_row = box(column, surface(), 0);
     lv_obj_set_style_bg_opa(top_row, LV_OPA_TRANSP, 0);
     lv_obj_set_size(top_row, lv_pct(100), LV_SIZE_CONTENT);
@@ -416,7 +427,6 @@ inline void rebuild_list() {
     lv_obj_set_flex_grow(title, 1);
     lv_label_set_long_mode(title, LV_LABEL_LONG_DOT);
     lv_obj_set_height(title, lv_font_get_line_height(fonts.title));
-    lv_obj_t *age = text(top_row, fonts.small, muted(), when(item.received_ms, now).c_str());
     // Up to two lines of the message.
     const int text_w = width - 2 * S(10) - pad_l - pad_r - close_w - S(10) - (thumb + S(10));
     // Two visible lines do not need to retain/queue an entire chat transcript.

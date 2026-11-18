@@ -275,230 +275,36 @@ script:
           if (!onx_timer::popup.visible) selected = onx_entity_config::carousel_selection(selected,total,1);
           id(normal_device_selected_index) = selected;
 
-          struct EntryWidgets {
-            lv_obj_t *icon_switch;
-            lv_obj_t *icon_switch_on;
-            lv_obj_t *icon_plug;
-            lv_obj_t *icon_plug_on;
-            lv_obj_t *icon_light;
-            lv_obj_t *icon_light_on;
-            lv_obj_t *icon_curtain;
-            lv_obj_t *icon_settings;
-            lv_obj_t *title;
-            lv_obj_t *index_icon;
-            lv_obj_t *value;
-            lv_obj_t *context;
-            lv_obj_t *pagination;
+          // Shared selection/state stays here; only the native panel draws cards.
+          if (onx_notification_ui::panel_open || onx_notification_ui::detail_id != 0) return;
+          const bool empty = total == 0 && selected == 0;
+          auto show = [](lv_obj_t *obj, bool visible) {
+            if (visible) lv_obj_remove_flag(obj, LV_OBJ_FLAG_HIDDEN);
+            else lv_obj_add_flag(obj, LV_OBJ_FLAG_HIDDEN);
           };
-
-          auto set_hidden = [](lv_obj_t *obj, bool hidden) {
-            if (hidden) {
-              lv_obj_add_flag(obj, LV_OBJ_FLAG_HIDDEN);
-            } else {
-              lv_obj_clear_flag(obj, LV_OBJ_FLAG_HIDDEN);
-            }
-          };
-
-          auto lower = [](std::string s) {
-            for (char &c : s) {
-              if (c >= 'A' && c <= 'Z') c = c - 'A' + 'a';
-            }
-            return s;
-          };
-
-          auto device_title_at = [&](int index) -> std::string {
-            const std::string device_entity_id = id(ui_presenter)->get_normal_device_entity_id(index);
-            std::string device_title = ha_entity_title_from_registry_cache(device_entity_id);
-            if (device_title.empty()) {
-              device_title = device_entity_id;
-            }
-            return device_title;
-          };
-
-          auto device_type_at = [&](int index) -> std::string {
-            return id(ui_presenter)->get_normal_device_type(index);
-          };
-
-          auto local_hmi_gpio_switch_state = [&](const std::string &entity_id, bool *state) -> bool {
-            switch (local_hmi_gpio_switch_io_from_entity_id(entity_id)) {
-              case 10:
-                *state = id(normal_gpio_io10).state;
-                return true;
-              case 11:
-                *state = id(normal_gpio_io11).state;
-                return true;
-              case 17:
-                *state = id(normal_gpio_io17).state;
-                return true;
-              case 18:
-                *state = id(normal_gpio_io18).state;
-                return true;
-              case custom_logic::PANEL_LOCAL_DASHBOARD:
-              case custom_logic::PANEL_LOCAL_ASSIST:
-                *state = onx_navigation::local_state && onx_navigation::local_state(local_hmi_gpio_switch_io_from_entity_id(entity_id));
-                return true;
-              default:
-                return false;
-            }
-          };
-
-          auto render_entry = [&](EntryWidgets w, int entry_index) {
-            const bool settings_entry = entry_index >= total;
-            std::string device_title = settings_entry ? "Settings" : device_title_at(entry_index);
-            std::string device_type = settings_entry ? "settings" : device_type_at(entry_index);
-
-            int device_kind = 1;
-            if (settings_entry) {
-              device_kind = 5;
-            } else {
-              if (device_type.empty()) device_type = "switch";
-              device_type = lower(device_type);
-              if (device_type == "switch") {
-                device_kind = 1;
-              } else if (device_type == "plug" || device_type == "chazuo") {
-                device_kind = 3;
-              } else if (device_type == "light" || device_type == "liang" ||
-                         device_type == "dimming_light" || device_type == "dimmable_light" || device_type == "dimming") {
-                device_kind = 2;
-              } else if (device_type == "curtain" || device_type == "cover") {
-                device_kind = 4;
-              } else if (device_type == "automation" || device_type == "sensor" || device_type == "binary_sensor" || device_type == "climate" || device_type == "script" || device_type == "weather" || device_type == "timer" || device_type == "media_player" || device_type == "fan" || device_type == "number" || device_type == "input_number" || device_type == "select" || device_type == "input_select" || device_type == "scene" || device_type == "button" || device_type == "input_button") {
-                device_kind = 10;
-              }
-            }
-
-            if (!settings_entry && device_title.empty()) {
-              if (device_kind == 1) {
-                device_title = "switch";
-              } else if (device_kind == 3) {
-                device_title = "plug";
-              } else if (device_kind == 4) {
-                device_title = "curtain";
-              } else if (device_kind == 10) {
-                device_title = "automation";
-              } else {
-                device_title = "light";
-              }
-            }
-
-            // All configured controls use the icon downloader's state-aware
-            // fallback. Do not install another image and hide/show it first.
-            for (auto *icon : {w.icon_switch_on, w.icon_plug, w.icon_plug_on,
-                              w.icon_light, w.icon_light_on, w.icon_curtain}) set_hidden(icon, true);
-            set_hidden(w.icon_settings, !settings_entry);
-            #ifdef USE_ROOM_COMPANION
-            onx_render::style_image_recolor(w.icon_settings,lv_color_hex(onx_display_settings::foreground()),0);
-            onx_render::style_image_recolor_opa(w.icon_settings,LV_OPA_COVER,0);
-            #endif
-            set_hidden(w.icon_switch, settings_entry);
-            if (!settings_entry) {
-              bool local_state = false;
-              if (device_kind == 1 && local_hmi_gpio_switch_state(id(ui_presenter)->get_normal_device_entity_id(entry_index), &local_state))
-                id(app_storage)->set_normal_ui_device_state(entry_index, local_state);
-              id(apply_normal_entity_icon).execute(w.icon_switch,
-                  id(ui_presenter)->get_normal_device_entity_id(entry_index), device_type,
-                  id(app_storage)->get_normal_ui_device_state(entry_index));
-            }
-            const auto entity = settings_entry ? std::string("") : id(ui_presenter)->get_normal_device_entity_id(entry_index);
-            if (settings_entry) {
-              lv_obj_set_y(w.icon_switch, onx_geom::S(62));
-              lv_image_set_scale(w.icon_switch, 256);
-              lv_obj_set_size(w.title, onx_geom::S(180), onx_geom::S(25));
-              lv_label_set_long_mode(w.title, LV_LABEL_LONG_DOT);
-              onx_render::align(w.title, LV_ALIGN_TOP_MID, 0, onx_geom::S(151));
-              onx_render::label(w.title, device_title.c_str());
-            } else {
-              // Build once and apply the final layout directly. Resetting to the
-              // defaults first dirtied the same widgets on every refresh.
-              const auto view = onx_detail_view::carousel(entity, device_title);
-              onx_render::label(w.value, view.value.text.c_str());
-              lv_obj_set_y(w.value, onx_geom::S(view.value.y));
-              onx_render::style_text_font(w.value,
-                  view.value.size == 32 ? id(fonts_MiSans_Medium_32)->get_lv_font() : id(fonts_MiSans_Medium_24)->get_lv_font(), 0);
-              set_hidden(w.value, false);
-              lv_obj_set_y(w.icon_switch, onx_geom::S(onx_detail_view::image_object_y(view.icon_y, view.icon_size)));
-              lv_image_set_scale(w.icon_switch, view.icon_size * 256 / 80);
-              onx_render::label(w.context, view.context.text.c_str());
-              lv_obj_set_y(w.context, onx_geom::S(view.context.y));
-              onx_render::style_text_font(w.context, view.context.size == 24 ? id(fonts_MiSans_Medium_24)->get_lv_font() : id(fonts_MiSans_Medium_14)->get_lv_font(), 0);
-              lv_obj_set_height(w.context, onx_geom::S(view.context.size == 24 ? 30 : 20));
-              if (view.icon.empty()) set_hidden(w.icon_switch, true);
-              set_hidden(w.context, view.context.text.empty());
-              lv_label_set_long_mode(w.title, LV_LABEL_LONG_WRAP);
-              onx_render::align(w.title, LV_ALIGN_TOP_MID, 0, onx_geom::S(view.name.y));
-              onx_render::style_text_font(w.title, view.name.size == 14 ? id(fonts_MiSans_Medium_14)->get_lv_font() : id(fonts_MiSans_Medium_16)->get_lv_font(), 0);
-              lv_obj_set_size(w.title, onx_geom::S(view.name.width), onx_geom::S(40));
-              onx_render::label(w.title, view.name.text.c_str());
-            }
-            onx_render::style_text_align(w.title, LV_TEXT_ALIGN_CENTER, 0);
-            set_hidden(w.index_icon, true);
-            set_hidden(w.pagination,true);
-            const int navigator_index=settings_entry?total:entry_index;
-            onx_navigation::render(onx_entity_config::carousel_entries(total),navigator_index,
-                [&](lv_obj_t *icon,int index,bool active) {
-                  if(index==total) {
-                    onx_render::image(icon,id(normal_device_icon_settings_img)->get_lv_image_dsc());
-                    lv_image_set_scale(icon,onx_geom::S(onx_navigation::icon_size())*256/id(normal_device_icon_settings_img)->get_width());
-                    onx_render::style_image_recolor(icon,lv_color_hex(active?onx_display_settings::accent():0xFFFFFF),0);
-                    onx_render::style_image_recolor_opa(icon,LV_OPA_COVER,0);
-                  } else {
-                    id(apply_normal_entity_icon).execute(icon,
-                        id(ui_presenter)->get_normal_device_entity_id(index),
-                        id(ui_presenter)->get_normal_device_type(index),active);
-                    lv_image_set_scale(icon,onx_navigation::icon_size()*256/80);
-                  }
-                });
-            onx_navigation::set_label(device_title.c_str());
-          };
-
-          if (total == 0 && selected == 0) {
-            onx_navigation::hide();
-            set_hidden(id(normal_device_wifi_online_widget), true);
-            set_hidden(id(normal_device_wifi_offline_widget), true);
-            set_hidden(id(normal_device_homeassistant_online_widget), true);
-            set_hidden(id(normal_device_homeassistant_offline_widget), true);
-            return;
-          }
-          set_hidden(id(normal_device_wifi_online_widget), !id(normal_wifi_connected));
-          set_hidden(id(normal_device_wifi_offline_widget), id(normal_wifi_connected));
-          set_hidden(id(normal_device_homeassistant_online_widget), !id(normal_ha_api_connected));
-          set_hidden(id(normal_device_homeassistant_offline_widget), id(normal_ha_api_connected));
-          if (selected >= total) {
-            render_entry({id(normal_device_settings_icon_switch), id(normal_device_settings_icon_switch_on), id(normal_device_settings_icon_plug), id(normal_device_settings_icon_plug_on), id(normal_device_settings_icon_light), id(normal_device_settings_icon_light_on), id(normal_device_settings_icon_curtain), id(normal_device_settings_icon_settings), id(normal_device_settings_title), id(normal_device_settings_index_icon), nullptr, nullptr, id(normal_device_settings_pagination)}, selected);
-          } else {
-            switch (selected % 10) {
-              case 0:
-                render_entry({id(normal_device_0_icon_switch), id(normal_device_0_icon_switch_on), id(normal_device_0_icon_plug), id(normal_device_0_icon_plug_on), id(normal_device_0_icon_light), id(normal_device_0_icon_light_on), id(normal_device_0_icon_curtain), id(normal_device_0_icon_settings), id(normal_device_0_title), id(normal_device_0_index_icon), id(normal_device_0_value), id(normal_device_0_context), id(normal_device_0_pagination)}, selected);
-                break;
-              case 1:
-                render_entry({id(normal_device_1_icon_switch), id(normal_device_1_icon_switch_on), id(normal_device_1_icon_plug), id(normal_device_1_icon_plug_on), id(normal_device_1_icon_light), id(normal_device_1_icon_light_on), id(normal_device_1_icon_curtain), id(normal_device_1_icon_settings), id(normal_device_1_title), id(normal_device_1_index_icon), id(normal_device_1_value), id(normal_device_1_context), id(normal_device_1_pagination)}, selected);
-                break;
-              case 2:
-                render_entry({id(normal_device_2_icon_switch), id(normal_device_2_icon_switch_on), id(normal_device_2_icon_plug), id(normal_device_2_icon_plug_on), id(normal_device_2_icon_light), id(normal_device_2_icon_light_on), id(normal_device_2_icon_curtain), id(normal_device_2_icon_settings), id(normal_device_2_title), id(normal_device_2_index_icon), id(normal_device_2_value), id(normal_device_2_context), id(normal_device_2_pagination)}, selected);
-                break;
-              case 3:
-                render_entry({id(normal_device_3_icon_switch), id(normal_device_3_icon_switch_on), id(normal_device_3_icon_plug), id(normal_device_3_icon_plug_on), id(normal_device_3_icon_light), id(normal_device_3_icon_light_on), id(normal_device_3_icon_curtain), id(normal_device_3_icon_settings), id(normal_device_3_title), id(normal_device_3_index_icon), id(normal_device_3_value), id(normal_device_3_context), id(normal_device_3_pagination)}, selected);
-                break;
-              case 4:
-                render_entry({id(normal_device_4_icon_switch), id(normal_device_4_icon_switch_on), id(normal_device_4_icon_plug), id(normal_device_4_icon_plug_on), id(normal_device_4_icon_light), id(normal_device_4_icon_light_on), id(normal_device_4_icon_curtain), id(normal_device_4_icon_settings), id(normal_device_4_title), id(normal_device_4_index_icon), id(normal_device_4_value), id(normal_device_4_context), id(normal_device_4_pagination)}, selected);
-                break;
-              case 5:
-                render_entry({id(normal_device_5_icon_switch), id(normal_device_5_icon_switch_on), id(normal_device_5_icon_plug), id(normal_device_5_icon_plug_on), id(normal_device_5_icon_light), id(normal_device_5_icon_light_on), id(normal_device_5_icon_curtain), id(normal_device_5_icon_settings), id(normal_device_5_title), id(normal_device_5_index_icon), id(normal_device_5_value), id(normal_device_5_context), id(normal_device_5_pagination)}, selected);
-                break;
-              case 6:
-                render_entry({id(normal_device_6_icon_switch), id(normal_device_6_icon_switch_on), id(normal_device_6_icon_plug), id(normal_device_6_icon_plug_on), id(normal_device_6_icon_light), id(normal_device_6_icon_light_on), id(normal_device_6_icon_curtain), id(normal_device_6_icon_settings), id(normal_device_6_title), id(normal_device_6_index_icon), id(normal_device_6_value), id(normal_device_6_context), id(normal_device_6_pagination)}, selected);
-                break;
-              case 7:
-                render_entry({id(normal_device_7_icon_switch), id(normal_device_7_icon_switch_on), id(normal_device_7_icon_plug), id(normal_device_7_icon_plug_on), id(normal_device_7_icon_light), id(normal_device_7_icon_light_on), id(normal_device_7_icon_curtain), id(normal_device_7_icon_settings), id(normal_device_7_title), id(normal_device_7_index_icon), id(normal_device_7_value), id(normal_device_7_context), id(normal_device_7_pagination)}, selected);
-                break;
-              case 8:
-                render_entry({id(normal_device_8_icon_switch), id(normal_device_8_icon_switch_on), id(normal_device_8_icon_plug), id(normal_device_8_icon_plug_on), id(normal_device_8_icon_light), id(normal_device_8_icon_light_on), id(normal_device_8_icon_curtain), id(normal_device_8_icon_settings), id(normal_device_8_title), id(normal_device_8_index_icon), id(normal_device_8_value), id(normal_device_8_context), id(normal_device_8_pagination)}, selected);
-                break;
-              default:
-                render_entry({id(normal_device_9_icon_switch), id(normal_device_9_icon_switch_on), id(normal_device_9_icon_plug), id(normal_device_9_icon_plug_on), id(normal_device_9_icon_light), id(normal_device_9_icon_light_on), id(normal_device_9_icon_curtain), id(normal_device_9_icon_settings), id(normal_device_9_title), id(normal_device_9_index_icon), id(normal_device_9_value), id(normal_device_9_context), id(normal_device_9_pagination)}, selected);
-                break;
-            }
-          }
+          show(id(normal_device_wifi_online_widget), !empty && id(normal_wifi_connected));
+          show(id(normal_device_wifi_offline_widget), !empty && !id(normal_wifi_connected));
+          show(id(normal_device_homeassistant_online_widget), !empty && id(normal_ha_api_connected));
+          show(id(normal_device_homeassistant_offline_widget), !empty && !id(normal_ha_api_connected));
+          if (empty) { onx_navigation::hide(); return; }
+          const bool settings = selected >= total;
+          const auto entity = settings ? std::string() : id(ui_presenter)->get_normal_device_entity_id(selected);
+          auto title = settings ? std::string("Settings") : ha_entity_title_from_registry_cache(entity);
+          if (title.empty()) title = entity;
+          onx_navigation::render(onx_entity_config::carousel_entries(total), selected,
+              [&](lv_obj_t *icon, int index, bool active) {
+                if (index == total) {
+                  onx_render::image(icon, id(normal_device_icon_settings_img)->get_lv_image_dsc());
+                  lv_image_set_scale(icon, onx_geom::S(onx_navigation::icon_size()) * 256 / id(normal_device_icon_settings_img)->get_width());
+                  onx_render::style_image_recolor(icon, lv_color_hex(active ? onx_display_settings::accent() : 0xFFFFFF), 0);
+                  onx_render::style_image_recolor_opa(icon, LV_OPA_COVER, 0);
+                } else {
+                  id(apply_normal_entity_icon).execute(icon, id(ui_presenter)->get_normal_device_entity_id(index),
+                      id(ui_presenter)->get_normal_device_type(index), active);
+                  lv_image_set_scale(icon, onx_navigation::icon_size() * 256 / 80);
+                }
+              });
+          onx_navigation::set_label(title.c_str());
 
   - id: show_normal_device_entry_page
     mode: restart
@@ -517,49 +323,26 @@ script:
           if (!onx_timer::popup.visible) selected = onx_entity_config::carousel_selection(selected,total,1);
           id(normal_device_selected_index) = selected;
 
-          lv_obj_t *target = id(device_settings)->obj;
+          lv_obj_t *target = id(normal_panel_page)->obj;
           if (total == 0 && selected == 0) {
             target = id(normal_ha_added) ? id(device_empty)->obj : id(normal_add_hmi_page)->obj;
           } else if (total == 0 && !id(normal_ha_added) && selected == 1) {
             target = id(normal_setup_help_page)->obj;
-          } else if (selected < total) {
-            switch (selected % 10) {
-              case 0: target = id(device_0)->obj; break;
-              case 1: target = id(device_1)->obj; break;
-              case 2: target = id(device_2)->obj; break;
-              case 3: target = id(device_3)->obj; break;
-              case 4: target = id(device_4)->obj; break;
-              case 5: target = id(device_5)->obj; break;
-              case 6: target = id(device_6)->obj; break;
-              case 7: target = id(device_7)->obj; break;
-              case 8: target = id(device_8)->obj; break;
-              default: target = id(device_9)->obj; break;
-            }
           }
 
-          #ifdef USE_ROOM_COMPANION
-          if (id(room_panel)->native_ui_has_touch()) {
-            // Cards live on the top layer. Finish the base-page handoff before
-            // hiding them; animating the base exposes its stale entity body.
-            onx_render::apply_panel_palette(target);
-            onx_render::style_bg_color(target,lv_color_hex(onx_display_settings::background()),0);
-            if (lv_scr_act() != target) lv_scr_load(target);
-            // Settings is drawn on the same base as the other main pages.
-            if (target == id(device_settings)->obj) onx_panel_pages::render_settings(onx_panel_ui::width, onx_panel_ui::height);
-            else if (selected >= total) onx_panel_pages::hide();
-            return;
-          }
-          #endif
-          if (lv_scr_act() == target) {
-            return;
-          }
-          if (direction == 0) {
-            lv_scr_load(target);
-            return;
-          }
-          lv_scr_load_anim(target,
-                           direction > 0 ? LV_SCR_LOAD_ANIM_MOVE_LEFT : LV_SCR_LOAD_ANIM_MOVE_RIGHT,
-                           220, 0, false);
+          // One screen owns the native carousel; selecting an entity never loads
+          // or refreshes an older entity body underneath it.
+          onx_render::apply_panel_palette(target);
+          onx_render::style_bg_color(target, lv_color_hex(onx_display_settings::background()), 0);
+          if (lv_scr_act() != target) lv_scr_load(target);
+          if (target == id(normal_panel_page)->obj) {
+            if (selected < total) {
+              onx_panel_pages::render(id(ui_presenter)->get_normal_device_entity_id(selected),
+                  onx_panel_ui::width, onx_panel_ui::height, false,
+                  [](lv_obj_t *icon, const std::string &entity) { id(apply_normal_entity_icon).execute(icon, entity, "", false); });
+            } else onx_panel_pages::render_settings(onx_panel_ui::width, onx_panel_ui::height);
+          } else onx_panel_pages::hide();
+
 
   - id: refresh_normal_switch_detail_page
     mode: restart
