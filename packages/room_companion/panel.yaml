@@ -19,9 +19,6 @@ uart: !remove
 api:
   encryption: !remove
 
-ota:
-  - platform: esphome
-
 lvgl:
   id: lvgl_ui
   # Referencing Montserrat 28 compiles it in for the media control symbols.

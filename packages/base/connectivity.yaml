@@ -10,9 +10,18 @@ api:
   reboot_timeout: 0s   # 延长到 60 分钟，或设为 0s 完全禁用
 
 ota:
-  # Production OTA only: Home Assistant exposes the update entity below and
-  # the device pulls the released firmware from the HTTPS manifest.
+  # Home Assistant installs the HTTPS release. ESPHome CLI uploads use the
+  # native platform; both transfers need the radio awake.
   - platform: http_request
+    on_begin: &ota_radio_begin
+      - lambda: onx_power::begin_ota();
+    on_error: &ota_radio_restore
+      - lambda: onx_power::end_ota();
+    on_abort: *ota_radio_restore
+  - platform: esphome
+    on_begin: *ota_radio_begin
+    on_error: *ota_radio_restore
+    on_abort: *ota_radio_restore
 
 update:
   - platform: http_request
