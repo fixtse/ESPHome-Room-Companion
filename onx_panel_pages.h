@@ -14,21 +14,36 @@
 namespace onx_panel_pages {
 using onx_panel_layout::Page;
 using onx_panel_layout::Kind;
-// Pages are the carousel stops, in the editor's order. Each has its own name and
-// carousel icon and places 1, 2 or 4 configuration entries (full; top/bottom;
-// large + three compact). Entries keep their own shortcut, gestures and quick
-// actions. Entries are stored by configuration index (stable), not UI index.
+// Pages use stable configuration indices so all keys share HA subscriptions.
 constexpr size_t MAX_PAGES=onx_memory::ENTRY_COUNT;
 constexpr uint8_t NO_ENTRY=0xFF;
+using onx_panel_layout::MAX_CELLS;
+struct LegacyPage {
+  char name[49]{}, icon[65]{};
+  uint8_t kind{0}, entries[4]{};
+};
+struct LegacyPages {
+  uint32_t magic;
+  uint8_t count;
+  LegacyPage pages[MAX_PAGES];
+};
+// The artwork index uses six bits. Keep the presentation flag in its
+// unused high bit so existing page preferences retain their exact format.
+constexpr uint8_t ICON_ONLY=0x80;
+constexpr uint8_t ART_INDEX=0x7F;
+static_assert(onx_panel_artwork::LIMIT<=ART_INDEX);
 struct StoredPage {
   char name[49]{}, icon[65]{};
-  uint8_t kind{0};
-  uint8_t entries[4]{NO_ENTRY,NO_ENTRY,NO_ENTRY,NO_ENTRY};
+  uint8_t kind{0}, rows{2}, cols{2}, carousel_artwork{0};
+  std::array<uint8_t,MAX_CELLS> entries{}, artwork{};
+  StoredPage() { entries.fill(NO_ENTRY); }
 };
 struct StoredPages {
-  uint32_t magic{0x52435032};
+  static constexpr uint32_t MAGIC=0x52435033;
+  uint32_t magic{MAGIC};
   uint8_t count{0};
   StoredPage pages[MAX_PAGES]{};
+  std::array<uint64_t,onx_panel_artwork::LIMIT> images{};
 };
 inline StoredPages &stored=onx_memory::psram_object<StoredPages>();
 inline esphome::ESPPreferenceObject preference;
@@ -36,6 +51,13 @@ inline bool loaded=false;
 // Set when entries change (slot save, preset, import); reconciled lazily.
 inline bool dirty=true;
 inline int size_of(Kind k){return k==Kind::TWO_CONTROLS?2:k==Kind::CONTROL_SENSORS?4:1;}
+inline int size_of(const StoredPage &page) {
+  return Kind(page.kind)==Kind::ACTION_GRID ? page.rows*page.cols : size_of(Kind(page.kind));
+}
+inline uint8_t lead(const StoredPage &page) {
+  for(int i=0;i<size_of(page);++i)if(page.entries[i]!=NO_ENTRY)return page.entries[i];
+  return NO_ENTRY;
+}
 inline int configured(const std::string &entity) {
   if(entity.empty())return -1;
   for(int i=0;i<int(onx_memory::ENTRY_COUNT);++i)if(custom_logic::cached_device_entity_id(i)==entity)return i;
@@ -53,17 +75,34 @@ inline bool placed(const StoredPages &list,int entry) {
 inline void reconcile(StoredPages &list) {
   int out=0;
   for(int p=0;p<list.count;++p) {
-    auto page=list.pages[p];bool complete=true;
-    for(int i=0;i<size_of(Kind(page.kind));++i)complete&=!entry_entity(page.entries[i]).empty();
-    if(!complete) {
-      // Keep what remains as single pages rather than a broken layout.
-      for(int i=0;i<4;++i)if(!entry_entity(page.entries[i]).empty() && out<int(MAX_PAGES)) {
-        StoredPage single{};if(i==0){std::memcpy(single.name,page.name,sizeof(single.name));std::memcpy(single.icon,page.icon,sizeof(single.icon));}
+    auto page=list.pages[p];
+    const bool grid=Kind(page.kind)==Kind::ACTION_GRID;
+    const int n=size_of(page);
+    bool complete=true;
+    for(int i=0;i<n;++i) {
+      if(!entry_entity(page.entries[i]).empty())continue;
+      page.entries[i]=NO_ENTRY;
+      page.artwork[i]=0;
+      complete=false;
+    }
+    if(grid && lead(page)==NO_ENTRY)continue;
+    if(!grid && !complete) {
+      // Keep the remaining entries from an incomplete legacy layout.
+      for(int i=0;i<n;++i)if(page.entries[i]!=NO_ENTRY && out<int(MAX_PAGES)) {
+        StoredPage single{};
+        single.artwork[0]=page.artwork[i];
+        if(i==0)single.carousel_artwork=page.carousel_artwork;
+        if(i==0){std::memcpy(single.name,page.name,sizeof(single.name));std::memcpy(single.icon,page.icon,sizeof(single.icon));}
         single.entries[0]=page.entries[i];list.pages[out++]=single;
       }
       continue;
     }
-    for(int i=size_of(Kind(page.kind));i<4;++i)page.entries[i]=NO_ENTRY;
+    if(out>=int(MAX_PAGES))break;
+    for(int i=n;i<MAX_CELLS;++i)page.entries[i]=NO_ENTRY;
+    // If clearing an entry changed the lead to one already used, leave
+    // the remaining entities for the unplaced-entry pass.
+    const auto first=lead(page);
+    if(std::any_of(list.pages,list.pages+out,[first](const StoredPage &p){return lead(p)==first;}))continue;
     list.pages[out++]=page;
   }
   list.count=out;
@@ -74,7 +113,9 @@ inline void reconcile(StoredPages &list) {
 }
 // One-time migration from per-entity layouts (rc.page.v1.<entity>).
 inline void migrate() {
-  stored=StoredPages{};
+  stored.magic=StoredPages::MAGIC;
+  stored.count=0;
+  stored.images.fill(0);
   for(int e=0;e<int(onx_memory::ENTRY_COUNT);++e) {
     const auto entity=entry_entity(e);if(entity.empty() || placed(stored,e) || onx_entity_config::timer_hidden(e,entity))continue;
     StoredPage page{};page.entries[0]=e;
@@ -91,10 +132,34 @@ inline void migrate() {
 inline bool load() {
   if(loaded)return true;
   if(!esphome::global_preferences)return false;
-  preference=esphome::global_preferences->make_preference<StoredPages>(esphome::fnv1_hash("rc.pages.v2"));
-  const uint32_t magic=StoredPages{}.magic;
-  if(!preference.load(&stored) || stored.magic!=magic || stored.count>MAX_PAGES)migrate();
-  for(auto &p:stored.pages){p.name[48]=0;p.icon[64]=0;if(p.kind>2)p.kind=0;}
+  preference=esphome::global_preferences->make_preference<StoredPages>(esphome::fnv1_hash("rc.pages.v3"));
+  if(!preference.load(&stored) || stored.magic!=StoredPages::MAGIC || stored.count>MAX_PAGES) {
+    auto legacy=custom_logic::make_ram_allocated<LegacyPages>();
+    auto old_pref=esphome::global_preferences->make_preference<LegacyPages>(esphome::fnv1_hash("rc.pages.v2"));
+    if(!legacy || !old_pref.load(legacy.get()) || legacy->magic!=0x52435032 || legacy->count>MAX_PAGES) {
+      migrate();
+    } else {
+      stored.magic=StoredPages::MAGIC;
+      stored.count=legacy->count;
+      stored.images.fill(0);
+      for(int i=0;i<stored.count;++i) {
+        const auto &old=legacy->pages[i];
+        auto &page=stored.pages[i];
+        page=StoredPage{};
+        std::memcpy(page.name,old.name,sizeof(page.name));
+        std::memcpy(page.icon,old.icon,sizeof(page.icon));
+        page.kind=old.kind<=2?old.kind:0;
+        std::copy_n(old.entries,4,page.entries.begin());
+      }
+    }
+  }
+  for(int i=0;i<stored.count;++i) {
+    auto &p=stored.pages[i];
+    p.name[48]=0;p.icon[64]=0;
+    if(p.kind>uint8_t(Kind::ACTION_GRID) || !onx_panel_layout::grid_axis(p.rows) || !onx_panel_layout::grid_axis(p.cols)) {
+      p.kind=0;p.rows=2;p.cols=2;
+    }
+  }
   loaded=true;return true;
 }
 inline uint32_t seen_revision=0;
@@ -104,22 +169,17 @@ inline int page_index(const std::string &entity) {
   const int entry=configured(entity);if(entry<0)return -1;
   // An entity may appear on several pages (one entry, one subscription); the
   // page it leads wins.
-  for(int p=0;p<stored.count;++p)if(stored.pages[p].entries[0]==entry)return p;
+  for(int p=0;p<stored.count;++p)if(lead(stored.pages[p])==entry)return p;
   for(int p=0;p<stored.count;++p)for(auto e:stored.pages[p].entries)if(e==entry)return p;
   return -1;
-}
-// The page drawn when the carousel stops at 'entity' (a page's first entity).
-inline Page page(const std::string &entity) {
-  Page out;snprintf(out.primary,sizeof(out.primary),"%s",entity.c_str());
-  const int p=page_index(entity);
-  if(p<0 || entry_entity(stored.pages[p].entries[0])!=entity)return out;
-  out.kind=Kind(stored.pages[p].kind);
-  for(int i=1;i<size_of(out.kind);++i)snprintf(out.members[i-1],sizeof(out.members[i-1]),"%s",entry_entity(stored.pages[p].entries[i]).c_str());
-  return out;
 }
 // Page name/icon for the carousel; empty when the page uses its entity's.
 inline const StoredPage *info(const std::string &entity) {
   const int p=page_index(entity);return p<0?nullptr:&stored.pages[p];
+}
+inline const StoredPage *led_by(const std::string &entity) {
+  const auto *p=info(entity);
+  return p && entry_entity(lead(*p))==entity?p:nullptr;
 }
 inline std::vector<int> order() {
   std::vector<int> out;
@@ -128,19 +188,59 @@ inline std::vector<int> order() {
     return out;
   }
   refresh();
-  for(int p=0;p<stored.count;++p)out.push_back(int(custom_logic::normal_ui_slot_for_device_config_slot(stored.pages[p].entries[0])));
+  for(int p=0;p<stored.count;++p)out.push_back(int(custom_logic::normal_ui_slot_for_device_config_slot(lead(stored.pages[p]))));
   return out;
 }
 inline const bool order_installed=(onx_entity_config::page_order=&order,true);
-inline std::string rpc(const std::string &op,const std::string &data);
+inline std::string rpc(const std::string &op,const std::string &data,const std::string &asset={},unsigned offset=0);
+inline uint64_t artwork_id(const StoredPages &list,const StoredPage &p,int pos) {
+  const auto index=pos<0?p.carousel_artwork:p.artwork[pos]&ART_INDEX;
+  return index && index<=list.images.size()?list.images[index-1]:0;
+}
+inline bool set_artwork(StoredPages &list,StoredPage &p,int pos,uint64_t value) {
+  for(size_t i=0;i<list.images.size();++i) {
+    if(list.images[i] && list.images[i]!=value)continue;
+    list.images[i]=value;(pos<0?p.carousel_artwork:p.artwork[pos])=i+1;return true;
+  }
+  return false;
+}
+inline bool bind_carousel_artwork(lv_obj_t *icon,const StoredPage &page) {
+  const auto value=artwork_id(stored,page,-1);
+  if(!value)return false;
+  const auto slot=std::find(onx_navigation::icons.begin(),onx_navigation::icons.end(),icon);
+  if(slot==onx_navigation::icons.end())return false;
+  static onx_memory::StateArray<onx_panel_artwork::Image,onx_navigation::VISIBLE_ICONS> cache;
+  auto &art=cache[slot-onx_navigation::icons.begin()];
+  if(!art.load(value))return false;
+  lv_image_set_src(icon,art.source);
+  lv_image_set_scale(icon,onx_navigation::icon_size()*256/art.source->header.w);
+  lv_obj_set_style_image_recolor_opa(icon,LV_OPA_TRANSP,0);
+  return true;
+}
+inline bool resolve_artwork(StoredPages &list,StoredPage &page,int pos,const std::string &ref) {
+  if(ref.empty())return true;
+  const auto value=onx_panel_artwork::id(ref);
+  return value && onx_panel_artwork::read(value,nullptr) && set_artwork(list,page,pos,value);
+}
 inline void encode(JsonArray out) {
   if(!load())return;refresh();
   for(int p=0;p<stored.count;++p) {
     const auto &page=stored.pages[p];auto item=out.add<JsonObject>();
     item["name"]=std::string(page.name);item["icon"]=std::string(page.icon);
     item["layout"]=onx_panel_layout::name(Kind(page.kind));
+    if(page.carousel_artwork)item["carousel_artwork"]=onx_panel_artwork::key(artwork_id(stored,page,-1));
+    if(Kind(page.kind)==Kind::ACTION_GRID){item["rows"]=page.rows;item["columns"]=page.cols;}
     auto entities=item["entities"].to<JsonArray>();
-    for(int i=0;i<size_of(Kind(page.kind));++i)entities.add(entry_entity(page.entries[i]));
+    for(int i=0;i<size_of(page);++i)entities.add(entry_entity(page.entries[i]));
+    if(std::any_of(page.artwork.begin(),page.artwork.begin()+size_of(page),[](uint8_t i){return (i&ART_INDEX)!=0;})) {
+      auto images=item["artwork"].to<JsonArray>();
+      for(int i=0;i<size_of(page);++i)images.add(onx_panel_artwork::key(artwork_id(stored,page,i)));
+    }
+    if(Kind(page.kind)==Kind::ACTION_GRID &&
+       std::any_of(page.artwork.begin(),page.artwork.end(),[](uint8_t i){return (i&ICON_ONLY)!=0;})) {
+      auto flags=item["icon_only"].to<JsonArray>();
+      for(int i=0;i<size_of(page);++i)flags.add((page.artwork[i]&ICON_ONLY)!=0);
+    }
   }
 }
 // A preset's pages, or {"pages":[]} for one page per entity. Invalid lists
@@ -157,7 +257,105 @@ inline bool valid_icon(const std::string &icon) {
   for(size_t i=4;i<icon.size();++i){const char c=icon[i];if(!((c>='a'&&c<='z')||(c>='0'&&c<='9')||c=='-'))return false;}
   return true;
 }
-inline std::string rpc(const std::string &op,const std::string &data) {
+// Reclaim images that no saved panel page or preset uses. Recent uploads may
+// still be in a browser's save transaction.
+inline std::array<std::pair<uint64_t,uint32_t>,onx_panel_artwork::LIMIT> recently_uploaded{};
+inline void prune_artwork() {
+  std::vector<uint64_t> keep;
+  auto add=[&keep](uint64_t value){if(value && std::find(keep.begin(),keep.end(),value)==keep.end())keep.push_back(value);};
+  if(!load())return;
+  for(int i=0;i<stored.count;++i)for(int j=-1;j<size_of(stored.pages[i]);++j)add(artwork_id(stored,stored.pages[i],j));
+  const uint32_t now=esphome::millis();
+  for(const auto &[value,when]:recently_uploaded)if(now-when<120000)add(value);
+  onx_presets::load();
+  for(const auto &preset:onx_presets::summaries) {
+    onx_presets::Blob raw;
+    if(!onx_presets::store_read(onx_presets::key_name(preset.key),raw))return;
+    auto doc=custom_logic::make_psram_json_document();
+    if(deserializeJson(doc,raw.c_str(),raw.size()))return;
+    for(JsonObjectConst page:doc["pages"].as<JsonArrayConst>()) {
+      if(const char *key=page["carousel_artwork"].as<const char *>())add(onx_panel_artwork::id(key));
+      for(const char *key:page["artwork"].as<JsonArrayConst>())if(key)add(onx_panel_artwork::id(key));
+    }
+  }
+  onx_panel_artwork::remove_unused([&keep](uint64_t value){return std::find(keep.begin(),keep.end(),value)!=keep.end();});
+}
+inline std::string artwork_rpc(const std::string &op,const std::string &data,const std::string &asset,unsigned offset) {
+  using namespace onx_panel_artwork;
+  using Buffer=std::array<uint8_t,BYTES>;
+  if(op=="panel_art_get") {
+    auto pixels=custom_logic::make_ram_allocated<Buffer>();
+    if(!pixels)return R"({"error":"Could not allocate image storage"})";
+    const size_t size=read(id(data),pixels->data(),pixels->size());
+    if(offset>=size || offset%CHUNK)return R"({"error":"Image is unavailable"})";
+    const size_t length=std::min(CHUNK,size-offset);
+    custom_logic::PsramString encoded(encoded_size(length)+1,'\0');
+    size_t written=0;
+    if(mbedtls_base64_encode(reinterpret_cast<uint8_t *>(encoded.data()),encoded.size(),&written,pixels->data()+offset,length)!=0)
+      return R"({"error":"Could not encode image"})";
+    encoded.resize(written);
+    return onx_entity_config::build_json([&](JsonObject root){
+      root["data"]=encoded.c_str();root["next"]=offset+length;root["total"]=size;
+    });
+  }
+  struct Upload {
+    custom_logic::RamAllocatedPtr<Buffer> pixels;
+    uint64_t id{0};
+    size_t next{0};
+    uint32_t touched{0};
+  };
+  static Upload upload;
+  const auto expected=id(asset);
+  const bool legacy=asset.empty();
+  if((!legacy && !expected) || (legacy && offset) || offset>=BYTES || offset%CHUNK)
+    return R"({"error":"Invalid image upload offset"})";
+  const size_t chunk=legacy?LEGACY_BYTES:std::min(CHUNK,BYTES-offset);
+  if(data.size()!=encoded_size(chunk))return R"({"error":"Invalid square image"})";
+  const uint32_t received=esphome::millis();
+  if(!offset) {
+    upload.pixels=custom_logic::make_ram_allocated<Buffer>();
+    upload.id=expected;upload.next=0;upload.touched=received;
+  }
+  if(!upload.pixels || upload.id!=expected || upload.next!=offset || received-upload.touched>30000)
+    return R"({"error":"Image upload expired. Save the image again."})";
+  upload.touched=received;
+  custom_logic::PsramString encoded(data.begin(),data.end());
+  std::replace(encoded.begin(),encoded.end(),'-','+');
+  std::replace(encoded.begin(),encoded.end(),'_','/');
+  size_t written=0;
+  auto &pixels=*upload.pixels;
+  if(mbedtls_base64_decode(pixels.data()+offset,chunk,&written,reinterpret_cast<const uint8_t *>(encoded.data()),encoded.size())!=0 || written!=chunk)
+    return R"({"error":"Invalid square image"})";
+  upload.next+=written;
+  const size_t size=legacy?LEGACY_BYTES:BYTES;
+  if(upload.next<size)return "{\"next\":"+std::to_string(upload.next)+"}";
+  auto complete=std::move(upload.pixels);
+  const auto value=hash(complete->data(),size);
+  if(expected && expected!=value)return R"({"error":"Image checksum differs from the selected crop"})";
+  auto existing=custom_logic::make_ram_allocated<Buffer>();
+  if(!existing)return R"({"error":"Could not allocate image storage"})";
+  const size_t existing_size=read(value,existing->data(),existing->size());
+  if(existing_size) {
+    if(existing_size!=size || !std::equal(complete->begin(),complete->begin()+size,existing->begin()))
+      return R"({"error":"Image conflicts with one already stored"})";
+  } else {
+    if(count()>=LIMIT || !write(value,complete->data(),size)) {
+      prune_artwork();
+      if(count()>=LIMIT || !write(value,complete->data(),size))
+        return R"({"error":"Panel image storage is full"})";
+    }
+  }
+  const auto now=esphome::millis();
+  auto oldest=recently_uploaded.begin();
+  for(auto it=recently_uploaded.begin();it!=recently_uploaded.end();++it) {
+    if(it->first==value || !it->first){oldest=it;break;}
+    if(now-it->second>now-oldest->second)oldest=it;
+  }
+  *oldest={value,now};
+  return "{\"id\":\""+key(value)+"\"}";
+}
+inline std::string rpc(const std::string &op,const std::string &data,const std::string &asset,unsigned offset) {
+  if(op=="panel_art_get" || op=="panel_art_put")return artwork_rpc(op,data,asset,offset);
   // Native (portrait) size and the orientation in use since boot, so the
   // configuration preview matches either model and orientation.
   if(op=="panel_screen")return onx_entity_config::build_json([](JsonObject root) {
@@ -173,26 +371,46 @@ inline std::string rpc(const std::string &op,const std::string &data) {
     if(pages.size()>MAX_PAGES)return "{\"error\":\"Too many pages\"}";
     auto next_buffer=custom_logic::make_ram_allocated<StoredPages>();
     if(!next_buffer)return "{\"error\":\"Not enough memory to save pages\"}";
-    auto &next=*next_buffer;next=StoredPages{};
+    auto &next=*next_buffer;
     for(JsonObjectConst item:pages) {
       StoredPage page{};Kind kind;
       const std::string name=item["name"] | "",icon=item["icon"] | "";
       if(!onx_panel_layout::parse(item["layout"] | "",kind))return "{\"error\":\"Choose a layout for every page\"}";
       if(name.size()>48)return "{\"error\":\"Page names are limited to 48 bytes\"}";
       if(!valid_icon(icon))return "{\"error\":\"Icons use the mdi:name form\"}";
+      page.kind=uint8_t(kind);
+      if(kind==Kind::ACTION_GRID) {
+        const int rows=item["rows"] | 0, cols=item["columns"] | 0;
+        if(!onx_panel_layout::grid_axis(rows) || !onx_panel_layout::grid_axis(cols))
+          return R"({"error":"Choose 1–4 rows and columns"})";
+        page.rows=rows;page.cols=cols;
+      }
+      if(!resolve_artwork(next,page,-1,item["carousel_artwork"] | ""))
+        return R"({"error":"Carousel image is unavailable. Re-upload it before saving."})";
       auto entities=item["entities"].as<JsonArrayConst>();
-      if(entities.size()!=size_t(size_of(kind)))return "{\"error\":\"Fill every position on each page\"}";
-      for(int i=0;i<size_of(kind);++i) {
+      auto images=item["artwork"].as<JsonArrayConst>();
+      auto flags=item["icon_only"].as<JsonArrayConst>();
+      if(!item["icon_only"].isNull() && (kind!=Kind::ACTION_GRID || flags.size()!=entities.size()))
+        return R"({"error":"Icon-only settings must match the action grid"})";
+      if(!images.isNull() && images.size()!=entities.size())return R"({"error":"Image positions must match the layout"})";
+      if(entities.size()!=size_t(size_of(page)))return R"({"error":"The number of positions must match the layout"})";
+      for(int i=0;i<size_of(page);++i) {
         const std::string entity=entities[i] | "";const int entry=configured(entity);
+        if(entity.empty() && kind==Kind::ACTION_GRID)continue;
         if(entry<0)return "{\"error\":\"Save the page entities before the pages\"}";
         // Reuse is fine (same entry, same subscription), but a carousel stop
         // needs one leading entity and a page shows an entity once.
-        if(i==0)for(int p=0;p<next.count;++p)if(next.pages[p].entries[0]==entry)return "{\"error\":\"An entity can lead only one page\"}";
         for(int j=0;j<i;++j)if(page.entries[j]==entry)return "{\"error\":\"A page shows each entity once\"}";
         if(kind==Kind::CONTROL_SENSORS && i>0 && !onx_panel_layout::sensor(entity))return "{\"error\":\"Compact positions show sensors and binary sensors\"}";
         page.entries[i]=uint8_t(entry);
+        if(!resolve_artwork(next,page,i,images[i] | ""))
+          return R"({"error":"Page image is unavailable. Re-upload it before saving."})";
+        if(flags[i] | false)page.artwork[i]|=ICON_ONLY;
       }
-      page.kind=uint8_t(kind);
+      const auto first=lead(page);
+      if(first==NO_ENTRY)return R"({"error":"Place at least one action on each grid"})";
+      for(int p=0;p<next.count;++p)
+        if(lead(next.pages[p])==first)return R"({"error":"An entity can lead only one page"})";
       snprintf(page.name,sizeof(page.name),"%s",name.c_str());snprintf(page.icon,sizeof(page.icon),"%s",icon.c_str());
       next.pages[next.count++]=page;
     }
@@ -202,14 +420,7 @@ inline std::string rpc(const std::string &op,const std::string &data) {
   }
   reconcile(stored);
   return onx_entity_config::build_json([](JsonObject root) {
-    auto out=root["pages"].to<JsonArray>();
-    for(int p=0;p<stored.count;++p) {
-      const auto &page=stored.pages[p];auto item=out.add<JsonObject>();
-      item["name"]=std::string(page.name);item["icon"]=std::string(page.icon);
-      item["layout"]=onx_panel_layout::name(Kind(page.kind));
-      auto entities=item["entities"].to<JsonArray>();
-      for(int i=0;i<size_of(Kind(page.kind));++i)entities.add(entry_entity(page.entries[i]));
-    }
+    encode(root["pages"].to<JsonArray>());
   });
 }
 inline onx_detail_view::View timer_view(const std::string &entity,const std::string &title) {
@@ -269,11 +480,13 @@ inline bool same(const Item &a,const Item &b) {
       a.hint==b.hint && a.icon==b.icon && a.ring==b.ring && a.available==b.available && a.graph==b.graph && a.on==b.on;
 }
 inline std::array<Card,4> cards{};
-inline std::array<onx_panel_layout::Rect,4> rects{};
-inline std::array<std::string,4> entities{};
+inline std::array<onx_panel_layout::Rect,MAX_CELLS> rects{};
+inline std::array<std::string,MAX_CELLS> entities{};
 inline int count=0;
 inline bool showing=false,detail_view=false;
-inline std::string parent_entity;
+inline std::string parent_entity, page_lead;
+inline bool action_grid=false;
+inline std::function<void(const std::string &)> run_grid_action;
 inline std::function<void(const std::string &)> open;
 inline std::function<void(lv_obj_t *,const std::string &,int)> draw_graph;
 inline const lv_font_t *small=nullptr,*normal=nullptr,*large=nullptr;
@@ -332,10 +545,13 @@ template<typename Bind> void render(const std::string &entity,int width,int heig
   if (detail) suspend_underlay();
   else if (suspended_page) restore_underlay();
   onx_render::style_bg_color(layer,lv_color_hex(onx_display_settings::background()),0);
-  const auto p=detail?Page{}:page(entity);const auto kind=p.kind;
-  rects=onx_panel_layout::geometry(kind,width,height,detail);
-  entities[0]=entity;count=kind==Kind::TWO_CONTROLS?2:kind==Kind::CONTROL_SENSORS?4:1;
-  for(int i=1;i<count;++i)entities[i]=p.members[i-1];
+  const auto *p=detail?nullptr:led_by(entity);
+  const auto kind=p?Kind(p->kind):Kind::SINGLE;
+  action_grid=kind==Kind::ACTION_GRID;
+  page_lead=entity;
+  rects=onx_panel_layout::geometry(kind,width,height,detail,p?p->rows:2,p?p->cols:2);
+  count=p?size_of(*p):1;
+  for(int i=0;i<count;++i)entities[i]=p?entry_entity(p->entries[i]):entity;
   lv_obj_set_size(layer,width,height);lv_obj_set_pos(layer,0,0);
   // Keep the dock, dashboard and bell above the opaque panel content.
   if(lv_obj_get_index(layer)!=0)lv_obj_move_background(layer);lv_obj_remove_flag(layer,LV_OBJ_FLAG_HIDDEN);showing=true;detail_view=detail;
@@ -353,10 +569,13 @@ template<typename Bind> void render(const std::string &entity,int width,int heig
   for(auto &c:cards){lv_obj_add_flag(c.box,LV_OBJ_FLAG_HIDDEN);c.initialized=false;}
   std::vector<onx_panel_detail::Tile> tiles;
   for(int i=0;i<count;++i) {
-    const auto v=item(entities[i],false);const auto r=rects[i];
+    const auto v=entities[i].empty()?Item{}:item(entities[i],false);const auto r=rects[i];
     onx_panel_detail::Tile t;
     t.entity=entities[i];t.name=onx_media::display_text(v.name);t.value=v.value;t.context=v.context;
     t.on=v.on;t.ring=v.ring;t.r={r.x,r.y,r.w,r.h};t.compact=kind==Kind::CONTROL_SENSORS && i>0;
+    t.key=action_grid;
+    t.icon_only=p && action_grid && (p->artwork[i]&ICON_ONLY);
+    t.artwork=p?artwork_id(stored,*p,i):0;
     tiles.push_back(std::move(t));
   }
   onx_panel_detail::render_main(layer,tiles,width,height);
@@ -368,6 +587,7 @@ inline void render_settings(int width,int height) {
   onx_render::style_bg_color(layer,lv_color_hex(onx_display_settings::background()),0);
   for(auto &c:cards){lv_obj_add_flag(c.box,LV_OBJ_FLAG_HIDDEN);c.initialized=false;}
   rects=onx_panel_layout::geometry(Kind::SINGLE,width,height,false);
+  action_grid=false;
   entities[0]=onx_panel_detail::SETTINGS;count=1;
   lv_obj_set_size(layer,width,height);lv_obj_set_pos(layer,0,0);
   if(lv_obj_get_index(layer)!=0)lv_obj_move_background(layer);
@@ -387,16 +607,24 @@ inline void show_timers(int width,int height) {
   lv_obj_move_foreground(layer);lv_obj_remove_flag(layer,LV_OBJ_FLAG_HIDDEN);showing=true;detail_view=true;
   onx_panel_detail::render_timers(layer,width,height);
 }
-inline bool tap(int x,int y) {
+inline bool tap(int x,int y,bool held=false) {
+  if(held && (!showing || detail_view || !action_grid))return false;
   if(showing && detail_view)return onx_panel_detail::active;  // Only its own controls act.
   if(!showing)return false;
   // Settings: the shared press action opens the menu.
   if(entities[0]==onx_panel_detail::SETTINGS)return false;
   for(int i=0;i<count;++i) {
     const auto r=rects[i];if(x>=r.x && x<r.x+r.w && y>=r.y && y<r.y+r.h) {
-      if(configured(entities[i])>=0 && open){parent_entity=entities[0];open(entities[i]);}return true;
+      const auto &entity=entities[i];
+      if(configured(entity)<0)return true;
+      if(action_grid && !held) {
+        if(run_grid_action)run_grid_action(entity);
+        return true;
+      }
+      if(open){parent_entity=page_lead;open(entity);}
+      return true;
     }
   }
-  return false;
+  return action_grid && y>=onx_panel_layout::MAIN_TOP && y<onx_panel_ui::height-52;
 }
 }

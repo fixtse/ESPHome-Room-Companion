@@ -272,7 +272,7 @@ script:
           int selected = id(normal_device_selected_index);
           if (selected < 0) selected = 0;
           if (selected > last_selectable) selected = last_selectable;
-          if (!onx_timer::popup.visible) selected = onx_entity_config::carousel_selection(selected,total,1);
+          if (!onx_timer::popup.visible) selected = onx_entity_config::carousel_selection(selected,total);
           id(normal_device_selected_index) = selected;
 
           // Shared selection/state stays here; only the native panel draws cards.
@@ -294,8 +294,32 @@ script:
           #ifdef USE_ROOM_COMPANION
           if (const auto *page = settings ? nullptr : onx_panel_pages::info(entity); page != nullptr && page->name[0]) title = page->name;
           #endif
-          onx_navigation::render(onx_entity_config::carousel_entries(total), selected,
+          auto dock_entries=onx_entity_config::carousel_entries(total);
+          #ifdef USE_ROOM_COMPANION
+          if (esphome::room_companion::global_panel) {
+            const auto &dash=esphome::room_companion::global_panel->stream_settings();
+            onx_navigation::pin_right=dash.toolbar_side=="right";
+            onx_navigation::pinned_target=onx_navigation::NO_TARGET;
+            if(!dash.url.empty()) {
+              dock_entries.push_back(onx_navigation::DASHBOARD);
+              if(dash.dock_pin=="dashboard")onx_navigation::pinned_target=onx_navigation::DASHBOARD;
+            }
+            for(const int entry:dock_entries)
+              if(entry>=0 && entry<total && id(ui_presenter)->get_normal_device_entity_id(entry)==dash.dock_pin)
+                onx_navigation::pinned_target=entry;
+          }
+          #endif
+          onx_navigation::render(std::move(dock_entries), selected,
               [&](lv_obj_t *icon, int index, bool active) {
+                #ifdef USE_ROOM_COMPANION
+                if(index==onx_navigation::DASHBOARD) {
+                  lv_image_set_src(icon,id(panel_dashboard_icon)->get_lv_image_dsc());
+                  lv_image_set_scale(icon,onx_navigation::icon_size()*256/id(panel_dashboard_icon)->get_width());
+                  lv_obj_set_style_image_recolor(icon,lv_color_hex(onx_display_settings::foreground()),0);
+                  lv_obj_set_style_image_recolor_opa(icon,LV_OPA_COVER,0);
+                  return;
+                }
+                #endif
                 if (index == total) {
                   onx_render::image(icon, id(normal_device_icon_settings_img)->get_lv_image_dsc());
                   lv_image_set_scale(icon, onx_geom::S(onx_navigation::icon_size()) * 256 / id(normal_device_icon_settings_img)->get_width());
@@ -305,12 +329,22 @@ script:
                   #ifdef USE_ROOM_COMPANION
                   // Pages carry their own carousel icon.
                   const auto *page = onx_panel_pages::info(id(ui_presenter)->get_normal_device_entity_id(index));
-                  if (page != nullptr && page->icon[0]) {
-                    id(entity_icon_downloader)->bind(icon, std::string(page->icon), id(fallback_toggle_switch_img), active);
+                  if (page && onx_panel_pages::bind_carousel_artwork(icon,*page)) return;
+                  if (page && (page->icon[0] || onx_panel_pages::Kind(page->kind)==onx_panel_pages::Kind::ACTION_GRID)) {
+                    const bool grid=onx_panel_pages::Kind(page->kind)==onx_panel_pages::Kind::ACTION_GRID;
+                    auto *fallback=grid?id(panel_action_grid_icon):id(fallback_toggle_switch_img);
+                    if(page->icon[0]) {
+                      id(entity_icon_downloader)->bind(icon,page->icon,fallback,active);
+                    } else {
+                      lv_image_set_src(icon,fallback->get_lv_image_dsc());
+                      lv_obj_set_style_image_recolor(icon,lv_color_hex(active?onx_display_settings::accent():onx_display_settings::foreground()),0);
+                    }
+                    onx_render::style_image_recolor_opa(icon, LV_OPA_COVER, 0);
                     lv_image_set_scale(icon, onx_navigation::icon_size() * 256 / 80);
                     return;
                   }
                   #endif
+                  onx_render::style_image_recolor_opa(icon, LV_OPA_COVER, 0);
                   id(apply_normal_entity_icon).execute(icon, id(ui_presenter)->get_normal_device_entity_id(index),
                       id(ui_presenter)->get_normal_device_type(index), active);
                   lv_image_set_scale(icon, onx_navigation::icon_size() * 256 / 80);
@@ -332,7 +366,7 @@ script:
           int selected = id(normal_device_selected_index);
           if (selected < 0) selected = 0;
           if (selected > last_selectable) selected = last_selectable;
-          if (!onx_timer::popup.visible) selected = onx_entity_config::carousel_selection(selected,total,1);
+          if (!onx_timer::popup.visible) selected = onx_entity_config::carousel_selection(selected,total);
           id(normal_device_selected_index) = selected;
 
           lv_obj_t *target = id(normal_panel_page)->obj;

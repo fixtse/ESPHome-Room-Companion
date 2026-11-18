@@ -18,6 +18,7 @@
 #include "onx_geom.h"
 #include "onx_display_settings.h"
 #include "onx_notification.h"
+#include "onx_presets.h"
 #include "onx_emoji.h"
 #include <map>
 #include <memory>
@@ -40,7 +41,14 @@ inline int width = 240, height = 240;
 inline lv_obj_t *bell = nullptr, *badge = nullptr, *badge_label = nullptr;
 inline lv_obj_t *toast = nullptr, *toast_title = nullptr, *toast_body = nullptr;
 inline lv_obj_t *panel = nullptr, *list = nullptr, *empty_label = nullptr, *count_label = nullptr, *clear_button = nullptr,
-                *handle = nullptr;
+                *handle = nullptr, *standby_button = nullptr, *preset_button = nullptr, *preset_list = nullptr;
+inline const void *clock_tile_image = nullptr, *preset_tile_image = nullptr;
+inline bool presets_open = false;
+inline std::vector<std::string> preset_names;
+inline std::string preset_signature, preset_error;
+inline std::function<bool()> controls_blocked;
+inline bool standby_timeout_enabled = true;
+inline std::function<void()> toggle_standby_timeout;
 inline const void *bell_image = nullptr;  // Bell glyph (an MDI image), set before init().
 inline lv_obj_t *detail = nullptr, *detail_title = nullptr, *detail_age = nullptr, *detail_image = nullptr,
                 *detail_body = nullptr;
@@ -172,6 +180,8 @@ inline void open_panel() {
 }
 inline void close_panel() {
   panel_open = false;
+  presets_open = false;
+  preset_error.clear();
   refresh();
 }
 
@@ -194,6 +204,64 @@ inline void on_clear(lv_event_t *) {
   touched();
   onx_notification::center.clear();
   close_panel();
+}
+inline void style_tile(lv_obj_t *button,bool selected) {
+  lv_obj_set_style_bg_color(button,lv_color_hex(selected?accent():surface()),0);
+  auto *icon=lv_obj_get_child(button,0);
+  const uint32_t selected_ink=onx_display_settings::light_color(accent())?0x161B22:0xFFFFFF;
+  lv_obj_set_style_image_recolor(icon,lv_color_hex(selected?selected_ink:foreground()),0);
+}
+inline void update_standby_button() {
+  if(standby_button)style_tile(standby_button,standby_timeout_enabled);
+}
+inline void choose_preset(lv_event_t *event) {
+  if(controls_blocked && controls_blocked())return;
+  const auto index=reinterpret_cast<uintptr_t>(lv_event_get_user_data(event));
+  if(index>=preset_names.size() || !onx_presets::applying.empty())return;
+  touched();
+  preset_error=onx_presets::apply(preset_names[index]);
+}
+inline void update_presets() {
+  if(!preset_list)return;
+  hide(preset_list,!presets_open);
+  hide(list,presets_open);
+  style_tile(preset_button,presets_open);
+  if(!panel_open || !presets_open)return;
+  onx_presets::load();
+  std::string signature=onx_presets::active+'\n'+onx_presets::applying+'\n'+preset_error;
+  for(const auto &preset:onx_presets::summaries)signature+='\n'+preset.name;
+  if(signature==preset_signature)return;
+  preset_signature=std::move(signature);
+  lv_obj_clean(preset_list);
+  preset_names.clear();
+  auto caption=onx_presets::applying.empty()?std::string("Presets"):"Applying "+onx_presets::applying+"…";
+  text(preset_list,fonts.title,foreground(),caption.c_str());
+  if(!preset_error.empty())text(preset_list,fonts.small,foreground(),preset_error.c_str());
+  if(onx_presets::summaries.empty())text(preset_list,fonts.body,muted(),"No saved presets");
+  for(const auto &preset:onx_presets::summaries) {
+    const auto name=preset.name==onx_presets::active?preset.name+" · Active":preset.name;
+    auto *row=button(preset_list,name.c_str(),surface(),choose_preset,reinterpret_cast<void *>(preset_names.size()));
+    lv_obj_set_width(row,lv_pct(100));
+    lv_obj_set_height(row,S(40));
+    auto *label=lv_obj_get_child(row,0);
+    lv_obj_set_width(label,lv_pct(100));
+    lv_label_set_long_mode(label,LV_LABEL_LONG_DOT);
+    lv_obj_set_style_text_align(label,LV_TEXT_ALIGN_CENTER,0);
+    if(!onx_presets::applying.empty())lv_obj_add_state(row,LV_STATE_DISABLED);
+    preset_names.push_back(preset.name);
+  }
+}
+inline lv_obj_t *quick_tile(lv_obj_t *parent,const void *src,lv_event_cb_t cb) {
+  auto *tile=box(parent,surface(),S(24));
+  lv_obj_set_size(tile,S(62),S(48));
+  lv_obj_add_flag(tile,LV_OBJ_FLAG_CLICKABLE);
+  lv_obj_add_event_cb(tile,cb,LV_EVENT_CLICKED,nullptr);
+  auto *icon=lv_image_create(tile);
+  lv_image_set_src(icon,src);
+  lv_obj_set_style_image_recolor_opa(icon,LV_OPA_COVER,0);
+  lv_obj_remove_flag(icon,LV_OBJ_FLAG_CLICKABLE);
+  lv_obj_center(icon);
+  return tile;
 }
 inline void on_item(lv_event_t *event) {
   touched();
@@ -336,6 +404,35 @@ inline void init(int screen_width, int screen_height, Fonts f, Hooks h) {
   lv_obj_set_style_radius(clear_button, S(15), 0);
   lv_obj_set_style_pad_hor(clear_button, S(12), 0);
   lv_obj_set_style_text_font(lv_obj_get_child(clear_button, 0), fonts.small, 0);
+  auto *tiles=box(panel,BG,0);
+  lv_obj_set_style_bg_opa(tiles,LV_OPA_TRANSP,0);
+  lv_obj_set_size(tiles,lv_pct(100),S(48));
+  lv_obj_set_flex_flow(tiles,LV_FLEX_FLOW_ROW);
+  lv_obj_set_style_pad_column(tiles,S(8),0);
+  standby_button=quick_tile(tiles,clock_tile_image,[](lv_event_t *) {
+    if(controls_blocked && controls_blocked())return;
+    touched();
+    if(toggle_standby_timeout)toggle_standby_timeout();
+  });
+  preset_button=quick_tile(tiles,preset_tile_image,[](lv_event_t *) {
+    if(controls_blocked && controls_blocked())return;
+    touched();
+    presets_open=!presets_open;
+    preset_error.clear();
+    preset_signature.clear();
+    refresh();
+  });
+  update_standby_button();
+  preset_list=box(panel,BG,0);
+  lv_obj_set_style_bg_opa(preset_list,LV_OPA_TRANSP,0);
+  lv_obj_set_width(preset_list,lv_pct(100));
+  lv_obj_set_flex_grow(preset_list,1);
+  lv_obj_set_flex_flow(preset_list,LV_FLEX_FLOW_COLUMN);
+  lv_obj_set_style_pad_row(preset_list,S(8),0);
+  lv_obj_add_flag(preset_list,LV_OBJ_FLAG_SCROLLABLE);
+  lv_obj_set_scroll_dir(preset_list,LV_DIR_VER);
+  lv_obj_remove_flag(preset_list,static_cast<lv_obj_flag_t>(LV_OBJ_FLAG_SCROLL_ELASTIC | LV_OBJ_FLAG_SCROLL_CHAIN));
+  hide(preset_list,true);
   list = box(panel, BG, 0);
   lv_obj_set_style_bg_opa(list, LV_OPA_TRANSP, 0);
   lv_obj_set_width(list, lv_pct(100));
@@ -538,9 +635,11 @@ inline void refresh() {
   char count_text[16] = "";
   if (!center.items.empty()) snprintf(count_text, sizeof(count_text), "\xC2\xB7 %u", static_cast<unsigned>(center.items.size()));
   lv_label_set_text(count_label, count_text);
-  hide(clear_button, center.items.empty());
+  hide(clear_button, presets_open || center.items.empty());
   lv_obj_set_style_bg_color(panel, lv_color_hex(bg()), 0);
   lv_obj_set_style_bg_color(clear_button, lv_color_hex(surface()), 0);
+  update_standby_button();
+  update_presets();
 
   const bool show_toast = center.toast_visible(now) && !panel_open && detail_id == 0;
   if (show_toast) {

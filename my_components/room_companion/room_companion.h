@@ -30,6 +30,7 @@ struct StreamSettings {
   std::string server;  // RemoteWebView server, host:port.
   std::string url;     // Page the server renders.
   float scale{1.0f};
+  std::string dock_pin{"dashboard"};
   std::string toolbar_side{"right"};
 };
 

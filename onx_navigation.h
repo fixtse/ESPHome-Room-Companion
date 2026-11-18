@@ -40,17 +40,20 @@ inline int screen_width() {return strip.enabled?strip.width:240;}
 inline int screen_height() {return strip.enabled?strip.height:240;}
 inline lv_obj_t *dock=nullptr, *marker=nullptr;
 inline std::array<lv_obj_t *,VISIBLE_ICONS> icons{};
+constexpr int DASHBOARD=-2, NO_TARGET=-1;
+inline int pinned_target=NO_TARGET, dock_offset=0, selected_target=NO_TARGET;
+inline std::array<int,VISIBLE_ICONS> targets{};
+inline int dock_min=0,dock_max=0;
+inline void scroll_dock(int direction) { dock_offset=std::clamp(dock_offset+direction,dock_min,dock_max); }
 inline int selected_rank=-1;
 inline bool visible=false;
-inline lv_obj_t *shortcut=nullptr, *shortcut_image=nullptr;
-inline bool shortcut_enabled=false, shortcut_right=false;
+inline bool pin_right=false;
 inline std::array<bool,VISIBLE_ICONS> entry_available{};
-inline std::function<void()> shortcut_action;
-inline bool shortcut_hit(int x,int y) {
-  if(!shortcut || !lv_obj_is_visible(shortcut))return false;
-  lv_area_t a;lv_obj_get_coords(shortcut,&a);
-  return x>=a.x1 && x<=a.x2 && y>=a.y1 && y<=a.y2;
+inline int dock_target(int offset) {
+  const int slot=offset+2;
+  return visible && slot>=0 && slot<VISIBLE_ICONS && entry_available[slot]?targets[slot]:NO_TARGET;
 }
+inline std::function<void()> shortcut_action;
 inline void icon_offset(void *widget,int32_t offset_milli) {
   const auto point=arc_point(offset_milli);
   lv_obj_align(static_cast<lv_obj_t *>(widget),LV_ALIGN_CENTER,point.x-screen_width()/2,point.y-screen_height()/2);
@@ -59,6 +62,7 @@ inline void hide() {
   if(dock)lv_obj_add_flag(dock,LV_OBJ_FLAG_HIDDEN);
   for(auto *icon:icons)if(icon)lv_anim_delete(icon,icon_offset);
   visible=false;
+  dock_offset=0;
 }
 inline void create() {
   if(dock)return;
@@ -90,69 +94,49 @@ inline void create() {
     lv_label_set_text(label,"");
   }
 }
-// Reserve one edge position for the dashboard, independently of carousel slots.
-inline void update_shortcut(const void *source,bool enabled,bool right) {
-  shortcut_enabled=enabled;shortcut_right=right;
-  if(dock && visible)for(int i=0;i<VISIBLE_ICONS;++i) {
-    const bool hidden=!entry_available[i] || (enabled && i==(right?4:0));
-    if(hidden)lv_obj_add_flag(icons[i],LV_OBJ_FLAG_HIDDEN);
-    else lv_obj_remove_flag(icons[i],LV_OBJ_FLAG_HIDDEN);
-  }
-  if(!dock || !visible || !enabled) {
-    if(shortcut)lv_obj_add_flag(shortcut,LV_OBJ_FLAG_HIDDEN);
-    return;
-  }
-  if(!shortcut) {
-    shortcut=lv_obj_create(dock);
-    lv_obj_set_style_bg_opa(shortcut,LV_OPA_TRANSP,0);
-    lv_obj_set_style_border_width(shortcut,0,0);
-    lv_obj_set_style_pad_all(shortcut,0,0);
-    lv_obj_remove_flag(shortcut,LV_OBJ_FLAG_SCROLLABLE);
-    lv_obj_add_flag(shortcut,LV_OBJ_FLAG_CLICKABLE);
-    lv_obj_add_event_cb(shortcut,[](lv_event_t *) {if(shortcut_action)shortcut_action();},LV_EVENT_CLICKED,nullptr);
-    shortcut_image=lv_image_create(shortcut);
-    lv_obj_remove_flag(shortcut_image,LV_OBJ_FLAG_CLICKABLE);
-    lv_image_set_inner_align(shortcut_image,LV_IMAGE_ALIGN_CONTAIN);
-  }
-  const auto point=arc_point(right?2000:-2000);
-  lv_obj_set_size(shortcut,strip.marker,strip.marker);
-  lv_obj_set_pos(shortcut,point.x-strip.marker/2,point.y-strip.marker/2);
-  lv_obj_set_size(shortcut_image,onx_geom::S(icon_size()),onx_geom::S(icon_size()));
-  lv_image_set_src(shortcut_image,source);lv_obj_center(shortcut_image);
-  lv_obj_set_style_image_recolor(shortcut_image,lv_color_hex(onx_display_settings::foreground()),0);
-  lv_obj_set_style_image_recolor_opa(shortcut_image,LV_OPA_COVER,0);
-  lv_obj_remove_flag(shortcut,LV_OBJ_FLAG_HIDDEN);
-  const int reserved=right?4:0;
-  lv_anim_delete(icons[reserved],icon_offset);
-  lv_obj_add_flag(icons[reserved],LV_OBJ_FLAG_HIDDEN);
-}
 inline void set_label(const char *text) {if(label)onx_render::label(label,text);}
 // Panel-local controls ([Local] Dashboard / [Local] Assist): set by the touch
 // panels at boot.
 inline std::function<bool(const std::string &)> local_action;     // Handles a press; true if handled.
 inline std::function<bool(int io)> local_state;                     // On/off for the icon.
 inline std::function<esphome::image::Image *(const std::string &)> local_icon;
-template<typename Bind> void render(const std::vector<int> &entries,int selected,Bind bind) {
+template<typename Bind> void render(std::vector<int> entries,int selected,Bind bind) {
+  if(selected!=selected_target)dock_offset=0;
+  selected_target=selected;
   auto current=std::find(entries.begin(),entries.end(),selected);
   if(current==entries.end()) {hide();return;}
   create();
-  const int rank=static_cast<int>(current-entries.begin());
+  int center=static_cast<int>(current-entries.begin());
+  if(pinned_target!=NO_TARGET) {
+    const auto pin=std::find(entries.begin(),entries.end(),pinned_target);
+    if(pin!=entries.end()) {
+      if(pin<current)--center;
+      entries.erase(pin);
+    }
+  }
+  center=std::clamp(center,0,std::max(0,int(entries.size())-1));
+  dock_min=-center;dock_max=std::max(0,int(entries.size())-1)-center;
+  dock_offset=std::clamp(dock_offset,dock_min,dock_max);
+  const int rank=center+dock_offset;
   const bool changed=!visible || rank!=selected_rank;
   const int shift=visible?std::clamp(rank-selected_rank,-1,1):0;
   for(int n=0;n<VISIBLE_ICONS;++n) {
     const int offset=n-2,index=rank+offset;
-    entry_available[n]=index>=0 && index<static_cast<int>(entries.size());
-    if((shortcut_enabled && n==(shortcut_right?4:0)) || index<0 || index>=static_cast<int>(entries.size())) {
+    const bool pinned=pinned_target!=NO_TARGET && n==(pin_right?4:0);
+    targets[n]=pinned?pinned_target:index>=0 && index<int(entries.size())?entries[index]:NO_TARGET;
+    entry_available[n]=targets[n]!=NO_TARGET;
+    if(!entry_available[n]) {
       lv_anim_delete(icons[n],icon_offset);
       lv_obj_add_flag(icons[n],LV_OBJ_FLAG_HIDDEN);continue;
     }
+    const bool was_hidden=lv_obj_has_flag(icons[n],LV_OBJ_FLAG_HIDDEN);
     lv_obj_clear_flag(icons[n],LV_OBJ_FLAG_HIDDEN);
-    bind(icons[n],entries[index],offset==0);
-    onx_render::style_opa(icons[n],offset==0?LV_OPA_COVER:std::abs(offset)==1?170:110,0);
-    if(changed) {
+    bind(icons[n],targets[n],targets[n]==selected);
+    onx_render::style_opa(icons[n],(pinned || targets[n]==selected)?LV_OPA_COVER:std::abs(offset)==1?170:110,0);
+    if(changed || was_hidden || pinned) {
       lv_anim_delete(icons[n],icon_offset);
-      icon_offset(icons[n],(offset+shift)*1000);
-      if(shift) {
+      icon_offset(icons[n],(offset+(pinned?0:shift))*1000);
+      if(shift && !pinned) {
         lv_anim_t animation;lv_anim_init(&animation);
         lv_anim_set_var(&animation,icons[n]);lv_anim_set_exec_cb(&animation,icon_offset);
         lv_anim_set_values(&animation,(offset+shift)*1000,offset*1000);
@@ -162,6 +146,10 @@ template<typename Bind> void render(const std::vector<int> &entries,int selected
     }
   }
   selected_rank=rank;
+  if(strip.enabled) {
+    if(dock_offset==0 && pinned_target!=selected)lv_obj_remove_flag(marker,LV_OBJ_FLAG_HIDDEN);
+    else lv_obj_add_flag(marker,LV_OBJ_FLAG_HIDDEN);
+  }
   // The selection marker is a tint of the configurable accent colour.
   onx_render::style_bg_color(marker,lv_color_hex(onx_display_settings::accent_soft()),0);
   lv_obj_clear_flag(dock,LV_OBJ_FLAG_HIDDEN);visible=true;

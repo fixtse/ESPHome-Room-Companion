@@ -134,6 +134,7 @@ void RoomPanel::load_() {
   const std::string url = doc["url"] | std::string();
   const float scale = doc["scale"] | 1.0f;
   const std::string side = doc["toolbar_side"] | std::string("right");
+  settings_.dock_pin = doc["dock_pin"] | std::string("dashboard");
   if (side == "left" || side == "right") settings_.toolbar_side = side;
   if (valid_server(server)) settings_.server = server;
   if (valid_url(url)) settings_.url = url;
@@ -147,6 +148,7 @@ std::string RoomPanel::settings_json_() const {
     root["server"] = settings_.server;
     root["url"] = settings_.url;
     root["scale"] = settings_.scale;
+    root["dock_pin"] = settings_.dock_pin;
     root["toolbar_side"] = settings_.toolbar_side;
   });
 }
@@ -258,6 +260,7 @@ std::string RoomPanel::state_json_() const {
     root["server"] = settings_.server;
     root["url"] = settings_.url;
     root["scale"] = settings_.scale;
+    root["dock_pin"] = settings_.dock_pin;
     root["toolbar_side"] = settings_.toolbar_side;
     root["status"] = stream_status();
     root["restart_required"] = restart_required_;
@@ -272,6 +275,8 @@ std::string RoomPanel::handle_web(const std::string &op, const std::string &data
   StreamSettings next = settings_;
   next.server = trim(doc["server"] | settings_.server);
   next.url = trim(doc["url"] | settings_.url);
+  next.dock_pin = doc["dock_pin"] | settings_.dock_pin;
+  if (next.dock_pin.size()>128) return "{\"error\":\"Invalid pinned page\"}";
   next.toolbar_side = doc["toolbar_side"] | settings_.toolbar_side;
   if (next.toolbar_side != "left" && next.toolbar_side != "right")
     return "{\"error\":\"Toolbar position must be left or right\"}";

@@ -1,4 +1,5 @@
 #pragma once
+#include <algorithm>
 #include <array>
 #include <cstdint>
 #include <string>
@@ -8,17 +9,20 @@
 // Page membership refers to existing configured entities, so their shared HA
 // subscriptions, availability handling and control state remain authoritative.
 namespace onx_panel_layout {
-enum class Kind : uint8_t { SINGLE, TWO_CONTROLS, CONTROL_SENSORS };
+enum class Kind : uint8_t { SINGLE, TWO_CONTROLS, CONTROL_SENSORS, ACTION_GRID };
+constexpr int MAX_GRID_AXIS=4, MAX_CELLS=MAX_GRID_AXIS*MAX_GRID_AXIS;
+inline bool grid_axis(int n) { return n>=1 && n<=MAX_GRID_AXIS; }
 struct Page {
   uint32_t magic{0x52435031};
   char primary[129]{}, members[3][129]{};
   Kind kind{Kind::SINGLE};
 };
-inline const char *name(Kind k) { return k==Kind::TWO_CONTROLS?"two_controls":k==Kind::CONTROL_SENSORS?"control_sensors":"single"; }
+inline const char *name(Kind k) { return k==Kind::TWO_CONTROLS?"two_controls":k==Kind::CONTROL_SENSORS?"control_sensors":k==Kind::ACTION_GRID?"action_grid":"single"; }
 inline bool parse(const std::string &s, Kind &k) {
   if(s=="single")k=Kind::SINGLE;
   else if(s=="two_controls")k=Kind::TWO_CONTROLS;
   else if(s=="control_sensors")k=Kind::CONTROL_SENSORS;
+  else if(s=="action_grid")k=Kind::ACTION_GRID;
   else return false;
   return true;
 }
@@ -37,11 +41,20 @@ inline bool valid(const Page &p) {
 }
 struct Rect {int x,y,w,h;};
 constexpr int MAIN_TOP=40,DETAIL_TOP=12;
-inline std::array<Rect,4> geometry(Kind k,int w,int h,bool detail=false) {
+inline std::array<Rect,MAX_CELLS> geometry(Kind k,int w,int h,bool detail=false,int rows=2,int cols=2) {
   // The main carousel keeps a slim row for the notification bell and the
   // bottom dock; details use the whole screen (pull down for notifications).
   const int top=detail?DETAIL_TOP:MAIN_TOP,bottom=detail?12:52,gap=8,pad=12,body=h-top-bottom,inner=w-pad*2;
-  std::array<Rect,4> out{};
+  std::array<Rect,MAX_CELLS> out{};
+  if(k==Kind::ACTION_GRID && grid_axis(rows) && grid_axis(cols)) {
+    const int usable_w=w-16-gap*(cols-1), usable_h=body+8-gap*(rows-1);
+    for(int i=0;i<rows*cols;++i) {
+      const int c=i%cols,r=i/cols;
+      out[i]={8+c*usable_w/cols+c*gap,top+r*usable_h/rows+r*gap,
+              (c+1)*usable_w/cols-c*usable_w/cols,(r+1)*usable_h/rows-r*usable_h/rows};
+    }
+    return out;
+  }
   out[0]={pad,top,inner,body};
   if(w>h) {
     // Landscape: groups sit side by side; sensors form a column on the right.

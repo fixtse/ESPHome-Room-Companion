@@ -1,4 +1,5 @@
 #pragma once
+#include "onx_panel_artwork.h"
 // Redesigned rectangular detail screens (touch panels only).
 //
 // Every entity detail fills the whole screen: there is no header bar, the
@@ -610,10 +611,19 @@ __attribute__((noinline)) inline void build_climate(const Layout &l, const std::
   circle(root, cx - size / 2 + bs / 2, by, bs, CONTROL(), LV_SYMBOL_MINUS, TEXT(), [stepper]() { stepper(-1); });
   circle(root, cx + size / 2 - bs / 2, by, bs, CONTROL(), LV_SYMBOL_PLUS, TEXT(), [stepper]() { stepper(1); });
 
-  // HVAC modes and one option row.
+  // Fit every available climate control under the dial in portrait.
   auto modes = onx_control::options(d.modes);
   if (modes.size() > 4) modes.resize(4);
-  const int ch = P(44), gap = P(10);
+  struct Option { const char *key, *name, *service; std::string list, value; uint32_t bit; };
+  const Option options[] = {{"preset_mode", "Preset", "climate.set_preset_mode", d.presets, effective(d, "preset_mode"), 16},
+                            {"swing_mode", "Swing", "climate.set_swing_mode", d.swing_modes, effective(d, "swing_mode"), 32},
+                            {"fan_mode", "Fan", "climate.set_fan_mode", d.fan_modes, effective(d, "fan_mode"), 8}};
+  const auto available = [&d](const Option &o) {
+    return (d.features & o.bit) && !onx_control::options(o.list).empty();
+  };
+  const int rows = int(modes.size() > 1) + std::count_if(std::begin(options), std::end(options), available);
+  const int gap = rows >= 3 ? P(6) : P(10);
+  const int ch = rows > 0 ? std::min(P(44), (l.ctl.h - (rows - 1) * gap) / rows) : P(44);
   int y = l.ctl.y;
   if (modes.size() > 1) {
     std::vector<std::string> labels;
@@ -627,12 +637,8 @@ __attribute__((noinline)) inline void build_climate(const Layout &l, const std::
     });
     y += ch + gap;
   }
-  struct Option { const char *key, *name, *service; std::string list, value; uint32_t bit; };
-  const Option options[] = {{"preset_mode", "Preset", "climate.set_preset_mode", d.presets, effective(d, "preset_mode"), 16},
-                            {"fan_mode", "Fan", "climate.set_fan_mode", d.fan_modes, effective(d, "fan_mode"), 8},
-                            {"swing_mode", "Swing", "climate.set_swing_mode", d.swing_modes, effective(d, "swing_mode"), 32}};
   for (const auto &o : options) {
-    if (!(d.features & o.bit) || onx_control::options(o.list).empty() || y + ch > l.ctl.bottom() + P(4)) continue;
+    if (!available(o)) continue;
     const std::string key = o.key, service = o.service, list = o.list, current = o.value;
     row(root, {l.ctl.x, y, l.ctl.w, ch}, o.name, label(current) + "  ›", [e, key, service, list, current]() {
       const auto *d = custom_logic_entity_sub::entity_detail(e);
@@ -1093,6 +1099,92 @@ inline void level(lv_obj_t *parent, int x, int y, int w, int h, float fraction) 
   if (fraction > 0) box(parent, x, y, std::max(h, int(w * fraction)), h, accent(), h / 2);
 }
 
+// ------------------------------------------------------------ card charts
+// A history line drawn straight into the frame buffer by one plain object per
+// chart (no canvas buffer, no extra internal RAM). Points come from the same
+// HA statistics request the sensor detail graph uses.
+struct Chart {
+  std::vector<onx_sensor_view::Point> points;
+  float lo{0}, hi{0};
+  uint32_t start{0}, end{0}, gap{1200}, color{0};
+  bool fill{false};
+};
+inline std::vector<std::unique_ptr<Chart>> charts;
+inline void draw_chart(lv_event_t *ev) {
+  const auto *c = static_cast<const Chart *>(lv_event_get_user_data(ev));
+  auto *o = static_cast<lv_obj_t *>(lv_event_get_current_target(ev));
+  if (c == nullptr || o == nullptr || c->points.size() < 2) return;
+  lv_area_t a;
+  lv_obj_get_coords(o, &a);
+  const int w = a.x2 - a.x1, h = a.y2 - a.y1, inset = std::max(2, h / 12);
+  const float span = std::max(c->hi - c->lo, 1e-3f);
+  const uint32_t range = std::max<uint32_t>(1, c->end - c->start);
+  auto px = [&](const onx_sensor_view::Point &p) {
+    const uint32_t at = std::clamp(p.epoch, c->start, c->end);
+    return int32_t(a.x1 + int64_t(at - c->start) * w / range);
+  };
+  auto py = [&](float v) { return int32_t(a.y1 + inset + (c->hi - v) / span * (h - 2 * inset)); };
+  lv_layer_t *layer = lv_event_get_layer(ev);
+  lv_draw_line_dsc_t d;
+  lv_draw_line_dsc_init(&d);
+  if (c->fill) {  // Soft area under the line, one thin column every 2 px.
+    d.width = 2;
+    d.color = lv_color_hex(c->color);
+    d.opa = LV_OPA_20;
+    for (size_t i = 1; i < c->points.size(); ++i) {
+      const auto &p0 = c->points[i - 1], &p1 = c->points[i];
+      if (p1.epoch - p0.epoch > c->gap) continue;
+      const int32_t x0 = px(p0), x1 = px(p1), y0 = py(p0.value), y1 = py(p1.value);
+      for (int32_t x = x0; x < x1; x += 2) {
+        d.p1.x = d.p2.x = x;
+        d.p1.y = y0 + (y1 - y0) * (x - x0) / std::max<int32_t>(1, x1 - x0);
+        d.p2.y = a.y2;
+        lv_draw_line(layer, &d);
+      }
+    }
+  }
+  d.opa = LV_OPA_COVER;
+  d.width = std::max<int32_t>(2, P(3));
+  d.round_start = d.round_end = 1;
+  d.color = lv_color_hex(c->color);
+  for (size_t i = 1; i < c->points.size(); ++i) {
+    const auto &p0 = c->points[i - 1], &p1 = c->points[i];
+    if (p1.epoch - p0.epoch > c->gap) continue;
+    d.p1.x = px(p0); d.p1.y = py(p0.value);
+    d.p2.x = px(p1); d.p2.y = py(p1.value);
+    lv_draw_line(layer, &d);
+  }
+}
+// History for a card when the entity's graph option is on; asks HA for it
+// (rate-limited by the request script) while there is none yet.
+inline std::vector<onx_sensor_view::Point> card_history(const std::string &e) {
+  const int i = onx_sensor_view::index(e);
+  if (i < 0 || !onx_sensor_view::configs[i].graph) return {};
+  auto &st = onx_sensor_view::states[i];
+  auto h = st.history(std::time(nullptr));
+  if (h.size() < 2 && !st.pending && request_history) request_history(e);
+  return h;
+}
+inline const Chart *chart(lv_obj_t *parent, int x, int y, int w, int h, const std::string &e,
+                          std::vector<onx_sensor_view::Point> points, uint32_t color, bool fill) {
+  const int i = onx_sensor_view::index(e);
+  if (i < 0 || points.size() < 2 || w < P(24) || h < P(12)) return nullptr;
+  auto c = std::make_unique<Chart>();
+  c->lo = c->hi = points.front().value;
+  for (const auto &p : points) { c->lo = std::min(c->lo, p.value); c->hi = std::max(c->hi, p.value); }
+  const uint32_t range = onx_sensor_view::states[i].range_seconds;
+  c->end = uint32_t(std::time(nullptr));
+  c->start = c->end - range;
+  c->gap = std::max<uint32_t>(1200, range / 24);
+  c->color = color;
+  c->fill = fill;
+  c->points = std::move(points);
+  lv_obj_t *o = box(parent, x, y, w, h, CARD(), 0, LV_OPA_TRANSP);
+  lv_obj_add_event_cb(o, draw_chart, LV_EVENT_DRAW_MAIN, c.get());
+  charts.push_back(std::move(c));
+  return charts.back().get();
+}
+
 __attribute__((noinline)) inline void build_sensor(const Layout &l, const std::string &e, const EntityDetailState &d, const std::string &title,
                          const onx_detail_view::View &v) {
   const auto kind = onx_detail_view::sensor_class(e);
@@ -1447,15 +1539,18 @@ struct Tile {
   bool on{false};
   int ring{-1};
   Rect r{};
-  bool compact{false};
+  bool compact{false}, key{false}, icon_only{false};
+  uint64_t artwork{0};
 };
 inline uint32_t INSET() {return CONTROL();}  // Surfaces inside a card (same as CONTROL()).
 // Entity icons are bound by the icon downloader, which keeps one binding per
 // widget: a fixed pool of image objects is re-parented on every rebuild
 // instead of creating new widgets.
 inline std::function<void(lv_obj_t *, const std::string &)> bind_icon;
-struct IconUse { lv_obj_t *image; std::string entity; int cx, cy, size; const void *src; };
-inline std::array<lv_obj_t *, 8> icon_pool{};
+struct IconUse { lv_obj_t *image; std::string entity; int cx, cy, size; const void *src; bool custom; };
+inline std::array<lv_obj_t *, 16> icon_pool{};
+inline onx_memory::StateArray<onx_panel_artwork::Image,16> artwork_cache;
+inline uint64_t card_artwork=0;
 inline std::vector<IconUse> icon_uses;
 inline bool main_mode = false;
 inline lv_obj_t *main_artwork = nullptr;
@@ -1485,24 +1580,33 @@ inline void place_icon(IconUse &u) {
 }
 inline void icon(lv_obj_t *parent, const std::string &e, int cx, int cy, int size, uint32_t color) {
   if (!bind_icon || icon_uses.size() >= icon_pool.size()) return;
-  auto *&img = icon_pool[icon_uses.size()];
+  const auto index=icon_uses.size();
+  auto *&img = icon_pool[index];
   if (img == nullptr) {
     img = lv_image_create(lv_layer_top());
     lv_obj_remove_flag(img, static_cast<lv_obj_flag_t>(LV_OBJ_FLAG_CLICKABLE | LV_OBJ_FLAG_SCROLLABLE));
   }
   lv_obj_set_parent(img, parent);
   lv_obj_remove_flag(img, LV_OBJ_FLAG_HIDDEN);
-  bind_icon(img, e);
-  // After binding, which applies its own white recolour on a new binding.
-  lv_obj_set_style_image_recolor(img, lv_color_hex(color), 0);
-  lv_obj_set_style_image_recolor_opa(img, LV_OPA_COVER, 0);
-  icon_uses.push_back({img, e, cx, cy, size, nullptr});
+  bool custom=false;
+  if(card_artwork) {
+    auto &art=artwork_cache[index];
+    custom=art.load(card_artwork);
+    if(custom)lv_image_set_src(img,art.source);
+  }
+  if(!custom) {
+    bind_icon(img, e);
+    lv_obj_set_style_image_recolor(img, lv_color_hex(color), 0);
+  }
+  lv_obj_set_style_image_recolor_opa(img, custom?LV_OPA_TRANSP:LV_OPA_COVER, 0);
+  icon_uses.push_back({img, e, cx, cy, size, nullptr, custom});
   place_icon(icon_uses.back());
 }
 // Re-binds each frame so downloaded icons replace the fallbacks.
 inline void refresh_icons() {
   if (!bind_icon) return;
   for (auto &u : icon_uses) {
+    if(u.custom)continue;
     bind_icon(u.image, u.entity);
     if (lv_image_get_src(u.image) != u.src) place_icon(u);
   }
@@ -1658,16 +1762,43 @@ inline void card_climate(lv_obj_t *c, const Tile &t, const EntityDetailState &d)
   circle(c, r.w - pad - bs / 2, by + bs / 2, bs, INSET(), LV_SYMBOL_PLUS, TEXT(), [stepper]() { stepper(1); });
 }
 
+// Live media position on main cards; moved every refresh without a rebuild.
+struct MediaProgress { std::string entity; lv_obj_t *group{nullptr}, *fill{nullptr}, *elapsed{nullptr}, *total{nullptr}; int w{0}, h{0}; };
+inline std::vector<MediaProgress> media_progress;
+inline void tick_media_progress() {
+  for (auto &m : media_progress) {
+    const auto *d = custom_logic_entity_sub::entity_detail(m.entity);
+    if (d == nullptr || m.group == nullptr) continue;
+    auto projection = d->progress;  // A copy: projecting must not move the detail's anchors.
+    const auto v = projection.view(esphome::millis(), double(std::time(nullptr)), d->available);
+    if (!v.visible) { lv_obj_add_flag(m.group, LV_OBJ_FLAG_HIDDEN); continue; }
+    lv_obj_remove_flag(m.group, LV_OBJ_FLAG_HIDDEN);
+    const int fw = std::max(m.h, m.w * v.permille / 1000);
+    if (lv_obj_get_style_width(m.fill, LV_PART_MAIN) != fw) lv_obj_set_width(m.fill, fw);
+    const std::string el = onx_panel_ui::duration_text(v.seconds), to = "-" + onx_panel_ui::duration_text(v.duration - v.seconds);
+    if (el != lv_label_get_text(m.elapsed)) lv_label_set_text(m.elapsed, el.c_str());
+    if (to != lv_label_get_text(m.total)) lv_label_set_text(m.total, to.c_str());
+  }
+}
+
+// Tall cards put the artwork across the width with the track below it; short
+// ones keep it beside the text. Both show the position above the transport.
 inline void card_media(lv_obj_t *c, const Tile &t, const EntityDetailState &d) {
   const Rect r = t.r;
   const int pad = P(14), bh = P(48);
   const bool playing = d.state == "playing";
   const int by = r.h - pad - bh;
-  const int art = std::max(P(48), std::min({P(104), by - pad - P(12), r.w * 36 / 100}));
-  auto *frame = box(c, pad, pad, art, art, INSET(), P(10));
+  const int bar = P(6), prog_h = bar + P(4) + line(fonts.small);
+  const int prog_y = by - P(10) - prog_h;
+  const int meta_h = line(fonts.small) + line(fonts.title) + line(fonts.small);
+  const bool tall = prog_y - pad - meta_h - P(8) >= P(140);
+  const int art = tall ? std::min(r.w - 2 * pad, prog_y - pad - meta_h - P(18))
+                       : std::max(P(48), std::min({P(104), prog_y - pad - P(10), r.w * 36 / 100}));
+  const int ax = tall ? (r.w - art) / 2 : pad;
+  auto *frame = box(c, ax, pad, art, art, INSET(), P(10));
   lv_obj_set_style_clip_corner(frame, true, 0);
   if (onx_media::main_entity.empty()) onx_media::main_entity = t.entity;
-  const void *source = artwork_source && onx_media::main_entity == t.entity ? artwork_source(t.entity) : nullptr;
+  const void *source = !t.artwork && artwork_source && onx_media::main_entity == t.entity ? artwork_source(t.entity) : nullptr;
   if (source) {
     if (!main_artwork) main_artwork = lv_image_create(lv_layer_top());
     lv_obj_set_parent(main_artwork, frame);
@@ -1679,10 +1810,10 @@ inline void card_media(lv_obj_t *c, const Tile &t, const EntityDetailState &d) {
       lv_image_set_scale(main_artwork, art * 256 / std::max(h.w, h.h));
       lv_obj_center(main_artwork);
     }
-  } else icon(c, t.entity, pad + art / 2, pad + art / 2, art * 46 / 100, playing ? accent() : SOFT_TEXT());
-  const int tx = pad + art + P(12), tw = r.w - tx - pad;
+  } else icon(c, t.entity, ax + art / 2, pad + art / 2, std::min(art * 46 / 100, P(96)), playing ? accent() : SOFT_TEXT());
+  const int tx = tall ? pad : pad + art + P(12), tw = r.w - tx - pad;
   const bool track = !d.media_title.empty() && d.state != "off" && d.state != "idle";
-  int y = pad + P(2);
+  int y = tall ? pad + art + P(8) : pad + P(2);
   text(c, t.name, fonts.small, MUTED(), tx, y, tw);
   y += line(fonts.small);
   const std::string title = track ? onx_media::display_text(d.media_title) : label(d.state.empty() ? "idle" : d.state);
@@ -1690,8 +1821,19 @@ inline void card_media(lv_obj_t *c, const Tile &t, const EntityDetailState &d) {
   text(c, title, f, TEXT(), tx, y, tw);
   y += line(f);
   if (track && !d.media_artist.empty()) text(c, onx_media::display_text(d.media_artist), fonts.small, SOFT_TEXT(), tx, y, tw);
-  if (t.ring >= 0 && pad + art - P(4) > y + line(fonts.small)) level(c, tx, pad + art - P(4), tw, P(4), t.ring / 1000.0f);
+  if (!tall && t.ring >= 0 && pad + art - P(4) > y + line(fonts.small)) level(c, tx, pad + art - P(4), tw, P(4), t.ring / 1000.0f);
   if (by < pad + art || !d.available) return;
+  if (prog_y >= (tall ? y : pad + art)) {
+    MediaProgress m;
+    m.entity = t.entity; m.w = r.w - 2 * pad; m.h = bar;
+    m.group = box(c, pad, prog_y, m.w, prog_h, CARD(), 0, LV_OPA_TRANSP);
+    box(m.group, 0, 0, m.w, bar, CONTROL(), bar / 2);
+    m.fill = box(m.group, 0, 0, bar, bar, accent(), bar / 2);
+    m.elapsed = text(m.group, "", fonts.small, MUTED(), 0, bar + P(4), m.w / 2);
+    m.total = text(m.group, "", fonts.small, MUTED(), m.w / 2, bar + P(4), m.w / 2, LV_TEXT_ALIGN_RIGHT);
+    lv_obj_add_flag(m.group, LV_OBJ_FLAG_HIDDEN);
+    media_progress.push_back(m);
+  }
   const std::string e = t.entity;
   const int cx = r.w / 2, pw = P(96), gap = P(26);
   circle(c, cx - pw / 2 - gap - bh / 2, by + bh / 2, bh, INSET(), LV_SYMBOL_PREV, TEXT(),
@@ -1718,12 +1860,24 @@ inline void card_generic(lv_obj_t *c, const Tile &t, const EntityDetailState *d)
     toggle(c, r.w - pad - P(54), pad + P(7), on, [e, domain, on]() { request(e, domain + ".toggle", "", on ? "off" : "on", "panel_power"); });
   }
   int bottom = r.h - pad;
+  auto run = [e, domain]() {
+    if (domain == "script") request(e, "script.turn_on", "", "on", "panel_run");
+    else onx_controls::press(e);
+  };
+  // Tall cards: one large round target in the middle instead of a thin pill.
+  const int top = pad + cs + P(10), room = bottom - top - line(fonts.body) - P(10);
+  if (runnable && room >= P(140)) {
+    const int s = std::min({P(150), room - P(16), r.w - 2 * pad});
+    const int cy = top + P(8) + (room - P(16)) / 2;
+    lv_obj_t *b = circle(c, r.w / 2, cy, s, accent(), LV_SYMBOL_PLAY, TEXT(), run);
+    lv_obj_set_style_border_width(b, P(8), 0);
+    lv_obj_set_style_border_color(b, lv_color_hex(CONTROL()), 0);
+    text(c, "Run", fonts.body, TEXT(), 0, cy + s / 2 + P(10), r.w, LV_TEXT_ALIGN_CENTER);
+    return;
+  }
   if (runnable && bottom - P(48) >= pad + cs + P(8)) {
     bottom -= P(48);
-    button(c, pad, bottom, r.w - 2 * pad, P(48), P(24), INSET(), "Run", fonts.body, TEXT(), [e, domain]() {
-      if (domain == "script") request(e, "script.turn_on", "", "on", "panel_run");
-      else onx_controls::press(e);
-    });
+    button(c, pad, bottom, r.w - 2 * pad, P(48), P(24), INSET(), "Run", fonts.body, TEXT(), run);
     bottom -= P(10);
   }
   const bool bar = t.ring >= 0 && !runnable;
@@ -1737,6 +1891,28 @@ inline void card_generic(lv_obj_t *c, const Tile &t, const EntityDetailState *d)
   const bool numeric = d != nullptr && std::isfinite(num(d->state)) && (domain == "sensor" || domain == "number" || domain == "input_number");
   const std::string value = numeric ? onx_detail_view::compact(d->state) : t.value;
   const std::string unit = numeric ? d->unit : "";
+  // With history: the reading under the title, then min / max, and the chart
+  // fills the rest of the card.
+  if (available && !runnable) {
+    auto history = card_history(e);
+    const bool big = bottom - vy >= line(fonts.hero) + line(fonts.small) + P(120) && numeric && hero_safe(value);
+    const int vh = big ? line(fonts.hero) : line(fonts.big), sy = vy + vh, gy = sy + line(fonts.small) + P(8);
+    if (history.size() >= 2 && bottom - gy >= P(44)) {
+      const float delta = history.back().value - history.front().value;
+      const Chart *ch = chart(c, pad, gy, r.w - 2 * pad, bottom - gy, e, std::move(history), accent(), true);
+      if (ch != nullptr) {
+        reading(c, value, unit, pad, vy, r.w - 2 * pad, big);
+        const int i = onx_sensor_view::index(e);
+        std::string stats = onx_sensor_view::states[i].range_label() + "  ·  min " + fmt(ch->lo, 1) + "  ·  max " + fmt(ch->hi, 1);
+        text(c, stats, fonts.small, MUTED(), pad, sy, r.w - 2 * pad);
+        if (std::fabs(delta) >= 0.05f)
+          text(c, std::string(delta > 0 ? "+" : "-") + fmt(std::fabs(delta), 1), fonts.small, accent(), pad, sy, r.w - 2 * pad,
+               LV_TEXT_ALIGN_RIGHT);
+        if (bar) level(c, pad, bottom + P(10), r.w - 2 * pad, P(12), t.ring / 1000.0f);
+        return;
+      }
+    }
+  }
   const bool hero = bottom - vy >= line(fonts.hero) && numeric && hero_safe(value);
   const int vh = hero ? line(fonts.hero) : line(fonts.big);
   reading(c, value, unit, pad, bottom - vh, r.w - 2 * pad, hero);
@@ -1757,7 +1933,24 @@ inline void card_row(lv_obj_t *c, const Tile &t, const EntityDetailState *d) {
   const int vw = std::min(text_width(value, vf) + 1, r.w / 2);
   const int vx = r.w - pad - uw - vw, nx = pad + is + P(12);
   const int vy = (r.h - line(vf)) / 2;
-  text(c, t.name, fonts.small, SOFT_TEXT(), nx, (r.h - line(fonts.small)) / 2, vx - nx - P(8));
+  // A sparkline (numeric with history) or how long ago it changed (binary).
+  int name_end = vx - P(8);
+  const int sw = std::min(P(64), r.w / 5), sh = std::min(P(22), r.h - P(12));
+  if (numeric && name_end - nx - sw - P(8) >= P(64)) {
+    if (chart(c, name_end - sw, (r.h - sh) / 2, sw, sh, t.entity, card_history(t.entity), accent(), false)) name_end -= sw + P(10);
+  } else if (binary && d != nullptr && d->available) {
+    const auto *ch = changes_for(t.entity);
+    const time_t now = std::time(nullptr);
+    if (ch != nullptr && !ch->items.empty()) {
+      const std::string ago = onx_sensor_view::relative(ch->items.front().at, now);
+      const int aw = text_width(ago, fonts.small) + 1;
+      if (name_end - nx - aw - P(8) >= P(64)) {
+        text(c, ago, fonts.small, MUTED(), name_end - aw, (r.h - line(fonts.small)) / 2, aw);
+        name_end -= aw + P(10);
+      }
+    }
+  }
+  text(c, t.name, fonts.small, SOFT_TEXT(), nx, (r.h - line(fonts.small)) / 2, name_end - nx);
   text(c, value, vf, binary ? accent() : TEXT(), vx, vy, vw);
   if (uw) text(c, unit, fonts.small, MUTED(), vx + vw + P(4), vy + line(vf) - line(fonts.small) - P(2), uw);
 }
@@ -1792,10 +1985,34 @@ inline void card_settings(lv_obj_t *c, const Tile &t) {
 }
 
 __attribute__((noinline)) inline void build_card(const Tile &t) {
-  lv_obj_t *c = box(root, t.r.x, t.r.y, t.r.w, t.r.h, CARD(), t.compact ? P(14) : P(18));
+  lv_obj_t *c = box(root, t.r.x, t.r.y, t.r.w, t.r.h, t.key && t.on ? INSET() : CARD(),
+                    t.key ? P(9) : t.compact ? P(14) : P(18));
   lv_obj_set_style_clip_corner(c, false, 0);
   const auto *d = custom_logic_entity_sub::entity_detail(t.entity);
   const bool ready = d != nullptr && d->received && d->available;
+  if (t.key) {
+    if (t.entity.empty()) {
+      lv_obj_set_style_bg_opa(c, LV_OPA_40, 0);
+      return;
+    }
+    const int pad = P(4), name_height = line(fonts.small);
+    const uint32_t color = t.on ? accent() : ready ? TEXT() : MUTED();
+    if(t.icon_only) {
+      if(t.artwork)lv_obj_set_style_clip_corner(c,true,0);
+      icon(c,t.entity,t.r.w/2,t.r.h/2,t.artwork?std::max(t.r.w,t.r.h):std::min(t.r.w,t.r.h)*86/100,color);
+      if(t.artwork && t.on) {
+        auto *frame=box(c,0,0,t.r.w,t.r.h,CARD(),P(9),LV_OPA_TRANSP);
+        lv_obj_set_style_border_width(frame,P(2),0);
+        lv_obj_set_style_border_color(frame,lv_color_hex(accent()),0);
+      }
+      return;
+    }
+    icon(c, t.entity, t.r.w / 2, (t.r.h - name_height - pad) / 2,
+         std::min(P(44), std::min(t.r.w,t.r.h) * 40 / 100), color);
+    text(c, t.name, fonts.small, color, pad, t.r.h - name_height - pad,
+         t.r.w - 2 * pad, LV_TEXT_ALIGN_CENTER);
+    return;
+  }
   if (t.compact) { card_row(c, t, d); return; }
   if (t.entity == SETTINGS) card_settings(c, t);
   else if (ready && has_prefix(t.entity, "weather.")) card_weather(c, t, *d);
@@ -1833,19 +2050,25 @@ inline void render_main(lv_obj_t *parent, const std::vector<Tile> &tiles, int wi
     onx_detail_view::View v;
     v.value.text = t.value; v.context.text = t.context; v.name.text = t.name; v.value_ring = t.ring;
     sig += "#" + std::to_string(t.r.x) + ',' + std::to_string(t.r.y) + ',' + std::to_string(t.r.w) + ',' +
-           std::to_string(t.r.h) + ',' + std::to_string(t.compact) + ',' + std::to_string(t.on) + ',' +
-           signature(t.entity, custom_logic_entity_sub::entity_detail(t.entity), v, t.name);
+           std::to_string(t.r.h) + ',' + std::to_string(t.compact) + ',' + std::to_string(t.key) + ',' + std::to_string(t.icon_only) + ',' + std::to_string(t.on) + ',' +
+           std::to_string(t.artwork) + ',' + signature(t.entity, custom_logic_entity_sub::entity_detail(t.entity), v, t.name);
   }
-  if (sig == built_signature && main_mode) { refresh_icons(); return; }
+  if (sig == built_signature && main_mode) { refresh_icons(); tick_media_progress(); return; }
   clear();
   built_signature = sig;
   main_mode = true;
   const auto *clock_font = fonts.header_clock != nullptr ? fonts.header_clock : fonts.small;
-  if (now > 1600000000 && !tiles.empty() && tiles.front().r.y >= line(clock_font))
+  const int clock_bottom = !tiles.empty() && !tiles.front().key ? tiles.front().r.y : 40;
+  if (now > 1600000000 && !tiles.empty() && clock_bottom >= line(clock_font))
     // Left of the top row: the Wi-Fi / Home Assistant status sits in the
     // centre and the bell on the right.
-    text(root, clock(now), clock_font, TEXT(), tiles.front().r.x + P(4), (tiles.front().r.y - line(clock_font)) / 2, W / 4);
-  for (const auto &t : tiles) build_card(t);
+    text(root, clock(now), clock_font, TEXT(), P(16), (clock_bottom - line(clock_font)) / 2, W / 4);
+  for (const auto &t : tiles) {
+    card_artwork=t.artwork;
+    build_card(t);
+  }
+  card_artwork=0;
+  tick_media_progress();
 }
 
 // ------------------------------------------------------------ dispatch
@@ -1911,8 +2134,10 @@ inline void clear() {
   auto &t = onx_panel_ui::touch_targets;
   for (auto *o : targets) t.erase(std::remove(t.begin(), t.end(), o), t.end());
   targets.clear();
+  media_progress.clear();
   if (root != nullptr) lv_obj_clean(root);
   actions.clear();
+  charts.clear();
   dragging = false;
   built_signature.clear();
 }

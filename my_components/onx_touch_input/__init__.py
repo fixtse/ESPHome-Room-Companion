@@ -32,6 +32,7 @@ CONFIG_SCHEMA = cv.Schema(
         cv.Optional("native_touch"): cv.returning_lambda,
         # True: back needs a swipe from the left edge (horizontal swipes elsewhere turn).
         cv.Optional("edge_back"): cv.returning_lambda,
+        cv.Optional("swipe_left_back"): cv.returning_lambda,
         # Swipe down from the top edge (e.g. open the notification centre).
         cv.Optional("pull_down_enabled"): cv.returning_lambda,
         cv.Optional("on_pull_down"): automation.validate_automation({}),
@@ -55,7 +56,7 @@ async def to_code(config):
     if "enabled" in config:
         lam = await cg.process_lambda(config["enabled"], [], return_type=cg.bool_)
         cg.add(var.set_enabled_lambda(lam))
-    for key in ("back_enabled", "native_touch", "page_swipe", "edge_back", "pull_down_enabled"):
+    for key in ("back_enabled", "native_touch", "page_swipe", "edge_back", "swipe_left_back", "pull_down_enabled"):
         if key in config:
             lam = await cg.process_lambda(config[key], [], return_type=cg.bool_)
             cg.add(getattr(var, "set_" + key)(lam))

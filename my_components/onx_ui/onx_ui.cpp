@@ -137,7 +137,7 @@ bool OnxUi::is_normal_mode_active() const {
 }
 
 bool OnxUi::is_standby_active() const {
-  if (!this->is_normal_mode_active()) {
+  if (!this->standby_timeout_enabled_ || !this->is_normal_mode_active()) {
     return false;
   }
   if (this->standby_guard_ && !this->standby_guard_()) return false;

@@ -36,7 +36,12 @@ static const char PANEL_JS[] = R"ONXPANEL(
  //   panel_pages -> {pages:[{name,icon,layout,entities:[...]}]}
  //   panel_pages_save data=JSON {pages:[...]} (whole list: order, add, delete)
  // Presets carry their own page list; it is edited here and stored with the preset.
- const LAYOUTS={single:{n:1,label:'Full',hint:'One entity',slots:['Full screen']},two_controls:{n:2,label:'Split',hint:'Two entities',slots:['First','Second']},control_sensors:{n:4,label:'Large + 3',hint:'Three compact sensors',slots:['Large','Compact 1','Compact 2','Compact 3']}};
+ const LAYOUTS={single:{n:1,label:'Full',hint:'One entity',slots:['Full screen']},two_controls:{n:2,label:'Split',hint:'Two entities',slots:['First','Second']},control_sensors:{n:4,label:'Large + 3',hint:'Three compact sensors',slots:['Large','Compact 1','Compact 2','Compact 3']},action_grid:{label:'Action grid',hint:'Adjustable rows and columns',n:4}};
+ const gridLayout='action_grid',isGrid=p=>p.layout===gridLayout;
+ const lead=p=>p.entities.find(Boolean)||'';
+ const position=(p,i)=>isGrid(p)?'Row '+(Math.floor(i/p.columns)+1)+', column '+(i%p.columns+1):LAYOUTS[p.layout].slots[i];
+ const artId=/^[0-9a-f]{14}$/;
+ const axis=n=>Number.isInteger(n)&&n>=1&&n<=4?n:2;
  const DEFAULT_ICONS={sensor:'chart-line',binary_sensor:'checkbox-marked-circle-outline',media_player:'music-note',weather:'weather-partly-cloudy',climate:'thermostat',timer:'timer-outline',light:'lightbulb',switch:'toggle-switch',cover:'window-shutter',fan:'fan',script:'script-text',automation:'robot',number:'numeric',input_number:'numeric',select:'format-list-bulleted',input_select:'format-list-bulleted',button:'gesture-tap-button',input_button:'gesture-tap-button',scene:'palette'};
  const MAX_ENTRIES=40,ICON_RE=/^mdi:[a-z0-9-]{1,76}$/;
  const compact=e=>/^(sensor|binary_sensor)\./.test(e);
@@ -44,23 +49,84 @@ static const char PANEL_JS[] = R"ONXPANEL(
  let pageConfigs=[],savedPages='[]',panelPages='[]',pagesLoaded=false,pageError='',editorSlots=[],editorActive=-1,editorEntity='',editorBusy=false,editorTarget=null,selectedPage=0,selectedPos=0,timerEntity='',view='page',saving=false,redraw=()=>{};
  const app=()=>globalThis.ONX_APP;
  // The main-view preview shows the selected page, else the page this entity leads.
- const pageFor=entity=>{const sel=pageConfigs[selectedPage],p=view==='page'&&sel?.entities.includes(entity)?sel:pageConfigs.find(p=>p.entities[0]===entity);return p?{layout:p.layout,ids:p.entities}:{layout:'single',ids:[entity]}};
+ const pageFor=entity=>{const sel=pageConfigs[selectedPage],p=view==='page'&&sel?.entities.includes(entity)?sel:pageConfigs.find(p=>lead(p)===entity);return p?{...p,ids:p.entities}:{layout:'single',ids:[entity]}};
+ const artSide=96,artChunk=4800,artData=new Map(),artUrls=new Map(),artLoaded=new Set(),artPending=new Set();
+ function rgb565Url(encoded){
+  const bytes=atob(encoded.replace(/-/g,'+').replace(/_/g,'/'));
+  const side=Math.sqrt(bytes.length/2);
+  if(side!==40&&side!==artSide)throw Error('Invalid image data.');
+  const c=document.createElement('canvas');c.width=c.height=side;
+  const ctx=c.getContext('2d'),pixels=ctx.createImageData(side,side);
+  for(let i=0;i<side*side;i++){
+   const px=bytes.charCodeAt(i*2)|bytes.charCodeAt(i*2+1)<<8;
+   pixels.data.set([Math.round((px>>11)*255/31),Math.round((px>>5&63)*255/63),Math.round((px&31)*255/31),255],i*4);
+  }
+  ctx.putImageData(pixels,0,0);return c.toDataURL();
+ }
+ async function downloadImage(id){
+  let offset=0,data='';
+  while(true){
+   const part=await rpc({op:'panel_art_get',data:id,offset});
+   if(typeof part.data!=='string')throw Error('Image is unavailable.');
+   data+=part.data;
+   if(part.total===undefined||part.next===part.total)return data;
+   if(part.next<=offset||part.next>artSide*artSide*2)throw Error('Invalid image data.');
+   offset=part.next;
+  }
+ }
+ function artUrl(id){
+  if(!artId.test(id||''))return '';
+  if(!artUrls.has(id)&&!artLoaded.has(id)){
+   artLoaded.add(id);
+   downloadImage(id).then(data=>{
+    artUrls.set(id,rgb565Url(data));artData.set(id,data);drawn.canvas=null;delete drawn.slots;touch();
+   }).catch(()=>{});
+  }
+  return artUrls.get(id)||'';
+ }
+ const positionArt=(p,i)=>p?.artwork?.[i]||'';
+ function updateArt(p,i,id){
+  if(!p.artwork&&!id)return;
+  p.artwork??=Array(p.entities.length).fill('');
+  p.artwork[i]=id;
+  if(!p.artwork.some(Boolean))delete p.artwork;
+ }
+ const iconOnly=(p,i)=>p?.icon_only?.[i]===true;
+ function setIconOnly(p,i,value){
+  if(!p.icon_only&&!value)return;
+  p.icon_only??=Array(p.entities.length).fill(false);
+  p.icon_only[i]=value;
+  if(!p.icon_only.some(Boolean))delete p.icon_only;
+ }
+ const artFields=(p,n)=>p.artwork?.some(Boolean)?{artwork:Array.from({length:n},(_,i)=>positionArt(p,i))}:{};
  const el=(tag,cls,text)=>{const n=document.createElement(tag);if(cls)n.className=cls;if(text!==undefined)n.textContent=text;return n};
  const svgIcon=d=>{const s=document.createElementNS('http://www.w3.org/2000/svg','svg');s.setAttribute('viewBox','0 0 24 24');s.setAttribute('aria-hidden','true');s.innerHTML='<path d="'+d+'"/>';return s};
  const tool=(label,d,danger)=>{const b=el('button',danger?'danger':'');b.type='button';b.title=label;b.setAttribute('aria-label',label);b.append(svgIcon(d));return b};
  const mdiUrl=name=>'https://api.iconify.design/mdi/'+name.slice(4)+'.svg';
  const setIcon=(node,name)=>{if(ICON_RE.test(name||''))node.style.setProperty('--icon','url("'+mdiUrl(name)+'")');else node.style.removeProperty('--icon');return node};
  const mdi=name=>{const s=el('span','mdi');s.setAttribute('aria-hidden','true');return setIcon(s,name)};
+ function displayArt(node,id){
+  const url=artUrl(id);
+  if(url)node.style.setProperty('--icon','url("'+url+'")');
+  node.classList.toggle('art-preview',!!url);
+  return node;
+ }
+ const pageGlyph=p=>displayArt(mdi(pageIcon(p)),p.carousel_artwork);
  const entry=e=>e?editorSlots.find(s=>s.entity===e):undefined;
  const nameOf=e=>entry(e)?.name||app()?.item(e)?.name||e;
  const slotOf=e=>e?editorSlots.findIndex(s=>s.entity===e):-1;
  const iconOf=e=>entry(e)?.icon||app()?.item(e)?.icon||'mdi:'+(DEFAULT_ICONS[(e||'').split('.')[0]]||'shape-outline');
- const pageTitle=(p,i)=>p?.name||(p?.entities[0]?nameOf(p.entities[0]):'')||'Page '+(i+1);
- const pageIcon=p=>p.icon||(p.entities[0]?iconOf(p.entities[0]):'mdi:view-dashboard-outline');
+ const pageTitle=(p,i)=>p?.name||(p?nameOf(lead(p)):'')||'Page '+(i+1);
+ const pageIcon=p=>p.icon||(isGrid(p)?'mdi:view-grid-outline':lead(p)?iconOf(lead(p)):'mdi:view-dashboard-outline');
  const dirtyPages=()=>JSON.stringify(pageConfigs)!==savedPages;
  const status=t=>{$('page-layout-status').textContent=t||''};
  const singles=list=>list.filter(s=>s.entity&&s.timerHidden!=='1').map(s=>({name:'',icon:'',layout:'single',entities:[s.entity]}));
- const normalize=list=>(Array.isArray(list)?list:[]).map(p=>{const layout=LAYOUTS[p?.layout]?p.layout:'single',n=LAYOUTS[layout].n,ids=Array.isArray(p?.entities)?p.entities:[p?.entity,...(p?.members||[])];return {name:String(p?.name||''),icon:String(p?.icon||''),layout,entities:Array.from({length:n},(_,i)=>String(ids[i]||''))}});
+ const normalize=list=>(Array.isArray(list)?list:[]).map(p=>{
+  const layout=Object.hasOwn(LAYOUTS,p?.layout)?p.layout:'single',rows=axis(p?.rows),columns=axis(p?.columns);
+  const grid=layout===gridLayout,n=grid?rows*columns:LAYOUTS[layout].n;
+  const ids=Array.isArray(p?.entities)?p.entities:[p?.entity,...(p?.members||[])];
+  return {name:String(p?.name||''),icon:String(p?.icon||''),layout,...(grid?{rows,columns}:{}),entities:Array.from({length:n},(_,i)=>String(ids[i]||'')),...artFields(p,n),...(grid&&p?.icon_only?.some(x=>x===true)?{icon_only:Array.from({length:n},(_,i)=>iconOnly(p,i))}:{}),...(artId.test(p?.carousel_artwork||'')?{carousel_artwork:p.carousel_artwork}:{})};
+ });
  const used=()=>editorSlots.filter(s=>s.entity).length;
  // Re-render through the app so save/discard states and the preview follow.
  const touch=()=>{const a=app();if(a?.refresh)a.refresh();else{renderPageEditor();redraw()}};
@@ -72,33 +138,35 @@ static const char PANEL_JS[] = R"ONXPANEL(
  function place(page,pos,item){
   const e=item.entity;if(page.entities.includes(e)&&page.entities[pos]!==e){status(nameOf(e)+' is already on this page.');return}
   // The same entity may appear on several pages: one entry, one subscription.
-  const other=pos===0&&pageConfigs.find(p=>p!==page&&p.entities[0]===e);if(other){status(nameOf(e)+' already leads “'+(other.name||nameOf(e))+'”. Place it in another position.');return}
+  const other=!page.entities.slice(0,pos).some(Boolean)&&pageConfigs.find(p=>p!==page&&lead(p)===e);if(other){status(nameOf(e)+' already leads “'+(other.name||nameOf(e))+'”. Place it in another position.');return}
   if(pos>0&&page.layout==='control_sensors'&&!compact(e)){status('Compact positions show sensors and binary sensors.');return}
   try{if(slotOf(e)<0)app()?.add(item)}catch(error){status(error.message);return}
-  const old=page.entities[pos];page.entities[pos]=e;if(old&&old!==e)release(old);
+  const old=page.entities[pos];page.entities[pos]=e;if(old!==e){updateArt(page,pos,'');setIconOnly(page,pos,false);if(old)release(old)}
   status('');view='page';selectedPage=pageConfigs.indexOf(page);selectedPos=pos;if(!focusMember())touch();
  }
  // Entries stay while a page or the timer list still uses them.
  function release(e){const i=slotOf(e);if(e&&i>=0&&editorSlots[i].timerHidden!=='1'&&!pageConfigs.some(p=>p.entities.includes(e)))app()?.clear(i)}
- function removeAt(page,pos){const e=page.entities[pos];page.entities[pos]='';release(e);touch()}
+ function removeAt(page,pos){const e=page.entities[pos];page.entities[pos]='';updateArt(page,pos,'');setIconOnly(page,pos,false);release(e);touch()}
  function pickFor(page,pos){const small=pos>0&&page.layout==='control_sensors';app()?.pick(x=>!small||compact(x),item=>place(page,pos,item))}
  function cell(page,pos,r,w,h){
-  const e=page.entities[pos]||'',small=pos>0&&page.layout==='control_sensors',role=LAYOUTS[page.layout].slots[pos];
-  const c=el('div','page-cell'+(small?' compact':'')+(e?'':' empty'));c.dataset.member=pos;
+  const e=page.entities[pos]||'',small=pos>0&&page.layout==='control_sensors',role=position(page,pos);
+  const c=el('div','page-cell'+(small?' compact':'')+(isGrid(page)?' action-key'+(iconOnly(page,pos)?' icon-only':''):'')+(e?'':' empty'));c.dataset.member=pos;
   c.style.cssText='left:'+r.x/w*100+'%;top:'+r.y/h*100+'%;width:'+r.w/w*100+'%;height:'+r.h/h*100+'%';
   c.setAttribute('aria-current',String(view==='page'&&pos===selectedPos));
   const main=el('button','cell-main');main.type='button';main.disabled=editorBusy;
-  if(e){main.append(mdi(iconOf(e)),el('strong','',nameOf(e)),el('small','',e));main.setAttribute('aria-label',role+': '+nameOf(e));main.onclick=()=>selectPos(pos)}
-  else{main.append(mdi('mdi:plus-circle-outline'),el('strong','',small?'Add a sensor':'Add entity'));main.setAttribute('aria-label','Add an entity to '+role);main.onclick=()=>{selectPos(pos);pickFor(page,pos)}}
+  if(e){const url=artUrl(positionArt(page,pos)),image=url?el('img','mdi art-preview'):mdi(iconOf(e));
+   if(url){image.src=url;image.alt=''}
+   main.append(image,el('strong','',nameOf(e)),el('small','',e));main.setAttribute('aria-label',role+': '+nameOf(e));main.onclick=()=>selectPos(pos)}
+  else{main.append(mdi('mdi:plus-circle-outline'),el('strong','',small?'Add a sensor':isGrid(page)?'':'Add entity'));main.setAttribute('aria-label','Add an entity to '+role);main.onclick=()=>{selectPos(pos);pickFor(page,pos)}}
   c.append(el('small','cell-tag',role),main);
   if(e){
    const tools=el('div','cell-tools'),swap=tool('Replace '+nameOf(e),'M4 7h13l-3-3M20 17H7l3 3'),rm=tool('Remove '+nameOf(e)+' from this page','m6 6 12 12M18 6 6 18',true);
-   swap.onclick=()=>{selectPos(pos);pickFor(page,pos)};rm.onclick=()=>removeAt(page,pos);swap.disabled=rm.disabled=editorBusy;tools.append(swap,rm);c.append(tools);
+   swap.onclick=()=>{selectPos(pos);pickFor(page,pos)};rm.onclick=()=>removeAt(page,pos);swap.disabled=rm.disabled=editorBusy;tools.append(swap,rm);if(!isGrid(page))c.append(tools);
    c.draggable=!editorBusy;c.ondragstart=ev=>{ev.dataTransfer.setData('application/x-onx-cell',String(pos));ev.dataTransfer.effectAllowed='move'};
   }
   c.ondragover=ev=>{ev.preventDefault();c.classList.add('drop')};c.ondragleave=()=>c.classList.remove('drop');
   c.ondrop=ev=>{ev.preventDefault();c.classList.remove('drop');const from=ev.dataTransfer.getData('application/x-onx-cell'),item=ev.dataTransfer.getData('application/x-onx-entity');
-   if(from!==''){const f=+from,a=page.entities[f],b=page.entities[pos]||'';if(f===pos)return;if(page.layout==='control_sensors'&&((pos>0&&a&&!compact(a))||(f>0&&b&&!compact(b)))){status('Compact positions show sensors and binary sensors.');return}page.entities[f]=b;page.entities[pos]=a;selectedPos=pos;status('');touch()}
+   if(from!==''){const f=+from,a=page.entities[f],b=page.entities[pos]||'';if(f===pos)return;if(page.layout==='control_sensors'&&((pos>0&&a&&!compact(a))||(f>0&&b&&!compact(b)))){status('Compact positions show sensors and binary sensors.');return}const art=positionArt(page,f),dest=positionArt(page,pos),fromIcon=iconOnly(page,f),toIcon=iconOnly(page,pos);page.entities[f]=b;page.entities[pos]=a;updateArt(page,f,dest);updateArt(page,pos,art);setIconOnly(page,f,toIcon);setIconOnly(page,pos,fromIcon);selectedPos=pos;status('');touch()}
    else if(item)place(page,pos,JSON.parse(item))};
   return c;
  }
@@ -116,24 +184,51 @@ static const char PANEL_JS[] = R"ONXPANEL(
    input.onchange=()=>setLayout(value);const text=el('span');text.append(el('b','',l.label),el('small','',l.hint));label.append(input,thumb(value),text);return label}));
  }
  function setLayout(kind){
-  const p=pageConfigs[selectedPage];if(!p||p.layout===kind)return;const n=LAYOUTS[kind].n,dropped=[];
-  p.layout=kind;p.entities=Array.from({length:n},(_,i)=>p.entities[i]||'').concat(p.entities.slice(n).filter(Boolean).map(e=>(dropped.push(e),'')));p.entities.length=n;
+  const p=pageConfigs[selectedPage];if(!p||p.layout===kind)return;
+  const n=LAYOUTS[kind].n,dropped=p.entities.slice(n).filter(Boolean);
+  p.layout=kind;
+  if(isGrid(p)){p.rows=2;p.columns=2}else{delete p.rows;delete p.columns;delete p.icon_only}
+  p.entities=Array.from({length:n},(_,i)=>p.entities[i]||'');
+  if(p.artwork)p.artwork=p.artwork.slice(0,n).concat(Array(Math.max(0,n-p.artwork.length)).fill(''));
   // Compact positions only take sensors; anything else moves off the page.
-  if(kind==='control_sensors')for(let i=1;i<n;i++)if(p.entities[i]&&!compact(p.entities[i])){dropped.push(p.entities[i]);p.entities[i]=''}
+  if(kind==='control_sensors')for(let i=1;i<n;i++)if(p.entities[i]&&!compact(p.entities[i])){dropped.push(p.entities[i]);p.entities[i]='';updateArt(p,i,'')}
   const names=dropped.map(nameOf);for(const e of dropped)release(e);selectedPos=Math.min(selectedPos,n-1);
   status(dropped.length?names.join(', ')+(dropped.length===1?' was':' were')+' removed from this page.':'');if(!focusMember())touch();
  }
+ function resizeGrid(){
+  const p=pageConfigs[selectedPage];if(!p||!isGrid(p))return;
+  const rows=+$('grid-rows').value,columns=+$('grid-columns').value,old=p.entities,oldColumns=p.columns;
+  const selectedRow=Math.floor(selectedPos/oldColumns),selectedColumn=selectedPos%oldColumns;
+  p.rows=rows;p.columns=columns;
+  p.entities=Array.from({length:rows*columns},(_,i)=>i%columns<oldColumns?old[Math.floor(i/columns)*oldColumns+i%columns]||'':'');
+  selectedPos=Math.min(selectedRow,rows-1)*columns+Math.min(selectedColumn,columns-1);
+  if(p.icon_only){
+   const oldFlags=p.icon_only;
+   p.icon_only=Array.from({length:rows*columns},(_,i)=>i%columns<oldColumns&&oldFlags[Math.floor(i/columns)*oldColumns+i%columns]===true);
+   if(!p.icon_only.some(Boolean))delete p.icon_only;
+  }
+  if(p.artwork){
+   const oldArt=p.artwork;
+   p.artwork=Array.from({length:rows*columns},(_,i)=>i%columns<oldColumns?oldArt[Math.floor(i/columns)*oldColumns+i%columns]||'':'');
+   if(!p.artwork.some(Boolean))delete p.artwork;
+  }
+  const dropped=old.filter(e=>e&&!p.entities.includes(e)),names=dropped.map(nameOf);
+  for(const e of dropped)release(e);
+  status(names.length?'Removed from the grid: '+names.join(', ')+'.':'');
+  if(!focusMember())touch();
+ }
+ $('grid-rows').onchange=$('grid-columns').onchange=resizeGrid;
  function renderCanvas(p){
   const {width:w,height:h}=screen(),grid=$('page-grid');grid.className='page-grid'+(w>h?' wide':'');grid.style.aspectRatio=w+'/'+h;
   const top=el('div','page-chrome top');top.append(el('span','',new Date().toLocaleTimeString(undefined,{hour:'2-digit',minute:'2-digit'})),mdi('mdi:bell-outline'));
-  const bottom=el('div','page-chrome bottom');for(const [i,q] of pageConfigs.entries()){const m=mdi(pageIcon(q));if(i===selectedPage)m.classList.add('here');bottom.append(m)}
-  grid.replaceChildren(top,...globalThis.ONX_PANEL_GEOMETRY(p.layout,w,h).map((r,i)=>cell(p,i,r,w,h)),bottom);
+  const bottom=el('div','page-chrome bottom');for(const [i,q] of pageConfigs.entries()){const m=pageGlyph(q);if(i===selectedPage)m.classList.add('here');bottom.append(m)}
+  grid.replaceChildren(top,...globalThis.ONX_PANEL_GEOMETRY(p.layout,w,h,false,p.rows,p.columns).map((r,i)=>cell(p,i,r,w,h)),bottom);
  }
  function pageButton(p,i,savedList){
-  const b=el('button','page-item');b.type='button';const meta=LAYOUTS[p.layout].label+' · '+p.entities.filter(Boolean).length+'/'+LAYOUTS[p.layout].n;
-  const box=el('span','slot-icon');box.append(mdi(pageIcon(p)));const text=el('span','item-text');text.append(el('span','',pageTitle(p,i)),el('small','',meta));
+  const b=el('button','page-item');b.type='button';const meta=(isGrid(p)?p.rows+' × '+p.columns+' grid':LAYOUTS[p.layout].label)+' · '+p.entities.filter(Boolean).length+'/'+p.entities.length;
+  const box=el('span','slot-icon');box.append(pageGlyph(p));const text=el('span','item-text');text.append(el('span','',pageTitle(p,i)),el('small','',meta));
   b.append(el('b','',String(i+1)),box,text);
-  const dirty=JSON.stringify(savedList[i])!==JSON.stringify(p)||p.entities.some(e=>{const j=slotOf(e);return j>=0&&app()?.dirtyAt?.(j)});if(dirty)b.append(el('span','●','dirty-dot'));
+  const dirty=JSON.stringify(savedList[i])!==JSON.stringify(p)||p.entities.some(e=>{const j=slotOf(e);return j>=0&&app()?.dirtyAt?.(j)});if(dirty)b.append(el('span','dirty-dot','●'));
   b.title=pageTitle(p,i);b.setAttribute('aria-label','Page '+(i+1)+': '+pageTitle(p,i)+(dirty?', unsaved':''));b.setAttribute('aria-current',String(view==='page'&&i===selectedPage));b.disabled=editorBusy;b.onclick=()=>selectPage(i);
   b.draggable=!editorBusy;b.ondragstart=ev=>{ev.dataTransfer.setData('application/x-onx-page',String(i));ev.dataTransfer.effectAllowed='move'};
   b.ondragover=ev=>{if(![...ev.dataTransfer.types].includes('application/x-onx-page'))return;ev.preventDefault();b.classList.add('drop-target')};b.ondragleave=()=>b.classList.remove('drop-target');
@@ -145,6 +240,7 @@ static const char PANEL_JS[] = R"ONXPANEL(
  const drawn={};
  function patch(id,key,build){if(drawn[id]===key)return;drawn[id]=key;$(id).replaceChildren(...build())}
  function renderPageEditor(){
+  refreshDockOptions();
   const savedList=JSON.parse(savedPages),editor=$('page-editor'),locked=editorBusy||saving;
   if(view==='page'&&selectedPage>=pageConfigs.length)selectedPage=Math.max(0,pageConfigs.length-1);
   if(view==='timer'&&!editorSlots.some(s=>s.entity===timerEntity&&s.timerHidden==='1')){view='page'}
@@ -161,9 +257,11 @@ static const char PANEL_JS[] = R"ONXPANEL(
   const p=view==='page'?pageConfigs[selectedPage]:null;
   $('pages-empty').hidden=!(view==='page'&&!p);
   for(const id of ['page-head','page-layouts','page-canvas'])$(id).hidden=!p;
+  $('grid-size').hidden=!p||!isGrid(p);
   if(p){
-   const name=$('page-name');if(document.activeElement!==name)name.value=p.name;name.placeholder=p.entities[0]?nameOf(p.entities[0]):'Living room';name.disabled=locked;
-   setIcon($('page-icon-preview'),pageIcon(p));$('page-icon-button').setAttribute('aria-label','Carousel icon: '+(p.icon||'entity icon')+'. Choose another');$('page-icon-button').disabled=locked;
+   if(isGrid(p)){$('grid-rows').value=p.rows;$('grid-columns').value=p.columns;$('grid-rows').disabled=$('grid-columns').disabled=locked}
+   const name=$('page-name');if(document.activeElement!==name)name.value=p.name;name.placeholder=lead(p)?nameOf(lead(p)):'Living room';name.disabled=locked;
+   displayArt(setIcon($('page-icon-preview'),pageIcon(p)),p.carousel_artwork);$('page-icon-button').setAttribute('aria-label','Carousel icon: '+(p.carousel_artwork?'custom image':p.icon||'entity icon')+'. Choose another');$('page-icon-button').disabled=locked;
    $('page-up').disabled=locked||selectedPage===0;$('page-down').disabled=locked||selectedPage>=pageConfigs.length-1;$('delete-page').disabled=locked;
    const {width:w,height:h}=screen();
    const kindKey=JSON.stringify([p.layout,locked,w,h]);if(drawn.kind!==kindKey){drawn.kind=kindKey;renderLayouts(p)}
@@ -173,8 +271,14 @@ static const char PANEL_JS[] = R"ONXPANEL(
   const e=current(),i=slotOf(e),member=!!e&&i>=0&&i===editorActive;
   editor.classList.toggle('no-member',!member);
   $('member-head').hidden=!member;$('member-empty').hidden=member||!(p&&!e);
+  $('member-icon-only').hidden=!member||!p||!isGrid(p);
+  $('member-icon-only-value').disabled=locked;$('member-icon-only-value').checked=iconOnly(p,selectedPos);
   if(member){
-   setIcon($('member-icon'),iconOf(e));$('member-role').textContent=view==='timer'?'Registered timer':LAYOUTS[p.layout].slots[selectedPos]+' · page '+(selectedPage+1);
+   const preview=view==='page'&&artUrl(positionArt(p,selectedPos));
+   setIcon($('member-icon'),iconOf(e));
+   if(preview)$('member-icon').style.setProperty('--icon','url("'+preview+'")');
+   $('member-icon').classList.toggle('art-preview',!!preview);
+   $('member-icon-button').hidden=view==='timer';$('member-icon-button').disabled=locked;$('member-role').textContent=view==='timer'?'Registered timer':position(p,selectedPos)+' · page '+(selectedPage+1);
    $('member-name').textContent=nameOf(e);$('member-id').textContent=e;$('member-replace').hidden=view==='timer';
    $('member-remove').textContent=view==='timer'?'Remove timer':'Remove from page';$('member-replace').disabled=$('member-remove').disabled=locked;
   }
@@ -188,6 +292,7 @@ static const char PANEL_JS[] = R"ONXPANEL(
  $('delete-page').onclick=()=>{const p=pageConfigs[selectedPage];if(!p)return;const title=pageTitle(p,selectedPage);pageConfigs.splice(selectedPage,1);for(const e of p.entities)release(e);status('“'+title+'” deleted. Discard changes to restore it.');selectPage(Math.max(0,selectedPage-1))};
  $('page-up').onclick=()=>movePage(selectedPage,selectedPage-1);$('page-down').onclick=()=>movePage(selectedPage,selectedPage+1);
  $('page-name').oninput=()=>{const p=pageConfigs[selectedPage];if(p){p.name=$('page-name').value;touch()}};
+ $('member-icon-only-value').onchange=()=>{const p=pageConfigs[selectedPage];if(p&&isGrid(p)){setIconOnly(p,selectedPos,$('member-icon-only-value').checked);touch()}};
  $('member-replace').onclick=()=>{const p=pageConfigs[selectedPage];if(p)pickFor(p,selectedPos)};
  $('member-remove').onclick=()=>{if(view==='timer'){removeTimer(timerEntity);return}const p=pageConfigs[selectedPage];if(p)removeAt(p,selectedPos)};
 
@@ -206,8 +311,67 @@ static const char PANEL_JS[] = R"ONXPANEL(
   // Without the full list, fall back to Iconify's search.
   const r=await fetch('https://api.iconify.design/search?prefix=mdi&limit=999&query='+encodeURIComponent(terms.join(' ')));if(!r.ok)throw Error('Icon search is unavailable.');return ((await r.json()).icons||[]).filter(n=>ICON_RE.test(n));
  }
- function focusIcon(name){setIcon($('icon-focus'),name);$('icon-focus-name').textContent=name||'Entity icon'}
- function chooseIcon(name){const p=pageConfigs[selectedPage];if(p){p.icon=name;touch()}$('icon-picker').close();$('page-icon-button').focus()}
+ function focusIcon(name){$('icon-focus').classList.remove('art-preview');setIcon($('icon-focus'),name);$('icon-focus-name').textContent=name||'Entity icon'}
+ let artTarget=null,cropImage=null,cropRequest=0;
+ function closeIconPicker(){const button=artTarget?.pos>=0?'member-icon-button':'page-icon-button';$('icon-picker').close();$(button).focus()}
+ function chooseIcon(name){const p=pageConfigs[selectedPage];if(p){p.icon=name;delete p.carousel_artwork;touch()}closeIconPicker()}
+ function crop(canvas){
+  if(!cropImage)return;
+  const ctx=canvas.getContext('2d'),side=Math.min(cropImage.width,cropImage.height)/+$('art-zoom').value;
+  const x=(cropImage.width-side)*+$('art-x').value/100,y=(cropImage.height-side)*+$('art-y').value/100;
+  ctx.fillStyle='#101418';ctx.fillRect(0,0,canvas.width,canvas.height);
+  ctx.drawImage(cropImage,x,y,side,side,0,0,canvas.width,canvas.height);
+ }
+ function cropData(){
+  const c=document.createElement('canvas');c.width=c.height=artSide;crop(c);
+  const pixels=c.getContext('2d').getImageData(0,0,artSide,artSide).data;
+  let data='',hash=14695981039346656037n;
+  for(let i=0;i<pixels.length;i+=4){
+   const px=(pixels[i]>>3)<<11|(pixels[i+1]>>2)<<5|pixels[i+2]>>3;
+   for(const byte of [px&255,px>>8]){data+=String.fromCharCode(byte);hash=BigInt.asUintN(64,(hash^BigInt(byte))*1099511628211n)}
+  }
+  return {id:((hash&0x00ffffffffffffffn)|1n).toString(16).padStart(14,'0'),data:btoa(data)};
+ }
+ function setPositionIcon(id){
+  if(!artTarget)return;
+  if(artTarget.pos>=0)updateArt(artTarget.page,artTarget.pos,id);
+  else if(id){artTarget.page.carousel_artwork=id;artTarget.page.icon=''}
+  else{delete artTarget.page.carousel_artwork;artTarget.page.icon=''}
+  touch();closeIconPicker();
+ }
+ function clearCrop(){cropRequest++;cropImage?.close();cropImage=null;$('art-file').value='';$('art-crop').hidden=true;$('art-status').textContent=''}
+ for(const id of ['art-zoom','art-x','art-y'])$(id).oninput=()=>crop($('art-canvas'));
+ $('art-file').onchange=async()=>{
+  const file=$('art-file').files[0],mine=++cropRequest;
+  $('art-status').textContent='';$('art-crop').hidden=true;
+  cropImage?.close();cropImage=null;
+  if(!file)return;
+  try{
+   if(!['image/png','image/jpeg','image/webp'].includes(file.type)||file.size>10*1024*1024)
+    throw Error('Choose a PNG, JPEG or WebP image up to 10 MB.');
+   const bitmap=await createImageBitmap(file);
+   if(mine!==cropRequest){bitmap.close();return}
+   if(!bitmap.width||!bitmap.height||bitmap.width*bitmap.height>32000000){bitmap.close();throw Error('Choose an image with no more than 32 megapixels.')}
+   cropImage=bitmap;
+   $('art-zoom').value=1;$('art-x').value=$('art-y').value=50;
+   crop($('art-canvas'));$('art-crop').hidden=false;
+  }catch(error){if(mine===cropRequest)$('art-status').textContent=error.message}
+ };
+ $('art-use').onclick=()=>{
+  if(!cropImage||!artTarget)return;
+  const {id,data}=cropData();
+  artData.set(id,data);artPending.add(id);artUrls.set(id,rgb565Url(data));setPositionIcon(id);
+ };
+ $('member-icon-button').onclick=()=>{
+  const p=pageConfigs[selectedPage],entity=p?.entities[selectedPos];if(!entity)return;
+  artTarget={page:p,pos:selectedPos};clearCrop();
+  $('icon-picker-title').textContent='Choose a position icon';$('icon-picker-context').textContent='Shown for '+nameOf(entity)+' on this page.';
+  $('icon-source').hidden=true;$('mdi-picker-body').hidden=true;$('art-picker-body').hidden=false;
+  const id=positionArt(p,selectedPos);focusIcon(iconOf(entity));
+  const url=artUrl(id);if(url){$('icon-focus').style.setProperty('--icon','url("'+url+'")');$('icon-focus').classList.add('art-preview')}
+  if(id)$('icon-focus-name').textContent='Custom image';
+  $('icon-default').disabled=!id;$('icon-picker').showModal();$('art-file').focus();
+ };
  function drawIcons(){
   const p=pageConfigs[selectedPage],grid=$('icon-grid'),shown=iconList.slice(0,iconLimit);
   grid.replaceChildren(...shown.map(name=>{const b=el('button');b.type='button';b.setAttribute('role','option');b.dataset.icon=name;b.title=name;b.setAttribute('aria-selected',String(p?.icon===name));b.append(mdi(name),el('small','',name.slice(4)));b.onclick=()=>chooseIcon(name);b.onfocus=b.onmouseenter=()=>focusIcon(name);return b}));
@@ -230,20 +394,74 @@ static const char PANEL_JS[] = R"ONXPANEL(
   const cols=Math.max(1,items.filter(b=>b.offsetTop===items[0].offsetTop).length),step={ArrowRight:1,ArrowLeft:-1,ArrowDown:cols,ArrowUp:-cols}[ev.key];if(!step)return;ev.preventDefault();
   const n=i+step;if(n<0){$('icon-search').focus();return}items[Math.min(items.length-1,n)]?.focus();
  };
+ function iconMode(upload){
+  $('mdi-picker-body').hidden=upload;$('art-picker-body').hidden=!upload;
+  $('browse-icon').setAttribute('aria-pressed',String(!upload));$('upload-icon').setAttribute('aria-pressed',String(upload));
+  $(upload?'art-file':'icon-search').focus();
+ }
+ $('browse-icon').onclick=()=>iconMode(false);$('upload-icon').onclick=()=>iconMode(true);
  $('icon-more').onclick=()=>{iconLimit+=96;drawIcons()};
- $('icon-default').onclick=()=>chooseIcon('');
+ $('icon-default').onclick=()=>artTarget?setPositionIcon(''):chooseIcon('');
+ $('icon-picker').addEventListener('close',()=>{clearCrop();artTarget=null});
  $('close-icon-picker').onclick=()=>$('icon-picker').close();
  $('icon-picker').addEventListener('click',ev=>{if(ev.target!==$('icon-picker'))return;const r=ev.target.getBoundingClientRect();if(ev.clientX<r.left||ev.clientX>r.right||ev.clientY<r.top||ev.clientY>r.bottom)$('icon-picker').close()});
  $('page-icon-button').onclick=()=>{
-  const p=pageConfigs[selectedPage];if(!p)return;$('icon-picker-context').textContent='Shown in the bottom bar for “'+pageTitle(p,selectedPage)+'”.';
-  $('icon-search').value='';focusIcon(p.icon||pageIcon(p));$('icon-default').disabled=!p.icon;renderIcons();loadIcons();$('icon-picker').showModal();$('icon-search').focus();
+  const p=pageConfigs[selectedPage];if(!p)return;
+  artTarget={page:p,pos:-1};clearCrop();$('icon-source').hidden=false;$('icon-picker-title').textContent='Choose a carousel icon';
+  $('icon-picker-context').textContent='Shown in the bottom bar for “'+pageTitle(p,selectedPage)+'”.';
+  $('icon-search').value='';focusIcon(p.icon||pageIcon(p));displayArt($('icon-focus'),p.carousel_artwork);if(p.carousel_artwork)$('icon-focus-name').textContent='Custom image';$('icon-default').disabled=!(p.icon||p.carousel_artwork);renderIcons();loadIcons();$('icon-picker').showModal();iconMode(!!p.carousel_artwork);
  };
 
+ const imageIds=pages=>[...new Set(pages.flatMap(p=>[p.carousel_artwork,...(p.artwork||[])]).filter(Boolean))];
+ async function uploadImages(pages){
+  for(const id of imageIds(pages)){
+   if(!artPending.has(id))continue;
+   const data=artData.get(id);
+   const payload=data.replace(/\+/g,'-').replace(/\//g,'_'),length=artChunk*4/3;
+   let result;
+   if(data.length===4268)result=await rpc({op:'panel_art_put',data:payload});
+   else for(let i=0;i<payload.length;i+=length){
+    const offset=i*3/4;
+    result=await rpc({op:'panel_art_put',q:id,offset,data:payload.slice(i,i+length)});
+    if(i+length<payload.length&&result.next!==offset+artChunk)throw Error('The panel could not receive the image.');
+   }
+   if(result?.id!==id)throw Error('The panel could not verify the image.');
+  }
+ }
+ globalThis.ONX_PAGE_ART={
+  async export(pages){
+   const result={};
+   for(const id of imageIds(pages)){
+    const data=artData.get(id)||await downloadImage(id);
+    rgb565Url(data);result[id]=data;
+   }
+   return result;
+  },
+  import(data,pages){
+   if(data===undefined)return;
+   if(!data||typeof data!=='object'||Array.isArray(data)||Object.keys(data).length>40)throw Error('Invalid image collection.');
+   for(const id of imageIds(pages))if(Object.hasOwn(data,id)){
+    if(!artId.test(id)||typeof data[id]!=='string'||![4268,artSide*artSide*8/3].includes(data[id].length))throw Error('Invalid page image.');
+    artUrls.set(id,rgb565Url(data[id]));artData.set(id,data[id]);artPending.add(id);
+   }
+  },
+  upload:uploadImages
+ };
  // Save: entries first (pages reference them), then the page list.
  async function savePages(){
-  for(const [i,p] of pageConfigs.entries())if(p.entities.some(e=>!e)){view='page';selectedPage=i;selectedPos=p.entities.findIndex(e=>!e);touch();status('Fill every position on “'+pageTitle(p,i)+'”, or choose a smaller layout.');return false}
+  const leads=new Set();
+  for(const [i,p] of pageConfigs.entries()){
+   const first=lead(p),missing=isGrid(p)?!first:p.entities.some(e=>!e);
+   if(missing||leads.has(first)){
+    view='page';selectedPage=i;selectedPos=Math.max(0,p.entities.findIndex(e=>missing?!e:e===first));touch();
+    status(missing?(isGrid(p)?'Place at least one action on the grid.':'Fill every position on “'+pageTitle(p,i)+'”, or choose a smaller layout.'):'Each page needs a different first assigned entity.');
+    return false;
+   }
+   leads.add(first);
+  }
   if(pageConfigs.some(p=>p.icon&&!ICON_RE.test(p.icon))){status('Icons use the mdi:name form, for example mdi:sofa.');return false}
   const a=app();if(!a)return false;const target=editorTarget,list=structuredClone(pageConfigs);
+  try{await uploadImages(list)}catch(error){status(error.message);a.message?.(error.message,true);return false}
   if(target)target.pages=list;
   if(!await a.saveAll())return false;
   if(target){savedPages=JSON.stringify(pageConfigs);touch();return true}
@@ -261,7 +479,7 @@ static const char PANEL_JS[] = R"ONXPANEL(
   view='page';selectedPage=0;selectedPos=Math.max(0,pageConfigs[0]?.entities.findIndex(Boolean)??0);status('');
  }
  // Bridge for config_app.h: import/export, dirty state, discard and save.
- globalThis.ONX_PAGES={saved:()=>JSON.parse(panelPages),set:list=>{pageConfigs=normalize(list);view='page';selectedPage=0;touch()},dirty:dirtyPages,discard:()=>{pageConfigs=JSON.parse(savedPages);status('')},save:savePages};
+ globalThis.ONX_PAGES={saved:()=>JSON.parse(panelPages),set:list=>{pageConfigs=normalize(list);selectPage(0)},dirty:dirtyPages,discard:()=>{pageConfigs=JSON.parse(savedPages);selectedPos=Math.max(0,pageConfigs[selectedPage]?.entities.findIndex(Boolean)??0);status('')},save:savePages};
  globalThis.ONX_PANEL_EDITOR=(slots,active,busy,refresh,target=null)=>{
   editorSlots=slots;editorBusy=busy;redraw=refresh;
   const switched=(target||null)!==editorTarget;if(switched)loadTarget(target||null);
@@ -276,8 +494,15 @@ static const char PANEL_JS[] = R"ONXPANEL(
  };
  rpc({op:'panel_pages'}).then(result=>{panelPages=JSON.stringify(normalize(result.pages));pagesLoaded=true;if(!editorTarget){pageConfigs=JSON.parse(panelPages);savedPages=panelPages;selectedPage=0;selectedPos=Math.max(0,pageConfigs[0]?.entities.findIndex(Boolean)??0)}if(!focusMember())touch()}).catch(error=>{pageError='Could not load pages: '+error.message;renderPageEditor()});
  // Mirrors onx_panel_layout::geometry (portrait and landscape).
- globalThis.ONX_PANEL_GEOMETRY=(kind,w,h,detail=false)=>{
+ globalThis.ONX_PANEL_GEOMETRY=(kind,w,h,detail=false,rows=2,columns=2)=>{
   const top=detail?12:40,bottom=detail?12:52,gap=8,pad=12,body=h-top-bottom,inner=w-pad*2;
+  if(kind===gridLayout){
+   const usableW=w-16-gap*(columns-1),usableH=body+8-gap*(rows-1);
+   return Array.from({length:rows*columns},(_,i)=>{
+    const c=i%columns,r=Math.floor(i/columns),x=Math.floor(c*usableW/columns),y=Math.floor(r*usableH/rows);
+    return {x:8+x+c*gap,y:top+y+r*gap,w:Math.floor((c+1)*usableW/columns)-x,h:Math.floor((r+1)*usableH/rows)-y};
+   });
+  }
   const rects=[{x:pad,y:top,w:inner,h:body}];
   if(w>h){
    if(kind==='two_controls'){const half=Math.floor((inner-gap)/2);rects[0].w=half;rects.push({x:pad+half+gap,y:top,w:inner-half-gap,h:body})}
@@ -315,7 +540,8 @@ static const char PANEL_JS[] = R"ONXPANEL(
    const t=node('text',{x,y:y+size*.85,'font-size':size,fill:color,'font-family':'Arial, sans-serif','text-anchor':anchor});
    let value=String(s||'');const limit=Math.max(2,Math.floor(width/(size*.56)));if(value.length>limit)value=value.slice(0,limit-1)+'…';t.textContent=value;svg.append(t);
   };
-  const icon=(name,x,y,size,color=foreground)=>{if(/^mdi:[a-z0-9-]+$/.test(name||''))svg.append(node('image',{href:'https://api.iconify.design/mdi/'+name.slice(4)+'.svg?color='+encodeURIComponent(color),x,y,width:size,height:size}))};
+  let currentArt='';
+  const icon=(name,x,y,size,color=foreground)=>{if(currentArt){svg.append(node('image',{href:currentArt,x,y,width:size,height:size}));return}if(/^mdi:[a-z0-9-]+$/.test(name||''))svg.append(node('image',{href:'https://api.iconify.design/mdi/'+name.slice(4)+'.svg?color='+encodeURIComponent(color),x,y,width:size,height:size}))};
   if(!slot.entity){text('Choose an entity',24,h/2,24,w-48);$('preview-status').textContent='Choose what this page displays.';return}
   const P=n=>n*Math.min(w,h)/320,muted=mutedColor,control=controlColor;
   const rect=(x,y,width,height,fill=surface,radius=P(14),attrs={})=>svg.appendChild(node('rect',{x,y,width,height,rx:radius,fill,...attrs}));
@@ -364,7 +590,7 @@ static const char PANEL_JS[] = R"ONXPANEL(
    if(compact){icon(v?.icon,x,r.y+(r.h-P(30))/2,P(30),accent);text(title,x+P(42),r.y+(r.h-P(16))/2,P(16),inner*.6-P(42));text(v?.lines?.[1]?.text||'—',r.x+r.w-pad,r.y+(r.h-P(20))/2,P(20),inner*.4,foreground,'end');return}
    if(domain==='media_player'){
     const art=Math.max(P(48),Math.min(P(104),r.h-pad*2-P(60),r.w*.36)),tx=x+art+P(12),tw=r.x+r.w-pad-tx;
-    artwork(v?.artwork,x,r.y+pad,art);text(title,tx,r.y+pad,P(16),tw,muted);text(d.title||v?.lines?.[2]?.text||condition(d.state),tx,r.y+pad+P(22),P(24),tw);text(d.artist||v?.lines?.[3]?.text||'',tx,r.y+pad+P(50),P(16),tw,mutedColor);
+    if(currentArt)icon(v?.icon,x,r.y+pad,art);else artwork(v?.artwork,x,r.y+pad,art);text(title,tx,r.y+pad,P(16),tw,muted);text(d.title||v?.lines?.[2]?.text||condition(d.state),tx,r.y+pad+P(22),P(24),tw);text(d.artist||v?.lines?.[3]?.text||'',tx,r.y+pad+P(50),P(16),tw,mutedColor);
     const yy=r.y+r.h-pad-P(48);button('◀',x,yy,P(48),P(48));button(v?.playing?'Ⅱ':'▶',r.x+r.w/2-P(48),yy,P(96),P(48),accent);button('▶',r.x+r.w-pad-P(48),yy,P(48),P(48));return;
    }
    icon(v?.icon,x,r.y+pad,P(36),accent);text(title,x+P(56),r.y+pad,P(20),inner-P(56)-(domain==='light'?P(62):0));
@@ -428,12 +654,26 @@ static const char PANEL_JS[] = R"ONXPANEL(
    if(slot.entity.startsWith('script.')&&d.state==='on')button('Stop script',P(16),h-P(136),w-P(32),P(48));
    (d.actions||[]).slice(0,2).forEach((name,i)=>button(name,P(16)+i*(w-P(24))/2,h-P(194),(w-P(40))/2,P(40)));
   }else{
-   const p=detail?{layout:'single',ids:[slot.entity]}:pageFor(slot.entity),ids=p.ids,rects=globalThis.ONX_PANEL_GEOMETRY(p.layout,w,h,detail);
+   const p=detail?{layout:'single',ids:[slot.entity]}:pageFor(slot.entity),ids=p.ids,rects=globalThis.ONX_PANEL_GEOMETRY(p.layout,w,h,detail,p.rows,p.columns);
    const base=Math.min(w,h)/240;
    for(const [i,r]of rects.entries()){
+    currentArt=detail?'':artUrl(positionArt(p,i));
     const found=views.find(v=>v.entity===ids[i]),v=!detail&&found?{...found,...found.carousel}:found;
     const compact=p.layout==='control_sensors'&&i>0,lines=v?.lines||[];
     const cardTitle=ids[i]===slot.entity?(slot.name||v?.lines?.[4]?.text||ids[i]):(editorSlots.find(s=>s.entity===ids[i])?.name||v?.lines?.[4]?.text||ids[i]||'Choose an entity');
+    if(p.layout===gridLayout){
+     const on=['on','playing','heat','cool'].includes(v?.panel?.state),color=on?accent:foreground,only=iconOnly(p,i),full=only&&currentArt,g=only?Math.min(r.w,r.h)*.86:Math.min(P(44),Math.min(r.w,r.h)*.4);
+     rect(r.x,r.y,r.w,r.h,ids[i]?(on?control:surface):mix(surface,background,40),P(9),{'data-panel-item':i});
+     if(ids[i]){icon(v?.icon||iconOf(ids[i]),r.x+(r.w-g)/2,r.y+(r.h-(only?0:P(16))-g)/2,g,color);
+      if(full){
+       const image=svg.lastElementChild;
+       for(const [key,value] of Object.entries({x:r.x,y:r.y,width:r.w,height:r.h,preserveAspectRatio:'xMidYMid slice'}))image.setAttribute(key,value);
+       image.style.clipPath='inset(0 round '+P(9)+'px)';
+       if(on)rect(r.x+1,r.y+1,r.w-2,r.h-2,'none',P(9),{stroke:accent,'stroke-width':P(2)});
+      }
+      if(!only)text(cardTitle,r.x+r.w/2,r.y+r.h-P(17),P(12),r.w-P(8),color,'middle')}
+     continue;
+    }
     if(!detail){mainCard(v,cardTitle,ids[i],r,compact);continue}
     svg.append(node('rect',{x:r.x,y:r.y,width:r.w,height:r.h,rx:8,fill:surface,'data-panel-item':i}));
     const title=ids[i]===slot.entity?(slot.name||lines[4]?.text||ids[i]):(editorSlots.find(s=>s.entity===ids[i])?.name||lines[4]?.text||ids[i]||'Choose an entity');
@@ -454,12 +694,19 @@ static const char PANEL_JS[] = R"ONXPANEL(
     }
     if(detail&&v?.value_ring>=0){svg.append(node('rect',{x:r.x+12,y:r.y+r.h-16,width:r.w-24,height:4,fill:trackColor}));svg.append(node('rect',{x:r.x+12,y:r.y+r.h-16,width:(r.w-24)*v.value_ring/1000,height:4,fill:accent}))}
    }
-   if(!detail){
+   currentArt='';
+  if(!detail){
     text(new Date().toLocaleTimeString(undefined,{hour:'2-digit',minute:'2-digit'}),P(16),P(8),P(16),P(90),mutedColor);
     // Bottom bar: the selected control sits on an accent-tinted marker.
     const spacing=Math.round(54*base*.75),iconSize=Math.round(20*base),y=h-22;
     svg.append(node('rect',{x:w/2-16*base,y:y-16*base,width:32*base,height:32*base,rx:16*base,fill:soft,'data-nav-marker':''}));
-    for(const item of view?.carousel?.navigator||[])icon(item.icon,w/2+item.offset*spacing-iconSize/2,y-iconSize/2,iconSize,item.offset===0?accent:foreground);
+    const nav=view?.carousel?.navigator||[];
+    for(const item of nav){
+     const page=pageConfigs.find(p=>lead(p)===item.entity)||(item.offset===0?pageConfigs[selectedPage]:null);
+     currentArt=artUrl(page?.carousel_artwork);
+     icon(page?pageIcon(page):item.icon,w/2+item.offset*spacing-iconSize/2,y-iconSize/2,iconSize,item.offset===0?accent:foreground);
+    }
+    currentArt='';
     // Bell only on the main view, without a background.
     icon('mdi:bell-outline',w-38,8,24,foreground);
    }
@@ -490,7 +737,8 @@ static const char PANEL_JS[] = R"ONXPANEL(
   '<label class="field">Zoom<input id="dash-scale" type="number" min="0.5" max="4" step="0.25"></label>'+
   '</div>'+
   '<label class="field">Dashboard address<input id="dash-url" maxlength="256" placeholder="http://homeassistant.local:8123/room-panel/0" autocomplete="off"></label>'+
-  '<label class="field">Dashboard icon position<select id="dash-toolbar-side"><option value="left">Left of toolbar</option><option value="right">Right of toolbar</option></select></label>'+
+  '<label class="field">Pinned dock item<select id="dock-pin"></select></label>'+
+  '<label class="field">Pinned item position<select id="dash-toolbar-side"><option value="left">Left of toolbar</option><option value="right">Right of toolbar</option></select></label>'+
   '<p class="hint">Design the dashboard for the panel’s size, without animations: these screens update a full frame in roughly a tenth of a second. '+
   'Changing the server or zoom needs a restart.</p>'+
   '<p class="hint" id="dash-status" role="status"></p>'+
@@ -498,15 +746,26 @@ static const char PANEL_JS[] = R"ONXPANEL(
  anchor.after(form);
  const show=state=>{
   $('dash-server').value=state.server||'';$('dash-url').value=state.url||'';$('dash-scale').value=state.scale||1;
+  savedDockPin=state.dock_pin||'dashboard';refreshDockOptions(true);
   $('dash-toolbar-side').value=state.toolbar_side||'right';
   $('dash-status').textContent='Stream: '+state.status+(state.restart_required?' · restart the panel to apply the new server or zoom':'');
  };
+ var savedDockPin='dashboard';
+ function refreshDockOptions(reset=false){
+  const select=$('dock-pin');if(!select)return;
+  const value=(reset?savedDockPin:select.value)||savedDockPin||'dashboard';
+  const entries=[['none','None (dashboard scrolls with dock)'],['dashboard','Streamed dashboard']];
+  JSON.parse(panelPages).forEach((p,i)=>{const entity=lead(p);if(entity)entries.push([entity,pageTitle(p,i)])});
+  if(!entries.some(([id])=>id===value))entries.push([value,value+' (page unavailable)']);
+  select.replaceChildren(...entries.map(([id,label])=>new Option(label,id)));
+  select.value=value;
+ }
  rpc({op:'panel_state'}).then(show).catch(e=>{$('dash-status').textContent=e.message});
  form.onsubmit=async event=>{
   event.preventDefault();
   const button=form.querySelector('button');button.disabled=true;
   try{
-   show(await rpc({op:'panel_save',data:JSON.stringify({server:$('dash-server').value.trim(),url:$('dash-url').value.trim(),scale:parseFloat($('dash-scale').value)||1,toolbar_side:$('dash-toolbar-side').value})}));
+   show(await rpc({op:'panel_save',data:JSON.stringify({server:$('dash-server').value.trim(),url:$('dash-url').value.trim(),scale:parseFloat($('dash-scale').value)||1,...( $('dock-pin').value!=='dashboard'||savedDockPin!=='dashboard'?{dock_pin:$('dock-pin').value}:{}),toolbar_side:$('dash-toolbar-side').value})}));
    $('dash-status').textContent='Saved. '+$('dash-status').textContent;
   }catch(e){$('dash-status').textContent=e.message}
   finally{button.disabled=false}

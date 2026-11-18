@@ -195,15 +195,14 @@ inline bool carousel_hidden(int ui_slot) {
   const auto order=carousel_order(INT32_MAX);
   return std::find(order.begin(),order.end(),ui_slot)==order.end();
 }
-// 'selected' is the candidate (previous+direction); Settings remains at 'total'.
-inline int carousel_selection(int selected,int total,int direction) {
+inline int carousel_selection(int selected,int total) {
+  if(selected==total)return total;
   const auto order=carousel_order(total);
-  if(selected==total || std::find(order.begin(),order.end(),selected)!=order.end())return selected;
-  const int step=direction<0?-1:1;
-  const auto from=std::find(order.begin(),order.end(),selected-step);
-  if(from==order.end())return order.empty()?total:order.front();
-  const int next=int(from-order.begin())+step;
-  return next<0?order.front():next>=int(order.size())?total:order[next];
+  if(std::find(order.begin(),order.end(),selected)!=order.end())return selected;
+  return order.empty()?total:order.front();
+}
+inline int carousel_step(int selected,int total,int direction) {
+  return onx_config::step_carousel(carousel_order(total),selected,total,direction);
 }
 inline std::vector<int> carousel_entries(int total) {
   auto entries=carousel_order(total);

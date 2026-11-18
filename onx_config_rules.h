@@ -1,6 +1,18 @@
 #pragma once
+#include <algorithm>
 #include <string>
+#include <vector>
 namespace onx_config {
+// Step in page order. Slot numbers identify pages but are not their positions.
+inline int step_carousel(const std::vector<int> &order,int current,int settings,int direction) {
+  if(order.empty())return settings;
+  if(current==settings)return direction<0?order.back():settings;
+  const auto at=std::find(order.begin(),order.end(),current);
+  if(at==order.end())return order.front();
+  const int next=static_cast<int>(at-order.begin())+(direction<0?-1:1);
+  if(next<0)return order.front();
+  return next>=static_cast<int>(order.size())?settings:order[next];
+}
 inline bool integer_in_range(const std::string &value, unsigned minimum, unsigned maximum, unsigned &result) {
   if (value.empty() || value.size() > 4) return false;
   unsigned parsed = 0;

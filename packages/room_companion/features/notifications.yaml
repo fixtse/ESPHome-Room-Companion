@@ -17,6 +17,9 @@ esphome:
             fonts.icon = id(fonts_MiSans_Medium_20)->get_lv_font();
             fonts.symbol = &lv_font_montserrat_28;
             onx_notification_ui::bell_image = id(panel_bell_icon)->get_lv_image_dsc();
+            onx_notification_ui::clock_tile_image = id(panel_standby_clock_icon)->get_lv_image_dsc();
+            onx_notification_ui::preset_tile_image = id(panel_preset_layers_icon)->get_lv_image_dsc();
+            onx_notification_ui::controls_blocked = []() { return id(touch_input)->suppress_click(); };
             onx_notification_ui::Hooks hooks;
             hooks.load_image = [](const std::string &url) {
               id(entity_icon_downloader)->set_artwork_busy(true);
@@ -30,6 +33,9 @@ esphome:
               id(entity_icon_downloader)->set_artwork_busy(onx_media::downloading);
             };
             hooks.activity = []() { id(ui_presenter)->notify_user_activity(); };
+            onx_notification_ui::toggle_standby_timeout = []() {
+              if (!id(touch_input)->suppress_click()) id(panel_standby_timeout_enabled).toggle();
+            };
             // Timer chip opens the shared timer screen (features/assist.yaml).
             onx_notification_ui::on_timer_chip = []() {
               if (id(touch_input)->suppress_click()) return;
@@ -37,7 +43,33 @@ esphome:
             };
             onx_notification_ui::init(onx_panel_ui::width, onx_panel_ui::height, fonts, hooks);
 
+switch:
+  - platform: template
+    id: panel_standby_timeout_enabled
+    name: "Standby clock timer"
+    icon: "mdi:timer-outline"
+    entity_category: config
+    optimistic: true
+    restore_mode: RESTORE_DEFAULT_ON
+    on_state:
+      - lambda: |-
+          id(ui_presenter)->set_standby_timeout_enabled(x);
+          onx_notification_ui::standby_timeout_enabled = x;
+          onx_notification_ui::update_standby_button();
+
 image:
+  - platform: file
+    file: "../../../assets/panel/standby-clock.svg"
+    id: panel_standby_clock_icon
+    resize: ${ (24 * (ui_scale | float)) | round | int }x${ (24 * (ui_scale | float)) | round | int }
+    type: RGB565
+    transparency: alpha_channel
+  - platform: file
+    file: "../../../assets/panel/preset-layers.svg"
+    id: panel_preset_layers_icon
+    resize: ${ (24 * (ui_scale | float)) | round | int }x${ (24 * (ui_scale | float)) | round | int }
+    type: RGB565
+    transparency: alpha_channel
   # Bell on the main carousel and the idle clock (Material Design Icons).
   - platform: file
     file: "../../../assets/panel/bell-outline.svg"

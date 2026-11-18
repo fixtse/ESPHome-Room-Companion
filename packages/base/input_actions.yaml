@@ -777,10 +777,14 @@ script:
                           const int last_selectable = total == 0 ? (id(normal_ha_added) ? 1 : 2) : total;
                           return id(normal_input_event_pass) &&
                                  !id(screen_off_state) && id(ui_presenter)->is_normal_mode_active() && !id(ui_presenter)->is_standby_active() && !id(standby_wakeup_pending) &&
-                                 id(normal_page_index) == 0 && id(normal_device_selected_index) < last_selectable;
+                                 id(normal_page_index) == 0 &&
+                                 (total > 0 ? onx_entity_config::carousel_step(id(normal_device_selected_index), total, 1) != id(normal_device_selected_index) :
+                                  id(normal_device_selected_index) < last_selectable);
                       then:
                         - lambda: |-
-                            id(normal_device_selected_index) = onx_entity_config::carousel_selection(id(normal_device_selected_index)+1, id(normal_device_count), 1);
+                            const int total=id(normal_device_count);
+                            const int selected=id(normal_device_selected_index);
+                            id(normal_device_selected_index) = total > 0 ? onx_entity_config::carousel_step(selected,total,1) : selected+1;
                         - script.execute:
                             id: show_normal_device_entry_page
                             direction: 1
@@ -1222,10 +1226,14 @@ script:
                           if (total > (int)custom_logic::CONFIGURABLE_DEVICE_SLOT_COUNT) total = 20;
                           return id(normal_input_event_pass) &&
                                  !id(screen_off_state) && id(ui_presenter)->is_normal_mode_active() && !id(ui_presenter)->is_standby_active() && !id(standby_wakeup_pending) &&
-                                 id(normal_page_index) == 0 && id(normal_device_selected_index) > 0;
+                                 id(normal_page_index) == 0 &&
+                                 (total > 0 ? onx_entity_config::carousel_step(id(normal_device_selected_index), total, -1) != id(normal_device_selected_index) :
+                                  id(normal_device_selected_index) > 0);
                       then:
                         - lambda: |-
-                            id(normal_device_selected_index) = onx_entity_config::carousel_selection(id(normal_device_selected_index)-1, id(normal_device_count), -1);
+                            const int total=id(normal_device_count);
+                            const int selected=id(normal_device_selected_index);
+                            id(normal_device_selected_index) = total > 0 ? onx_entity_config::carousel_step(selected,total,-1) : selected-1;
                         - script.execute:
                             id: show_normal_device_entry_page
                             direction: -1

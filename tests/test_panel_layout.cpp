@@ -3,6 +3,15 @@
 #include "../onx_panel_layout.h"
 using namespace onx_panel_layout;
 int main() {
+  // USB and grid may be backed by nonconsecutive slots, in any page order.
+  const std::vector<int> pages{4,0,2};
+  assert(onx_config::step_carousel(pages,4,6,1)==0);
+  assert(onx_config::step_carousel(pages,0,6,1)==2);
+  assert(onx_config::step_carousel(pages,2,6,1)==6);
+  assert(onx_config::step_carousel(pages,6,6,-1)==2);
+  assert(onx_config::step_carousel(pages,2,6,-1)==0);
+  assert(onx_config::step_carousel(pages,0,6,-1)==4);
+  assert(onx_config::step_carousel(pages,4,6,-1)==4);
   for(auto [w,h]:{std::pair{240,320},std::pair{320,480}}) {
     for(auto kind:{Kind::SINGLE,Kind::TWO_CONTROLS,Kind::CONTROL_SENSORS}) {
       auto boxes=geometry(kind,w,h);
@@ -32,6 +41,17 @@ int main() {
     }
     auto detail=geometry(Kind::SINGLE,w,h,true)[0];assert(detail.y==DETAIL_TOP && detail.y+detail.h==h-12);
     assert(geometry(Kind::SINGLE,w,h)[0].y==MAIN_TOP); // Bell row only, no dashboard header.
+    for(auto [width,height]:{std::pair{w,h},std::pair{h,w}})
+      for(int rows=1;rows<=4;++rows)for(int cols=1;cols<=4;++cols) {
+        const auto keys=geometry(Kind::ACTION_GRID,width,height,false,rows,cols);
+        for(int i=0;i<rows*cols;++i) {
+          const auto r=keys[i];
+          assert(r.w>0 && r.h>0 && r.x>=8 && r.x+r.w<=width-8);
+          assert(r.y>=MAIN_TOP && r.y+r.h<=height-44);
+          if(i%cols)assert(r.x==keys[i-1].x+keys[i-1].w+8);
+          if(i>=cols)assert(r.y==keys[i-cols].y+keys[i-cols].h+8);
+        }
+      }
   }
   Page p;std::strcpy(p.primary,"light.kitchen");assert(valid(p));
   p.kind=Kind::TWO_CONTROLS;assert(!valid(p));

@@ -46,7 +46,7 @@ onx_config_web:
   id: entity_config_web
   handler: !lambda |-
     #ifdef USE_ROOM_COMPANION
-    const auto pages = onx_panel_pages::rpc(query.op, query.data);
+    const auto pages = onx_panel_pages::rpc(query.op, query.data, query.search, query.offset);
     if (!pages.empty()) return pages;
     // Room Companion panels: dashboard stream settings (panel_state / panel_save).
     if (esphome::room_companion::global_panel != nullptr) {
@@ -76,13 +76,15 @@ onx_config_web:
             item["size"] = line->size; item["width"] = line->width; item["color"] = line->color;
           }
         };
+        #ifdef USE_ROOM_COMPANION
+        const auto *page = onx_panel_pages::led_by(query.entity);
+        #endif
         for (size_t i = 0; i < (int)custom_logic::CONFIGURABLE_DEVICE_SLOT_COUNT; ++i) {
           const auto entity = custom_logic::cached_device_entity_id(i);
           if (entity.empty()) continue;
           #ifdef USE_ROOM_COMPANION
-          const auto page = onx_panel_pages::page(query.entity);
-          bool member = entity == query.entity;
-          for (const auto &other : page.members) member |= entity == other;
+          const bool member = entity == query.entity ||
+              (page && std::find(page->entries.begin(), page->entries.end(), i) != page->entries.end());
           if (!member) continue;
           #else
           if (entity != query.entity) continue;
@@ -132,6 +134,13 @@ onx_config_web:
               const auto neighbour=index==total?std::string(""):id(ui_presenter)->get_normal_device_entity_id(index);
               auto icon=onx_icon_state::selected_icon(neighbour);
               if(icon.empty())icon="mdi:"+onx_icon_state::fallback(neighbour,id(ui_presenter)->get_normal_device_type(index));
+              #ifdef USE_ROOM_COMPANION
+              if(const auto *page=onx_panel_pages::led_by(neighbour);page) {
+                if(page->icon[0])icon=page->icon;
+                else if(onx_panel_pages::Kind(page->kind)==onx_panel_pages::Kind::ACTION_GRID)icon="mdi:view-grid-outline";
+              }
+              item["entity"]=neighbour;
+              #endif
               item["icon"]=index==total?"mdi:cog":icon;
             }
           }

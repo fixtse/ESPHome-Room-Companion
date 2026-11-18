@@ -196,9 +196,6 @@ interval:
             onx_notification_ui::set_timer_chip(count == 0 ? std::string() :
                 onx_timer::countdown(soonest) + (count > 1 ? " +" + std::to_string(count - 1) : std::string()));
           }
-          const auto &dash = id(room_panel)->stream_settings();
-          onx_navigation::update_shortcut(id(panel_dashboard_icon)->get_lv_image_dsc(),
-              normal && !detail && !dash.url.empty(), dash.toolbar_side == "right");
           // Media detail rearranged for the tall screen.
           if (lv_scr_act() == id(normal_automation_page)->obj) {
             onx_panel_ui::sync_media({id(normal_automation_detail_shell), id(normal_media_cover), id(normal_media_title),
@@ -379,6 +376,7 @@ esphome:
     - ../../onx_panel_ui.h
     - ../../onx_ble_guard.h
     - ../../onx_panel_layout.h
+    - ../../onx_panel_artwork.h
     - ../../onx_panel_detail.h
     - ../../onx_panel_pages.h
   on_boot:
@@ -479,6 +477,12 @@ image:
     file: "../../assets/panel/cog-outline.svg"
     id: panel_settings_icon
     resize: ${ (72 * (ui_scale | float)) | round | int }x${ (72 * (ui_scale | float)) | round | int }
+    type: RGB565
+    transparency: alpha_channel
+  - platform: file
+    file: "../../assets/panel/action-grid.svg"
+    id: panel_action_grid_icon
+    resize: 80x80
     type: RGB565
     transparency: alpha_channel
   # Light detail colour wheel (hue around, saturation outwards).
@@ -625,7 +629,33 @@ script:
             id(ui_presenter)->notify_user_activity();
             id(enter_normal_switch_detail).execute();
           };
+          onx_panel_pages::run_grid_action = [](const std::string &entity) {
+            if (id(touch_input)->suppress_click() || onx_notification::current.visible ||
+                onx_timer::popup.visible || onx_notification_ui::owns_screen() ||
+                id(ui_presenter)->is_standby_active()) return;
+            id(ui_presenter)->notify_user_activity();
+            const int config = onx_panel_pages::configured(entity);
+            if (config < 0) return;
+            const int ui = custom_logic::normal_ui_slot_for_device_config_slot(config);
+            if (!onx_entity_config::action_for_ui(ui).empty()) {
+              id(emit_configured_press_action).execute(ui);
+              return;
+            }
+            const auto domain = entity.substr(0, entity.find('.'));
+            const auto *d = custom_logic_entity_sub::entity_detail(entity);
+            if (!d || !d->available) return;
+            if (domain == "scene" || domain == "button" || domain == "input_button" || domain == "media_player") {
+              onx_controls::press(entity);
+            } else if (domain == "script" || domain == "automation") {
+              const auto service = domain == "script" ? "script.turn_on" : "automation.trigger";
+              onx_panel_detail::request(entity, service, "", "on", "panel_run");
+            } else if (domain == "switch" || domain == "input_boolean" || domain == "light" || domain == "fan") {
+              const auto state = onx_controls::effective(*d, "state");
+              onx_panel_detail::request(entity, domain + ".toggle", "", state == "on" ? "off" : "on", "panel_power");
+            }
+          };
           id(touch_input)->set_tap_fn([](int x,int y) { return onx_panel_pages::tap(x,y); });
+          id(touch_input)->set_hold_fn([](int x,int y) { return onx_panel_pages::tap(x,y,true); });
           // Runtime geometry (orientation chosen at boot).
           id(touch_input)->set_geometry(onx_panel_ui::width, onx_panel_ui::height - 44, ${strip_spacing},
                                         onx_geom::S(22));
@@ -649,6 +679,13 @@ script:
           };
           onx_panel_ui::create_slideshow(id(standby_page)->obj, id(fonts_MiSans_Bold_24)->get_lv_font(),
                                          id(fonts_MiSans_Medium_14)->get_lv_font());
+          id(touch_input)->set_dock_scroll([](int direction) {
+            if(!onx_navigation::visible || onx_notification_ui::owns_screen())return false;
+            id(ui_presenter)->notify_user_activity();
+            onx_navigation::scroll_dock(direction);
+            id(refresh_normal_device_page).execute();
+            return true;
+          });
           id(touch_input)->set_passthrough_fn([](int x, int y) {
-            return onx_panel_ui::hit(x, y) || onx_notification_ui::bell_hit(x, y) || onx_navigation::shortcut_hit(x, y);
+            return onx_panel_ui::hit(x, y) || onx_notification_ui::bell_hit(x, y);
           });

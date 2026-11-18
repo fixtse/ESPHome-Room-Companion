@@ -7,7 +7,7 @@ const {chromium}=require('playwright');
   const page=await browser.newPage({viewport:{width:1100,height:950}});
   const html=fs.readFileSync('my_components/onx_config_web/config_page.h','utf8').split('R"ONXHTML(')[1].split(')ONXHTML"')[0];
   const script=fs.readFileSync('my_components/onx_config_web/panel_web.h','utf8').split('R"ONXPANEL(')[1].split(')ONXPANEL"')[0];
-  const configs=[],payloads=[],dashPayloads=[],tickets=new Map();let ticket=0;
+  const configs=[],payloads=[],dashPayloads=[],tickets=new Map(),artwork=new Map();let ticket=0;
   await page.route('http://panel.test/**',async route=>{
    const req=route.request(),url=new URL(req.url());
    if(url.pathname==='/'){await route.fulfill({contentType:'text/html',body:html});return}
@@ -18,6 +18,24 @@ const {chromium}=require('playwright');
     if(q.get('op')==='panel_state')response={status:'ready',scale:1,toolbar_side:'right'};
     if(q.get('op')==='panel_save'){const p=JSON.parse(q.get('data'));dashPayloads.push(p);response={...p,status:'ready'}}
     if(q.get('op')==='panel_pages')response={pages:configs};
+    if(q.get('op')==='panel_art_put'){
+     const data=q.get('data'),id=q.get('q'),offset=Number(q.get('offset')),chunk=Buffer.from(data,'base64url');
+     const pixels=offset?artwork.get(id):Buffer.alloc(id?18432:3200);
+     chunk.copy(pixels,offset);
+     if(id)artwork.set(id,pixels);
+     if(offset+chunk.length<pixels.length)response={next:offset+chunk.length};
+     else {
+      let hash=14695981039346656037n;
+      for(const byte of pixels)hash=BigInt.asUintN(64,(hash^BigInt(byte))*1099511628211n);
+      const actual=((hash&0x00ffffffffffffffn)|1n).toString(16).padStart(14,'0');
+      if(id)assert.equal(actual,id);
+      artwork.set(actual,pixels);response={id:actual};
+     }
+    }
+    if(q.get('op')==='panel_art_get'){
+     const pixels=artwork.get(q.get('data')),offset=Number(q.get('offset')),next=Math.min(offset+4800,pixels.length);
+     response={data:pixels.subarray(offset,next).toString('base64'),next,total:pixels.length};
+    }
     if(q.get('op')==='panel_pages_save'){const p=JSON.parse(q.get('data'));payloads.push(p);configs.splice(0,configs.length,...p.pages);response={pages:configs}}
     tickets.set(++ticket,response);await route.fulfill({json:{ticket}});return;
    }
@@ -66,7 +84,7 @@ const {chromium}=require('playwright');
   // The rail lists pages; the editor shows the selected page.
   assert.equal(await page.locator('#slots-heading').textContent(),'Pages');
   assert.equal(await page.locator('#slots .page-item').count(),1);
-  assert.equal(await page.locator('#page-kind input').count(),3,'Layouts are chosen from visual cards');
+  assert.equal(await page.locator('#page-kind input').count(),4,'Layouts are chosen from visual cards');
   // Two entities: drag one in from the entity list; page name and carousel icon.
   await layout('two_controls');assert.equal(await page.locator('#page-grid [data-member]').count(),2);
   await page.evaluate(()=>dropEntity(1,{entity:'switch.fan',name:'Fan'}));
@@ -81,6 +99,7 @@ const {chromium}=require('playwright');
   await page.locator('#icon-picker').screenshot({path:'/config/tests/artifacts/panel-icon-picker.png'});
   await page.click('#icon-grid [data-icon="mdi:sofa"]');assert.equal(await page.locator('#icon-picker').isVisible(),false);
   assert.match(await page.locator('#slots .page-item').first().getAttribute('aria-label'),/Page 1: Living, unsaved/);
+  assert.equal(await page.locator('#slots .page-item .dirty-dot').textContent(),'●');
   assert.equal(await page.locator('[data-panel-item]').count(),2);
   assert.equal(await save(),true);
   assert.deepEqual(payloads.at(-1),{pages:[{name:'Living',icon:'mdi:sofa',layout:'two_controls',entities:['light.kitchen','switch.fan']}]});
@@ -192,6 +211,55 @@ const {chromium}=require('playwright');
   await page.setViewportSize({width:390,height:844});
   assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>window.innerWidth),false,'Page editor fits on mobile');
   await page.screenshot({path:'/config/tests/artifacts/panel-pages-mobile.png',fullPage:true});
+  await page.setViewportSize({width:1100,height:950});
+  await page.evaluate(()=>ONX_PAGES.set([{name:'Keys',icon:'',layout:'single',entities:['light.kitchen']}]));
+  await layout('action_grid');
+  await page.selectOption('#grid-rows','4');
+  await page.selectOption('#grid-columns','4');
+  assert.equal(await page.locator('#page-grid [data-member]').count(),16);
+  await page.evaluate(()=>dropCell(0,15));
+  assert.match(await page.locator('#slots .slot-icon .mdi').getAttribute('style'),/view-grid-outline/);
+  await page.check('#member-icon-only-value');
+  assert(await page.locator('[data-member="15"]').evaluate(n=>n.classList.contains('icon-only')));
+  assert.equal(await save(),true);
+  assert.deepEqual(payloads.at(-1).pages,[{
+   name:'Keys',icon:'',layout:'action_grid',rows:4,columns:4,
+   entities:[...Array(15).fill(''),'light.kitchen'],
+   icon_only:[...Array(15).fill(false),true]
+  }]);
+  const keys=await page.evaluate(()=>ONX_PANEL_GEOMETRY('action_grid',480,320,false,4,4));
+  assert.equal(keys.length,16);assert(keys.every(r=>r.w>0&&r.h>0&&r.y+r.h<=276));
+  assert.equal(keys.at(-1).y+keys.at(-1).h,276);
+  // The same selector crops artwork for a non-grid position and for the dock.
+  await page.evaluate(()=>ONX_PAGES.set([{name:'Artwork',icon:'',layout:'single',entities:['light.kitchen']}]));
+  const png=await page.evaluate(()=>{
+   const canvas=document.createElement('canvas');canvas.width=80;canvas.height=40;
+   const ctx=canvas.getContext('2d');ctx.fillStyle='red';ctx.fillRect(0,0,40,40);ctx.fillStyle='blue';ctx.fillRect(40,0,40,40);
+   return canvas.toDataURL().split(',')[1];
+  });
+  const crop=async value=>{
+   await page.locator('#art-file').setInputFiles({name:'two-colors.png',mimeType:'image/png',buffer:Buffer.from(png,'base64')});
+   await page.locator('#art-use').waitFor();
+   await page.locator('#art-x').evaluate((input,x)=>{input.value=x;input.dispatchEvent(new Event('input'))},value);
+   await page.click('#art-use');
+  };
+  await page.click('#member-icon-button');await crop('0');
+  assert.equal(await page.locator('#page-grid .art-preview').count(),1);
+  await page.click('#page-icon-button');await page.click('#upload-icon');await crop('100');
+  assert.equal(await save(),true);
+  const output=payloads.at(-1).pages[0];
+  assert(output.artwork?.[0] && output.carousel_artwork && output.artwork[0]!==output.carousel_artwork);
+  assert.equal(artwork.get(output.artwork[0]).length,96*96*2);
+  // An enlarged crop can interpolate at the boundary. Check its centre.
+  const centrePixel=(48*96+48)*2;
+  assert.equal(artwork.get(output.artwork[0]).readUInt16LE(centrePixel),0xf800);
+  assert.equal(artwork.get(output.carousel_artwork).readUInt16LE(centrePixel),0x001f);
+  const backup=await page.evaluate(()=>ONX_PAGE_ART.export(ONX_PAGES.saved()));
+  assert.deepEqual(Object.keys(backup).sort(),[output.artwork[0],output.carousel_artwork].sort());
+  await page.reload();
+  await page.waitForFunction(()=>!!globalThis.ONX_PAGE_ART);
+  const restored=await page.evaluate(p=>ONX_PAGE_ART.export([p]),output);
+  assert.deepEqual(restored,backup,'A fresh browser assembles every image chunk');
   console.log('Panel pages: drag-and-drop pages with icons, compact rules, new-entity entries, save payloads, duplicate rejection and both model geometries passed');
  }finally{await browser.close()}
 })().catch(e=>{console.error(e);process.exit(1)});

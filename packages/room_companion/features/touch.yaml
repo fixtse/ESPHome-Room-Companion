@@ -43,6 +43,9 @@ onx_touch_input:
   edge_back: |-
     const auto entity = id(ui_presenter)->get_normal_device_entity_id(id(normal_device_detail_index));
     return id(normal_device_detail_active) && entity.rfind("media_player.", 0) != 0 && id(room_panel)->native_ui_has_touch();
+  swipe_left_back: |-
+    return id(room_panel)->native_ui_has_touch() && id(normal_device_detail_active) &&
+           id(ui_presenter)->get_normal_device_entity_id(id(normal_device_detail_index)).rfind("climate.", 0) == 0;
   pull_down_enabled: |-
     return id(room_panel)->native_ui_has_touch() && !onx_notification_ui::owns_screen();
   on_pull_down:
@@ -53,6 +56,10 @@ onx_touch_input:
     - script.execute: panel_back
   on_turn:
     - lambda: |-
+        if(onx_navigation::dock_offset && onx_navigation::visible) {
+          onx_navigation::dock_offset=0;
+          id(refresh_normal_device_page).execute();
+        }
         int detents = id(normal_input_applied_value);
         if (detents != 1 && detents != 2 && detents != 4) detents = 1;
         for (int i = 0; i < detents; ++i) {
@@ -60,14 +67,15 @@ onx_touch_input:
           else id(onx_input_ccw).execute();
         }
   on_strip_tap:
-    # Each carousel position needs the configured number of detents.
     - lambda: |-
-        int detents = id(normal_input_applied_value);
-        if (detents != 1 && detents != 2 && detents != 4) detents = 1;
-        for (int i = 0; i < std::abs(offset) * detents; ++i) {
-          if (offset > 0) id(onx_input_cw).execute();
-          else id(onx_input_ccw).execute();
-        }
+        if(onx_notification_ui::owns_screen() || id(normal_device_detail_active))return;
+        const int target=onx_navigation::dock_target(offset);
+        if(target==onx_navigation::DASHBOARD) { if(onx_navigation::shortcut_action)onx_navigation::shortcut_action(); return; }
+        if(target<0)return;
+        id(ui_presenter)->notify_user_activity();
+        onx_navigation::dock_offset=0;
+        id(normal_device_selected_index)=target;
+        id(show_normal_device_entry_page).execute(0);
 
 script:
   - id: panel_back

@@ -55,4 +55,19 @@ int main() {
   assert(backs==3 && turns==1);
   test_ms+=200;down(60,200);move(200,200);touch.release();
   assert(backs==3 && turns==1); // Away from the edge the control keeps the gesture.
+  touch.set_swipe_left_back([&]{return detail;});
+  for(int x:{110,270}) {
+    test_ms+=200;down(x,200);move(x-65,200);
+    assert(touch.suppress_click()); // Cancel release on a temperature dial.
+    touch.release();
+  }
+  assert(backs==5 && turns==1 && button.edges.empty());
+  detail=false;
+  touch.set_passthrough_fn([](int,int){return false;});
+  int grid_holds=0;
+  touch.set_hold_fn([&](int,int){++grid_holds;return true;});
+  test_ms+=200;down(150,200);test_ms+=1000;touch.loop();touch.release();
+  assert(grid_holds==1 && card_taps==1 && button.edges.empty());
+  test_ms+=200;down(150,200);touch.release();
+  assert(grid_holds==1 && card_taps==2 && button.edges.empty());
 }

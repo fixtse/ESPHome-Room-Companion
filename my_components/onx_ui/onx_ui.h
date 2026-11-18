@@ -34,6 +34,10 @@ class OnxUi : public Component {
   void notify_user_activity();
   uint32_t user_idle_ms() const;
   void set_standby_timeout_ms(uint32_t standby_timeout_ms);
+  void set_standby_timeout_enabled(bool enabled) {
+    standby_timeout_enabled_ = enabled;
+    notify_user_activity();
+  }
   void set_sleep_mode_config(bool enabled, const std::string &start_time, const std::string &end_time, uint32_t timeout_ms);
   bool get_sleep_mode_enabled() const;
   std::string get_sleep_window_start_time() const;
@@ -55,6 +59,7 @@ class OnxUi : public Component {
   onx_app_state::OnxAppState *app_state_{nullptr};
   onx_storage::OnxStorage *storage_{nullptr};
   uint32_t standby_timeout_ms_{300000};
+  bool standby_timeout_enabled_{true};
   std::function<bool()> standby_guard_;
   uint32_t last_user_activity_ms_{0};
   uint32_t sleep_timeout_ms_{60000};
