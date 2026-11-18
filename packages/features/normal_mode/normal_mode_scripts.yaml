@@ -330,7 +330,7 @@ script:
                   // Pages carry their own carousel icon.
                   const auto *page = onx_panel_pages::info(id(ui_presenter)->get_normal_device_entity_id(index));
                   if (page && onx_panel_pages::bind_carousel_artwork(icon,*page)) return;
-                  if (page && (page->icon[0] || onx_panel_pages::Kind(page->kind)==onx_panel_pages::Kind::ACTION_GRID)) {
+                  if (page && std::strcmp(page->icon,onx_panel_pages::ENTITY_ICON)!=0 && (page->icon[0] || onx_panel_pages::Kind(page->kind)==onx_panel_pages::Kind::ACTION_GRID)) {
                     const bool grid=onx_panel_pages::Kind(page->kind)==onx_panel_pages::Kind::ACTION_GRID;
                     auto *fallback=grid?id(panel_action_grid_icon):id(fallback_toggle_switch_img);
                     if(page->icon[0]) {

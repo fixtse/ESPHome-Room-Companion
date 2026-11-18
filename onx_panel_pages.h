@@ -251,8 +251,9 @@ inline void apply(const std::string &json) {
   if(result.find("\"error\"")!=std::string::npos)rpc("panel_pages_save","{\"pages\":[]}");
 }
 inline const bool presets_installed=(onx_presets::encode_pages=&encode,onx_presets::apply_pages=&apply,true);
+inline constexpr char ENTITY_ICON[]="entity";
 inline bool valid_icon(const std::string &icon) {
-  if(icon.empty())return true;
+  if(icon.empty() || icon==ENTITY_ICON)return true;
   if(icon.size()>64 || icon.rfind("mdi:",0)!=0 || icon.size()<5)return false;
   for(size_t i=4;i<icon.size();++i){const char c=icon[i];if(!((c>='a'&&c<='z')||(c>='0'&&c<='9')||c=='-'))return false;}
   return true;
@@ -545,6 +546,7 @@ template<typename Bind> void render(const std::string &entity,int width,int heig
   if (detail) suspend_underlay();
   else if (suspended_page) restore_underlay();
   onx_render::style_bg_color(layer,lv_color_hex(onx_display_settings::background()),0);
+  if(detail || page_lead!=entity)onx_panel_detail::animated_key.clear();
   const auto *p=detail?nullptr:led_by(entity);
   const auto kind=p?Kind(p->kind):Kind::SINGLE;
   action_grid=kind==Kind::ACTION_GRID;
@@ -618,7 +620,7 @@ inline bool tap(int x,int y,bool held=false) {
       const auto &entity=entities[i];
       if(configured(entity)<0)return true;
       if(action_grid && !held) {
-        if(run_grid_action)run_grid_action(entity);
+        if(run_grid_action){onx_panel_detail::animate_key(entity);run_grid_action(entity);}
         return true;
       }
       if(open){parent_entity=page_lead;open(entity);}

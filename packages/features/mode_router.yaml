@@ -136,8 +136,10 @@ onx_config_web:
               if(icon.empty())icon="mdi:"+onx_icon_state::fallback(neighbour,id(ui_presenter)->get_normal_device_type(index));
               #ifdef USE_ROOM_COMPANION
               if(const auto *page=onx_panel_pages::led_by(neighbour);page) {
-                if(page->icon[0])icon=page->icon;
-                else if(onx_panel_pages::Kind(page->kind)==onx_panel_pages::Kind::ACTION_GRID)icon="mdi:view-grid-outline";
+                if(std::strcmp(page->icon,onx_panel_pages::ENTITY_ICON)!=0) {
+                  if(page->icon[0])icon=page->icon;
+                  else if(onx_panel_pages::Kind(page->kind)==onx_panel_pages::Kind::ACTION_GRID)icon="mdi:view-grid-outline";
+                }
               }
               item["entity"]=neighbour;
               #endif

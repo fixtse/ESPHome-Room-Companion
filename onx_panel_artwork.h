@@ -7,6 +7,7 @@
 #include <array>
 #include <cstdint>
 #include <cstdio>
+#include <cstring>
 #include <functional>
 #include <memory>
 #include <string>
@@ -15,6 +16,12 @@ namespace onx_panel_artwork {
 constexpr int LEGACY_SIDE=40, SIDE=96;
 constexpr size_t LEGACY_BYTES=LEGACY_SIDE*LEGACY_SIDE*2, BYTES=SIDE*SIDE*2;
 constexpr size_t CHUNK=4800;
+constexpr char MOTION_MAGIC[]="ONXART01";
+constexpr size_t MOTION_HEADER=16, MOTION_FRAMES=3;
+inline bool motion_asset(const uint8_t *data,size_t size) {
+  return size==BYTES && std::memcmp(data,MOTION_MAGIC,8)==0 &&
+         data[8]<=1 && data[9]<=MOTION_FRAMES;
+}
 inline bool valid_size(size_t size) { return size==LEGACY_BYTES || size==BYTES; }
 inline size_t encoded_size(size_t size) { return (size+2)/3*4; }
 constexpr size_t LIMIT=40;
@@ -98,11 +105,28 @@ struct Image {
   // Keep each resolution at its own descriptor address for LVGL's header cache.
   lv_image_dsc_t descriptors[2]{};
   const lv_image_dsc_t *source{nullptr};
+  std::array<lv_image_dsc_t,2+MOTION_FRAMES> frames{};
+  uint8_t motion_count{0};
+  bool has_on{false};
+  const lv_image_dsc_t *frame(bool on,unsigned elapsed) const {
+    if(motion_count && elapsed<600)return &frames[2+std::min<unsigned>(motion_count-1,elapsed*motion_count/600)];
+    return on && has_on?&frames[1]:source;
+  }
+  static void describe(lv_image_dsc_t &d,int side,const uint8_t *data) {
+    d.header.magic=LV_IMAGE_HEADER_MAGIC;
+    d.header.cf=LV_COLOR_FORMAT_RGB565;
+    d.header.w=d.header.h=side;
+    d.header.stride=side*2;
+    d.data_size=side*side*2;
+    d.data=data;
+  }
   bool load(uint64_t value) {
     if(id==value && source)return true;
     const size_t size=read(value,nullptr);
     if(!size)return false;
     if(source)lv_image_cache_drop(source);
+    if(has_on || motion_count)for(auto &frame:frames)lv_image_cache_drop(&frame);
+    has_on=false;motion_count=0;
     source=nullptr;
     id=0;
     if(capacity<size) {
@@ -115,13 +139,15 @@ struct Image {
     const bool large=size==BYTES;
     const int side=large?SIDE:LEGACY_SIDE;
     auto &descriptor=descriptors[large];
-    descriptor.header.magic=LV_IMAGE_HEADER_MAGIC;
-    descriptor.header.cf=LV_COLOR_FORMAT_RGB565;
-    descriptor.header.w=descriptor.header.h=side;
-    descriptor.header.stride=side*2;
-    descriptor.data_size=size;
-    descriptor.data=pixels.get();
-    source=&descriptor;
+    if(motion_asset(pixels.get(),size)) {
+      has_on=pixels.get()[8]!=0;
+      motion_count=pixels.get()[9];
+      for(size_t i=0;i<frames.size();++i)describe(frames[i],LEGACY_SIDE,pixels.get()+MOTION_HEADER+i*LEGACY_BYTES);
+      source=&frames[0];
+    } else {
+      describe(descriptor,side,pixels.get());
+      source=&descriptor;
+    }
     id=value;
     return true;
   }

@@ -1547,10 +1547,20 @@ inline uint32_t INSET() {return CONTROL();}  // Surfaces inside a card (same as 
 // widget: a fixed pool of image objects is re-parented on every rebuild
 // instead of creating new widgets.
 inline std::function<void(lv_obj_t *, const std::string &)> bind_icon;
-struct IconUse { lv_obj_t *image; std::string entity; int cx, cy, size; const void *src; bool custom; };
+struct IconUse { lv_obj_t *image; std::string entity; int cx, cy, size; const void *src; bool custom, on; };
 inline std::array<lv_obj_t *, 16> icon_pool{};
 inline onx_memory::StateArray<onx_panel_artwork::Image,16> artwork_cache;
 inline uint64_t card_artwork=0;
+inline bool card_on=false;
+inline std::string animated_key;
+inline uint32_t animated_at=0;
+inline void animate_key(const std::string &entity) {
+  animated_key=entity;
+  animated_at=esphome::millis();
+}
+inline unsigned animation_elapsed(const std::string &entity) {
+  return entity==animated_key?esphome::millis()-animated_at:600;
+}
 inline std::vector<IconUse> icon_uses;
 inline bool main_mode = false;
 inline lv_obj_t *main_artwork = nullptr;
@@ -1592,21 +1602,26 @@ inline void icon(lv_obj_t *parent, const std::string &e, int cx, int cy, int siz
   if(card_artwork) {
     auto &art=artwork_cache[index];
     custom=art.load(card_artwork);
-    if(custom)lv_image_set_src(img,art.source);
+    if(custom)lv_image_set_src(img,art.frame(card_on,animation_elapsed(e)));
   }
   if(!custom) {
     bind_icon(img, e);
     lv_obj_set_style_image_recolor(img, lv_color_hex(color), 0);
   }
   lv_obj_set_style_image_recolor_opa(img, custom?LV_OPA_TRANSP:LV_OPA_COVER, 0);
-  icon_uses.push_back({img, e, cx, cy, size, nullptr, custom});
+  icon_uses.push_back({img, e, cx, cy, size, nullptr, custom, card_on});
   place_icon(icon_uses.back());
 }
 // Re-binds each frame so downloaded icons replace the fallbacks.
 inline void refresh_icons() {
   if (!bind_icon) return;
-  for (auto &u : icon_uses) {
-    if(u.custom)continue;
+  for (size_t i=0;i<icon_uses.size();++i) {
+    auto &u=icon_uses[i];
+    if(u.custom) {
+      const auto *next=artwork_cache[i].frame(u.on,animation_elapsed(u.entity));
+      if(next!=u.src){lv_image_set_src(u.image,next);place_icon(u);}
+      continue;
+    }
     bind_icon(u.image, u.entity);
     if (lv_image_get_src(u.image) != u.src) place_icon(u);
   }
@@ -2065,6 +2080,7 @@ inline void render_main(lv_obj_t *parent, const std::vector<Tile> &tiles, int wi
     text(root, clock(now), clock_font, TEXT(), P(16), (clock_bottom - line(clock_font)) / 2, W / 4);
   for (const auto &t : tiles) {
     card_artwork=t.artwork;
+    card_on=t.on;
     build_card(t);
   }
   card_artwork=0;

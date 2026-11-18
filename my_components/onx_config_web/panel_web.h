@@ -53,12 +53,13 @@ static const char PANEL_JS[] = R"ONXPANEL(
  const artSide=96,artChunk=4800,artData=new Map(),artUrls=new Map(),artLoaded=new Set(),artPending=new Set();
  function rgb565Url(encoded){
   const bytes=atob(encoded.replace(/-/g,'+').replace(/_/g,'/'));
-  const side=Math.sqrt(bytes.length/2);
+  const motion=bytes.startsWith('ONXART01')&&bytes.length===artSide*artSide*2;
+  const offset=motion?16:0,side=motion?40:Math.sqrt(bytes.length/2);
   if(side!==40&&side!==artSide)throw Error('Invalid image data.');
   const c=document.createElement('canvas');c.width=c.height=side;
   const ctx=c.getContext('2d'),pixels=ctx.createImageData(side,side);
   for(let i=0;i<side*side;i++){
-   const px=bytes.charCodeAt(i*2)|bytes.charCodeAt(i*2+1)<<8;
+   const px=bytes.charCodeAt(offset+i*2)|bytes.charCodeAt(offset+i*2+1)<<8;
    pixels.data.set([Math.round((px>>11)*255/31),Math.round((px>>5&63)*255/63),Math.round((px&31)*255/31),255],i*4);
   }
   ctx.putImageData(pixels,0,0);return c.toDataURL();
@@ -117,7 +118,7 @@ static const char PANEL_JS[] = R"ONXPANEL(
  const slotOf=e=>e?editorSlots.findIndex(s=>s.entity===e):-1;
  const iconOf=e=>entry(e)?.icon||app()?.item(e)?.icon||'mdi:'+(DEFAULT_ICONS[(e||'').split('.')[0]]||'shape-outline');
  const pageTitle=(p,i)=>p?.name||(p?nameOf(lead(p)):'')||'Page '+(i+1);
- const pageIcon=p=>p.icon||(isGrid(p)?'mdi:view-grid-outline':lead(p)?iconOf(lead(p)):'mdi:view-dashboard-outline');
+ const pageIcon=p=>p.icon==='entity'?iconOf(lead(p)):p.icon||(isGrid(p)?'mdi:view-grid-outline':lead(p)?iconOf(lead(p)):'mdi:view-dashboard-outline');
  const dirtyPages=()=>JSON.stringify(pageConfigs)!==savedPages;
  const status=t=>{$('page-layout-status').textContent=t||''};
  const singles=list=>list.filter(s=>s.entity&&s.timerHidden!=='1').map(s=>({name:'',icon:'',layout:'single',entities:[s.entity]}));
@@ -261,7 +262,7 @@ static const char PANEL_JS[] = R"ONXPANEL(
   if(p){
    if(isGrid(p)){$('grid-rows').value=p.rows;$('grid-columns').value=p.columns;$('grid-rows').disabled=$('grid-columns').disabled=locked}
    const name=$('page-name');if(document.activeElement!==name)name.value=p.name;name.placeholder=lead(p)?nameOf(lead(p)):'Living room';name.disabled=locked;
-   displayArt(setIcon($('page-icon-preview'),pageIcon(p)),p.carousel_artwork);$('page-icon-button').setAttribute('aria-label','Carousel icon: '+(p.carousel_artwork?'custom image':p.icon||'entity icon')+'. Choose another');$('page-icon-button').disabled=locked;
+   displayArt(setIcon($('page-icon-preview'),pageIcon(p)),p.carousel_artwork);$('page-icon-button').setAttribute('aria-label','Carousel icon: '+(p.carousel_artwork?'custom image':p.icon==='entity'?'first entity icon':p.icon||'default icon')+'. Choose another');$('page-icon-button').disabled=locked;
    $('page-up').disabled=locked||selectedPage===0;$('page-down').disabled=locked||selectedPage>=pageConfigs.length-1;$('delete-page').disabled=locked;
    const {width:w,height:h}=screen();
    const kindKey=JSON.stringify([p.layout,locked,w,h]);if(drawn.kind!==kindKey){drawn.kind=kindKey;renderLayouts(p)}
@@ -312,7 +313,80 @@ static const char PANEL_JS[] = R"ONXPANEL(
   const r=await fetch('https://api.iconify.design/search?prefix=mdi&limit=999&query='+encodeURIComponent(terms.join(' ')));if(!r.ok)throw Error('Icon search is unavailable.');return ((await r.json()).icons||[]).filter(n=>ICON_RE.test(n));
  }
  function focusIcon(name){$('icon-focus').classList.remove('art-preview');setIcon($('icon-focus'),name);$('icon-focus-name').textContent=name||'Entity icon'}
- let artTarget=null,cropImage=null,cropRequest=0;
+ let artTarget=null,cropImage=null,cropRequest=0,cropFrames=[];
+ // Decode individual GIF and WebP frames with the browser's still-image
+ // decoders. This also works on a panel served over local HTTP.
+ async function motionFrames(file){
+  const bytes=new Uint8Array(await file.arrayBuffer()),view=new DataView(bytes.buffer);
+  const ascii=(at,n)=>String.fromCharCode(...bytes.subarray(at,at+n));
+  const u24=at=>bytes[at]|bytes[at+1]<<8|bytes[at+2]<<16;
+  const gif=file.type==='image/gif';
+  const width=gif?view.getUint16(6,true):1+u24(24),height=gif?view.getUint16(8,true):1+u24(27);
+  if(!width||!height||width*height>4000000)throw Error('Choose an animation up to 4 megapixels.');
+  const canvas=document.createElement('canvas');canvas.width=width;canvas.height=height;
+  const ctx=canvas.getContext('2d'),frames=[];
+  async function frame(parts,type,x,y,w,h,dispose,replace,restore=false){
+   const before=restore?ctx.getImageData(x,y,w,h):null;
+   const bitmap=await createImageBitmap(new Blob(parts,{type}));
+   try{
+    if(replace)ctx.clearRect(x,y,w,h);
+    ctx.drawImage(bitmap,x,y);
+    frames.push(await createImageBitmap(canvas));
+    if(before)ctx.putImageData(before,x,y);
+    else if(dispose)ctx.clearRect(x,y,w,h);
+   }finally{bitmap.close()}
+  }
+  try{
+   if(gif){
+    if(ascii(0,3)!=='GIF')throw Error('Invalid GIF.');
+    const table=bytes[10]&128?3*(2<<(bytes[10]&7)):0;
+    let at=13+table,control=null;
+    const endBlocks=start=>{
+     let pos=start;
+     while(pos<bytes.length){const n=bytes[pos++];if(!n)return pos;pos+=n}
+     throw Error('Invalid GIF frame.');
+    };
+    while(at<bytes.length&&frames.length<3){
+     const kind=bytes[at++];
+     if(kind===0x3b)break;
+     if(kind===0x21){
+      const label=bytes[at++],end=endBlocks(at);
+      if(label===0xf9&&end-at===6)control=bytes.slice(at-2,end);
+      at=end;continue;
+     }
+     if(kind!==0x2c||at+9>=bytes.length)throw Error('Invalid GIF frame.');
+     const x=view.getUint16(at,true),y=view.getUint16(at+2,true),w=view.getUint16(at+4,true),h=view.getUint16(at+6,true);
+     if(!w||!h||x+w>width||y+h>height)throw Error('Invalid GIF frame dimensions.');
+     const head=bytes.slice(0,13+table),descriptor=bytes.slice(at-1,at+9);
+     head[6]=w&255;head[7]=w>>8;head[8]=h&255;head[9]=h>>8;descriptor.fill(0,1,5);
+     const payload=at+9+(bytes[at+8]&128?3*(2<<(bytes[at+8]&7)):0);
+     const end=endBlocks(payload+1),disposal=control?(control[3]>>2)&7:0;
+     await frame([head,control||new Uint8Array(),descriptor,bytes.slice(at+9,end),Uint8Array.of(0x3b)],file.type,x,y,w,h,disposal===2,false,disposal===3);
+     at=end;control=null;
+    }
+   }else{
+    if(ascii(0,4)!=='RIFF'||ascii(8,4)!=='WEBP'||ascii(12,4)!=='VP8X')throw Error('Choose an animated WebP or GIF.');
+    for(let at=12;at+8<=bytes.length&&frames.length<3;){
+     const size=view.getUint32(at+4,true),start=at+8,end=start+size;
+     if(end>bytes.length)throw Error('Invalid WebP chunk.');
+     if(ascii(at,4)==='ANMF'&&size>=24){
+      const x=2*u24(start),y=2*u24(start+3),w=1+u24(start+6),h=1+u24(start+9),flags=bytes[start+15];
+      if(x+w>width||y+h>height)throw Error('Invalid WebP frame dimensions.');
+      const header=new Uint8Array(30),hv=new DataView(header.buffer);
+      header.set([82,73,70,70],0);header.set([87,69,66,80,86,80,56,88],8);
+      hv.setUint32(4,22+end-start-16,true);hv.setUint32(16,10,true);
+      header[20]=16;
+      for(let i=0;i<3;i++){header[24+i]=(w-1)>>(8*i);header[27+i]=(h-1)>>(8*i)}
+      await frame([header,bytes.slice(start+16,end)],file.type,x,y,w,h,flags&1,flags&2);
+     }
+     at=end+(size&1);
+    }
+   }
+   if(frames.length<2)throw Error('Choose an animation with at least two frames.');
+   return frames;
+  }catch(error){frames.forEach(f=>f.close());throw error}
+ }
+
  function closeIconPicker(){const button=artTarget?.pos>=0?'member-icon-button':'page-icon-button';$('icon-picker').close();$(button).focus()}
  function chooseIcon(name){const p=pageConfigs[selectedPage];if(p){p.icon=name;delete p.carousel_artwork;touch()}closeIconPicker()}
  function crop(canvas){
@@ -322,15 +396,45 @@ static const char PANEL_JS[] = R"ONXPANEL(
   ctx.fillStyle='#101418';ctx.fillRect(0,0,canvas.width,canvas.height);
   ctx.drawImage(cropImage,x,y,side,side,0,0,canvas.width,canvas.height);
  }
- function cropData(){
-  const c=document.createElement('canvas');c.width=c.height=artSide;crop(c);
-  const pixels=c.getContext('2d').getImageData(0,0,artSide,artSide).data;
-  let data='',hash=14695981039346656037n;
+ function cropPixels(source,side){
+  const old=cropImage;cropImage=source;
+  const c=document.createElement('canvas');c.width=c.height=side;crop(c);cropImage=old;
+  const pixels=c.getContext('2d').getImageData(0,0,side,side).data;
+  const result=new Uint8Array(side*side*2);
   for(let i=0;i<pixels.length;i+=4){
    const px=(pixels[i]>>3)<<11|(pixels[i+1]>>2)<<5|pixels[i+2]>>3;
-   for(const byte of [px&255,px>>8]){data+=String.fromCharCode(byte);hash=BigInt.asUintN(64,(hash^BigInt(byte))*1099511628211n)}
+   result[i/2]=px;result[i/2+1]=px>>8;
   }
-  return {id:((hash&0x00ffffffffffffffn)|1n).toString(16).padStart(14,'0'),data:btoa(data)};
+  return result;
+ }
+ function encodeArt(bytes){
+  let hash=14695981039346656037n;
+  for(const byte of bytes)hash=BigInt.asUintN(64,(hash^BigInt(byte))*1099511628211n);
+  return {id:((hash&0x00ffffffffffffffn)|1n).toString(16).padStart(14,'0'),data:btoa(String.fromCharCode(...bytes))};
+ }
+ function cropData(previous,role){
+  const pixels=previous?atob(previous.replace(/-/g,'+').replace(/_/g,'/')):'';
+  const packed=pixels.startsWith('ONXART01')&&pixels.length===artSide*artSide*2;
+  if(role==='off'&&!packed)return encodeArt(cropPixels(cropImage,artSide));
+  const out=new Uint8Array(artSide*artSide*2), frameSize=3200;
+  if(packed)out.set(Uint8Array.from(pixels,c=>c.charCodeAt(0)));
+  else{
+   out.set(new TextEncoder().encode('ONXART01'));
+   if(pixels){
+    const side=Math.sqrt(pixels.length/2);
+    for(let y=0;y<40;y++)for(let x=0;x<40;x++){
+     const src=(Math.floor(y*side/40)*side+Math.floor(x*side/40))*2,dst=16+(y*40+x)*2;
+     out[dst]=pixels.charCodeAt(src);out[dst+1]=pixels.charCodeAt(src+1);
+    }
+   }else out.set(cropPixels(cropImage,40),16);
+  }
+  if(role==='off')out.set(cropPixels(cropImage,40),16);
+  else if(role==='on'){out[8]=1;out.set(cropPixels(cropImage,40),16+frameSize)}
+  else{
+   out[9]=cropFrames.length;
+   cropFrames.forEach((frame,i)=>out.set(cropPixels(frame,40),16+(2+i)*frameSize));
+  }
+  return encodeArt(out);
  }
  function setPositionIcon(id){
   if(!artTarget)return;
@@ -339,32 +443,49 @@ static const char PANEL_JS[] = R"ONXPANEL(
   else{delete artTarget.page.carousel_artwork;artTarget.page.icon=''}
   touch();closeIconPicker();
  }
- function clearCrop(){cropRequest++;cropImage?.close();cropImage=null;$('art-file').value='';$('art-crop').hidden=true;$('art-status').textContent=''}
+ function closeCropFrames(){
+  if(cropFrames.length)cropFrames.forEach(f=>f.close());else cropImage?.close();
+  cropFrames=[];cropImage=null;
+ }
+ function clearCrop(){cropRequest++;closeCropFrames();$('art-file').value='';$('art-crop').hidden=true;$('art-status').textContent=''}
  for(const id of ['art-zoom','art-x','art-y'])$(id).oninput=()=>crop($('art-canvas'));
  $('art-file').onchange=async()=>{
   const file=$('art-file').files[0],mine=++cropRequest;
   $('art-status').textContent='';$('art-crop').hidden=true;
-  cropImage?.close();cropImage=null;
+  closeCropFrames();
   if(!file)return;
   try{
-   if(!['image/png','image/jpeg','image/webp'].includes(file.type)||file.size>10*1024*1024)
-    throw Error('Choose a PNG, JPEG or WebP image up to 10 MB.');
-   const bitmap=await createImageBitmap(file);
-   if(mine!==cropRequest){bitmap.close();return}
+   if(!['image/png','image/jpeg','image/webp','image/gif'].includes(file.type)||file.size>10*1024*1024)
+    throw Error('Choose a PNG, JPEG, WebP or GIF up to 10 MB.');
+   const animate=$('art-role').value==='press';
+   if(animate&&!['image/gif','image/webp'].includes(file.type))throw Error('Choose an animated GIF or WebP.');
+   const frames=animate?await motionFrames(file):[];
+   const bitmap=frames[0]||await createImageBitmap(file);
+   if(mine!==cropRequest){if(frames.length)frames.forEach(f=>f.close());else bitmap.close();return}
+   cropFrames=frames;
    if(!bitmap.width||!bitmap.height||bitmap.width*bitmap.height>32000000){bitmap.close();throw Error('Choose an image with no more than 32 megapixels.')}
    cropImage=bitmap;
    $('art-zoom').value=1;$('art-x').value=$('art-y').value=50;
    crop($('art-canvas'));$('art-crop').hidden=false;
   }catch(error){if(mine===cropRequest)$('art-status').textContent=error.message}
  };
- $('art-use').onclick=()=>{
+ $('art-role').onchange=clearCrop;
+ $('art-use').onclick=async()=>{
   if(!cropImage||!artTarget)return;
-  const {id,data}=cropData();
-  artData.set(id,data);artPending.add(id);artUrls.set(id,rgb565Url(data));setPositionIcon(id);
+  const target=artTarget,mine=cropRequest,role=$('art-role').value,button=$('art-use');
+  button.disabled=true;
+  try{
+   const id=target.pos>=0?positionArt(target.page,target.pos):'';
+   const old=id?(artData.get(id)||await downloadImage(id)):'';
+   if(mine!==cropRequest||artTarget!==target)return;
+   const {id:next,data}=cropData(old,role);
+   artData.set(next,data);artPending.add(next);artUrls.set(next,rgb565Url(data));setPositionIcon(next);
+  }catch(error){if(mine===cropRequest)$('art-status').textContent=error.message}
+  finally{button.disabled=false}
  };
  $('member-icon-button').onclick=()=>{
   const p=pageConfigs[selectedPage],entity=p?.entities[selectedPos];if(!entity)return;
-  artTarget={page:p,pos:selectedPos};clearCrop();
+  artTarget={page:p,pos:selectedPos};clearCrop();$('art-role').value='off';$('art-role').querySelector('[value=press]').disabled=!isGrid(p);$('art-role-field').hidden=false;$('icon-entity').hidden=true;
   $('icon-picker-title').textContent='Choose a position icon';$('icon-picker-context').textContent='Shown for '+nameOf(entity)+' on this page.';
   $('icon-source').hidden=true;$('mdi-picker-body').hidden=true;$('art-picker-body').hidden=false;
   const id=positionArt(p,selectedPos);focusIcon(iconOf(entity));
@@ -401,15 +522,16 @@ static const char PANEL_JS[] = R"ONXPANEL(
  }
  $('browse-icon').onclick=()=>iconMode(false);$('upload-icon').onclick=()=>iconMode(true);
  $('icon-more').onclick=()=>{iconLimit+=96;drawIcons()};
+ $('icon-entity').onclick=()=>chooseIcon('entity');
  $('icon-default').onclick=()=>artTarget?setPositionIcon(''):chooseIcon('');
  $('icon-picker').addEventListener('close',()=>{clearCrop();artTarget=null});
  $('close-icon-picker').onclick=()=>$('icon-picker').close();
  $('icon-picker').addEventListener('click',ev=>{if(ev.target!==$('icon-picker'))return;const r=ev.target.getBoundingClientRect();if(ev.clientX<r.left||ev.clientX>r.right||ev.clientY<r.top||ev.clientY>r.bottom)$('icon-picker').close()});
  $('page-icon-button').onclick=()=>{
   const p=pageConfigs[selectedPage];if(!p)return;
-  artTarget={page:p,pos:-1};clearCrop();$('icon-source').hidden=false;$('icon-picker-title').textContent='Choose a carousel icon';
+  artTarget={page:p,pos:-1};clearCrop();$('art-role').value='off';$('art-role-field').hidden=true;$('icon-entity').hidden=false;$('icon-entity').disabled=!lead(p)||p.icon==='entity';$('icon-source').hidden=false;$('icon-picker-title').textContent='Choose a carousel icon';
   $('icon-picker-context').textContent='Shown in the bottom bar for “'+pageTitle(p,selectedPage)+'”.';
-  $('icon-search').value='';focusIcon(p.icon||pageIcon(p));displayArt($('icon-focus'),p.carousel_artwork);if(p.carousel_artwork)$('icon-focus-name').textContent='Custom image';$('icon-default').disabled=!(p.icon||p.carousel_artwork);renderIcons();loadIcons();$('icon-picker').showModal();iconMode(!!p.carousel_artwork);
+  $('icon-search').value='';focusIcon(pageIcon(p));displayArt($('icon-focus'),p.carousel_artwork);if(p.carousel_artwork)$('icon-focus-name').textContent='Custom image';$('icon-default').disabled=!(p.icon||p.carousel_artwork);renderIcons();loadIcons();$('icon-picker').showModal();iconMode(!!p.carousel_artwork);
  };
 
  const imageIds=pages=>[...new Set(pages.flatMap(p=>[p.carousel_artwork,...(p.artwork||[])]).filter(Boolean))];
@@ -459,7 +581,7 @@ static const char PANEL_JS[] = R"ONXPANEL(
    }
    leads.add(first);
   }
-  if(pageConfigs.some(p=>p.icon&&!ICON_RE.test(p.icon))){status('Icons use the mdi:name form, for example mdi:sofa.');return false}
+  if(pageConfigs.some(p=>p.icon&&p.icon!=='entity'&&!ICON_RE.test(p.icon))){status('Icons use the mdi:name form, for example mdi:sofa.');return false}
   const a=app();if(!a)return false;const target=editorTarget,list=structuredClone(pageConfigs);
   try{await uploadImages(list)}catch(error){status(error.message);a.message?.(error.message,true);return false}
   if(target)target.pages=list;
