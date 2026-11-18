@@ -28,92 +28,253 @@ static const char PANEL_JS[] = R"ONXPANEL(
  }
 
  // Pages: the carousel shows pages, each with its own icon and name. A page
- // holds 1, 2 or 4 entities by placement (full, half, main + three compact);
+ // holds 1, 2 or 4 entities by placement (full, split, large + three compact);
  // there is no "main entity". Every placed entity is its own configuration
- // entry with its own shortcut, gestures and quick actions (40 in total).
+ // entry with its own shortcut, gestures and quick actions (40 in total), and
+ // the entry editor below the page edits whichever position is selected.
  // Wire format (firmware: onx_panel_pages.h):
  //   panel_pages -> {pages:[{name,icon,layout,entities:[...]}]}
  //   panel_pages_save data=JSON {pages:[...]} (whole list: order, add, delete)
- const LAYOUTS={single:{n:1,label:'One entity',slots:['Full screen']},two_controls:{n:2,label:'Two entities',slots:['Top','Bottom']},control_sensors:{n:4,label:'One large + three compact',slots:['Large','Compact 1','Compact 2','Compact 3']}};
+ // Presets carry their own page list; it is edited here and stored with the preset.
+ const LAYOUTS={single:{n:1,label:'Full',hint:'One entity',slots:['Full screen']},two_controls:{n:2,label:'Split',hint:'Two entities',slots:['First','Second']},control_sensors:{n:4,label:'Large + 3',hint:'Three compact sensors',slots:['Large','Compact 1','Compact 2','Compact 3']}};
+ const DEFAULT_ICONS={sensor:'chart-line',binary_sensor:'checkbox-marked-circle-outline',media_player:'music-note',weather:'weather-partly-cloudy',climate:'thermostat',timer:'timer-outline',light:'lightbulb',switch:'toggle-switch',cover:'window-shutter',fan:'fan',script:'script-text',automation:'robot',number:'numeric',input_number:'numeric',select:'format-list-bulleted',input_select:'format-list-bulleted',button:'gesture-tap-button',input_button:'gesture-tap-button',scene:'palette'};
+ const MAX_ENTRIES=40,ICON_RE=/^mdi:[a-z0-9-]{1,76}$/;
  const compact=e=>/^(sensor|binary_sensor)\./.test(e);
- let pageConfigs=[],savedPages='[]',pageError='',editorSlots=[],editorActive=0,editorPreset=false,editorBusy=false,selectedPage=0,redraw=()=>{};
- const pageFor=entity=>{const p=pageConfigs.find(p=>p.entities[0]===entity);return p?{layout:p.layout,members:p.entities.slice(1)}:{layout:'single',members:[]}};
+ const isTimer=e=>/^(timer|sensor)\./.test(e);
+ let pageConfigs=[],savedPages='[]',panelPages='[]',pagesLoaded=false,pageError='',editorSlots=[],editorActive=-1,editorEntity='',editorBusy=false,editorTarget=null,selectedPage=0,selectedPos=0,timerEntity='',view='page',saving=false,redraw=()=>{};
  const app=()=>globalThis.ONX_APP;
- const nameOf=e=>editorSlots.find(s=>s.entity===e)?.name||app()?.item(e)?.name||e;
- const slotOf=e=>editorSlots.findIndex(s=>s.entity===e);
+ // The main-view preview shows the selected page, else the page this entity leads.
+ const pageFor=entity=>{const sel=pageConfigs[selectedPage],p=view==='page'&&sel?.entities.includes(entity)?sel:pageConfigs.find(p=>p.entities[0]===entity);return p?{layout:p.layout,ids:p.entities}:{layout:'single',ids:[entity]}};
+ const el=(tag,cls,text)=>{const n=document.createElement(tag);if(cls)n.className=cls;if(text!==undefined)n.textContent=text;return n};
+ const svgIcon=d=>{const s=document.createElementNS('http://www.w3.org/2000/svg','svg');s.setAttribute('viewBox','0 0 24 24');s.setAttribute('aria-hidden','true');s.innerHTML='<path d="'+d+'"/>';return s};
+ const tool=(label,d,danger)=>{const b=el('button',danger?'danger':'');b.type='button';b.title=label;b.setAttribute('aria-label',label);b.append(svgIcon(d));return b};
+ const mdiUrl=name=>'https://api.iconify.design/mdi/'+name.slice(4)+'.svg';
+ const setIcon=(node,name)=>{if(ICON_RE.test(name||''))node.style.setProperty('--icon','url("'+mdiUrl(name)+'")');else node.style.removeProperty('--icon');return node};
+ const mdi=name=>{const s=el('span','mdi');s.setAttribute('aria-hidden','true');return setIcon(s,name)};
+ const entry=e=>e?editorSlots.find(s=>s.entity===e):undefined;
+ const nameOf=e=>entry(e)?.name||app()?.item(e)?.name||e;
+ const slotOf=e=>e?editorSlots.findIndex(s=>s.entity===e):-1;
+ const iconOf=e=>entry(e)?.icon||app()?.item(e)?.icon||'mdi:'+(DEFAULT_ICONS[(e||'').split('.')[0]]||'shape-outline');
+ const pageTitle=(p,i)=>p?.name||(p?.entities[0]?nameOf(p.entities[0]):'')||'Page '+(i+1);
+ const pageIcon=p=>p.icon||(p.entities[0]?iconOf(p.entities[0]):'mdi:view-dashboard-outline');
  const dirtyPages=()=>JSON.stringify(pageConfigs)!==savedPages;
- const editor=document.createElement('section');editor.className='panel-page-layout';editor.id='panel-page-layout';
- editor.innerHTML='<h3>Pages</h3><p class="hint">Each page is one carousel stop. Drag entities from the entity list onto a position, drag between positions to swap, or drag one out to remove it. Select a placed entity to edit its shortcut, gestures and quick actions.</p><ol id="page-list" class="page-list" aria-label="Carousel pages"></ol><button type="button" id="add-page">Add page</button><div id="page-detail"><label class="field">Page name<input id="page-name" maxlength="48" placeholder="Living room"></label><label class="field">Carousel icon<input id="page-icon" maxlength="64" placeholder="mdi:sofa"></label><label class="field">Layout<select id="page-kind"></select></label><div id="page-grid" class="page-grid"></div><button type="button" id="delete-page" class="quiet">Delete page</button></div><h3>Timers</h3><p class="hint">Registered timers (timer.* or timer sensors) need no page: their popups and the timer screen still show them. A timer can also be placed on pages.</p><ul id="timer-list" class="page-list" aria-label="Registered timers"></ul><button type="button" id="add-timer">Add timer</button><button type="button" id="save-page-layout">Save pages</button><p class="hint" id="page-layout-status" role="status"></p>';
- ($('page-entities')?.querySelector('.slot-column')||$('slot-panel-display'))?.prepend(editor);
- $('page-kind').replaceChildren(...Object.entries(LAYOUTS).map(([v,l])=>new Option(l.label,v)));
- const status=t=>{$('page-layout-status').textContent=t};
- const touch=()=>{renderPageEditor();redraw();status(dirtyPages()?'Pages not saved.':'')};
+ const status=t=>{$('page-layout-status').textContent=t||''};
+ const singles=list=>list.filter(s=>s.entity&&s.timerHidden!=='1').map(s=>({name:'',icon:'',layout:'single',entities:[s.entity]}));
+ const normalize=list=>(Array.isArray(list)?list:[]).map(p=>{const layout=LAYOUTS[p?.layout]?p.layout:'single',n=LAYOUTS[layout].n,ids=Array.isArray(p?.entities)?p.entities:[p?.entity,...(p?.members||[])];return {name:String(p?.name||''),icon:String(p?.icon||''),layout,entities:Array.from({length:n},(_,i)=>String(ids[i]||''))}});
+ const used=()=>editorSlots.filter(s=>s.entity).length;
+ // Re-render through the app so save/discard states and the preview follow.
+ const touch=()=>{const a=app();if(a?.refresh)a.refresh();else{renderPageEditor();redraw()}};
+ const current=()=>view==='timer'?timerEntity:pageConfigs[selectedPage]?.entities[selectedPos]||'';
+ // Point the entry editor at the selected position; false when nothing changed.
+ function focusMember(){const i=slotOf(current()),a=app();if(a&&i>=0&&i!==editorActive){a.select(i);return true}return false}
+ function selectPage(i){view='page';selectedPage=i;const p=pageConfigs[i];selectedPos=Math.max(0,p?p.entities.findIndex(Boolean):0);status('');if(!focusMember())touch()}
+ function selectPos(pos){view='page';selectedPos=pos;status('');if(!focusMember())touch()}
  function place(page,pos,item){
   const e=item.entity;if(page.entities.includes(e)&&page.entities[pos]!==e){status(nameOf(e)+' is already on this page.');return}
   // The same entity may appear on several pages: one entry, one subscription.
-  const other=pos===0&&pageConfigs.find(p=>p!==page&&p.entities[0]===e);if(other){status(nameOf(e)+' already leads “'+(other.name||'another page')+'”. Place it in another position.');return}
+  const other=pos===0&&pageConfigs.find(p=>p!==page&&p.entities[0]===e);if(other){status(nameOf(e)+' already leads “'+(other.name||nameOf(e))+'”. Place it in another position.');return}
   if(pos>0&&page.layout==='control_sensors'&&!compact(e)){status('Compact positions show sensors and binary sensors.');return}
   try{if(slotOf(e)<0)app()?.add(item)}catch(error){status(error.message);return}
-  page.entities[pos]=e;if(!page.icon&&pos===0)page.icon=item.icon||app()?.item(e)?.icon||'';touch();
+  const old=page.entities[pos];page.entities[pos]=e;if(old&&old!==e)release(old);
+  status('');view='page';selectedPage=pageConfigs.indexOf(page);selectedPos=pos;if(!focusMember())touch();
  }
- const isTimer=e=>/^(timer|sensor)\./.test(e);
- const registered=()=>editorSlots.filter(s=>s.entity&&s.timerHidden==='1');
  // Entries stay while a page or the timer list still uses them.
  function release(e){const i=slotOf(e);if(e&&i>=0&&editorSlots[i].timerHidden!=='1'&&!pageConfigs.some(p=>p.entities.includes(e)))app()?.clear(i)}
  function removeAt(page,pos){const e=page.entities[pos];page.entities[pos]='';release(e);touch()}
- function cell(page,pos){
-  const e=page.entities[pos]||'',c=document.createElement('div');c.className='page-cell'+(pos>0&&page.layout==='control_sensors'?' compact':'')+(e?'':' empty');c.dataset.member=pos;c.tabIndex=0;
-  const label=document.createElement('small');label.textContent=LAYOUTS[page.layout].slots[pos];
-  const title=document.createElement('strong');title.textContent=e?nameOf(e):'Drop an entity here';c.append(label,title);
-  if(e){const id=document.createElement('small');id.textContent=e;c.append(id);c.draggable=true;c.ondragstart=ev=>{ev.dataTransfer.setData('application/x-onx-cell',String(pos));ev.dataTransfer.effectAllowed='move'};
-   c.onclick=()=>{const i=slotOf(e);if(i>=0)app()?.select(i)};c.setAttribute('aria-current',String(slotOf(e)===editorActive))}
-  const pick=document.createElement('button');pick.type='button';pick.className='quiet';pick.textContent=e?'Replace':'Choose entity';
-  pick.onclick=ev=>{ev.stopPropagation();app()?.pick(x=>!(pos>0&&page.layout==='control_sensors')||compact(x),item=>place(page,pos,item))};c.append(pick);
-  if(e){const rm=document.createElement('button');rm.type='button';rm.className='quiet';rm.textContent='Remove';rm.onclick=ev=>{ev.stopPropagation();removeAt(page,pos)};c.append(rm)}
+ function pickFor(page,pos){const small=pos>0&&page.layout==='control_sensors';app()?.pick(x=>!small||compact(x),item=>place(page,pos,item))}
+ function cell(page,pos,r,w,h){
+  const e=page.entities[pos]||'',small=pos>0&&page.layout==='control_sensors',role=LAYOUTS[page.layout].slots[pos];
+  const c=el('div','page-cell'+(small?' compact':'')+(e?'':' empty'));c.dataset.member=pos;
+  c.style.cssText='left:'+r.x/w*100+'%;top:'+r.y/h*100+'%;width:'+r.w/w*100+'%;height:'+r.h/h*100+'%';
+  c.setAttribute('aria-current',String(view==='page'&&pos===selectedPos));
+  const main=el('button','cell-main');main.type='button';main.disabled=editorBusy;
+  if(e){main.append(mdi(iconOf(e)),el('strong','',nameOf(e)),el('small','',e));main.setAttribute('aria-label',role+': '+nameOf(e));main.onclick=()=>selectPos(pos)}
+  else{main.append(mdi('mdi:plus-circle-outline'),el('strong','',small?'Add a sensor':'Add entity'));main.setAttribute('aria-label','Add an entity to '+role);main.onclick=()=>{selectPos(pos);pickFor(page,pos)}}
+  c.append(el('small','cell-tag',role),main);
+  if(e){
+   const tools=el('div','cell-tools'),swap=tool('Replace '+nameOf(e),'M4 7h13l-3-3M20 17H7l3 3'),rm=tool('Remove '+nameOf(e)+' from this page','m6 6 12 12M18 6 6 18',true);
+   swap.onclick=()=>{selectPos(pos);pickFor(page,pos)};rm.onclick=()=>removeAt(page,pos);swap.disabled=rm.disabled=editorBusy;tools.append(swap,rm);c.append(tools);
+   c.draggable=!editorBusy;c.ondragstart=ev=>{ev.dataTransfer.setData('application/x-onx-cell',String(pos));ev.dataTransfer.effectAllowed='move'};
+  }
   c.ondragover=ev=>{ev.preventDefault();c.classList.add('drop')};c.ondragleave=()=>c.classList.remove('drop');
   c.ondrop=ev=>{ev.preventDefault();c.classList.remove('drop');const from=ev.dataTransfer.getData('application/x-onx-cell'),item=ev.dataTransfer.getData('application/x-onx-entity');
-   if(from!==''){const f=+from,a=page.entities[f];if(f===pos)return;if(page.layout==='control_sensors'&&(f===0||pos===0)&&((page.entities[pos]&&!compact(page.entities[pos]))||!compact(a))&&(f===0?pos:f)>0){status('Compact positions show sensors and binary sensors.');return}page.entities[f]=page.entities[pos]||'';page.entities[pos]=a;touch()}
+   if(from!==''){const f=+from,a=page.entities[f],b=page.entities[pos]||'';if(f===pos)return;if(page.layout==='control_sensors'&&((pos>0&&a&&!compact(a))||(f>0&&b&&!compact(b)))){status('Compact positions show sensors and binary sensors.');return}page.entities[f]=b;page.entities[pos]=a;selectedPos=pos;status('');touch()}
    else if(item)place(page,pos,JSON.parse(item))};
   return c;
  }
- // Dropping a placed entity outside the grid removes it.
- editor.addEventListener('dragend',ev=>{if(ev.dataTransfer.dropEffect==='none'&&ev.target.dataset?.member!==undefined){const p=pageConfigs[selectedPage];if(p)removeAt(p,+ev.target.dataset.member)}});
- function renderPageEditor(){
-  editor.hidden=editorPreset;
-  const list=$('page-list');list.replaceChildren(...pageConfigs.map((p,i)=>{const li=document.createElement('li'),b=document.createElement('button');b.type='button';b.textContent=(p.name||nameOf(p.entities[0])||'Page '+(i+1))+' · '+LAYOUTS[p.layout].n;b.setAttribute('aria-current',String(i===selectedPage));b.onclick=()=>{selectedPage=i;const s=slotOf(p.entities.find(Boolean));if(s>=0)app()?.select(s);else touch()};
-   li.draggable=true;li.ondragstart=ev=>ev.dataTransfer.setData('application/x-onx-page',String(i));li.ondragover=ev=>ev.preventDefault();li.ondrop=ev=>{const f=ev.dataTransfer.getData('application/x-onx-page');if(f==='')return;ev.preventDefault();const [m]=pageConfigs.splice(+f,1);pageConfigs.splice(i,0,m);selectedPage=i;touch()};li.append(b);return li}));
-  $('timer-list').replaceChildren(...registered().map(t=>{const li=document.createElement('li'),open=document.createElement('button'),rm=document.createElement('button');
-   open.type=rm.type='button';open.textContent=nameOf(t.entity);open.onclick=()=>app()?.select(slotOf(t.entity));rm.className='quiet';rm.textContent='Remove';rm.dataset.timer=t.entity;
-   rm.onclick=()=>{app()?.setTimer(slotOf(t.entity),false);release(t.entity);touch()};li.append(open,rm);return li}));
-  $('add-timer').disabled=editorBusy||editorPreset;
-  const p=pageConfigs[selectedPage];$('page-detail').hidden=!p;
-  if(p){$('page-name').value=p.name||'';$('page-icon').value=p.icon||'';$('page-kind').value=p.layout;$('page-grid').className='page-grid '+p.layout;$('page-grid').replaceChildren(...Array.from({length:LAYOUTS[p.layout].n},(_,i)=>cell(p,i)))}
-  for(const id of ['add-page','delete-page','page-name','page-icon','page-kind'])$(id).disabled=editorBusy||editorPreset;
-  $('save-page-layout').disabled=editorBusy||editorPreset;
-  if(pageError)status(pageError);
+ // Dropping a placed entity outside the screen removes it.
+ $('page-grid').addEventListener('dragend',ev=>{if(ev.dataTransfer.dropEffect==='none'&&ev.target.dataset?.member!==undefined){const p=pageConfigs[selectedPage];if(p)removeAt(p,+ev.target.dataset.member)}});
+ let lastSettings={};
+ const screen=()=>globalThis.ONX_PANEL_SCREEN?.(lastSettings)||{width:320,height:480};
+ function thumb(kind){
+  const {width:w,height:h}=screen(),s=document.createElementNS('http://www.w3.org/2000/svg','svg');s.setAttribute('viewBox','0 0 '+w+' '+h);s.setAttribute('aria-hidden','true');if(w>h)s.classList.add('wide');
+  s.innerHTML='<rect class="frame" x="5" y="5" width="'+(w-10)+'" height="'+(h-10)+'" rx="36"/>'+globalThis.ONX_PANEL_GEOMETRY(kind,w,h).map(r=>'<rect x="'+r.x+'" y="'+r.y+'" width="'+r.w+'" height="'+r.h+'" rx="18"/>').join('');return s;
  }
- $('add-timer').onclick=()=>app()?.pick(isTimer,item=>{try{let i=slotOf(item.entity);if(i<0)i=app().add(item);app().setTimer(i,true);touch()}catch(error){status(error.message)}});
- $('add-page').onclick=()=>{pageConfigs.push({name:'',icon:'',layout:'single',entities:['']});selectedPage=pageConfigs.length-1;touch()};
- $('delete-page').onclick=()=>{const p=pageConfigs[selectedPage];if(!p)return;pageConfigs.splice(selectedPage,1);for(const e of p.entities)release(e);selectedPage=Math.max(0,selectedPage-1);touch()};
+ function renderLayouts(p){
+  $('page-kind').replaceChildren(...Object.entries(LAYOUTS).map(([value,l])=>{
+   const label=el('label','layout-option'),input=el('input');input.type='radio';input.name='page-kind';input.value=value;input.checked=p.layout===value;input.disabled=editorBusy||saving;
+   input.onchange=()=>setLayout(value);const text=el('span');text.append(el('b','',l.label),el('small','',l.hint));label.append(input,thumb(value),text);return label}));
+ }
+ function setLayout(kind){
+  const p=pageConfigs[selectedPage];if(!p||p.layout===kind)return;const n=LAYOUTS[kind].n,dropped=[];
+  p.layout=kind;p.entities=Array.from({length:n},(_,i)=>p.entities[i]||'').concat(p.entities.slice(n).filter(Boolean).map(e=>(dropped.push(e),'')));p.entities.length=n;
+  // Compact positions only take sensors; anything else moves off the page.
+  if(kind==='control_sensors')for(let i=1;i<n;i++)if(p.entities[i]&&!compact(p.entities[i])){dropped.push(p.entities[i]);p.entities[i]=''}
+  const names=dropped.map(nameOf);for(const e of dropped)release(e);selectedPos=Math.min(selectedPos,n-1);
+  status(dropped.length?names.join(', ')+(dropped.length===1?' was':' were')+' removed from this page.':'');if(!focusMember())touch();
+ }
+ function renderCanvas(p){
+  const {width:w,height:h}=screen(),grid=$('page-grid');grid.className='page-grid'+(w>h?' wide':'');grid.style.aspectRatio=w+'/'+h;
+  const top=el('div','page-chrome top');top.append(el('span','',new Date().toLocaleTimeString(undefined,{hour:'2-digit',minute:'2-digit'})),mdi('mdi:bell-outline'));
+  const bottom=el('div','page-chrome bottom');for(const [i,q] of pageConfigs.entries()){const m=mdi(pageIcon(q));if(i===selectedPage)m.classList.add('here');bottom.append(m)}
+  grid.replaceChildren(top,...globalThis.ONX_PANEL_GEOMETRY(p.layout,w,h).map((r,i)=>cell(p,i,r,w,h)),bottom);
+ }
+ function pageButton(p,i,savedList){
+  const b=el('button','page-item');b.type='button';const meta=LAYOUTS[p.layout].label+' · '+p.entities.filter(Boolean).length+'/'+LAYOUTS[p.layout].n;
+  const box=el('span','slot-icon');box.append(mdi(pageIcon(p)));const text=el('span','item-text');text.append(el('span','',pageTitle(p,i)),el('small','',meta));
+  b.append(el('b','',String(i+1)),box,text);
+  const dirty=JSON.stringify(savedList[i])!==JSON.stringify(p)||p.entities.some(e=>{const j=slotOf(e);return j>=0&&app()?.dirtyAt?.(j)});if(dirty)b.append(el('span','●','dirty-dot'));
+  b.title=pageTitle(p,i);b.setAttribute('aria-label','Page '+(i+1)+': '+pageTitle(p,i)+(dirty?', unsaved':''));b.setAttribute('aria-current',String(view==='page'&&i===selectedPage));b.disabled=editorBusy;b.onclick=()=>selectPage(i);
+  b.draggable=!editorBusy;b.ondragstart=ev=>{ev.dataTransfer.setData('application/x-onx-page',String(i));ev.dataTransfer.effectAllowed='move'};
+  b.ondragover=ev=>{if(![...ev.dataTransfer.types].includes('application/x-onx-page'))return;ev.preventDefault();b.classList.add('drop-target')};b.ondragleave=()=>b.classList.remove('drop-target');
+  b.ondrop=ev=>{b.classList.remove('drop-target');const f=ev.dataTransfer.getData('application/x-onx-page');if(f==='')return;ev.preventDefault();movePage(+f,i)};return b;
+ }
+ function movePage(from,to){if(from===to||to<0||to>=pageConfigs.length)return;const [m]=pageConfigs.splice(from,1);pageConfigs.splice(to,0,m);selectedPage=to;view='page';touch()}
+ // Rebuild a list only when what it shows changed, so a re-render cannot
+ // swap a button out from under a click.
+ const drawn={};
+ function patch(id,key,build){if(drawn[id]===key)return;drawn[id]=key;$(id).replaceChildren(...build())}
+ function renderPageEditor(){
+  const savedList=JSON.parse(savedPages),editor=$('page-editor'),locked=editorBusy||saving;
+  if(view==='page'&&selectedPage>=pageConfigs.length)selectedPage=Math.max(0,pageConfigs.length-1);
+  if(view==='timer'&&!editorSlots.some(s=>s.entity===timerEntity&&s.timerHidden==='1')){view='page'}
+  const names=pageConfigs.map(p=>p.entities.map(e=>e&&nameOf(e)+'|'+iconOf(e)+'|'+(app()?.dirtyAt?.(slotOf(e))?1:0)));
+  patch('slots',JSON.stringify([pageConfigs,savedPages,names,view,selectedPage,locked,pagesLoaded,pageError,!!editorTarget]),()=>pageConfigs.length?pageConfigs.map((p,i)=>pageButton(p,i,savedList)):[el('p','empty-note',pagesLoaded||editorTarget?'No pages yet.':pageError||'Loading pages…')]);
+  $('slot-capacity').textContent=used()+'/'+MAX_ENTRIES+' entities';$('slot-capacity').title=used()+' of '+MAX_ENTRIES+' entity entries in use (pages and timers)';
+  const timers=editorSlots.filter(s=>s.entity&&s.timerHidden==='1');
+  patch('timer-list',JSON.stringify([timers.map(t=>t.entity+'|'+nameOf(t.entity)),view,timerEntity,locked]),()=>timers.map(t=>{
+   const li=el('li'),open=el('button'),box=el('span','slot-icon');open.type='button';box.append(mdi(iconOf(t.entity)));
+   const text=el('span','item-text');text.append(el('span','',nameOf(t.entity)),el('small','',t.entity));open.append(box,text);open.setAttribute('aria-current',String(view==='timer'&&timerEntity===t.entity));open.disabled=locked;
+   open.onclick=()=>{view='timer';timerEntity=t.entity;status('');if(!focusMember())touch()};
+   const rm=tool('Remove timer '+nameOf(t.entity),'m6 6 12 12M18 6 6 18');rm.className='icon-button';rm.dataset.timer=t.entity;rm.disabled=locked;rm.onclick=()=>removeTimer(t.entity);li.append(open,rm);return li}));
+  for(const id of ['add-page','add-first-page','add-timer'])$(id).disabled=locked;
+  const p=view==='page'?pageConfigs[selectedPage]:null;
+  $('pages-empty').hidden=!(view==='page'&&!p);
+  for(const id of ['page-head','page-layouts','page-canvas'])$(id).hidden=!p;
+  if(p){
+   const name=$('page-name');if(document.activeElement!==name)name.value=p.name;name.placeholder=p.entities[0]?nameOf(p.entities[0]):'Living room';name.disabled=locked;
+   setIcon($('page-icon-preview'),pageIcon(p));$('page-icon-button').setAttribute('aria-label','Carousel icon: '+(p.icon||'entity icon')+'. Choose another');$('page-icon-button').disabled=locked;
+   $('page-up').disabled=locked||selectedPage===0;$('page-down').disabled=locked||selectedPage>=pageConfigs.length-1;$('delete-page').disabled=locked;
+   const {width:w,height:h}=screen();
+   const kindKey=JSON.stringify([p.layout,locked,w,h]);if(drawn.kind!==kindKey){drawn.kind=kindKey;renderLayouts(p)}
+   const canvasKey=JSON.stringify([p,pageConfigs.map(pageIcon),selectedPage,selectedPos,view,locked,w,h,p.entities.map(e=>e&&nameOf(e)+'|'+iconOf(e))]);
+   if(drawn.canvas!==canvasKey){drawn.canvas=canvasKey;renderCanvas(p)}
+  }
+  const e=current(),i=slotOf(e),member=!!e&&i>=0&&i===editorActive;
+  editor.classList.toggle('no-member',!member);
+  $('member-head').hidden=!member;$('member-empty').hidden=member||!(p&&!e);
+  if(member){
+   setIcon($('member-icon'),iconOf(e));$('member-role').textContent=view==='timer'?'Registered timer':LAYOUTS[p.layout].slots[selectedPos]+' · page '+(selectedPage+1);
+   $('member-name').textContent=nameOf(e);$('member-id').textContent=e;$('member-replace').hidden=view==='timer';
+   $('member-remove').textContent=view==='timer'?'Remove timer':'Remove from page';$('member-replace').disabled=$('member-remove').disabled=locked;
+  }
+  $('slot-title').textContent=(view==='timer'?nameOf(timerEntity):p?pageTitle(p,selectedPage):'Pages')+(editorTarget?' · '+editorTarget.name:'');
+  if(pageError&&!pagesLoaded&&!editorTarget)status(pageError);
+ }
+ function removeTimer(e){const i=slotOf(e);if(i<0)return;app()?.setTimer(i,false);release(e);if(timerEntity===e)view='page';touch()}
+ $('add-timer').onclick=()=>app()?.pick(isTimer,item=>{try{let i=slotOf(item.entity);if(i<0)i=app().add(item);app().setTimer(i,true);view='timer';timerEntity=item.entity;if(!focusMember())touch()}catch(error){status(error.message)}});
+ const addPage=()=>{pageConfigs.push({name:'',icon:'',layout:'single',entities:['']});selectPage(pageConfigs.length-1)};
+ $('add-page').onclick=$('add-first-page').onclick=addPage;
+ $('delete-page').onclick=()=>{const p=pageConfigs[selectedPage];if(!p)return;const title=pageTitle(p,selectedPage);pageConfigs.splice(selectedPage,1);for(const e of p.entities)release(e);status('“'+title+'” deleted. Discard changes to restore it.');selectPage(Math.max(0,selectedPage-1))};
+ $('page-up').onclick=()=>movePage(selectedPage,selectedPage-1);$('page-down').onclick=()=>movePage(selectedPage,selectedPage+1);
  $('page-name').oninput=()=>{const p=pageConfigs[selectedPage];if(p){p.name=$('page-name').value;touch()}};
- $('page-icon').oninput=()=>{const p=pageConfigs[selectedPage];if(p){p.icon=$('page-icon').value.trim();touch()}};
- $('page-kind').onchange=()=>{const p=pageConfigs[selectedPage];if(!p)return;const n=LAYOUTS[$('page-kind').value].n;p.layout=$('page-kind').value;
-  for(let i=n;i<p.entities.length;i++)if(p.entities[i])removeAt(p,i);p.entities=Array.from({length:n},(_,i)=>p.entities[i]||'');touch()};
- // Import/export bridge (config_app.h): saved list, or replace the draft.
- globalThis.ONX_PAGES={saved:()=>JSON.parse(savedPages),set:list=>{pageConfigs=structuredClone(list);selectedPage=0;touch()}};
- globalThis.ONX_PANEL_EDITOR=(slots,active,busy,refresh,isPreset=false)=>{
-  editorSlots=slots;editorActive=active;editorBusy=busy;editorPreset=isPreset;redraw=refresh;
-  const owner=pageConfigs.findIndex(p=>p.entities.includes(slots[active]?.entity));if(owner>=0)selectedPage=owner;renderPageEditor();
+ $('member-replace').onclick=()=>{const p=pageConfigs[selectedPage];if(p)pickFor(p,selectedPos)};
+ $('member-remove').onclick=()=>{if(view==='timer'){removeTimer(timerEntity);return}const p=pageConfigs[selectedPage];if(p)removeAt(p,selectedPos)};
+
+ // Icon picker: search all Material Design Icons with live previews.
+ const SUGGESTED=['home','sofa','bed','silverware-fork-knife','desk','television','lightbulb','ceiling-light','lamp','fan','thermometer','water-percent','weather-partly-cloudy','music','speaker','garage','shower','flower','door','window-shutter','power-plug','washing-machine','coffee','gamepad-variant','briefcase','robot-vacuum','car','shield-home','leaf','baby-face-outline'].map(n=>'mdi:'+n);
+ let iconNames=null,iconLoad=null,iconQuery=0,iconLimit=96,iconList=[];
+ function loadIcons(){
+  if(iconNames)return Promise.resolve(iconNames);
+  iconLoad??=fetch('https://api.iconify.design/collection?prefix=mdi',{cache:'force-cache'}).then(r=>r.ok?r.json():Promise.reject(Error('HTTP '+r.status))).then(d=>{const all=new Set(d.uncategorized||[]);for(const list of Object.values(d.categories||{}))for(const n of list)all.add(n);iconNames=[...all].sort();return iconNames}).catch(()=>{iconLoad=null;return null});
+  return iconLoad;
+ }
+ async function searchIcons(q){
+  const terms=q.toLowerCase().replace(/^mdi:/,'').split(/[\s_]+/).filter(Boolean);
+  const names=await loadIcons();
+  if(names){const exact=terms.join('-'),score=n=>n===exact?0:n.startsWith(exact)?1:n.split('-').includes(terms[0])?2:3;return names.filter(n=>terms.every(t=>n.includes(t))).sort((a,b)=>score(a)-score(b)||a.length-b.length||a.localeCompare(b)).map(n=>'mdi:'+n)}
+  // Without the full list, fall back to Iconify's search.
+  const r=await fetch('https://api.iconify.design/search?prefix=mdi&limit=999&query='+encodeURIComponent(terms.join(' ')));if(!r.ok)throw Error('Icon search is unavailable.');return ((await r.json()).icons||[]).filter(n=>ICON_RE.test(n));
+ }
+ function focusIcon(name){setIcon($('icon-focus'),name);$('icon-focus-name').textContent=name||'Entity icon'}
+ function chooseIcon(name){const p=pageConfigs[selectedPage];if(p){p.icon=name;touch()}$('icon-picker').close();$('page-icon-button').focus()}
+ function drawIcons(){
+  const p=pageConfigs[selectedPage],grid=$('icon-grid'),shown=iconList.slice(0,iconLimit);
+  grid.replaceChildren(...shown.map(name=>{const b=el('button');b.type='button';b.setAttribute('role','option');b.dataset.icon=name;b.title=name;b.setAttribute('aria-selected',String(p?.icon===name));b.append(mdi(name),el('small','',name.slice(4)));b.onclick=()=>chooseIcon(name);b.onfocus=b.onmouseenter=()=>focusIcon(name);return b}));
+  if(!shown.length)grid.append(el('p','empty','No icons match. Try a shorter word, or type a full name such as mdi:sofa-outline.'));
+  $('icon-more').hidden=iconList.length<=iconLimit;
+ }
+ async function renderIcons(){
+  const mine=++iconQuery,q=$('icon-search').value.trim().toLowerCase(),p=pageConfigs[selectedPage];iconLimit=96;
+  let list,caption;
+  if(!q){list=[p?.icon,...(p?.entities||[]).filter(Boolean).map(iconOf),...SUGGESTED];caption='Suggestions'}
+  else{$('icon-count').textContent='Searching…';try{list=await searchIcons(q)}catch(error){list=[];$('icon-count').textContent=error.message}caption='Results for “'+q+'”';if(ICON_RE.test(q)&&!list.includes(q))list.unshift(q);else if(ICON_RE.test('mdi:'+q)&&!list.includes('mdi:'+q)&&!iconNames)list.unshift('mdi:'+q)}
+  if(mine!==iconQuery)return;
+  iconList=[...new Set(list.filter(n=>ICON_RE.test(n||'')))];$('icon-caption').textContent=caption;$('icon-count').textContent=q?iconList.length+' icon'+(iconList.length===1?'':'s'):'';drawIcons();
+ }
+ let iconDebounce;
+ $('icon-search').oninput=()=>{clearTimeout(iconDebounce);iconDebounce=setTimeout(renderIcons,150)};
+ $('icon-search').onkeydown=ev=>{if(ev.key==='ArrowDown'){ev.preventDefault();$('icon-grid').querySelector('button')?.focus()}else if(ev.key==='Enter'){ev.preventDefault();const first=$('icon-grid').querySelector('button');if(first)first.click()}};
+ $('icon-grid').onkeydown=ev=>{
+  const items=[...$('icon-grid').querySelectorAll('button')],i=items.indexOf(document.activeElement);if(i<0)return;
+  const cols=Math.max(1,items.filter(b=>b.offsetTop===items[0].offsetTop).length),step={ArrowRight:1,ArrowLeft:-1,ArrowDown:cols,ArrowUp:-cols}[ev.key];if(!step)return;ev.preventDefault();
+  const n=i+step;if(n<0){$('icon-search').focus();return}items[Math.min(items.length-1,n)]?.focus();
  };
- $('save-page-layout').onclick=async()=>{
-  for(const [i,p] of pageConfigs.entries())if(p.entities.some(e=>!e)){selectedPage=i;renderPageEditor();status('Fill every position on “'+(p.name||'Page '+(i+1))+'”, or choose a smaller layout.');return}
-  if(pageConfigs.some(p=>p.icon&&!/^mdi:[a-z0-9-]+$/.test(p.icon))){status('Icons use the mdi:name form, for example mdi:sofa.');return}
-  $('save-page-layout').disabled=true;
-  try{await app()?.saveAll();const result=await rpc({op:'panel_pages_save',data:JSON.stringify({pages:pageConfigs})});pageConfigs=result.pages||[];savedPages=JSON.stringify(pageConfigs);pageError='';renderPageEditor();status('Pages saved.');redraw()}
-  catch(error){status(error.message)}
-  finally{renderPageEditor()}
+ $('icon-more').onclick=()=>{iconLimit+=96;drawIcons()};
+ $('icon-default').onclick=()=>chooseIcon('');
+ $('close-icon-picker').onclick=()=>$('icon-picker').close();
+ $('icon-picker').addEventListener('click',ev=>{if(ev.target!==$('icon-picker'))return;const r=ev.target.getBoundingClientRect();if(ev.clientX<r.left||ev.clientX>r.right||ev.clientY<r.top||ev.clientY>r.bottom)$('icon-picker').close()});
+ $('page-icon-button').onclick=()=>{
+  const p=pageConfigs[selectedPage];if(!p)return;$('icon-picker-context').textContent='Shown in the bottom bar for “'+pageTitle(p,selectedPage)+'”.';
+  $('icon-search').value='';focusIcon(p.icon||pageIcon(p));$('icon-default').disabled=!p.icon;renderIcons();loadIcons();$('icon-picker').showModal();$('icon-search').focus();
  };
- rpc({op:'panel_pages'}).then(result=>{pageConfigs=(result.pages||[]).map(p=>({name:p.name||'',icon:p.icon||'',layout:LAYOUTS[p.layout]?p.layout:'single',entities:p.entities||[p.entity,...(p.members||[])]}));savedPages=JSON.stringify(pageConfigs);renderPageEditor();redraw()}).catch(error=>{pageError=error.message;renderPageEditor()});
+
+ // Save: entries first (pages reference them), then the page list.
+ async function savePages(){
+  for(const [i,p] of pageConfigs.entries())if(p.entities.some(e=>!e)){view='page';selectedPage=i;selectedPos=p.entities.findIndex(e=>!e);touch();status('Fill every position on “'+pageTitle(p,i)+'”, or choose a smaller layout.');return false}
+  if(pageConfigs.some(p=>p.icon&&!ICON_RE.test(p.icon))){status('Icons use the mdi:name form, for example mdi:sofa.');return false}
+  const a=app();if(!a)return false;const target=editorTarget,list=structuredClone(pageConfigs);
+  if(target)target.pages=list;
+  if(!await a.saveAll())return false;
+  if(target){savedPages=JSON.stringify(pageConfigs);touch();return true}
+  if(!dirtyPages()){a.message?.('Changes saved.');touch();return true}
+  saving=true;renderPageEditor();
+  try{const result=await rpc({op:'panel_pages_save',data:JSON.stringify({pages:list})});pageConfigs=normalize(result.pages);savedPages=panelPages=JSON.stringify(pageConfigs);pageError='';status('');a.message?.('Changes saved.');return true}
+  catch(error){status(error.message);a.message?.(error.message+' The pages were not changed.',true);return false}
+  finally{saving=false;touch()}
+ }
+ // Presets edit their own page list; the panel's list comes from the firmware.
+ function loadTarget(target){
+  editorTarget=target;
+  if(target){pageConfigs=target.pages?normalize(target.pages):target.isNew?[]:singles(editorSlots);savedPages=JSON.stringify(pageConfigs)}
+  else{pageConfigs=JSON.parse(panelPages);savedPages=panelPages}
+  view='page';selectedPage=0;selectedPos=Math.max(0,pageConfigs[0]?.entities.findIndex(Boolean)??0);status('');
+ }
+ // Bridge for config_app.h: import/export, dirty state, discard and save.
+ globalThis.ONX_PAGES={saved:()=>JSON.parse(panelPages),set:list=>{pageConfigs=normalize(list);view='page';selectedPage=0;touch()},dirty:dirtyPages,discard:()=>{pageConfigs=JSON.parse(savedPages);status('')},save:savePages};
+ globalThis.ONX_PANEL_EDITOR=(slots,active,busy,refresh,target=null)=>{
+  editorSlots=slots;editorBusy=busy;redraw=refresh;
+  const switched=(target||null)!==editorTarget;if(switched)loadTarget(target||null);
+  // Follow the app when it selects another entry (initial load, preset switch).
+  const e=slots[active]?.entity||'';
+  if(!switched&&(active!==editorActive||e!==editorEntity)&&e&&current()!==e){
+   const own=pageConfigs[selectedPage]?.entities.indexOf(e)??-1,page=own>=0?selectedPage:pageConfigs.findIndex(p=>p.entities.includes(e));
+   if(page>=0){view='page';selectedPage=page;selectedPos=pageConfigs[page].entities.indexOf(e)}else if(slots[active].timerHidden==='1'){view='timer';timerEntity=e}
+  }
+  editorActive=active;editorEntity=e;
+  if(!focusMember())renderPageEditor();
+ };
+ rpc({op:'panel_pages'}).then(result=>{panelPages=JSON.stringify(normalize(result.pages));pagesLoaded=true;if(!editorTarget){pageConfigs=JSON.parse(panelPages);savedPages=panelPages;selectedPage=0;selectedPos=Math.max(0,pageConfigs[0]?.entities.findIndex(Boolean)??0)}if(!focusMember())touch()}).catch(error=>{pageError='Could not load pages: '+error.message;renderPageEditor()});
  // Mirrors onx_panel_layout::geometry (portrait and landscape).
  globalThis.ONX_PANEL_GEOMETRY=(kind,w,h,detail=false)=>{
   const top=detail?12:40,bottom=detail?12:52,gap=8,pad=12,body=h-top-bottom,inner=w-pad*2;
@@ -140,6 +301,7 @@ static const char PANEL_JS[] = R"ONXPANEL(
  const ns='http://www.w3.org/2000/svg';
  const node=(tag,attrs={})=>{const n=document.createElementNS(ns,tag);for(const [key,value]of Object.entries(attrs))n.setAttribute(key,value);return n};
  globalThis.ONX_PANEL_PREVIEW=(svg,slot,view,views,screen,settings)=>{
+  if(settings&&settings.orientation!==lastSettings.orientation){lastSettings=settings;renderPageEditor()}else lastSettings=settings||{};
   const {width:w,height:h}=globalThis.ONX_PANEL_SCREEN(settings),detail=screen!=='main';
   const background=settings?.background_color||'#101418',rgb=parseInt(background.slice(1),16),light=((rgb>>16)*299+((rgb>>8)&255)*587+(rgb&255)*114)>150000;
   const foreground=light?'#161b22':'#ffffff',surface=mix(light?'#000000':'#ffffff',background,8),controlColor=mix(light?'#000000':'#ffffff',background,13),trackColor=mix(light?'#000000':'#ffffff',background,23),mutedColor=mix(foreground,background,68);
@@ -266,15 +428,15 @@ static const char PANEL_JS[] = R"ONXPANEL(
    if(slot.entity.startsWith('script.')&&d.state==='on')button('Stop script',P(16),h-P(136),w-P(32),P(48));
    (d.actions||[]).slice(0,2).forEach((name,i)=>button(name,P(16)+i*(w-P(24))/2,h-P(194),(w-P(40))/2,P(40)));
   }else{
-   const p=detail?{layout:'single',members:[]}:pageFor(slot.entity),ids=[slot.entity,...p.members],rects=globalThis.ONX_PANEL_GEOMETRY(p.layout,w,h,detail);
+   const p=detail?{layout:'single',ids:[slot.entity]}:pageFor(slot.entity),ids=p.ids,rects=globalThis.ONX_PANEL_GEOMETRY(p.layout,w,h,detail);
    const base=Math.min(w,h)/240;
    for(const [i,r]of rects.entries()){
     const found=views.find(v=>v.entity===ids[i]),v=!detail&&found?{...found,...found.carousel}:found;
     const compact=p.layout==='control_sensors'&&i>0,lines=v?.lines||[];
-    const cardTitle=i===0?(slot.name||v?.lines?.[4]?.text||ids[i]):(editorSlots.find(s=>s.entity===ids[i])?.name||v?.lines?.[4]?.text||ids[i]||'Choose an entity');
+    const cardTitle=ids[i]===slot.entity?(slot.name||v?.lines?.[4]?.text||ids[i]):(editorSlots.find(s=>s.entity===ids[i])?.name||v?.lines?.[4]?.text||ids[i]||'Choose an entity');
     if(!detail){mainCard(v,cardTitle,ids[i],r,compact);continue}
     svg.append(node('rect',{x:r.x,y:r.y,width:r.w,height:r.h,rx:8,fill:surface,'data-panel-item':i}));
-    const title=i===0?(slot.name||lines[4]?.text||ids[i]):(editorSlots.find(s=>s.entity===ids[i])?.name||lines[4]?.text||ids[i]||'Choose an entity');
+    const title=ids[i]===slot.entity?(slot.name||lines[4]?.text||ids[i]):(editorSlots.find(s=>s.entity===ids[i])?.name||lines[4]?.text||ids[i]||'Choose an entity');
     const small=14*base,normal=24*base,large=32*base,narrow=p.layout==='two_controls'||r.w<220;
     const stacked=compact&&r.w<220&&r.h>=small+normal+16,side=compact&&!stacked;
     const valueSize=compact?(stacked||r.h>=normal+8?normal:small):(r.h<150||r.w<220?normal:large);

@@ -197,17 +197,111 @@ dl.info{display:grid;grid-template-columns:180px 1fr;margin:14px 0 18px;font-siz
 .color-custom{display:flex;align-items:center;gap:10px;font-size:13.5px}
 .color-custom input{width:46px;height:36px;padding:3px;border-radius:8px}
 #color-value{display:block;margin-top:4px;font-family:var(--mono)}
-.panel-page-layout{margin:18px 0;padding:16px;border:1px solid var(--line);border-radius:12px;background:var(--raised)}
-.panel-page-layout select{width:100%}
-.page-list{list-style:none;margin:8px 0;padding:0;display:flex;flex-direction:column;gap:6px}
-.page-list li{cursor:grab}.page-list button{width:100%;text-align:left}.page-list button[aria-current=true]{outline:2px solid var(--accent)}
-.page-grid{display:grid;gap:8px;margin:12px 0;aspect-ratio:2/3;max-width:260px}
-.page-grid.single{grid-template-rows:1fr}.page-grid.two_controls{grid-template-rows:1fr 1fr}
-.page-grid.control_sensors{grid-template-rows:55fr 15fr 15fr 15fr}
-.page-cell{display:flex;flex-direction:column;gap:2px;padding:8px;border:1px solid var(--line);border-radius:10px;background:var(--paper);overflow:hidden;cursor:pointer;min-height:0}
-.page-cell.empty{border-style:dashed;cursor:default}.page-cell.compact{flex-direction:row;align-items:center;flex-wrap:wrap}
-.page-cell.drop{outline:2px dashed var(--accent)}.page-cell[aria-current=true]{outline:2px solid var(--accent)}
-.page-cell small{opacity:.7;font-size:11px}.page-cell button{padding:2px 8px;font-size:12px}
+/* pages: the rail list, the page editor and the icon picker */
+.mdi{--icon:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Crect x='4' y='4' width='16' height='16' rx='4'/%3E%3C/svg%3E");display:inline-block;flex:none;width:20px;height:20px;background:currentColor;-webkit-mask:var(--icon) center/contain no-repeat;mask:var(--icon) center/contain no-repeat}
+.slot-list .slot-icon .mdi{width:17px;height:17px}
+.item-text{display:grid;min-width:0;flex:1;line-height:1.3}
+.slot-list .item-text small{font-size:11.5px;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.page-list button[draggable=true]{cursor:grab}
+.page-list button.drop-target{box-shadow:inset 0 2px 0 var(--accent)}
+.column-heading{display:flex;align-items:baseline;justify-content:space-between;gap:8px}
+.column-note{margin:-8px 4px 0;font-size:12.5px}
+.empty-note{font-size:13px;color:var(--muted);padding:4px}
+.add-row{display:flex;align-items:center;justify-content:center;gap:8px;min-height:38px;border:1px dashed var(--line-strong);background:transparent;color:var(--muted);font-weight:600}
+.add-row:hover{color:var(--ink);border-color:var(--accent);background:var(--paper)}
+.add-row svg{width:16px;height:16px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round}
+.timer-list{list-style:none;margin:0;padding:0}
+.timer-list li{display:flex;gap:2px;align-items:center}
+.timer-list li>button:first-child{flex:1;min-width:0}
+.timer-list .icon-button{width:32px;min-width:32px;height:32px;min-height:32px;border:0;background:transparent;color:var(--muted)}
+.timer-list .icon-button:hover{color:var(--error)}
+.pages-empty{display:grid;justify-items:center;gap:8px;text-align:center;padding:48px 20px;border:1px dashed var(--line-strong);border-radius:16px;background:var(--raised)}
+.pages-empty>.mdi{width:40px;height:40px;color:var(--accent)}
+.pages-empty h3{margin:4px 0 0;font-size:18px}
+.page-head{display:grid;grid-template-columns:auto minmax(0,1fr) auto;gap:14px;align-items:end;margin-bottom:18px}
+.page-head .field{margin:0}
+.icon-pick{display:grid;place-items:center;align-content:center;gap:3px;width:68px;height:68px;padding:0;border-radius:18px;background:var(--wash);color:var(--accent-text,var(--accent));border:1px solid color-mix(in oklab,var(--accent) 38%,var(--line))}
+.icon-pick:hover{background:var(--wash);border-color:var(--accent)}
+.icon-pick .mdi{width:30px;height:30px}
+.icon-pick small{font-size:10.5px;font-weight:650;letter-spacing:.06em;text-transform:uppercase;color:var(--muted)}
+.page-order{flex-wrap:nowrap;gap:6px}
+.layout-choice{border:0;padding:0;margin:0 0 16px;min-width:0}
+.layout-choice legend,.member-text small{padding:0;font-size:11px;font-weight:650;letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
+.layout-choice legend{margin-bottom:8px}
+.layout-options{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}
+.layout-option{position:relative;display:flex;gap:12px;align-items:center;padding:10px 12px;border:1px solid var(--line);border-radius:12px;background:var(--paper);cursor:pointer;transition:border-color .12s,background .12s}
+.layout-option:hover{border-color:var(--line-strong)}
+.layout-option input{position:absolute;opacity:0;pointer-events:none}
+.layout-option svg{flex:none;width:30px;height:40px}
+.layout-option svg.wide{width:42px;height:28px}
+.layout-option svg rect{fill:var(--raised);stroke:var(--muted);stroke-width:8}
+.layout-option svg rect.frame{fill:none;stroke:var(--line-strong);stroke-width:10}
+.layout-option b{display:block;font-size:13.5px;font-weight:650}
+.layout-option small{display:block;font-size:11.5px;line-height:1.3}
+.layout-option:has(input:checked){border-color:var(--accent);background:var(--wash);box-shadow:0 0 0 1px var(--accent)}
+.layout-option:has(input:checked) svg rect:not(.frame){fill:color-mix(in oklab,var(--accent) 35%,transparent);stroke:var(--accent)}
+.layout-option:has(input:focus-visible){outline:2px solid var(--accent);outline-offset:2px}
+.layout-option:has(input:disabled){opacity:.5;cursor:default}
+.page-canvas{display:flex;flex-direction:column;align-items:center;gap:6px;padding:20px 16px 10px;margin-bottom:14px;border:1px solid var(--line);border-radius:16px;background:radial-gradient(circle at 50% 0,var(--wash),transparent 70%),var(--raised)}
+.page-canvas>.hint{text-align:center;font-size:12.5px;margin:6px 0 0}
+.page-grid{position:relative;width:100%;max-width:280px;border-radius:20px;background:var(--paper);border:7px solid #15181d;box-shadow:0 18px 40px -22px #000a,0 0 0 1px var(--line);container-type:inline-size}
+.page-grid.wide{max-width:420px}
+.page-chrome{position:absolute;left:5%;right:5%;display:flex;align-items:center;justify-content:space-between;font:600 10px var(--mono);color:var(--muted);pointer-events:none}
+.page-chrome.top{top:2.2%}
+.page-chrome.bottom{bottom:2.5%;justify-content:center;gap:9px}
+.page-chrome .mdi{width:13px;height:13px;opacity:.55}
+.page-chrome .mdi.here{opacity:1;color:var(--accent);width:15px;height:15px}
+.page-cell{position:absolute;display:flex;border:1px solid var(--line);border-radius:10px;background:var(--raised);min-width:0;min-height:0;transition:border-color .12s,box-shadow .12s}
+.page-cell:hover{border-color:var(--line-strong)}
+.page-cell[aria-current=true]{border-color:var(--accent);box-shadow:0 0 0 2px color-mix(in oklab,var(--accent) 40%,transparent)}
+.page-cell.empty{background:transparent;border:1.5px dashed color-mix(in oklab,var(--muted) 55%,transparent)}
+.page-cell.empty[aria-current=true]{border-color:var(--accent)}
+.page-cell.drop{outline:2px dashed var(--accent);outline-offset:2px}
+.page-cell[draggable=true]{cursor:grab}
+.cell-main{all:unset;box-sizing:border-box;flex:1;display:flex;flex-direction:column;justify-content:center;gap:5px;min-width:0;padding:22px 12px 10px;cursor:pointer;border-radius:9px;color:var(--ink)}
+.cell-main:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.cell-main .mdi{width:26px;height:26px;color:var(--accent)}
+.cell-main strong{font-size:13px;font-weight:650;line-height:1.25;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:100%}
+.cell-main small{font:10.5px var(--mono);color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:100%}
+.page-cell.empty .cell-main{align-items:center;text-align:center;color:var(--muted)}
+.page-cell.empty .cell-main .mdi{color:var(--muted)}
+.page-cell.empty:hover .cell-main,.page-cell.empty:hover .cell-main .mdi{color:var(--accent)}
+.page-cell.compact .cell-main{flex-direction:row;align-items:center;justify-content:flex-start;gap:8px;padding:2px 64px 2px 10px}
+.page-cell.compact .cell-main .mdi{width:18px;height:18px}
+.page-cell.compact .cell-main small,.page-cell.compact .cell-tag{display:none}
+.page-cell.compact.empty .cell-main{justify-content:center}
+.cell-tag{position:absolute;top:6px;left:10px;font-size:9.5px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);pointer-events:none}
+.cell-tools{position:absolute;top:4px;right:4px;display:flex;gap:2px;opacity:0;transition:opacity .12s}
+.page-cell.compact .cell-tools{top:50%;transform:translateY(-50%)}
+.page-cell:hover .cell-tools,.page-cell:focus-within .cell-tools,.page-cell[aria-current=true] .cell-tools{opacity:1}
+.cell-tools button{display:grid;place-items:center;width:24px;height:24px;min-height:0;padding:0;border-radius:7px;border:0;background:color-mix(in oklab,var(--paper) 85%,transparent);color:var(--muted)}
+.cell-tools button:hover{color:var(--ink);background:var(--paper)}
+.cell-tools button.danger:hover{color:var(--error)}
+.cell-tools svg{width:14px;height:14px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+.page-status{min-height:0;margin:0 0 10px;font-size:13px;color:var(--error)}
+.page-status:empty{display:none}
+.member-head{display:flex;align-items:center;gap:12px;padding:12px 14px;margin:0 0 14px;border:1px solid var(--line);border-radius:14px;background:var(--raised)}
+.member-icon{display:grid;place-items:center;flex:none;width:42px;height:42px;border-radius:12px;background:var(--wash);color:var(--accent)}
+.member-icon .mdi{width:24px;height:24px}
+.member-text{display:grid;flex:1;min-width:0;line-height:1.3}
+.member-text h3{margin:1px 0;font-size:16px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.member-text code{font:12px var(--mono);color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.member-empty{padding:14px 16px;margin:0 0 14px;border:1px dashed var(--line-strong);border-radius:14px;font-size:13.5px;color:var(--muted);max-width:none}
+#page-editor.no-member .editor-tabs,#page-editor.no-member .editor-pane{display:none!important}
+#icon-picker{width:min(760px,calc(100% - 32px));max-height:88dvh;border:1px solid var(--line);border-radius:20px;padding:0;background:var(--paper);box-shadow:0 30px 90px -20px #000b}
+#icon-picker[open]{animation:pop .16s ease-out}
+#icon-picker::backdrop{background:#05070acc;backdrop-filter:blur(3px);animation:fade .16s ease-out}
+#icon-picker .picker-body{max-height:58dvh}
+.icon-toolbar{margin:14px 0 8px!important}
+.icon-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(86px,1fr));gap:4px}
+.icon-grid button{display:flex;flex-direction:column;align-items:center;gap:7px;min-width:0;min-height:0;padding:14px 4px 9px;border:1px solid transparent;border-radius:12px;background:transparent;font-weight:500}
+.icon-grid button:hover,.icon-grid button:focus-visible{background:var(--raised);border-color:var(--line)}
+.icon-grid button[aria-selected=true]{background:var(--wash);border-color:var(--accent);color:var(--accent-text,var(--accent))}
+.icon-grid .mdi{width:28px;height:28px}
+.icon-grid small{max-width:100%;font-size:10.5px;line-height:1.2;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.icon-grid .empty{grid-column:1/-1;padding:18px 4px;color:var(--muted);font-size:13.5px}
+.icon-foot{display:flex;align-items:center;gap:12px;padding:14px 24px;border-top:1px solid var(--line);background:var(--raised)}
+@media(max-width:600px){.page-head{grid-template-columns:auto minmax(0,1fr)}.page-order{grid-column:1/-1;justify-content:flex-end}.layout-option{flex-direction:column;text-align:center;gap:6px;padding:10px 6px}.member-head{flex-wrap:wrap}.member-head .row{width:100%}.member-head .row button{flex:1}.icon-foot{padding:12px 16px;flex-wrap:wrap}.icon-grid{grid-template-columns:repeat(auto-fill,minmax(72px,1fr))}}
 /* combo */
 .combo{position:relative;min-width:0;margin-top:2px}
 .combo>select{display:none}
@@ -337,12 +431,19 @@ body.rail-collapsed{grid-template-columns:76px minmax(0,1fr)}
 <div id="draft-notice" hidden><p>A draft from your last visit is available. Restore it to review your unsaved changes.</p><div class="row"><button id="restore-draft">Restore draft</button><button id="dismiss-draft">Dismiss</button></div></div>
 <p id="status" class="status" role="status" aria-live="polite">Connecting to the panel…</p>
 <main>
-<section id="page-entities" class="workspace" aria-label="Display and actions"><div class="slot-column"><section class="preset-card" aria-labelledby="preset-heading"><h2 class="preset-heading" id="preset-heading"><button id="preset-toggle" type="button" aria-expanded="false" aria-controls="preset-body"><span class="toggle-label">Preset</span><span id="preset-summary" class="preset-summary"></span><span id="preset-badge" class="mode-badge"></span><svg class="chevron" viewBox="0 0 24 24" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg></button></h2><div id="preset-body" class="preset-body" hidden><div class="preset-bar"><label class="sr" for="preset-target">Choose what to edit: the panel or a saved preset</label><select id="preset-target"></select><button id="preset-new" type="button" class="icon-button" aria-label="New preset" title="New preset"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg></button></div><p id="preset-mode" class="preset-mode"></p><div class="preset-actions"><button id="preset-save-as" type="button">Save as preset</button><button id="preset-apply" type="button" class="icon-button primary" aria-label="Apply preset to panel" title="Apply preset to panel"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 5v14l11-7z"/></svg></button><button id="preset-rename" type="button" class="icon-button" aria-label="Rename preset" title="Rename preset"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20h4L19 9l-4-4L4 16v4zM13.5 6.5l4 4"/></svg></button><button id="preset-delete" type="button" class="icon-button danger" aria-label="Delete preset" title="Delete preset"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3"/></svg></button></div></div></section><div class="column-heading slots-heading"><h2 id="slots-heading">Slots</h2></div><nav id="slots" class="slot-list" aria-labelledby="slots-heading"></nav></div><section aria-label="Slot configuration">
-<div class="toolbar"><div><h2 id="slot-title">Slot 1</h2><span class="unsaved" id="unsaved-count"></span></div><div class="row"><button id="discard">Discard changes</button><button id="save-all">Save all</button><button id="save" class="primary">Save slot</button></div></div>
-<div class="slot-tools"><div class="row"><button id="move-up" class="icon-button" aria-label="Move slot earlier" title="Move slot earlier"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 19V5m-6 6 6-6 6 6"/></svg></button><button id="move-down" class="icon-button" aria-label="Move slot later" title="Move slot later"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14m-6-6 6 6 6-6"/></svg></button><button id="duplicate" class="quiet">Duplicate into empty slot</button><button id="add-slot" type="button">Add slot</button><span id="slot-capacity" class="hint"></span></div></div>
+<section id="page-entities" class="workspace" aria-label="Display and actions"><div class="slot-column"><section class="preset-card" aria-labelledby="preset-heading"><h2 class="preset-heading" id="preset-heading"><button id="preset-toggle" type="button" aria-expanded="false" aria-controls="preset-body"><span class="toggle-label">Preset</span><span id="preset-summary" class="preset-summary"></span><span id="preset-badge" class="mode-badge"></span><svg class="chevron" viewBox="0 0 24 24" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg></button></h2><div id="preset-body" class="preset-body" hidden><div class="preset-bar"><label class="sr" for="preset-target">Choose what to edit: the panel or a saved preset</label><select id="preset-target"></select><button id="preset-new" type="button" class="icon-button" aria-label="New preset" title="New preset"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg></button></div><p id="preset-mode" class="preset-mode"></p><div class="preset-actions"><button id="preset-save-as" type="button">Save as preset</button><button id="preset-apply" type="button" class="icon-button primary" aria-label="Apply preset to panel" title="Apply preset to panel"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 5v14l11-7z"/></svg></button><button id="preset-rename" type="button" class="icon-button" aria-label="Rename preset" title="Rename preset"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20h4L19 9l-4-4L4 16v4zM13.5 6.5l4 4"/></svg></button><button id="preset-delete" type="button" class="icon-button danger" aria-label="Delete preset" title="Delete preset"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3"/></svg></button></div></div></section><div class="column-heading slots-heading"><h2 id="slots-heading">Pages</h2><span id="slot-capacity" class="counter"></span></div><nav id="slots" class="slot-list page-list" aria-labelledby="slots-heading"></nav><button id="add-page" type="button" class="add-row"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>Add page</button><div class="column-heading slots-heading"><h2 id="timers-heading">Timers</h2></div><p class="hint column-note">Registered timers need no page: their popups and timer screen still show them.</p><ul id="timer-list" class="slot-list timer-list" aria-labelledby="timers-heading"></ul><button id="add-timer" type="button" class="add-row"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>Add timer</button></div><section id="page-editor" aria-label="Page editor">
+<div class="toolbar"><div><h2 id="slot-title">Pages</h2><span class="unsaved" id="unsaved-count"></span></div><div class="row"><button id="discard">Discard changes</button><button id="save-all" class="primary">Save changes</button><button id="save" hidden>Save entity</button></div></div>
+<div id="pages-empty" class="pages-empty" hidden><span class="mdi" style="--icon:url(&quot;https://api.iconify.design/mdi/view-dashboard-outline.svg&quot;)" aria-hidden="true"></span><h3>No pages yet</h3><p class="hint">Each page is one stop in the panel’s carousel. Add a page, pick a layout, then place entities on it.</p><button id="add-first-page" type="button" class="primary">Add a page</button></div>
+<div id="page-head" class="page-head" hidden><button id="page-icon-button" type="button" class="icon-pick" aria-haspopup="dialog"><span id="page-icon-preview" class="mdi" aria-hidden="true"></span><small>Icon</small></button><label class="field page-name-field">Page name<input id="page-name" maxlength="48" placeholder="Use the first entity’s name" autocomplete="off"></label><div class="row page-order"><button id="page-up" type="button" class="icon-button" aria-label="Move page earlier" title="Move page earlier"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 19V5m-6 6 6-6 6 6"/></svg></button><button id="page-down" type="button" class="icon-button" aria-label="Move page later" title="Move page later"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14m-6-6 6 6 6-6"/></svg></button><button id="delete-page" type="button" class="icon-button danger" aria-label="Delete page" title="Delete page"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3"/></svg></button></div></div>
+<fieldset id="page-layouts" class="layout-choice" hidden><legend>Layout</legend><div id="page-kind" class="layout-options"></div></fieldset>
+<div id="page-canvas" class="page-canvas" hidden><div id="page-grid" class="page-grid"></div><p class="hint">Select a position to edit its entity. Drag positions to swap them, or drag one off the screen to remove it.</p></div>
+<p id="page-layout-status" class="page-status" role="status"></p>
+<div id="member-head" class="member-head" hidden><span class="member-icon"><span id="member-icon" class="mdi" aria-hidden="true"></span></span><div class="member-text"><small id="member-role"></small><h3 id="member-name"></h3><code id="member-id"></code></div><div class="row"><button id="member-replace" type="button">Replace</button><button id="member-remove" type="button" class="quiet danger">Remove</button></div></div>
+<p id="member-empty" class="member-empty" hidden>Choose an entity for this position. Its name, shortcut, swipes and quick actions are edited here.</p>
+<div class="slot-tools" hidden><div class="row"><button id="move-up" class="icon-button" aria-label="Move slot earlier" title="Move slot earlier"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 19V5m-6 6 6-6 6 6"/></svg></button><button id="move-down" class="icon-button" aria-label="Move slot later" title="Move slot later"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14m-6-6 6 6 6-6"/></svg></button><button id="duplicate" class="quiet">Duplicate into empty slot</button><button id="add-slot" type="button">Add slot</button></div></div>
 <div class="editor-tabs" role="tablist" aria-label="Slot settings"><button id="slot-tab-display" type="button" role="tab" data-slot-tab="display" aria-controls="slot-panel-display" aria-selected="true">Display</button><button id="slot-tab-action" type="button" role="tab" data-slot-tab="action" aria-controls="slot-panel-action" aria-selected="false" tabindex="-1">Press action</button><button id="slot-tab-gestures" type="button" role="tab" data-slot-tab="gestures" aria-controls="slot-panel-gestures" aria-selected="false" tabindex="-1">Gestures</button><button id="slot-tab-playlists" type="button" role="tab" data-slot-tab="playlists" aria-controls="slot-panel-playlists" aria-selected="false" tabindex="-1" hidden>Quick actions</button></div>
 <section id="slot-panel-display" class="editor-pane" role="tabpanel" aria-labelledby="slot-tab-display"><p class="help-links"><a href="https://github.com/fixtse/OpenNextion-Room-Companion/blob/main/docs/web-configuration.md#add-and-arrange-controls" target="_blank" rel="noopener noreferrer">How to add and arrange controls<span class="sr"> (opens in a new tab)</span></a></p>
-<article class="binding active" id="display-binding"><h3>Show on the display</h3><strong id="entity-name">Empty slot</strong><small id="entity-id"></small><button id="choose-entity">Choose entity</button><button id="clear" class="quiet">Clear</button></article>
+<article class="binding active" id="display-binding" hidden><h3>Show on the display</h3><strong id="entity-name">Empty slot</strong><small id="entity-id"></small><button id="choose-entity">Choose entity</button><button id="clear" class="quiet">Clear</button></article>
 <label class="field">Display name<input id="display-name" maxlength="96" placeholder="Use the Home Assistant name"></label>
 
 <div id="sensor-options" hidden><h3 id="secondary-heading">Secondary reading</h3><label class="field">Sensor view<select id="sensor-presentation"><option value="0">Value</option><option value="1">12-hour graph when opened</option></select></label><label class="field">Secondary entity (optional)<input id="secondary-entity" maxlength="128" placeholder="sensor.openai_codex_5_hour_reset"></label><button type="button" id="choose-secondary">Choose secondary entity</button><label class="field">Secondary text<input id="secondary-text" maxlength="160" placeholder="Resets {relative} ({time})"></label><p class="hint" id="secondary-help">Replaces the sensor name below the value. Use {value}, {unit}, {relative}, {time}, {date}, or {datetime}. Example: Resets {relative} ({time}). Graphs use recorded statistics where available, otherwise readings collected since boot.</p><p class="help-links"><a href="https://github.com/fixtse/OpenNextion-Room-Companion/blob/main/docs/web-configuration.md#sensors-and-graphs" target="_blank" rel="noopener noreferrer">Sensor graphs and secondary text<span class="sr"> (opens in a new tab)</span></a></p></div>
@@ -360,7 +461,7 @@ body.rail-collapsed{grid-template-columns:76px minmax(0,1fr)}
 <section id="page-maintenance" hidden><div class="panel"><h2>Backup & restore</h2><p class="help-links"><a href="https://github.com/fixtse/OpenNextion-Room-Companion/blob/main/docs/web-configuration.md#backups-and-diagnostics" target="_blank" rel="noopener noreferrer">Back up and restore your settings<span class="sr"> (opens in a new tab)</span></a></p><p>Back up your controls, tap and swipe actions, playlists, presets, and device settings. Credentials are excluded.</p><div class="row" style="margin-top:15px"><button id="export">Download saved configuration</button><button id="import">Import configuration</button><input id="import-file" type="file" accept="application/json,.json" hidden></div><p class="hint">Imports open as an unsaved draft. Review the slots and device settings, then save each section to apply. Presets in a backup can be restored to the panel right away.</p></div><div class="panel"><h2>Device information</h2><dl id="device-info" class="info"></dl><div class="row"><button id="diagnostics">Download diagnostics</button><button id="check-status">Refresh status</button></div><p class="hint">Diagnostics include firmware, uptime, and connection status. Entity names, addresses, and credentials are excluded.</p><p class="hint">Firmware updates are available through the panel’s “Firmware Update” entity in Home Assistant.</p><p class="help-links"><a href="https://github.com/fixtse/OpenNextion-Room-Companion/blob/main/docs/setup.md#keep-it-updated" target="_blank" rel="noopener noreferrer">Install wireless updates<span class="sr"> (opens in a new tab)</span></a> <a href="https://github.com/fixtse/OpenNextion-Room-Companion/blob/main/docs/controls.md#reset-wi-fi-and-device-configuration" target="_blank" rel="noopener noreferrer">Reset instructions<span class="sr"> (opens in a new tab)</span></a></p></div></section>
 </main><dialog id="ask" class="ask" aria-labelledby="ask-title" aria-describedby="ask-text"><form id="ask-form" method="dialog" novalidate><h2 id="ask-title"></h2><p id="ask-text"></p><label id="ask-field" class="field ask-field" hidden><span id="ask-label">Name</span><input id="ask-input" maxlength="32" autocomplete="off"></label><p id="ask-error" class="ask-error" role="alert" hidden></p><div class="ask-actions"><button id="ask-cancel" type="button">Cancel</button><button id="ask-ok" type="submit" class="primary">Continue</button></div></form></dialog><footer><a href="https://github.com/fixtse/OpenNextion-Room-Companion/blob/main/README.md" target="_blank" rel="noopener noreferrer">User guide</a> · <a href="https://fixtse.com/" target="_blank" rel="noopener noreferrer">OpenNextion Room Companion by fixtSE</a></footer>
 </div>
-<dialog id="entity-picker" aria-labelledby="picker-title"><div class="picker-heading"><div><h2 id="picker-title">Choose an entity</h2><p id="picker-context" class="hint"></p></div><button type="button" id="close-picker" class="icon-button" aria-label="Close entity picker" title="Close"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m6 6 12 12M18 6 6 18"/></svg></button></div><div class="picker-body"><div class="toolbar"><h3 id="search-title">Find an entity</h3><span id="count" class="counter"></span></div><label class="sr" for="search">Search by name, entity ID, or room</label><input id="search" class="search" placeholder="Search by name, entity ID, or room" autocomplete="off" maxlength="128"><label class="field">Room<select id="room"><option value="">All rooms</option></select></label><div id="filters" class="filters" aria-label="Filter by entity type"></div><div id="manual"></div><div id="results" class="results" aria-live="polite"></div><button id="more" class="more" hidden>Show more</button><p id="action-hint" class="hint" hidden>Choose an automation or script. Automation conditions are checked before its actions run.</p></div></dialog>
+<dialog id="icon-picker" aria-labelledby="icon-picker-title"><div class="picker-heading"><div><h2 id="icon-picker-title">Choose a carousel icon</h2><p id="icon-picker-context" class="hint">Material Design Icons, as used by Home Assistant.</p></div><button type="button" id="close-icon-picker" class="icon-button" aria-label="Close icon picker" title="Close"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m6 6 12 12M18 6 6 18"/></svg></button></div><div class="picker-body"><label class="sr" for="icon-search">Search icons</label><input id="icon-search" class="search" type="search" placeholder="Search icons: sofa, lamp, tv, mdi:bed" autocomplete="off" maxlength="64"><div class="toolbar icon-toolbar"><h3 id="icon-caption">Suggestions</h3><span id="icon-count" class="counter"></span></div><div id="icon-grid" class="icon-grid" role="listbox" aria-labelledby="icon-caption"></div><button id="icon-more" type="button" class="more" hidden>Show more icons</button></div><div class="icon-foot"><span class="member-icon"><span id="icon-focus" class="mdi" aria-hidden="true"></span></span><div class="member-text"><small>Selected</small><code id="icon-focus-name"></code></div><button id="icon-default" type="button" class="quiet">Use the entity’s icon</button></div></dialog><dialog id="entity-picker" aria-labelledby="picker-title"><div class="picker-heading"><div><h2 id="picker-title">Choose an entity</h2><p id="picker-context" class="hint"></p></div><button type="button" id="close-picker" class="icon-button" aria-label="Close entity picker" title="Close"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m6 6 12 12M18 6 6 18"/></svg></button></div><div class="picker-body"><div class="toolbar"><h3 id="search-title">Find an entity</h3><span id="count" class="counter"></span></div><label class="sr" for="search">Search by name, entity ID, or room</label><input id="search" class="search" placeholder="Search by name, entity ID, or room" autocomplete="off" maxlength="128"><label class="field">Room<select id="room"><option value="">All rooms</option></select></label><div id="filters" class="filters" aria-label="Filter by entity type"></div><div id="manual"></div><div id="results" class="results" aria-live="polite"></div><button id="more" class="more" hidden>Show more</button><p id="action-hint" class="hint" hidden>Choose an automation or script. Automation conditions are checked before its actions run.</p></div></dialog>
 
 <script src="/panel/ha.js"></script><script>window.ONX_TOKEN='__ONX_TOKEN__';</script><script src="/panel/panel.js"></script><script src="/panel/app.js"></script>
 </body></html>)ONXHTML";

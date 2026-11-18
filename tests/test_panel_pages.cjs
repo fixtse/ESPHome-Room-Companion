@@ -24,6 +24,12 @@ const {chromium}=require('playwright');
    if(url.pathname==='/panel/result'){await route.fulfill({json:tickets.get(Number(url.searchParams.get('ticket')))||{}});return}
    await route.fulfill({status:204});
   });
+  // Icon search: a tiny stand-in for the Iconify MDI collection.
+  await page.route('https://api.iconify.design/**',async route=>{
+   const url=new URL(route.request().url());
+   if(url.pathname==='/collection')await route.fulfill({json:{prefix:'mdi',uncategorized:['home','bed'],categories:{Furniture:['sofa','sofa-outline','sofa-single','desk']}}});
+   else await route.fulfill({contentType:'image/svg+xml',body:'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><rect width="24" height="24"/></svg>'});
+  });
   await page.goto('http://panel.test/');await page.waitForFunction(()=>!!globalThis.ONX_PANEL_EDITOR);
   await page.evaluate(()=>document.getElementById('page-settings').hidden=false);
   await page.locator('#dash-toolbar-side').waitFor();
@@ -42,8 +48,10 @@ const {chromium}=require('playwright');
    globalThis.ONX_PANEL_SIZE={width:320,height:480};document.getElementById('preview-screen').value='main';
    window.testDraw=()=>ONX_PANEL_PREVIEW(document.getElementById('device-preview'),testSlots[0],testViews[0],testViews,'main',{});
    window.added=[];window.nextPick=null;
-   globalThis.ONX_APP={pick:(accept,done)=>{window.lastAccept=accept;if(window.nextPick)done(window.nextPick)},item:()=>null,slots:()=>testSlots,select:i=>{window.selected=i},
-    add:item=>{testSlots.push({entity:item.entity,name:item.name});added.push(item.entity);return testSlots.length-1},clear:i=>{testSlots[i]={entity:'',name:''}},setTimer:(i,on)=>{testSlots[i].timerHidden=on?'1':'0'},saveAll:async()=>{}};
+   // Mirrors config_app.h: selecting or changing an entry re-renders the editor.
+   window.act=0;window.target=null;const again=()=>{ONX_PANEL_EDITOR(testSlots,act,false,testDraw,target);testDraw()};
+   globalThis.ONX_APP={pick:(accept,done)=>{window.lastAccept=accept;if(window.nextPick)done(window.nextPick)},item:()=>null,slots:()=>testSlots,select:i=>{window.selected=window.act=i;again()},
+    add:item=>{testSlots.push({entity:item.entity,name:item.name});added.push(item.entity);return testSlots.length-1},clear:i=>{testSlots[i]={entity:'',name:''}},setTimer:(i,on)=>{testSlots[i].timerHidden=on?'1':'0'},saveAll:async()=>true,refresh:again,dirtyAt:()=>false,message:t=>{window.lastMessage=t}};
    ONX_PAGES.set([{name:'',icon:'',layout:'single',entities:['light.kitchen']}]);
    ONX_PANEL_EDITOR(testSlots,0,false,testDraw);testDraw();
    window.dropEntity=(pos,item)=>{const dt=new DataTransfer();dt.setData('application/x-onx-entity',JSON.stringify(item));document.querySelector(`[data-member="${pos}"]`).dispatchEvent(new DragEvent('drop',{dataTransfer:dt,bubbles:true,cancelable:true}))};
@@ -53,32 +61,54 @@ const {chromium}=require('playwright');
   assert.equal(await page.locator('#device-preview circle').count(),0);
   const frame=await page.locator('.screen-frame').boundingBox();assert(frame.height>frame.width*1.35,'Preview frame must be rectangular, not a square SVG letterbox');
   const status=()=>page.locator('#page-layout-status').textContent();
+  const layout=kind=>page.locator('#page-kind label',{has:page.locator(`input[value="${kind}"]`)}).click();
+  const save=()=>page.evaluate(()=>ONX_PAGES.save());
+  // The rail lists pages; the editor shows the selected page.
+  assert.equal(await page.locator('#slots-heading').textContent(),'Pages');
+  assert.equal(await page.locator('#slots .page-item').count(),1);
+  assert.equal(await page.locator('#page-kind input').count(),3,'Layouts are chosen from visual cards');
   // Two entities: drag one in from the entity list; page name and carousel icon.
-  await page.selectOption('#page-kind','two_controls');assert.equal(await page.locator('#page-grid [data-member]').count(),2);
+  await layout('two_controls');assert.equal(await page.locator('#page-grid [data-member]').count(),2);
   await page.evaluate(()=>dropEntity(1,{entity:'switch.fan',name:'Fan'}));
-  await page.fill('#page-name','Living');await page.fill('#page-icon','mdi:sofa');
+  assert.equal(await page.locator('#member-id').textContent(),'switch.fan','Placing an entity selects it for editing');
+  await page.fill('#page-name','Living');
+  await page.click('#page-icon-button');await page.locator('#icon-picker').waitFor({state:'visible'});
+  assert.ok(await page.locator('#icon-grid [data-icon]').count()>5,'Suggestions show before typing');
+  await page.fill('#icon-search','sofa');await page.locator('#icon-caption',{hasText:'Results'}).waitFor();
+  assert.equal(await page.locator('#icon-grid [data-icon]').first().getAttribute('data-icon'),'mdi:sofa','Exact matches rank first');
+  assert.equal(await page.locator('#icon-grid [data-icon]').count(),3);
+  assert.match(await page.locator('#icon-grid [data-icon="mdi:sofa"] .mdi').getAttribute('style'),/api\.iconify\.design\/mdi\/sofa\.svg/,'Each result previews its icon');
+  await page.locator('#icon-picker').screenshot({path:'/config/tests/artifacts/panel-icon-picker.png'});
+  await page.click('#icon-grid [data-icon="mdi:sofa"]');assert.equal(await page.locator('#icon-picker').isVisible(),false);
+  assert.match(await page.locator('#slots .page-item').first().getAttribute('aria-label'),/Page 1: Living, unsaved/);
   assert.equal(await page.locator('[data-panel-item]').count(),2);
-  await page.click('#save-page-layout');await page.getByText('Pages saved.',{exact:true}).waitFor();
+  assert.equal(await save(),true);
   assert.deepEqual(payloads.at(-1),{pages:[{name:'Living',icon:'mdi:sofa',layout:'two_controls',entities:['light.kitchen','switch.fan']}]});
   // Large + three compact: picker, a new (unconfigured) entity, compact-only rule, swap, duplicates.
-  await page.selectOption('#page-kind','control_sensors');assert.equal(await page.locator('#page-grid [data-member]').count(),4);
+  await layout('control_sensors');assert.equal(await page.locator('#page-grid [data-member]').count(),4);
+  assert.match(await status(),/Fan was removed/,'Non-sensors leave compact positions');
   assert.equal(await page.evaluate(()=>added.length),0);
   await page.evaluate(()=>dropEntity(1,{entity:'light.other',name:'Other'}));assert.match(await status(),/Compact positions/);
-  await page.evaluate(()=>{nextPick={entity:'sensor.temperature',name:'Temperature'}});await page.click('[data-member="1"] button');
+  await page.evaluate(()=>{nextPick={entity:'sensor.temperature',name:'Temperature'}});await page.click('[data-member="1"] .cell-main');
   assert.equal(await page.evaluate(()=>lastAccept('light.other')),false);
   await page.evaluate(()=>dropEntity(2,{entity:'sensor.co2',name:'CO2'}));assert.deepEqual(await page.evaluate(()=>added),['sensor.co2'],'New entities get their own entry');
   await page.evaluate(()=>dropEntity(3,{entity:'sensor.temperature',name:'Temperature'}));assert.match(await status(),/already on this page/);
   await page.evaluate(()=>dropEntity(3,{entity:'binary_sensor.door',name:'Door'}));
   await page.evaluate(()=>dropCell(1,2));
   assert.equal(await page.locator('[data-panel-item]').count(),4);
-  await page.click('#save-page-layout');await page.getByText('Pages saved.',{exact:true}).waitFor();
+  assert.equal(await save(),true);
   assert.deepEqual(payloads.at(-1).pages[0].entities,['light.kitchen','sensor.co2','sensor.temperature','binary_sensor.door']);
+  // Selecting a position edits that entity; Remove clears just that position.
+  await page.click('[data-member="3"] .cell-main');assert.equal(await page.locator('#member-id').textContent(),'binary_sensor.door');
+  assert.match(await page.locator('#member-role').textContent(),/Compact 3/);
   // Reuse: one entry (one subscription) on several pages, but one lead per carousel stop.
-  await page.click('#add-page');
+  await page.click('#add-page');assert.ok(await page.locator('#member-empty').isVisible());
   await page.evaluate(()=>dropEntity(0,{entity:'light.kitchen',name:'Kitchen lights'}));assert.match(await status(),/already leads/);
   await page.evaluate(()=>dropEntity(0,{entity:'sensor.co2',name:'CO2'}));
   assert.deepEqual(await page.evaluate(()=>added),['sensor.co2'],'A reused entity keeps its single entry');
-  await page.click('#save-page-layout');await page.getByText('Pages saved.',{exact:true}).waitFor();
+  await page.click('#page-up');assert.match(await page.locator('#slots .page-item').first().getAttribute('aria-label'),/Page 1: CO2/);
+  await page.click('#page-down');
+  assert.equal(await save(),true);
   assert.deepEqual(payloads.at(-1).pages.map(p=>p.entities[0]),['light.kitchen','sensor.co2']);
   await page.click('#delete-page');
   // Timers can be registered without any page.
@@ -86,13 +116,14 @@ const {chromium}=require('playwright');
   assert.equal(await page.evaluate(()=>lastAccept('light.x')),false);
   assert.equal(await page.locator('#timer-list li').count(),1);
   assert.equal(await page.evaluate(()=>testSlots.find(s=>s.entity==='timer.tea').timerHidden),'1');
-  assert(!(await page.evaluate(()=>ONX_PAGES.saved().concat()).some(p=>p.entities.includes('timer.tea'))));
+  assert.equal(await page.locator('#member-role').textContent(),'Registered timer');
+  assert(!(await page.evaluate(()=>ONX_PAGES.saved())).some(p=>p.entities.includes('timer.tea')));
   await page.click('[data-timer="timer.tea"]');assert.equal(await page.locator('#timer-list li').count(),0);
   // Incomplete pages are not saved.
-  await page.click('#add-page');await page.click('#save-page-layout');assert.match(await status(),/Fill every position/);assert.equal(payloads.length,3);
+  await page.click('#add-page');assert.equal(await save(),false);assert.match(await status(),/Fill every position/);assert.equal(payloads.length,3);
   await page.click('#delete-page');
   await page.evaluate(()=>{ONX_PANEL_EDITOR(testSlots,1,false,()=>{});ONX_PANEL_EDITOR(testSlots,0,false,testDraw);testDraw()});
-  assert.equal(await page.locator('#page-kind').inputValue(),'control_sensors');assert.deepEqual(await page.evaluate(()=>ONX_PAGES.saved()[0].icon),'mdi:sofa');
+  assert.equal(await page.locator('#page-kind input:checked').getAttribute('value'),'control_sensors');assert.deepEqual(await page.evaluate(()=>ONX_PAGES.saved()[0].icon),'mdi:sofa');
   await page.screenshot({path:'/config/tests/artifacts/panel-pages-35.png',fullPage:true});
   await page.evaluate(()=>{ONX_PANEL_SIZE={width:240,height:320};testDraw()});
   assert.equal(await page.locator('#device-preview').getAttribute('viewBox'),'0 0 240 320');
@@ -149,8 +180,18 @@ const {chromium}=require('playwright');
   });
   assert.equal(await page.locator('#device-preview > rect').first().getAttribute('fill'),'#FFFFFF');
   assert.notEqual(await page.locator('#device-preview text').first().getAttribute('fill'),'#ffffff','Light backgrounds need dark readable text');
-  await page.evaluate(()=>{ONX_PANEL_EDITOR(testSlots,0,false,testDraw,true)});
-  assert.equal(await page.locator('#panel-page-layout').isVisible(),false,'Editing a preset must not accidentally save a live-device page layout');
+  // Presets edit their own page list and never save the panel's.
+  await page.evaluate(()=>{window.target={name:'Guests',isNew:false,pages:[{name:'Guest room',icon:'mdi:bed',layout:'single',entities:['switch.fan']}]};ONX_PANEL_EDITOR(testSlots,0,false,testDraw,target)});
+  assert.equal(await page.locator('#slots .page-item').count(),1);assert.match(await page.locator('#slots').textContent(),/Guest room/);
+  assert.match(await page.locator('#slot-title').textContent(),/Guest room · Guests/);
+  const before=payloads.length;await page.fill('#page-name','Guests room');assert.equal(await save(),true);
+  assert.equal(payloads.length,before,'Saving a preset must not save the panel pages');
+  assert.equal(await page.evaluate(()=>target.pages[0].name),'Guests room');
+  await page.evaluate(()=>{window.target=null;ONX_PANEL_EDITOR(testSlots,0,false,testDraw,null)});
+  assert.match(await page.locator('#slots').textContent(),/Living/);
+  await page.setViewportSize({width:390,height:844});
+  assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>window.innerWidth),false,'Page editor fits on mobile');
+  await page.screenshot({path:'/config/tests/artifacts/panel-pages-mobile.png',fullPage:true});
   console.log('Panel pages: drag-and-drop pages with icons, compact rules, new-entity entries, save payloads, duplicate rejection and both model geometries passed');
  }finally{await browser.close()}
 })().catch(e=>{console.error(e);process.exit(1)});

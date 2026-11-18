@@ -21,7 +21,7 @@ const raw=(file,tag)=>fs.readFileSync('my_components/onx_config_web/'+file,'utf8
   settings_state:{brightness:'73',standby:'30',date_format:'dd-mm',show_ampm:'1',hour_format:'24',media_color:'#F97316',orientation:'0',media_view:'material',clock_seconds_ring:'0',hold_cue:'1',clock_temperature:'',clock_humidity:'',notifications_cover_timers:'1',idle_view:'clock',standby_scope:'main',sensitivity:'2',sleep_enabled:'0',sleep_start:'00:00',sleep_end:'00:00',sleep_timeout:'60'},
   presets:{presets:[],active:'',applying:'',capacity:8,remaining:8,max_name:32},
   preview:{panel_width:320,panel_height:480,slots:[]},
-  panel_state:{status:'ready',scale:1},panel_pages:{pages:[]},dashboard:{url:'',server:''}};
+  panel_state:{status:'ready',scale:1},panel_pages:{pages:[{name:'',icon:'',layout:'single',entities:['weather.home']},{name:'Bedroom',icon:'mdi:bed',layout:'control_sensors',entities:['media_player.bedroom','sensor.codex_remaining','','']}]},dashboard:{url:'',server:''}};
  const run=async(viewport,scheme,name)=>{
   const page=await browser.newPage({viewport,colorScheme:scheme});
   const errors=[];page.on('pageerror',e=>errors.push(String(e)));
@@ -57,7 +57,11 @@ const raw=(file,tag)=>fs.readFileSync('my_components/onx_config_web/'+file,'utf8
 
   assert.equal(await page.locator('#gesture-pressResponses').count(),1,'The shortcut result checkbox must survive the panel script');
   assert.match(await page.locator('#gesture-pressResponses').locator('xpath=..').innerText(),/after the shortcut runs/);
-  assert.equal(await page.locator('#slots button').count()>=3,true,'Configured slots are listed');
+  assert.equal(await page.locator('#slots .page-item').count(),2,'Pages are listed');
+  await page.locator('[data-page="entities"]').click();
+  assert.equal(await page.locator('#page-grid [data-member]').count(),1,'The first page shows its layout');
+  await page.locator('#slots .page-item').nth(1).click();
+  assert.equal(await page.locator('#page-grid [data-member]').count(),4);assert.equal(await page.locator('#page-grid .page-cell.empty').count(),2);
   assert.equal(await page.evaluate(()=>getComputedStyle(document.documentElement).getPropertyValue('--accent').trim().toUpperCase()),'#F97316');
   await page.screenshot({path:`/config/tests/artifacts/config-${name}.png`,fullPage:true});
   await page.close();

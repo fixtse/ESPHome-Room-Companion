@@ -58,6 +58,10 @@ function safeRead(key){try{return JSON.parse(sessionStorage.getItem(key)||'null'
 function dirtySlot(i){return JSON.stringify(slots[i])!==JSON.stringify(saved[i])}
 function dirtySettings(){return JSON.stringify(settings)!==JSON.stringify(savedSettings)}
 function hasChanges(){return slots.some((_,i)=>dirtySlot(i))||dirtySettings()}
+// Pages (panel_web.h) are saved together with the entries they use.
+const pagesDirty=()=>!!globalThis.ONX_PAGES?.dirty?.();
+function unsavedLabel(){const n=slots.filter((_,i)=>dirtySlot(i)).length,p=pagesDirty();return n||p?'Unsaved changes'+(n?' · '+n+' entit'+(n===1?'y':'ies'):'')+(p?' · pages':''):''}
+function saveStates(){const any=slots.some((_,i)=>dirtySlot(i))||pagesDirty();$('save').disabled=busy||!initialized||!dirtySlot(active);$('save-all').disabled=busy||!initialized||!(any||editTarget?.isNew);$('discard').disabled=busy||!any;$('unsaved-count').textContent=unsavedLabel()}
 function persistDraft(){if(!initialized||editTarget)return;if(recovery&&hasChanges()){recovery=null;$('draft-notice').hidden=true}if(recovery)return;try{if(hasChanges())sessionStorage.setItem(DRAFT,JSON.stringify({schema:2,slots,settings}));else sessionStorage.removeItem(DRAFT)}catch{message('This browser could not store a recovery draft. Save your changes before closing.',true)}}
 // In-page alert dialog in the style of shadcn/ui AlertDialog. Resolves to true/false,
 // or to the entered text (null when cancelled) when `input` is given.
@@ -92,7 +96,7 @@ async function rpc(values){
 }
 function browserStatus(){const loggedIn=!!ha.read('onx.ha.auth');$('browser-status').textContent='Browser → Home Assistant: '+(ha.ready?'entity list loaded':loggedIn?'signed in':'disconnected');$('browser-status').dataset.ok=String(ha.ready);$('catalogue-time').textContent=lastLoaded?'Entity list loaded '+lastLoaded.toLocaleTimeString()+'. '+ha.items.length+' available entities.':'No entity list loaded in this browser.'}
 function deviceStatus(online){$('device-status').textContent=online?'Panel: reachable':'Panel: unreachable';$('device-status').dataset.ok=String(online);$('ha-status').textContent='Panel → Home Assistant: '+(!online?'unknown':device.ha_connected?'connected':'not connected');$('ha-status').dataset.ok=String(online&&device.ha_connected);const info=$('device-info');info.replaceChildren();for(const [key,value] of [['Model','Room Companion'],['Firmware',device.firmware||'Unknown'],['Uptime',Number.isFinite(device.uptime_ms)?Math.floor(device.uptime_ms/60000)+' minutes':'Unknown'],['Wi-Fi signal',Number.isFinite(device.wifi_rssi_dbm)?Math.round(device.wifi_rssi_dbm)+' dBm':'Unavailable on this firmware'],['Wi-Fi disconnects',device.wifi_disconnects_since_boot??'Unknown'],['Last reset',device.reset_reason_text||'Unknown'],['Internal heap',Number.isFinite(device.internal_heap_free)?Math.round(device.internal_heap_free/1024)+' KB free / '+Math.round(device.internal_heap_minimum/1024)+' KB minimum':'Unavailable on this firmware'],['Artwork',device.artwork_error||device.artwork_status||'Unknown'],['Wi-Fi',online?(device.wifi_connected?'connected':'disconnected'):'unknown'],['Home Assistant',online?(device.ha_connected?'connected':'disconnected'):'unknown']])info.append(element('dt',key),element('dd',value))}
-function page(name){document.querySelectorAll('[id^=page-]').forEach(e=>e.hidden=e.id!=='page-'+name);if(name==='connection'&&!ha.read('onx.ha.auth'))void discoverHA(true);document.querySelectorAll('[data-page]').forEach(e=>{if(e.dataset.page===name)e.setAttribute('aria-current','page');else e.removeAttribute('aria-current')})}
+function page(name){document.querySelectorAll('.tabs [data-page]').forEach(b=>{const section=$('page-'+b.dataset.page);if(section)section.hidden=b.dataset.page!==name});if(name==='connection'&&!ha.read('onx.ha.auth'))void discoverHA(true);document.querySelectorAll('[data-page]').forEach(e=>{if(e.dataset.page===name)e.setAttribute('aria-current','page');else e.removeAttribute('aria-current')})}
 document.querySelectorAll('[data-page]').forEach(e=>e.onclick=()=>page(e.dataset.page));
 const svgNS='http://www.w3.org/2000/svg',measure=document.createElement('canvas').getContext('2d');
 function svgNode(tag,attrs={}){const node=document.createElementNS(svgNS,tag);for(const [key,value] of Object.entries(attrs))node.setAttribute(key,String(value));return node}
@@ -174,9 +178,7 @@ function iconButton(label,kind){
  const svg=svgNode('svg',{viewBox:'0 0 24 24','aria-hidden':'true',focusable:'false'});svg.append(svgNode('path',{d:paths[kind]}));b.append(svg);return b;
 }
 function markSlotChanges(text){
- persistDraft();const count=slots.filter((_,i)=>dirtySlot(i)).length;
- $('save').disabled=busy||!initialized||!dirtySlot(active);$('save-all').disabled=busy||!initialized||!count;$('discard').disabled=busy||!count;
- $('unsaved-count').textContent=count?count+' unsaved slot'+(count===1?'':'s'):'';message(text);
+ persistDraft();saveStates();message(text);
 }
 function shortPlaylistName(value){
  let out='';const encoder=new TextEncoder();for(const char of value){if(encoder.encode(out+char).length>48)break;out+=char}return out;
@@ -254,10 +256,10 @@ function render(){
  const icon=slots[active].icon;$('icon-hint').textContent=!slots[active].entity?'':icon?'Home Assistant icon: '+icon:'Using the entity default. Sign in and refresh the entity list to sync Home Assistant icons.';
  visibleSlots=Math.max(visibleSlots,active+1,slots.reduce((last,s,i)=>s.entity?i+1:last,1));
  $('add-slot').disabled=busy||!initialized||visibleSlots>=MAX_SLOTS;
- $('slot-capacity').textContent=slots.filter(s=>s.entity).length+' configured · up to '+MAX_SLOTS;
- $('slots').replaceChildren(...slots.slice(0,visibleSlots).map((s,i)=>{const b=element('button','');b.append(element('b',String(i+1)),slotIcon(s),element('span',s.name||s.entity||'Empty slot'));b.title=s.name||s.entity||'Empty slot';if(dirtySlot(i))b.append(element('span','●','dirty-dot'));b.setAttribute('aria-label','Slot '+(i+1)+': '+(s.name||s.entity||'Empty')+(dirtySlot(i)?', unsaved':''));b.setAttribute('aria-current',String(i===active));b.disabled=busy;b.onclick=()=>{active=i;slotTab='display';playlistTarget=-1;render();search();refreshPreview()};return b}));
+ if(!globalThis.ONX_PANEL)$('slot-capacity').textContent=slots.filter(s=>s.entity).length+' configured · up to '+MAX_SLOTS;
+ if(!globalThis.ONX_PANEL)$('slots').replaceChildren(...slots.slice(0,visibleSlots).map((s,i)=>{const b=element('button','');b.append(element('b',String(i+1)),slotIcon(s),element('span',s.name||s.entity||'Empty slot'));b.title=s.name||s.entity||'Empty slot';if(dirtySlot(i))b.append(element('span','●','dirty-dot'));b.setAttribute('aria-label','Slot '+(i+1)+': '+(s.name||s.entity||'Empty')+(dirtySlot(i)?', unsaved':''));b.setAttribute('aria-current',String(i===active));b.disabled=busy;b.onclick=()=>{active=i;slotTab='display';playlistTarget=-1;render();search();refreshPreview()};return b}));
  const s=slots[active],restricted=nativePress(s.entity),count=slots.filter((_,i)=>dirtySlot(i)).length;
- $('slot-title').textContent='Slot '+(active+1)+(editTarget?' · '+editTarget.name:'');$('unsaved-count').textContent=count?count+' unsaved slot'+(count===1?'':'s'):'';
+ $('slot-title').textContent='Slot '+(active+1)+(editTarget?' · '+editTarget.name:'');
  $('action-binding').querySelector('h3').textContent=s.entity.startsWith('media_player.')?'When idle':'When pressed';
  renderEditorTabs();renderPlaylists();renderGestures();renderPresetCard();
  const switchPower=s.entity.startsWith('switch.');$('sensor-options').hidden=!(s.entity.startsWith('sensor.')||switchPower);$('secondary-heading').textContent=switchPower?'Power & energy':'Secondary reading';$('choose-secondary').textContent=switchPower?'Choose power or energy sensor':'Choose secondary entity';$('secondary-help').textContent=switchPower?'Choose a power sensor in W or energy sensor in kWh. Its reading appears beside On/Off on the main view; opening the switch shows its 12-hour graph.':'Replaces the sensor name below the value. Use {value}, {unit}, {relative}, {time}, {date}, or {datetime}.';$('sensor-presentation').closest('label').hidden=switchPower;$('secondary-text').closest('label').hidden=switchPower;$('secondary-entity').value=s.secondary;$('secondary-text').value=s.secondaryText;$('sensor-presentation').value=s.sensorGraph;
@@ -268,12 +270,12 @@ function render(){
  $('open-playlists').hidden=!s.entity;$('open-playlists').disabled=busy||!s.entity;
  $('gesture-pressResponses').disabled=busy||restricted||!/^(script|automation)\./.test(s.action);
  $('action-limit').hidden=!restricted;$('choose-action').disabled=busy||restricted||!s.entity;$('none').disabled=busy||restricted||!s.entity;$('default').disabled=busy||!s.entity;
- $('save').disabled=busy||!initialized||!dirtySlot(active);$('save-all').disabled=busy||!initialized||!count;$('discard').disabled=busy||!count;
+ saveStates();
  $('move-up').disabled=busy||active===0;$('move-down').disabled=busy||active===MAX_SLOTS-1;$('duplicate').disabled=busy||!s.entity||!slots.some(s=>!s.entity);
  for(const id of ['choose-secondary','secondary-entity','secondary-text','sensor-presentation','choose-entity','clear','display-name','import','export','ha-connect','ha-disconnect','discard-settings'])$(id).disabled=busy||!initialized;
  $('save-settings').disabled=busy||!initialized||!dirtySettings();
- $('display-binding').classList.toggle('active',slotTab==='display');$('action-binding').classList.toggle('active',slotTab==='action');$('action-hint').hidden=!isActionPicker();$('search-title').textContent=isActionPicker()?'Automations & scripts':mode==='secondary'?'Secondary entities':'Available entities';$('picker-title').textContent=mode==='gesture'?'Choose a gesture action':mode==='gestureFeedback'?'Choose a feedback entity':mode==='playlist'?'Choose a quick action':mode==='action'?'Choose a press action':mode==='secondary'?'Choose a secondary entity':mode==='page'?'Place an entity on this page':'Choose a display entity';$('picker-context').textContent=mode==='playlist'?(slots[active].playlists[playlistTarget]?.name||'Playlist '+(playlistTarget+1)):slots[active].name||'Slot '+(active+1);
- $('filters').replaceChildren(...(isActionPicker()?[['actions','All actions'],['automation','Automations'],['script','Scripts']]:domains).map(([value,title])=>{const b=element('button',title);b.setAttribute('aria-pressed',String(value===domain));b.onclick=()=>{domain=value;render();search()};return b}));globalThis.ONX_PANEL_EDITOR?.(slots,active,busy,()=>drawPreview(slots[active]),!!editTarget);preview();
+ $('display-binding').classList.toggle('active',slotTab==='display');$('action-binding').classList.toggle('active',slotTab==='action');$('action-hint').hidden=!isActionPicker();$('search-title').textContent=isActionPicker()?'Automations & scripts':mode==='secondary'?'Secondary entities':'Available entities';$('picker-title').textContent=mode==='gesture'?'Choose a gesture action':mode==='gestureFeedback'?'Choose a feedback entity':mode==='playlist'?'Choose a quick action':mode==='action'?'Choose a press action':mode==='secondary'?'Choose a secondary entity':mode==='page'?'Place an entity on this page':'Choose a display entity';$('picker-context').textContent=mode==='playlist'?(slots[active].playlists[playlistTarget]?.name||'Playlist '+(playlistTarget+1)):mode==='page'?'':slots[active].name||slots[active].entity;
+ $('filters').replaceChildren(...(isActionPicker()?[['actions','All actions'],['automation','Automations'],['script','Scripts']]:domains).map(([value,title])=>{const b=element('button',title);b.setAttribute('aria-pressed',String(value===domain));b.onclick=()=>{domain=value;render();search()};return b}));if(globalThis.ONX_PANEL_EDITOR){globalThis.ONX_PANEL_EDITOR(slots,active,busy,()=>drawPreview(slots[active]),editTarget);renderPresetCard();saveStates()}preview();
 }
 function changed(){if(recovery){recovery=null;$('draft-notice').hidden=true}persistDraft();render();message('Changes not saved. Review and save when ready.')}
 function selectMode(value,index=-1){
@@ -367,12 +369,13 @@ function validateSettings(value){if(!value||typeof value!=='object')throw Error(
 const singlePages=list=>list.filter(s=>s.entity&&s.timerHidden!=='1').map(s=>({name:'',icon:'',layout:'single',entities:[s.entity]}));
 function validatePages(input,list){if(input===undefined||input===null)return singlePages(list);if(!Array.isArray(input)||input.length>MAX_SLOTS)throw Error('Invalid page list.');const have=new Set(list.map(s=>s.entity).filter(Boolean)),used=new Set(),lead=new Set(),size={single:1,two_controls:2,control_sensors:4};return input.map(p=>{const n=size[p?.layout];if(!n||!Array.isArray(p.entities)||p.entities.length!==n||typeof (p.name??'')!=='string'||typeof (p.icon??'')!=='string')throw Error('Invalid page in configuration.');if(new Set(p.entities).size!==n||p.entities.some(e=>!have.has(e))||lead.has(p.entities[0]))throw Error('A page uses a missing entity, repeats one, or shares its leading entity.');lead.add(p.entities[0]);for(const e of p.entities)used.add(e);return {name:(p.name||'').slice(0,48),icon:p.icon||'',layout:p.layout,entities:[...p.entities]}}).concat(singlePages(list.filter(s=>s.entity&&!used.has(s.entity))))}
 function validateDocument(value){if(![1,2].includes(value?.schema))throw Error('Unsupported configuration version.');const slots=validateSlots(value.slots);return {slots,settings:validateSettings(value.settings),pages:validatePages(value.pages,slots)}}
-async function saveSlots(indices){if(busy||!initialized)return;busy=true;render();search();let completed=0;const pendingPreset=new Map();try{for(const i of indices){const snapshot=copy(slots[i]),item=ha.items.find(item=>item.entity===snapshot.entity);if(item&&Object.hasOwn(item,'icon')){snapshot.icon=item.icon||'';snapshot.iconOverride=item.iconOverride||'0';slots[i].icon=snapshot.icon;slots[i].iconOverride=snapshot.iconOverride;}validateSlots([snapshot,...Array.from({length:MAX_SLOTS-1},empty)]);if(nativePress(snapshot.entity)&&snapshot.action)throw Error('Choose Default for the press action on slot '+(i+1)+'.');if(item?.types&&snapshot.typeOption&&!item.types.includes(snapshot.typeOption))throw Error('Slot '+(i+1)+' uses an unsupported control type. Choose a type detected by Home Assistant.');if(editTarget){pendingPreset.set(i,snapshot);continue}message('Saving slot '+(i+1)+'…');await rpc(slotPayload(i,snapshot));saved[i]=snapshot;completed++;persistDraft()}if(editTarget){message('Saving preset “'+editTarget.name+'”…');await putPreset(editTarget.name,saved.map((s,i)=>pendingPreset.get(i)||s),editTarget.pages);for(const [i,snapshot] of pendingPreset)saved[i]=snapshot;completed=pendingPreset.size;const created=editTarget.isNew;editTarget.isNew=false;await loadPresets();message(created?'Preset “'+editTarget.name+'” created. The panel is unchanged.':'Preset “'+editTarget.name+'” saved ('+completed+' slot'+(completed===1?'':'s')+' changed). The panel is unchanged.');return}message(completed+' slot'+(completed===1?'':'s')+' saved.')}catch(error){message(error.message+' '+completed+' slots saved; remaining changes are still marked unsaved.',true)}finally{busy=false;persistDraft();render();search()}}
-$('save').onclick=()=>saveSlots([active]);$('save-all').onclick=()=>saveSlots(slots.map((_,i)=>i).filter(i=>dirtySlot(i)||editTarget?.isNew));
-$('discard').onclick=async()=>{if(!await ask({title:'Discard unsaved changes?',text:'All slot changes that are not saved will be lost.',ok:'Discard changes',danger:true}))return;slots=copy(saved);changed();search();message('Unsaved slot changes discarded.')};
+async function saveSlots(indices){if(busy||!initialized)return;busy=true;render();search();let completed=0;const pendingPreset=new Map();try{for(const i of indices){const snapshot=copy(slots[i]),item=ha.items.find(item=>item.entity===snapshot.entity);if(item&&Object.hasOwn(item,'icon')){snapshot.icon=item.icon||'';snapshot.iconOverride=item.iconOverride||'0';slots[i].icon=snapshot.icon;slots[i].iconOverride=snapshot.iconOverride;}validateSlots([snapshot,...Array.from({length:MAX_SLOTS-1},empty)]);if(nativePress(snapshot.entity)&&snapshot.action)throw Error('Choose Default for the press action of '+(snapshot.name||snapshot.entity)+'.');if(item?.types&&snapshot.typeOption&&!item.types.includes(snapshot.typeOption))throw Error((snapshot.name||snapshot.entity||'An entity')+' uses an unsupported control type. Choose a type detected by Home Assistant.');if(editTarget){pendingPreset.set(i,snapshot);continue}message('Saving '+(snapshot.name||snapshot.entity||'entity '+(i+1))+'…');await rpc(slotPayload(i,snapshot));saved[i]=snapshot;completed++;persistDraft()}if(editTarget){message('Saving preset “'+editTarget.name+'”…');await putPreset(editTarget.name,saved.map((s,i)=>pendingPreset.get(i)||s),editTarget.pages);for(const [i,snapshot] of pendingPreset)saved[i]=snapshot;completed=pendingPreset.size;const created=editTarget.isNew;editTarget.isNew=false;await loadPresets();message(created?'Preset “'+editTarget.name+'” created. The panel is unchanged.':'Preset “'+editTarget.name+'” saved. The panel is unchanged.');return true}message(completed+' entit'+(completed===1?'y':'ies')+' saved.');return true}catch(error){message(error.message+' '+completed+' saved; remaining changes are still marked unsaved.',true);return false}finally{busy=false;persistDraft();render();search()}}
+const dirtyIndices=()=>slots.map((_,i)=>i).filter(i=>dirtySlot(i)||editTarget?.isNew&&slots[i].entity);
+$('save').onclick=()=>saveSlots([active]);$('save-all').onclick=()=>globalThis.ONX_PAGES?.save?globalThis.ONX_PAGES.save():saveSlots(dirtyIndices());
+$('discard').onclick=async()=>{if(!await ask({title:'Discard unsaved changes?',text:'Unsaved page and entity changes will be lost.',ok:'Discard changes',danger:true}))return;slots=copy(saved);globalThis.ONX_PAGES?.discard?.();changed();search();message('Unsaved changes discarded.')};
 $('choose-secondary').onclick=()=>selectMode('secondary');
 $('choose-entity').onclick=()=>selectMode('entity');$('choose-action').onclick=()=>selectMode('action');$('open-playlists').onclick=()=>{if(!slots[active].entity)return;slots[active].action='open_playlists';slots[active].actionName='';changed()};$('default').onclick=()=>{slots[active].action='';slots[active].actionName='';changed()};$('none').onclick=()=>{slots[active].action='none';slots[active].actionName='';changed()};$('clear').onclick=()=>{slots[active]=empty();changed();search()};
-$('display-name').oninput=()=>{slots[active].name=$('display-name').value;persistDraft();$('save').disabled=busy||!dirtySlot(active);$('save-all').disabled=busy||!slots.some((_,i)=>dirtySlot(i));$('discard').disabled=!slots.some((_,i)=>dirtySlot(i));$('unsaved-count').textContent='Unsaved changes';preview();message('Display name not saved.')};$('display-name').onchange=()=>render();
+$('display-name').oninput=()=>{slots[active].name=$('display-name').value;persistDraft();saveStates();preview();message('Display name not saved.')};$('display-name').onchange=()=>render();
 for(const field of ['secondary-entity','secondary-text','sensor-presentation'])$(field).oninput=()=>{slots[active].secondary=$('secondary-entity').value.trim();slots[active].secondaryText=$('secondary-text').value;slots[active].sensorGraph=slots[active].entity.startsWith('switch.')?(slots[active].secondary?'1':'0'):$('sensor-presentation').value;changed()};
 function move(delta){if(busy)return;const target=active+delta;[slots[active],slots[target]]=[slots[target],slots[active]];active=target;changed();search()}
 $('add-slot').onclick=()=>{if(busy||visibleSlots>=MAX_SLOTS)return;active=visibleSlots++;slotTab='display';render();search();refreshPreview()};
@@ -431,7 +434,7 @@ async function importPresets(list){let done=0;for(const preset of list){message(
 $('diagnostics').onclick=async()=>{try{const icons=await rpc({op:'icon_status'});download('room-companion-diagnostics.json',{model:'Room Companion',firmware:device.firmware||'unknown',uptime_ms:device.uptime_ms,reset_reason:device.reset_reason,reset_reason_text:device.reset_reason_text,internal_heap_free:device.internal_heap_free,internal_heap_minimum:device.internal_heap_minimum,internal_heap_largest_block:device.internal_heap_largest_block,psram_free:device.psram_free,artwork_status:device.artwork_status,artwork_error:device.artwork_error,artwork_stats:device.artwork_stats,wifi_rssi_dbm:device.wifi_rssi_dbm,wifi_disconnects_since_boot:device.wifi_disconnects_since_boot,last_wifi_disconnect_ms:device.last_wifi_disconnect_ms,last_event_before_boot:device.last_event_before_boot,wifi_connected:device.wifi_connected,ha_connected:device.ha_connected,browser_catalogue_ready:ha.ready,captured_at:new Date().toISOString(),icons:icons.slots||[]});}catch(error){message('Could not load icon diagnostics: '+error.message,true)}};
 $('import').onclick=()=>{if(editTarget){message('Choose “On the panel” in Display & actions before importing a configuration.',true);return}$('import-file').click()};$('import-file').onchange=async()=>{const file=$('import-file').files[0];try{if(!file)return;if(file.size>1048576)throw Error('Configuration file is too large (maximum 1 MB).');const value=JSON.parse(await file.text());if(typeof value.model!=='string')throw Error('This file is not a Room Companion configuration.');const draft=validateDocument(value),presetList=validatePresets(value.presets);if(hasChanges()&&!await ask({title:'Replace your unsaved draft?',text:'The imported configuration replaces the changes you have not saved yet.',ok:'Replace draft',danger:true}))return;slots=draft.slots;settings=draft.settings;globalThis.ONX_PAGES?.set(draft.pages);settingsForm();changed();search();page('entities');let restored=0;if(presetList.length&&await ask({title:'Restore presets from this backup?',text:presetList.length+' preset'+(presetList.length===1?'':'s')+' will be stored on the panel now. Presets with the same name are replaced; the panel keeps its current controls.',ok:'Restore presets',cancel:'Skip'}))restored=await importPresets(presetList);message('Configuration imported as a draft'+(restored?' and '+restored+' preset'+(restored===1?'':'s')+' restored':'')+'. Review and save the slots and device settings to apply.')}catch(error){message('Import failed: '+error.message,true)}finally{$('import-file').value=''}};
 let presets={presets:[],active:'',applying:'',capacity:8},presetBusy=false;
-const dirtyAny=()=>slots.some((_,i)=>dirtySlot(i));
+const dirtyAny=()=>slots.some((_,i)=>dirtySlot(i))||pagesDirty();
 // The Preset card: what the slot editor below is editing, and what can be done with it.
 function renderPresetCard(){
  const select=$('preset-target'),items=presets.presets||[],names=items.map(item=>item.name),locked=busy||presetBusy||!initialized||!!presets.applying;
@@ -446,8 +449,8 @@ function renderPresetCard(){
  badge.dataset.mode=mode;badge.textContent={live:'Live',new:'New',active:'Active',preset:'Saved'}[mode];
  $('preset-summary').textContent=editTarget?editTarget.name:'On the panel';
  $('preset-mode').textContent=presets.applying?'Applying “'+presets.applying+'” to the panel… '+(presets.remaining||0)+' step'+(presets.remaining===1?'':'s')+' left.':
-  !editTarget?'Slots below are on the panel now. Saving a slot changes the panel right away.'+(presets.active?' They match the “'+presets.active+'” preset.':''):
-  editTarget.isNew?'New preset. Add controls below, then Save all to create it. The panel does not change.':
+  !editTarget?'Pages below are on the panel now. Saving changes the panel right away.'+(presets.active?' They match the “'+presets.active+'” preset.':''):
+  editTarget.isNew?'New preset. Add pages below, then save to create it. The panel does not change.':
   'Editing this preset. Saving stores the preset only; the panel changes when you apply it.';
  $('preset-save-as').hidden=!!editTarget;$('preset-apply').hidden=!editTarget;$('preset-rename').hidden=!editTarget||editTarget.isNew;$('preset-delete').hidden=!editTarget||editTarget.isNew;
  for(const id of ['preset-save-as','preset-rename','preset-delete'])$(id).disabled=locked;
@@ -458,7 +461,7 @@ async function loadPresets(){if(!initialized)return;try{presets=await rpc({op:'p
 async function presetOp(values,done){if(presetBusy||busy||!initialized)return false;presetBusy=true;renderPresetCard();try{presets=await rpc(values);message(done);return true}catch(error){message(error.message,true);return false}finally{presetBusy=false;renderPresetCard()}}
 function fullSlots(list){const out=(Array.isArray(list)?list:[]).slice(0,MAX_SLOTS);while(out.length<MAX_SLOTS)out.push(empty());return validateSlots(out)}
 async function switchTarget(name,isNew=false,force=false){
- if(!force&&dirtyAny()&&!await ask({title:'Discard unsaved changes?',text:'Switching loses the slot changes you have not saved.',ok:'Discard changes',danger:true})){renderPresetCard();return}
+ if(!force&&dirtyAny()&&!await ask({title:'Discard unsaved changes?',text:'Switching loses the page and entity changes you have not saved.',ok:'Discard changes',danger:true})){renderPresetCard();return}
  if(busy||!initialized){renderPresetCard();return}
  busy=true;render();
  try{
@@ -466,7 +469,7 @@ async function switchTarget(name,isNew=false,force=false){
   else if(isNew){slots=Array.from({length:MAX_SLOTS},empty);editTarget={name,isNew:true}}
   else{const preset=await getPreset(name);slots=fullSlots(preset.slots);editTarget={name:preset.name,isNew:false,pages:preset.pages}}
   saved=copy(slots);active=0;visibleSlots=1;slotTab='display';
-  message(!editTarget?'Showing the controls on the panel.':editTarget.isNew?'New preset “'+name+'”. Add controls, then Save all to create it.':'Editing preset “'+editTarget.name+'”. The panel does not change until you apply it.');
+  message(!editTarget?'Showing the controls on the panel.':editTarget.isNew?'New preset “'+name+'”. Add pages, then save to create it.':'Editing preset “'+editTarget.name+'”. The panel does not change until you apply it.');
  }catch(error){message(error.message,true)}
  finally{busy=false;render();search();refreshPreview()}}
 $('preset-target').onchange=()=>switchTarget($('preset-target').value);
@@ -475,10 +478,10 @@ function setPresetExpanded(open){$('preset-toggle').setAttribute('aria-expanded'
 $('preset-toggle').onclick=()=>setPresetExpanded($('preset-toggle').getAttribute('aria-expanded')!=='true');
 try{setPresetExpanded(localStorage.getItem('onx.presets.expanded')==='1')}catch{setPresetExpanded(false)}
 $('preset-new').onclick=async()=>{
- const name=await ask({title:'New preset',text:'Starts empty. Add controls, then Save all to create it. The panel keeps its current controls.',ok:'Create',input:{label:'Preset name',placeholder:'Evening',validate:value=>presetNameProblem(value)}});
+ const name=await ask({title:'New preset',text:'Starts empty. Add pages, then save to create it. The panel keeps its current controls.',ok:'Create',input:{label:'Preset name',placeholder:'Evening',validate:value=>presetNameProblem(value)}});
  if(name)switchTarget(name,true)};
 $('preset-save-as').onclick=async()=>{
- const name=await ask({title:'Save as preset',text:'Stores the controls on the panel under a name, so you can switch back to them later.'+(dirtyAny()?' Unsaved slot changes are not included.':''),ok:'Save preset',input:{label:'Preset name',value:presets.active||'',placeholder:'Evening',validate:value=>{const problem=presetNameProblem(value,value);return problem||(!(presets.presets||[]).some(item=>item.name.toLowerCase()===value.toLowerCase())&&(presets.presets||[]).length>=(presets.capacity||8)?'All '+(presets.capacity||8)+' presets are in use; delete one first.':'')}}});
+ const name=await ask({title:'Save as preset',text:'Stores the controls on the panel under a name, so you can switch back to them later.'+(dirtyAny()?' Unsaved changes are not included.':''),ok:'Save preset',input:{label:'Preset name',value:presets.active||'',placeholder:'Evening',validate:value=>{const problem=presetNameProblem(value,value);return problem||(!(presets.presets||[]).some(item=>item.name.toLowerCase()===value.toLowerCase())&&(presets.presets||[]).length>=(presets.capacity||8)?'All '+(presets.capacity||8)+' presets are in use; delete one first.':'')}}});
  if(!name)return;
  if((presets.presets||[]).some(item=>item.name.toLowerCase()===name.toLowerCase())&&!await ask({title:'Replace “'+name+'”?',text:'The preset’s controls are replaced with the controls on the panel.',ok:'Replace preset',danger:true}))return;
  await presetOp({op:'preset_save',name},'Saved the panel’s controls as “'+name+'”.')};
@@ -493,34 +496,36 @@ $('preset-delete').onclick=async()=>{
  if(await presetOp({op:'preset_delete',name},'Deleted preset “'+name+'”.'))await switchTarget('',false,true)};
 $('preset-apply').onclick=async()=>{
  const name=editTarget?.name;if(!name||editTarget.isNew||dirtyAny())return;
- if(!await ask({title:'Apply “'+name+'” to the panel?',text:'The panel’s controls are replaced with this preset. Only slots that differ are rewritten.',ok:'Apply preset'}))return;
+ if(!await ask({title:'Apply “'+name+'” to the panel?',text:'The panel’s pages and controls are replaced with this preset. Only entries that differ are rewritten.',ok:'Apply preset'}))return;
  if(!await presetOp({op:'preset_apply',name},'Applying “'+name+'”…'))return;
  presetBusy=true;renderPresetCard();
  try{for(let i=0;i<240&&presets.applying;i++){await new Promise(resolve=>setTimeout(resolve,500));presets=await rpc({op:'presets'});renderPresetCard()}}
  catch(error){message('Could not confirm the preset: '+error.message,true)}
  finally{presetBusy=false}
  await switchTarget('',false,true);
- message(presets.active===name?'Preset “'+name+'” applied. Showing the panel’s controls.':'Preset “'+name+'” was applied with errors; check the slots and the device log.',presets.active!==name)};
+ message(presets.active===name?'Preset “'+name+'” applied. Showing the panel’s controls.':'Preset “'+name+'” was applied with errors; check the pages and the device log.',presets.active!==name)};
 $('restore-draft').onclick=()=>{if(!recovery)return;if(editTarget){message('Choose “On the panel” in Display & actions before restoring the draft.',true);return}slots=recovery.slots;settings=recovery.settings;recovery=null;$('draft-notice').hidden=true;settingsForm();changed();search();message('Draft restored. Review and save to apply it to the panel.')};$('dismiss-draft').onclick=()=>{recovery=null;$('draft-notice').hidden=true;try{sessionStorage.removeItem(DRAFT)}catch{}};
-window.addEventListener('beforeunload',event=>{if(hasChanges()||busy){event.preventDefault();event.returnValue=''}});
+window.addEventListener('beforeunload',event=>{if(hasChanges()||pagesDirty()||busy){event.preventDefault();event.returnValue=''}});
 try{const theme=localStorage.getItem('onx.theme')||'system';$('theme').value=['light','dark','system'].includes(theme)?theme:'system';if($('theme').value!=='system')document.documentElement.dataset.theme=$('theme').value}catch{}
 $('theme').onchange=()=>{const theme=$('theme').value;if(theme==='system')delete document.documentElement.dataset.theme;else document.documentElement.dataset.theme=theme;try{localStorage.setItem('onx.theme',theme)}catch{}};
+// Bridge for panel_web.h (pages); defined before loading so pages work at once.
+globalThis.ONX_APP={
+ pick:(accept,done)=>{pagePick={accept,done};selectMode('page')},
+ item:entity=>ha.items.find(i=>i.entity===entity),
+ slots:()=>slots,select:i=>{active=i;slotTab='display';render();search();refreshPreview()},
+ // A new entity becomes its own configuration entry (shortcut, gestures, quick actions), saved with Save changes.
+ add:item=>{const i=slots.findIndex((s,j)=>!s.entity&&!saved[j].entity);if(i<0)throw Error('All '+MAX_SLOTS+' entities are in use. Remove one from a page first.');slots[i]={...empty(),entity:item.entity,name:item.name||item.entity,area:item.area||'',icon:item.icon||'',iconOverride:item.iconOverride||'0'};changed();return i},
+ clear:i=>{slots[i]=empty();changed()},
+ setTimer:(i,on)=>{slots[i].timerHidden=on?'1':'0';changed()},
+ saveAll:()=>saveSlots(dirtyIndices()),
+ refresh:()=>render(),dirtyAt:i=>dirtySlot(i),message
+};
 (async()=>{try{
  render();search();
  device=await rpc({op:'state'});slots=validateSlots(device.slots);saved=copy(slots);savedWeather=device.weather||'';const data=await rpc({op:'settings_state'});settings=validateSettings({...data,weather:savedWeather});savedSettings=copy(settings);initialized=true;deviceStatus(true);$('ha-url').value=device.ha_url||'';settingsForm();loadPresets();
  const draft=safeRead(DRAFT);if(draft){try{recovery=validateDocument(draft);$('draft-notice').hidden=false}catch{message('An older recovery draft could not be read. Your saved configuration is unchanged.',true)}}
  await ha.finishLogin();const auth=ha.read('onx.ha.auth');if(auth)$('ha-url').value=auth.base;browserStatus();render();search();if(auth)await refreshCatalogue();else message('Panel settings loaded. Sign in to Home Assistant to browse entities.');await refreshPreview();if(!auth&&!$('page-connection').hidden)void discoverHA(true);
  }catch(error){if(!initialized)deviceStatus(false);message(error.message,true);render();browserStatus()}
- globalThis.ONX_APP={
-  pick:(accept,done)=>{pagePick={accept,done};selectMode('page')},
-  item:entity=>ha.items.find(i=>i.entity===entity),
-  slots:()=>slots,select:i=>{active=i;slotTab='display';render();search();refreshPreview()},
-  // A new entity becomes its own configuration entry (shortcut, gestures, quick actions), saved with Save all.
-  add:item=>{const i=slots.findIndex((s,j)=>!s.entity&&!saved[j].entity);if(i<0)throw Error('All '+MAX_SLOTS+' entities are in use. Remove one from a page first.');slots[i]={...empty(),entity:item.entity,name:item.name||item.entity,area:item.area||'',icon:item.icon||'',iconOverride:item.iconOverride||'0'};changed();return i},
-  clear:i=>{slots[i]=empty();changed()},
-  setTimer:(i,on)=>{slots[i].timerHidden=on?'1':'0';changed()},
-  saveAll:()=>saveSlots(slots.map((_,i)=>i).filter(i=>dirtySlot(i)))
- };
  document.addEventListener('visibilitychange',()=>{if(!document.hidden){refreshStatus();refreshPreview()}});setInterval(()=>{if(slots[active].entity.startsWith('media_player.')||Date.now()-lastPreviewAt>=2000)refreshPreview()},500);setInterval(()=>{if(!document.hidden)refreshStatus()},30000);
 })();
 })();
