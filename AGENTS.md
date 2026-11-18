@@ -123,6 +123,11 @@ transfer; do not claim the latter based only on a successful build or USB flash.
 
 ## OTA repository updates
 
+- Every new firmware version published to OTA must use a new, incremented
+  numeric version suffix (for example, `.86` → `.87`); never reuse a published
+  version number. Update the firmware's `product_firmware_version` and the OTA
+  repository's project version together so the device reports the published
+  version correctly.
 - The 3.5-inch wake-word device is also released through
   `/home/fixt/git/esp-ota` (`fixtse/esp-ota`). After firmware changes, update
   `configs/onx3248g035.yaml` there to the exact published source commit and

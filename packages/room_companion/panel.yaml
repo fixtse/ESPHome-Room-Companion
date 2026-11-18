@@ -367,7 +367,7 @@ interval:
             auto *shell = lv_obj_get_child(page, i);
             if (lv_obj_check_type(shell, &lv_obj_class)) {
               // Main carousel pages use the space above the compact icon bar.
-              if (onx_navigation::visible) {
+              if (onx_navigation::visible && page != id(standby_page)->obj) {
                 lv_obj_set_height(shell, onx_panel_ui::height - 44);
                 lv_obj_set_style_radius(shell, 0, 0);
               }

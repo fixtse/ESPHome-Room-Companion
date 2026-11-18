@@ -171,3 +171,13 @@ message is kept in the notification centre: pull down from the top edge on any
 screen, or tap the bell (with its unread count) on the main view. The centre
 lists recent messages with their age; open one for the full text and picture,
 or dismiss it. See [panel screen behaviour](room-companion/panel-ui.md).
+
+## Notification centre updates
+
+On rectangular panels, a new notification with the same title and image URL
+replaces the previous entry and moves to the top as unread. This keeps cumulative
+chat updates in a single card. Different titles or image URLs stay separate;
+notifications with an empty title also stay separate. Use a stable sender or
+conversation title and avatar URL. The current `show_message` action does not
+receive an app identifier: include the app in the title if the same sender can
+arrive from several apps and should have a separate card for each.

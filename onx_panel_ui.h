@@ -38,13 +38,14 @@ inline bool landscape() { return width > height; }
 
 // ------------------------------------------------------------ hit testing
 inline std::vector<lv_obj_t *> touch_targets;  // Visible buttons owned by LVGL.
+inline lv_obj_t *idle_badge = nullptr, *idle_badge_label = nullptr;
 
 // ------------------------------------------------------------ round shells
 // The base layout draws its pages inside a 240x240 circle. On a rectangle those
 // circles show as a lighter disc: square every large rounded object, but keep
 // the panel's own round buttons (LV_RADIUS_CIRCLE would otherwise match).
 inline void flatten(lv_obj_t *obj) {
-  if (lv_obj_get_style_radius(obj, LV_PART_MAIN) >= S(100) &&
+  if (obj != idle_badge && lv_obj_get_style_radius(obj, LV_PART_MAIN) >= S(100) &&
       std::find(touch_targets.begin(), touch_targets.end(), obj) == touch_targets.end())
     onx_render::style_radius(obj, 0, LV_PART_MAIN);
   const uint32_t n = lv_obj_get_child_count(obj);
@@ -323,7 +324,6 @@ inline void create_slideshow(lv_obj_t *standby_page, const lv_font_t *time_font,
 }
 
 // Notification count at the bottom centre of the idle clock (hidden when none).
-inline lv_obj_t *idle_badge = nullptr, *idle_badge_label = nullptr;
 inline void create_idle_badge(lv_obj_t *standby_page, const lv_font_t *font, const void *bell) {
   idle_badge = lv_obj_create(standby_page);
   lv_obj_remove_flag(idle_badge, static_cast<lv_obj_flag_t>(LV_OBJ_FLAG_SCROLLABLE | LV_OBJ_FLAG_CLICKABLE));

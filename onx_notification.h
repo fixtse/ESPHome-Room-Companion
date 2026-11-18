@@ -177,6 +177,15 @@ struct Center {
     for(char &ch:item.title)if(ch=='\r' || ch=='\n')ch=' ';
     item.body=clipped(plain_text(text,2048),1024);
     item.image_url=image.size()<=1024 && (image.rfind("http://",0)==0 || image.rfind("https://",0)==0) ? image : "";
+    // show_message supplies the sender/conversation title and optional avatar,
+    // rather than an Android app/id. Replace its older snapshots, including
+    // cumulative message bodies, and move the latest unread snapshot to the top.
+    // Keep different pictured senders with the same display name separate.
+    if(!heading.empty()) {
+      items.erase(std::remove_if(items.begin(),items.end(),[&](const CenterItem &previous) {
+        return previous.title==item.title && previous.image_url==item.image_url;
+      }),items.end());
+    }
     items.push_front(std::move(item));
     while(items.size()>LIMIT)items.pop_back();
     // The banner stays briefly; timeout_seconds 0 keeps it until opened.
