@@ -14,14 +14,22 @@ ota:
   # native platform; both transfers need the radio awake.
   - platform: http_request
     on_begin: &ota_radio_begin
-      - lambda: onx_power::begin_ota();
-    on_error: &ota_radio_restore
-      - lambda: onx_power::end_ota();
-    on_abort: *ota_radio_restore
+      - lambda: |-
+          onx_power::begin_ota();
+          onx_runtime::record("ota_started");
+    on_error: &ota_error
+      - lambda: |-
+          onx_power::end_ota();
+          onx_runtime::record("ota_error", std::to_string(x));
+          ESP_LOGW("ota", "Update failed with code 0x%02X", static_cast<unsigned>(x));
+    on_abort: &ota_abort
+      - lambda: |-
+          onx_power::end_ota();
+          onx_runtime::record("ota_aborted");
   - platform: esphome
     on_begin: *ota_radio_begin
-    on_error: *ota_radio_restore
-    on_abort: *ota_radio_restore
+    on_error: *ota_error
+    on_abort: *ota_abort
 
 update:
   - platform: http_request

@@ -12,7 +12,9 @@ CONFIG_SCHEMA = cv.Schema({
 
 
 async def to_code(config):
-    patch_script = Path(__file__).with_name("patch_api_batch.py")
-    cg.add_platformio_option("extra_scripts", [f"pre:{patch_script}"])
+    patch_scripts = ("patch_api_batch.py", "patch_http_ota_resume.py")
+    cg.add_platformio_option(
+        "extra_scripts", [f"pre:{Path(__file__).with_name(script)}" for script in patch_scripts]
+    )
     var = cg.new_Pvariable(config[CONF_ID])
     await cg.register_component(var, config)

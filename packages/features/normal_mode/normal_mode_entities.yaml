@@ -151,7 +151,8 @@ text:
 http_request:
   id: onx_http_request
   # GitHub release downloads redirect to signed URLs with long response headers.
-  buffer_size_rx: 4096
+  buffer_size_rx: 8192
+  redirect_limit: 5
   buffer_size_tx: 2048
   timeout: 30s
 

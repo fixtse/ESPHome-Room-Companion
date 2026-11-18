@@ -14,6 +14,7 @@ inline bool ota_radio_saved = false;
 #endif
 inline void begin_ota() {
 #ifdef USE_ESP32
+  if (ota_radio_saved) return;
   ota_radio_saved = esp_wifi_get_ps(&ota_radio_mode) == ESP_OK;
   if (ota_radio_saved && esp_wifi_set_ps(WIFI_PS_NONE) != ESP_OK)
     ESP_LOGW("low_power", "Could not disable Wi-Fi modem sleep for OTA");
@@ -38,8 +39,12 @@ inline void enter() {sleeping=true;waking=false;apply_radio_sleep();}
 inline void restore_radio() {
   sleeping=false;
 #ifdef USE_ESP32
-  if(radio_saved && esp_wifi_set_ps(previous_radio_mode)!=ESP_OK)
-    ESP_LOGW("low_power","Wi-Fi power saving mode could not be restored");
+  if (radio_saved) {
+    if (ota_radio_saved)
+      ota_radio_mode = previous_radio_mode;
+    else if (esp_wifi_set_ps(previous_radio_mode) != ESP_OK)
+      ESP_LOGW("low_power", "Wi-Fi power saving mode could not be restored");
+  }
   radio_saved=false;
 #endif
 }
