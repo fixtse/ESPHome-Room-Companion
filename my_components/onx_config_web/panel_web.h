@@ -31,7 +31,7 @@ static const char PANEL_JS[] = R"ONXPANEL(
  // holds 1, 2 or 4 entities by placement (full, half, main + three compact);
  // there is no "main entity". Every placed entity is its own configuration
  // entry with its own shortcut, gestures and quick actions (40 in total).
- // Wire format (firmware: see docs/room-companion/pages-handoff.md):
+ // Wire format (firmware: onx_panel_pages.h):
  //   panel_pages -> {pages:[{name,icon,layout,entities:[...]}]}
  //   panel_pages_save data=JSON {pages:[...]} (whole list: order, add, delete)
  const LAYOUTS={single:{n:1,label:'One entity',slots:['Full screen']},two_controls:{n:2,label:'Two entities',slots:['Top','Bottom']},control_sensors:{n:4,label:'One large + three compact',slots:['Large','Compact 1','Compact 2','Compact 3']}};
