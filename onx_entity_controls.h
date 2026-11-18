@@ -196,7 +196,7 @@ inline void tick(esphome::api::APIServer *api, const std::string &selected, bool
     if (!api || !command.due(now)) continue;
 #ifdef USE_API_HOMEASSISTANT_SERVICES
     esphome::api::HomeassistantActionRequest call;
-    call.service = esphome::StringRef(command.service);
+    call.service = esphome::ProgmemStringRef(esphome::StringRef(command.service));
     // List values (e.g. hs_color "[30, 80]") go as templates: Home Assistant
     // renders them to a list, while plain data would arrive as a string.
     auto list = [](const std::string &v) { return v.size() >= 2 && v.front() == '[' && v.back() == ']'; };
@@ -205,11 +205,11 @@ inline void tick(esphome::api::APIServer *api, const std::string &selected, bool
     call.data.init(command.values.size() + 1 - templates);
     if (templates) call.data_template.init(templates);
     esphome::api::HomeassistantServiceMap target;
-    target.key = esphome::StringRef("entity_id"); target.value = esphome::StringRef(selected); call.data.push_back(target);
+    target.key = esphome::ProgmemStringRef::from_lit("entity_id"); target.value = esphome::ProgmemStringRef(esphome::StringRef(selected)); call.data.push_back(target);
     for (const auto &value : command.values) {
       if (value.parameter.empty()) continue;
       esphome::api::HomeassistantServiceMap item;
-      item.key = esphome::StringRef(value.parameter); item.value = esphome::StringRef(value.requested);
+      item.key = esphome::ProgmemStringRef(esphome::StringRef(value.parameter)); item.value = esphome::ProgmemStringRef(esphome::StringRef(value.requested));
       if (list(value.requested)) call.data_template.push_back(item);
       else call.data.push_back(item);
     }

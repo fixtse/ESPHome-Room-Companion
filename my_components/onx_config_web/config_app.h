@@ -550,7 +550,7 @@ globalThis.ONX_APP={
  clear:i=>{slots[i]=empty();changed()},
  setTimer:(i,on)=>{slots[i].timerHidden=on?'1':'0';changed()},
  saveAll:()=>saveSlots(dirtyIndices()),
- refresh:()=>render(),dirtyAt:i=>dirtySlot(i),message
+ refresh:()=>render(),dirtyAt:i=>dirtySlot(i),message,views:()=>liveViews,settings:()=>settings
 };
 (async()=>{try{
  render();search();

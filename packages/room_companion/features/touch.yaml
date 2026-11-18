@@ -66,16 +66,6 @@ onx_touch_input:
           if (direction > 0) id(onx_input_cw).execute();
           else id(onx_input_ccw).execute();
         }
-  on_strip_tap:
-    - lambda: |-
-        if(onx_notification_ui::owns_screen() || id(normal_device_detail_active))return;
-        const int target=onx_navigation::dock_target(offset);
-        if(target==onx_navigation::DASHBOARD) { if(onx_navigation::shortcut_action)onx_navigation::shortcut_action(); return; }
-        if(target<0)return;
-        id(ui_presenter)->notify_user_activity();
-        onx_navigation::dock_offset=0;
-        id(normal_device_selected_index)=target;
-        id(show_normal_device_entry_page).execute(0);
 
 script:
   - id: panel_back

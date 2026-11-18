@@ -1,3 +1,4 @@
+#include "esphome/core/alloc_helpers.h"
 #include "onx_mode_manager.h"
 
 #include <cctype>

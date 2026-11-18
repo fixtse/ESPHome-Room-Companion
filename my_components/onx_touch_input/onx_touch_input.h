@@ -48,6 +48,7 @@ class TouchInput : public Component, public touchscreen::TouchListener {
   bool suppress_click() const { return state_ == State::SWIPE || (last_swipe_ms_ && millis() - last_swipe_ms_ < 180); }
 
   Trigger<int> *get_turn_trigger() { return &turn_trigger_; }
+  void set_dock_tap(std::function<void(int)> f) { dock_tap_=std::move(f); }
   void set_dock_scroll(std::function<bool(int)> f) { dock_scroll_=std::move(f); }
   Trigger<int> *get_strip_trigger() { return &strip_trigger_; }
 
@@ -155,6 +156,7 @@ class TouchInput : public Component, public touchscreen::TouchListener {
     if (state == State::HELD) { press_(false); return; }
     if (state != State::DOWN) return;  // Swipes and ignored touches end here.
     if (y0_ >= strip_top_ && spacing_ > 0) {
+      if(dock_tap_ && page_swipe_ && page_swipe_()){dock_tap_(x0_);return;}
       const int offset = (x0_ - width_ / 2 + (x0_ >= width_ / 2 ? spacing_ / 2 : -spacing_ / 2)) / spacing_;
       if (offset != 0 || dock_scroll_) strip_trigger_.trigger(offset);
       return;
@@ -177,6 +179,7 @@ class TouchInput : public Component, public touchscreen::TouchListener {
   bool back_{false}, left_back_{false}, native_{false}, pull_{false}, pull_only_{false};
   uint32_t last_swipe_ms_{0};
   std::function<bool(int)> dock_scroll_;
+  std::function<void(int)> dock_tap_;
   Trigger<int> turn_trigger_, strip_trigger_;
   Rect passthrough_[4]{};
   int passthrough_count_{0};

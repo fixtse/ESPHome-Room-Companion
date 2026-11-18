@@ -50,13 +50,18 @@ const {chromium}=require('playwright');
   });
   await page.goto('http://panel.test/');await page.waitForFunction(()=>!!globalThis.ONX_PANEL_EDITOR);
   await page.evaluate(()=>document.getElementById('page-settings').hidden=false);
+  assert.equal(await page.locator('#dock-settings').evaluate(n=>n.open),false);
+  await page.locator('#dock-settings summary').click();
   await page.locator('#dash-toolbar-side').waitFor();
   assert.equal(await page.locator('#dash-toolbar-side').inputValue(),'right');
   await page.selectOption('#dash-toolbar-side','left');
+  await page.locator('#dock-settings-form button[type=submit]').click();
+  await page.waitForFunction(()=>document.getElementById('dock-status').textContent==='Saved.');
+  assert.deepEqual(dashPayloads.at(-1),{toolbar_side:'left',dock_pin:'dashboard'});
   await page.fill('#dash-url','http://homeassistant.local:8123/room/0');
   await page.locator('#panel-dashboard button[type=submit]').click();
   await page.waitForFunction(()=>document.getElementById('dash-status').textContent.startsWith('Saved.'));
-  assert.equal(dashPayloads.at(-1).toolbar_side,'left');
+  assert.equal(Object.hasOwn(dashPayloads.at(-1),'toolbar_side'),false);
   assert.equal(dashPayloads.at(-1).url,'http://homeassistant.local:8123/room/0');
   assert.equal(await page.locator('#dash-toolbar-side').inputValue(),'left');
   await page.evaluate(()=>document.getElementById('page-settings').hidden=true);
@@ -76,7 +81,7 @@ const {chromium}=require('playwright');
    window.dropCell=(from,to)=>{const dt=new DataTransfer();dt.setData('application/x-onx-cell',String(from));document.querySelector(`[data-member="${to}"]`).dispatchEvent(new DragEvent('drop',{dataTransfer:dt,bubbles:true,cancelable:true}))};
   });
   assert.equal(await page.locator('#device-preview').getAttribute('viewBox'),'0 0 320 480');
-  assert.equal(await page.locator('#device-preview circle').count(),0);
+  assert.equal(await page.locator('#device-preview circle[r="120"]').count(),0,'No round-display mock');
   const frame=await page.locator('.screen-frame').boundingBox();assert(frame.height>frame.width*1.35,'Preview frame must be rectangular, not a square SVG letterbox');
   const status=()=>page.locator('#page-layout-status').textContent();
   const layout=kind=>page.locator('#page-kind label',{has:page.locator(`input[value="${kind}"]`)}).click();
@@ -100,7 +105,8 @@ const {chromium}=require('playwright');
   await page.click('#icon-grid [data-icon="mdi:sofa"]');assert.equal(await page.locator('#icon-picker').isVisible(),false);
   assert.match(await page.locator('#slots .page-item').first().getAttribute('aria-label'),/Page 1: Living, unsaved/);
   assert.equal(await page.locator('#slots .page-item .dirty-dot').textContent(),'●');
-  assert.equal(await page.locator('[data-panel-item]').count(),2);
+  assert.equal(await page.locator('#device-preview [data-panel-item]').count(),2);
+  assert.equal(await page.locator('#page-grid svg.page-live [data-panel-item]').count(),2,'The page editor shows the live page');
   assert.equal(await save(),true);
   assert.deepEqual(payloads.at(-1),{pages:[{name:'Living',icon:'mdi:sofa',layout:'two_controls',entities:['light.kitchen','switch.fan']}]});
   // Large + three compact: picker, a new (unconfigured) entity, compact-only rule, swap, duplicates.
@@ -114,7 +120,7 @@ const {chromium}=require('playwright');
   await page.evaluate(()=>dropEntity(3,{entity:'sensor.temperature',name:'Temperature'}));assert.match(await status(),/already on this page/);
   await page.evaluate(()=>dropEntity(3,{entity:'binary_sensor.door',name:'Door'}));
   await page.evaluate(()=>dropCell(1,2));
-  assert.equal(await page.locator('[data-panel-item]').count(),4);
+  assert.equal(await page.locator('#device-preview [data-panel-item]').count(),4);
   assert.equal(await save(),true);
   assert.deepEqual(payloads.at(-1).pages[0].entities,['light.kitchen','sensor.co2','sensor.temperature','binary_sensor.door']);
   // Selecting a position edits that entity; Remove clears just that position.
@@ -154,7 +160,7 @@ const {chromium}=require('playwright');
    ONX_PANEL_PREVIEW(document.getElementById('device-preview'),media,view,[view],'detail',{});
   });
   assert.match(await page.locator('#device-preview').textContent(),/Track title/);assert.match(await page.locator('#device-preview').textContent(),/Artist/);
-  assert.equal(await page.locator('#device-preview circle').count(),0);
+  assert.equal(await page.locator('#device-preview [data-media-button]').count(),3,'Round previous, play and next');
   // Media matches the device: three transport buttons, no close button, no header icons.
   assert.equal(await page.locator('[data-media-button]').count(),3);
   assert.doesNotMatch(await page.locator('#device-preview').innerHTML(),/close|monitor-dashboard|bell/);
@@ -164,7 +170,7 @@ const {chromium}=require('playwright');
    ONX_PANEL_PREVIEW(document.getElementById('device-preview'),media,view,[view],'detail',{orientation:'90',media_color:'#F97316'});
   });
   assert.equal(await page.locator('#device-preview').getAttribute('viewBox'),'0 0 480 320');
-  const play=await page.locator('[data-media-button="play"]').evaluate(n=>({x:+n.getAttribute('x'),fill:n.getAttribute('fill')}));
+  const play=await page.locator('[data-media-button="play"]').evaluate(n=>({x:+(n.getAttribute('cx')??n.getAttribute('x')),fill:n.getAttribute('fill')}));
   assert(play.x>200,'Landscape transport sits beside the artwork');assert.notEqual(play.fill,'#1f6feb');
   const wide=await page.evaluate(()=>ONX_PANEL_GEOMETRY('two_controls',480,320));assert.equal(wide[0].y,wide[1].y);
   await page.evaluate(()=>{ONX_PANEL_PREVIEW(document.getElementById('device-preview'),testSlots[0],testViews[0],testViews,'main',{orientation:'270'})});
@@ -175,7 +181,7 @@ const {chromium}=require('playwright');
   for(const [width,height]of [[320,480],[240,320]])for(const orientation of ['0','90']){
    await page.evaluate(({width,height,orientation})=>{
     ONX_PANEL_SIZE={width,height};
-    const slot={entity:'weather.madrid',name:'Madrid'},view={entity:slot.entity,icon:'mdi:weather-rainy',layout:'weather',lines:[{text:'Weather'},{text:'16°C'},{text:'Rainy · Feels 14°C'},{text:'Humidity 86% Turn for more'},{text:'Madrid'}],panel:{state:'rainy',temperature:'16',feels_like:'14',humidity:'86',wind:'12',wind_unit:'km/h',forecast:[{date:'2026-11-17',low:'10',high:'18',rain:'60'}]},carousel:{navigator:[]}};
+    const slot={entity:'weather.madrid',name:'Madrid'},view={entity:slot.entity,icon:'mdi:weather-rainy',layout:'weather',lines:[{text:'Weather'},{text:'16°C'},{text:'Rainy · Feels 14°C'},{text:'Humidity 86% Turn for more'},{text:'Madrid'}],panel:{state:'rainy',temperature:'16',feels_like:'14',humidity:'86',wind:'12',wind_unit:'km/h',forecast:[{date:(d=>d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'))(new Date()),low:'10',high:'18',rain:'60'}]},carousel:{navigator:[]}};
     ONX_PANEL_PREVIEW(document.getElementById('device-preview'),slot,view,[view],'detail',{orientation});
    },{width,height,orientation});
    assert.match(await page.locator('#device-preview').textContent(),/Humidity/);
@@ -192,7 +198,7 @@ const {chromium}=require('playwright');
   });
   assert.equal(await page.locator('[data-panel-artwork]').count(),1);
   assert.match(await page.locator('[data-panel-artwork]').getAttribute('clip-path'),/url/);
-  assert.equal(await page.locator('[data-panel-control]').count(),3);
+  assert.equal(await page.locator('#device-preview [data-media-button]').count(),3,'Round transport on the media card');
   await page.evaluate(()=>{
    const slot={entity:'weather.home',name:'Home'},view={entity:slot.entity,panel:{temperature:'16',state:'cloudy'},carousel:{navigator:[]}};
    ONX_PANEL_PREVIEW(document.getElementById('device-preview'),slot,view,[view],'main',{background_color:'#FFFFFF'});
@@ -226,12 +232,19 @@ const {chromium}=require('playwright');
   await page.click('#icon-default');
   await page.check('#member-icon-only-value');
   assert(await page.locator('[data-member="15"]').evaluate(n=>n.classList.contains('icon-only')));
+  assert.equal(await page.locator('#member-animation').isVisible(),true,'Grid keys offer an icon animation');
+  await page.selectOption('#member-animation-value','spin');
+  assert.match(await page.locator('#member-animation-sample').getAttribute('class'),/fx-spin/,'The sample previews the effect');
   assert.equal(await save(),true);
   assert.deepEqual(payloads.at(-1).pages,[{
    name:'Keys',icon:'',layout:'action_grid',rows:4,columns:4,
    entities:[...Array(15).fill(''),'light.kitchen'],
-   icon_only:[...Array(15).fill(false),true]
+   icon_only:[...Array(15).fill(false),true],
+   animation:{'light.kitchen':'spin'}
   }]);
+  await page.selectOption('#member-animation-value','none');
+  assert.equal(await save(),true);
+  assert.equal(payloads.at(-1).pages[0].animation,undefined,'No animation is omitted from the payload');
   const keys=await page.evaluate(()=>ONX_PANEL_GEOMETRY('action_grid',480,320,false,4,4));
   assert.equal(keys.length,16);assert(keys.every(r=>r.w>0&&r.h>0&&r.y+r.h<=276));
   assert.equal(keys.at(-1).y+keys.at(-1).h,276);

@@ -102,7 +102,8 @@ onx_config_web:
           #endif
           auto slot = slots.add<JsonObject>();
           slot["entity"] = entity; encode(slot, view);
-          if(view.layout=="graph") {
+          // History for every entry with a graph (sensors, smart-plug switches).
+          if(view.layout=="graph" || (onx_sensor_view::index(entity)>=0 && onx_sensor_view::configs[onx_sensor_view::index(entity)].graph)) {
             const int index=onx_sensor_view::index(entity);
             if(index>=0) {
               const uint32_t now=id(ha_time).now().timestamp;
@@ -160,6 +161,40 @@ onx_config_web:
             if(entity.rfind("light.",0)==0) {
               const auto light=id(app_storage)->normal_device_slot(custom_logic::normal_ui_slot_for_device_config_slot(i)).light();
               panel["brightness"] = light.brightness_pct; panel["dimmable"] = light.supports_brightness();
+              panel["light_on"] = light.is_on; panel["kelvin"] = light.color_temperature_kelvin;
+              panel["kelvin_min"] = light.min_color_temperature_kelvin; panel["kelvin_max"] = light.max_color_temperature_kelvin;
+              panel["supports_ct"] = light.supports_color_temperature(); panel["supports_rgb"] = light.supports_rgb();
+              panel["hue"] = std::isfinite(detail->light_hue) ? detail->light_hue : light.hue_degrees();
+              panel["saturation"] = std::isfinite(detail->light_saturation) ? detail->light_saturation : 100.0f;
+              panel["light_temperature"] = detail->light_temperature;
+              panel["light_mode"] = int(id(normal_detail_light_mode));
+            }
+            // Everything the panel's own screens read (onx_panel_detail.h), so the
+            // web previews draw the same controls.
+            panel["available"] = detail->available; panel["received"] = detail->received; panel["features"] = detail->features;
+            panel["low"] = detail->low; panel["high"] = detail->high; panel["modes"] = detail->modes;
+            panel["presets"] = detail->presets; panel["preset"] = detail->preset;
+            panel["fan_modes"] = detail->fan_modes; panel["swing_modes"] = detail->swing_modes;
+            panel["hvac"] = onx_controls::effective(*detail,"state");
+            panel["preset_mode"] = onx_controls::effective(*detail,"preset_mode");
+            panel["fan_mode"] = onx_controls::effective(*detail,"fan_mode");
+            panel["swing_mode"] = onx_controls::effective(*detail,"swing_mode");
+            panel["target_low"] = onx_controls::effective(*detail,"target_temp_low");
+            panel["target_high"] = onx_controls::effective(*detail,"target_temp_high");
+            panel["percentage"] = onx_controls::effective(*detail,"percentage");
+            panel["oscillating"] = onx_controls::effective(*detail,"oscillating");
+            panel["direction"] = onx_controls::effective(*detail,"direction");
+            panel["position"] = detail->position; panel["options"] = detail->options;
+            if(std::isfinite(detail->progress.duration))panel["duration"] = detail->progress.duration;
+            panel["value"] = onx_controls::effective(*detail,"state");
+            if(std::isfinite(detail->minimum))panel["minimum"] = detail->minimum;
+            if(std::isfinite(detail->maximum))panel["maximum"] = detail->maximum;
+            if(std::isfinite(detail->step))panel["step"] = detail->step;
+            panel["sensor_class"] = onx_detail_view::sensor_class(entity);
+            panel["wind_bearing"] = detail->wind_bearing;
+            if(const auto *log=onx_panel_detail::changes_for(entity)) {
+              auto changes=panel["changes"].to<JsonArray>();
+              for(const auto &c:log->items){auto item=changes.add<JsonObject>();item["state"]=c.state;item["at"]=uint32_t(c.at);}
             }
             auto forecast=panel["forecast"].to<JsonArray>();
             for(int f=0;f<detail->forecast_count;++f) {
@@ -172,6 +207,15 @@ onx_config_web:
               for(int a=0;a<list->count;++a)actions.add(list->entries[a].name);
             const int sensor=onx_sensor_view::index(entity);
             if(sensor>=0)panel["history_range"]=onx_sensor_view::states[sensor].range_seconds;
+            // Smart plugs: the configured power/energy reading for the switch card.
+            if(sensor>=0 && entity.rfind("switch.",0)==0 && onx_sensor_view::configs[sensor].secondary[0]) {
+              const auto &reading=onx_sensor_view::states[sensor];
+              if(reading.received && reading.available) {
+                panel["power"]=onx_detail_view::compact(reading.value);panel["power_unit"]=reading.unit;
+              }
+            }
+            if(entity.rfind("media_player.",0)==0 && (detail->features & 4))
+              panel["volume"]=onx_controls::effective(*detail,"volume_level");
             #endif
             if (custom_logic_entity_sub::is_timer_detail(entity)) {
               time_t finish = 0;

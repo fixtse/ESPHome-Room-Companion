@@ -292,8 +292,9 @@ inline lv_obj_t *circle(lv_obj_t *parent, int cx, int cy, int size, uint32_t bg,
   return b;
 }
 // Name (shrinks to fit before truncating) with a muted context line below.
+inline int header_reserve = 0;  // Room kept free at the top right (quick actions).
 inline void header(const Rect &r, const std::string &name, const std::string &context, int reserve = 0) {
-  const int w = r.w - reserve;
+  const int w = r.w - std::max(reserve, header_reserve);
   const lv_font_t *font = fit(name, w, {fonts.title, fonts.body});
   text(root, name, font, TEXT(), r.x, r.y, w);
   if (!context.empty()) text(root, context, fonts.small, MUTED(), r.x, r.y + line(font) + P(2), w);
@@ -403,13 +404,7 @@ __attribute__((noinline)) inline void build_light(const Layout &l, const std::st
   int y = info.y + line(fonts.title) + P(10);
   lv_obj_t *value = text(root, !d.available ? "—" : dimmable ? (on ? pct(level) : "Off") : (on ? "On" : "Off"), fonts.big, TEXT(),
                          info.x, y, info.w, LV_TEXT_ALIGN_CENTER);
-  y += line(fonts.big);
-  std::string context = !d.available ? "Unavailable" : on ? "On" : "Off";
-  if (on && s.color_temperature_kelvin > 0 && s.supports_color_temperature() &&
-      (d.light_temperature || !s.supports_rgb()))
-    context += " · " + std::to_string(s.color_temperature_kelvin) + " K";
-  text(root, context, fonts.small, MUTED(), info.x, y, info.w, LV_TEXT_ALIGN_CENTER);
-  y += line(fonts.small) + P(14);
+  y += line(fonts.big) + P(12);
 
   // Mode bar: power | modes.
   const int bs = P(44), gap = P(6), n = modes.size() > 1 ? modes.size() : 0;
@@ -444,8 +439,48 @@ __attribute__((noinline)) inline void build_light(const Layout &l, const std::st
     }
   }
 
+  // Colour presets: a scrollable row of swatches above the mode bar.
+  struct Swatch { uint32_t rgb; int kelvin; };
+  std::vector<Swatch> swatches;
+  if (d.available && (s.supports_rgb() || s.supports_color_temperature())) {
+    const int lo = s.min_color_temperature_kelvin ? s.min_color_temperature_kelvin : 2000;
+    const int hi = s.max_color_temperature_kelvin > lo ? s.max_color_temperature_kelvin : 6500;
+    for (int k : {2000, 3500, 5000, 6500}) {
+      const int kk = std::clamp(k, lo, hi);
+      swatches.push_back({onx_light::kelvin(kk), s.supports_color_temperature() ? kk : 0});
+    }
+    if (s.supports_rgb())
+      for (uint32_t c : {0x7FACFFu, 0xD796FFu, 0xFF9EF3u, 0xFF6E54u, 0xFF3B30u, 0x34C759u, 0x0A84FFu, 0xFFD60Au})
+        swatches.push_back({c, 0});
+  }
+  int control_bottom = bar_y - P(16);
+  if (!swatches.empty() && !wide()) {
+    const int ss = P(40), sg = P(12), rh = ss + P(8), ry = bar_y - P(12) - rh;
+    lv_obj_t *row = box(root, 0, ry, W, rh, BG(), 0, LV_OPA_TRANSP);
+    lv_obj_add_flag(row, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_set_scroll_dir(row, LV_DIR_HOR);
+    lv_obj_set_scrollbar_mode(row, LV_SCROLLBAR_MODE_OFF);
+    const int total = int(swatches.size()) * (ss + sg) - sg;
+    int x = std::max(pad, (W - total) / 2);
+    for (const auto &sw : swatches) {
+      const uint32_t rgb = sw.rgb; const int k = sw.kelvin;
+      lv_obj_t *b = button(row, x, P(4), ss, ss, LV_RADIUS_CIRCLE, rgb, "", fonts.small, TEXT(), [e, rgb, k]() {
+        if (k) request(e, "light.turn_on", "color_temp_kelvin", std::to_string(k), "panel_colour");
+        else {
+          char v[24];
+          std::snprintf(v, sizeof(v), "[%u, %u, %u]", unsigned(rgb >> 16 & 255), unsigned(rgb >> 8 & 255), unsigned(rgb & 255));
+          request(e, "light.turn_on", "rgb_color", v, "panel_colour");
+        }
+      });
+      lv_obj_set_style_border_width(b, 1, 0);
+      lv_obj_set_style_border_color(b, lv_color_hex(TRACK()), 0);
+      x += ss + sg;
+    }
+    if (x - sg + pad > W) lv_obj_set_width(row, W);  // Wider than the screen: scrolls.
+    control_bottom = ry - P(12);
+  }
   // The large control.
-  const Rect vis = wide() ? l.vis : Rect{pad, y, W - 2 * pad, bar_y - P(16) - y};
+  const Rect vis = wide() ? l.vis : Rect{pad, y, W - 2 * pad, control_bottom - y};
   if (!d.available || vis.h < P(60)) return;
   if (mode < 0) {  // On/off only: one large power button.
     const int size = std::min({vis.w, vis.h, P(150)});
@@ -792,10 +827,17 @@ __attribute__((noinline)) inline void build_toggle(const Layout &l, const std::s
   const int i = onx_sensor_view::index(e);
   if (i < 0 || !onx_sensor_view::configs[i].secondary[0]) return;
   const auto &s = onx_sensor_view::states[i];
-  const int th = P(56);
-  tile(root, {l.ctl.x, l.ctl.y, l.ctl.w, th}, s.unit == "kWh" ? "Energy" : "Power",
+  // The reading right under On/Off, and the graph in all the space below it,
+  // ending clear of the bottom edge.
+  const int th = P(56), ty = wide() ? l.ctl.y : std::min(l.ctl.y, cy + size / 2 + P(10) + line(fonts.big) + P(10));
+  tile(root, {l.ctl.x, ty, l.ctl.w, th}, s.unit == "kWh" ? "Energy" : "Power",
        s.received && s.available ? onx_detail_view::compact(s.value) + " " + s.unit : "—");
-  if (onx_sensor_view::configs[i].graph && draw_graph && l.ctl.h >= th + P(70)) draw_graph(root, e, l.ctl.y + th + P(8));
+  const int gy = ty + th + P(10), gb = H - P(24);
+  if (onx_sensor_view::configs[i].graph && draw_graph && gb - gy >= P(60)) {
+    // draw_graph sizes the canvas to the frame less P(24) wide and P(40) tall.
+    lv_obj_t *frame = box(root, l.ctl.x - P(12), gy - P(4), l.ctl.w + P(24), gb - gy + P(40), BG(), 0, LV_OPA_TRANSP);
+    draw_graph(frame, e, P(4));
+  }
 }
 
 __attribute__((noinline)) inline void build_action(const Layout &l, const std::string &e, const EntityDetailState &d, const std::string &title) {
@@ -1119,7 +1161,7 @@ struct Chart {
   std::vector<onx_sensor_view::Point> points;
   float lo{0}, hi{0};
   uint32_t start{0}, end{0}, gap{1200}, color{0};
-  bool fill{false};
+  bool fill{false}, bars{false};
 };
 inline std::vector<std::unique_ptr<Chart>> charts;
 inline void draw_chart(lv_event_t *ev) {
@@ -1139,6 +1181,30 @@ inline void draw_chart(lv_event_t *ev) {
   lv_layer_t *layer = lv_event_get_layer(ev);
   lv_draw_line_dsc_t d;
   lv_draw_line_dsc_init(&d);
+  if (c->bars) {  // Averages in equal time buckets, drawn as columns from the bottom.
+    constexpr int N = 24;
+    float sum[N] = {}; int n[N] = {};
+    for (const auto &p : c->points) {
+      if (p.epoch < c->start || p.epoch > c->end) continue;
+      const int b = std::min<int>(N - 1, int(int64_t(p.epoch - c->start) * N / range));
+      sum[b] += p.value; ++n[b];
+    }
+    const float top = std::max(c->hi, 1e-3f);
+    const int slot = std::max(1, w / N), bw = std::max(2, slot * 2 / 3);
+    d.width = bw;
+    d.color = lv_color_hex(c->color);
+    d.opa = LV_OPA_COVER;
+    for (int b = 0; b < N; ++b) {
+      if (!n[b]) continue;
+      const float v = std::max(0.0f, sum[b] / n[b]);
+      const int32_t bh = std::max<int32_t>(2, int32_t(v / top * h));
+      d.p1.x = d.p2.x = a.x1 + b * w / N + slot / 2;
+      d.p1.y = a.y2;
+      d.p2.y = a.y2 - bh;
+      lv_draw_line(layer, &d);
+    }
+    return;
+  }
   if (c->fill) {  // Soft area under the line, one thin column every 2 px.
     d.width = 2;
     d.color = lv_color_hex(c->color);
@@ -1178,7 +1244,7 @@ inline std::vector<onx_sensor_view::Point> card_history(const std::string &e) {
   return h;
 }
 inline const Chart *chart(lv_obj_t *parent, int x, int y, int w, int h, const std::string &e,
-                          std::vector<onx_sensor_view::Point> points, uint32_t color, bool fill) {
+                          std::vector<onx_sensor_view::Point> points, uint32_t color, bool fill, bool bars = false) {
   const int i = onx_sensor_view::index(e);
   if (i < 0 || points.size() < 2 || w < P(24) || h < P(12)) return nullptr;
   auto c = std::make_unique<Chart>();
@@ -1190,6 +1256,7 @@ inline const Chart *chart(lv_obj_t *parent, int x, int y, int w, int h, const st
   c->gap = std::max<uint32_t>(1200, range / 24);
   c->color = color;
   c->fill = fill;
+  c->bars = bars;
   c->points = std::move(points);
   lv_obj_t *o = box(parent, x, y, w, h, CARD(), 0, LV_OPA_TRANSP);
   lv_obj_add_event_cb(o, draw_chart, LV_EVENT_DRAW_MAIN, c.get());
@@ -1224,12 +1291,7 @@ __attribute__((noinline)) inline void build_sensor(const Layout &l, const std::s
   const bool graph = i >= 0 && onx_sensor_view::configs[i].graph;
   std::vector<onx_sensor_view::Point> history;
   if (i >= 0) history = onx_sensor_view::states[i].history(std::time(nullptr));
-  if (history.size() >= 2) {
-    const float delta = history.back().value - history.front().value;
-    const std::string arrow = delta > 0 ? "▲ " : delta < 0 ? "▼ " : "";
-    text(root, arrow + fmt(std::fabs(delta), 1) + " over this range", fonts.small, accent(), area.x, y, area.w);
-    y += line(fonts.small);
-  } else if (graph) {
+  if (history.size() < 2 && graph) {
     const auto &state = onx_sensor_view::states[i];
     text(root, state.pending ? "Loading history…" : state.requested ? "No recorded history" : "Collecting history…", fonts.small, MUTED(), area.x, y, area.w);
     y += line(fonts.small);
@@ -1259,11 +1321,11 @@ __attribute__((noinline)) inline void build_sensor(const Layout &l, const std::s
   }
   // Min / avg / max of the history along the bottom; the graph takes the rest.
   const bool stats = history.size() >= 2;
-  const int th = P(64);
+  const int th = P(52);
   const Rect bottom = wide() ? Rect{l.ctl.x, l.ctl.bottom() - th, l.ctl.w, th} : Rect{area.x, area.bottom() - th, area.w, th};
   if (graph && draw_graph) {
     const Rect g = wide() ? Rect{l.ctl.x, l.ctl.y, l.ctl.w, (stats ? bottom.y - P(12) : l.ctl.bottom()) - l.ctl.y}
-                          : Rect{area.x, y, area.w, (stats ? bottom.y - P(12) : area.bottom()) - y};
+                          : Rect{area.x, y, area.w, (stats ? bottom.y - P(8) : area.bottom()) - y};
     if (g.h >= P(80)) {
       lv_obj_t *frame = box(root, g.x, g.y, g.w, g.h, CARD(), P(12));
       draw_graph(frame, e, P(12));
@@ -1553,6 +1615,7 @@ struct Tile {
   Rect r{};
   bool compact{false}, key{false}, icon_only{false};
   uint64_t artwork{0};
+  uint8_t effect{0};  // Action-grid icon animation while on: 1 pulse, 2 blink, 3 spin.
 };
 inline uint32_t INSET() {return CONTROL();}  // Surfaces inside a card (same as CONTROL()).
 // Entity icons are bound by the icon downloader, which keeps one binding per
@@ -1586,6 +1649,9 @@ inline void detach_artwork() {
 inline void detach_icons() {
   for (auto *img : icon_pool) {
     if (img == nullptr) continue;
+    lv_anim_delete(img, nullptr);  // Stop any key animation and restore the image.
+    lv_obj_set_style_opa(img, LV_OPA_COVER, 0);
+    lv_image_set_rotation(img, 0);
     if (lv_obj_get_parent(img) != lv_layer_top()) lv_obj_set_parent(img, lv_layer_top());
     lv_obj_add_flag(img, LV_OBJ_FLAG_HIDDEN);
   }
@@ -1623,6 +1689,37 @@ inline void icon(lv_obj_t *parent, const std::string &e, int cx, int cy, int siz
   lv_obj_set_style_image_recolor_opa(img, custom?LV_OPA_TRANSP:LV_OPA_COVER, 0);
   icon_uses.push_back({img, e, cx, cy, size, nullptr, custom, card_on});
   place_icon(icon_uses.back());
+}
+// Grid-key icon animations (onx_panel_pages::Effect), run by LVGL on the icon
+// image alone so only that area redraws.
+inline void animate_icon(lv_obj_t *img, uint8_t effect) {
+  if (img == nullptr || !effect) return;
+  lv_anim_delete(img, nullptr);
+  lv_anim_t a;
+  lv_anim_init(&a);
+  lv_anim_set_var(&a, img);
+  lv_anim_set_repeat_count(&a, LV_ANIM_REPEAT_INFINITE);
+  if (effect == 3) {  // Spin: one turn every 1.6 s.
+    lv_anim_set_exec_cb(&a, [](void *o, int32_t v) { lv_image_set_rotation(static_cast<lv_obj_t *>(o), v); });
+    lv_anim_set_values(&a, 0, 3600);
+    lv_anim_set_duration(&a, 1600);
+    lv_anim_set_path_cb(&a, lv_anim_path_linear);
+  } else if (effect == 2) {  // Blink: fade out and back twice a second.
+    lv_anim_set_exec_cb(&a, [](void *o, int32_t v) { lv_obj_set_style_opa(static_cast<lv_obj_t *>(o), v, 0); });
+    lv_anim_set_values(&a, LV_OPA_COVER, LV_OPA_20);
+    lv_anim_set_duration(&a, 250);
+    lv_anim_set_reverse_duration(&a, 250);
+    lv_anim_set_repeat_delay(&a, 250);
+    lv_anim_set_path_cb(&a, lv_anim_path_step);
+  } else {  // Pulse: grow by 15 % and back.
+    const int32_t base = lv_image_get_scale(img);
+    lv_anim_set_exec_cb(&a, [](void *o, int32_t v) { lv_image_set_scale(static_cast<lv_obj_t *>(o), v); });
+    lv_anim_set_values(&a, base, base * 115 / 100);
+    lv_anim_set_duration(&a, 700);
+    lv_anim_set_reverse_duration(&a, 700);
+    lv_anim_set_path_cb(&a, lv_anim_path_ease_in_out);
+  }
+  lv_anim_start(&a);
 }
 // Re-binds each frame so downloaded icons replace the fallbacks.
 inline void refresh_icons() {
@@ -1790,7 +1887,7 @@ inline void card_climate(lv_obj_t *c, const Tile &t, const EntityDetailState &d)
 }
 
 // Live media position on main cards; moved every refresh without a rebuild.
-struct MediaProgress { std::string entity; lv_obj_t *group{nullptr}, *fill{nullptr}, *elapsed{nullptr}, *total{nullptr}; int w{0}, h{0}; };
+struct MediaProgress { std::string entity; lv_obj_t *group{nullptr}, *fill{nullptr}, *elapsed{nullptr}, *total{nullptr}; int w{0}, h{0}; bool remaining{true}; };
 inline std::vector<MediaProgress> media_progress;
 inline void tick_media_progress() {
   for (auto &m : media_progress) {
@@ -1802,12 +1899,22 @@ inline void tick_media_progress() {
     lv_obj_remove_flag(m.group, LV_OBJ_FLAG_HIDDEN);
     const int fw = std::max(m.h, m.w * v.permille / 1000);
     if (lv_obj_get_style_width(m.fill, LV_PART_MAIN) != fw) lv_obj_set_width(m.fill, fw);
-    const std::string el = onx_panel_ui::duration_text(v.seconds), to = "-" + onx_panel_ui::duration_text(v.duration - v.seconds);
+    const std::string el = onx_panel_ui::duration_text(v.seconds),
+                      to = m.remaining ? "-" + onx_panel_ui::duration_text(v.duration - v.seconds) : onx_panel_ui::duration_text(v.duration);
     if (el != lv_label_get_text(m.elapsed)) lv_label_set_text(m.elapsed, el.c_str());
     if (to != lv_label_get_text(m.total)) lv_label_set_text(m.total, to.c_str());
   }
 }
 
+// Round transport: dark previous/next circles around a larger accent play.
+inline void transport(lv_obj_t *parent, int cx, int cy, int side, int main, int gap, const std::string &e, bool playing) {
+  circle(parent, cx - main / 2 - gap - side / 2, cy, side, INSET(), LV_SYMBOL_PREV, TEXT(),
+         [e]() { request(e, "media_player.media_previous_track", "", "", "panel_media"); });
+  circle(parent, cx, cy, main, accent(), playing ? LV_SYMBOL_PAUSE : LV_SYMBOL_PLAY, TEXT(),
+         [e, playing]() { request(e, playing ? "media_player.media_pause" : "media_player.media_play", "", "", "panel_media"); });
+  circle(parent, cx + main / 2 + gap + side / 2, cy, side, INSET(), LV_SYMBOL_NEXT, TEXT(),
+         [e]() { request(e, "media_player.media_next_track", "", "", "panel_media"); });
+}
 // Tall cards put the artwork across the width with the track below it; short
 // ones keep it beside the text. Both show the position above the transport.
 inline void card_media(lv_obj_t *c, const Tile &t, const EntityDetailState &d) {
@@ -1862,14 +1969,101 @@ inline void card_media(lv_obj_t *c, const Tile &t, const EntityDetailState &d) {
     media_progress.push_back(m);
   }
   const std::string e = t.entity;
-  const int cx = r.w / 2, pw = P(96), gap = P(26);
-  circle(c, cx - pw / 2 - gap - bh / 2, by + bh / 2, bh, INSET(), LV_SYMBOL_PREV, TEXT(),
-         [e]() { request(e, "media_player.media_previous_track", "", "", "panel_media"); });
-  lv_obj_t *play = button(c, cx - pw / 2, by, pw, bh, bh / 2, accent(), "", fonts.symbol, TEXT(),
-                          [e, playing]() { request(e, playing ? "media_player.media_pause" : "media_player.media_play", "", "", "panel_media"); });
-  lv_obj_center(text(play, playing ? LV_SYMBOL_PAUSE : LV_SYMBOL_PLAY, fonts.symbol, 0x101418, 0, 0));
-  circle(c, cx + pw / 2 + gap + bh / 2, by + bh / 2, bh, INSET(), LV_SYMBOL_NEXT, TEXT(),
-         [e]() { request(e, "media_player.media_next_track", "", "", "panel_media"); });
+  transport(c, r.w / 2, by + bh / 2, bh - P(8), bh, P(22), e, playing);
+}
+
+// Media detail: artwork, title, "artist · room", the position with elapsed and
+// total time below it, the transport and a volume slider along the bottom.
+__attribute__((noinline)) inline void build_media(const Layout &l, const std::string &e, const EntityDetailState &d,
+                                                  const std::string &title) {
+  // Landscape: the artwork on the left, everything else in a column beside it.
+  const int pad = P(16), side_art = wide() ? std::min(H - 2 * pad, W * 42 / 100) : 0;
+  const int x = wide() ? pad + side_art + P(16) : pad, w = wide() ? W - x - pad : W - 2 * pad;
+  const bool playing = d.state == "playing", playback = onx_media::has_playback(d.state);
+  int bottom = l.ctl.bottom();
+  // Volume row.
+  const bool volume = (d.features & 4) != 0;
+  if (volume) {
+    const int vh = P(48), vy = bottom - vh;
+    float level = num(onx_controls::effective(d, "volume_level"));
+    const float want = pending_value(e, "volume_level");
+    clear_pending_if(e, "volume_level", level);
+    if (std::isfinite(want)) level = want;
+    const int pct_v = std::isfinite(level) ? std::clamp(int(std::lround(level * 100)), 0, 100) : 0;
+    auto *row = box(root, x, vy, w, vh, CARD(), P(14));
+    text(row, LV_SYMBOL_VOLUME_MAX, fonts.symbol, SOFT_TEXT(), P(12), (vh - line(fonts.symbol)) / 2);
+    const int nw = text_width("100", fonts.body) + P(4), sx = P(12) + P(30), sw = w - sx - nw - P(24);
+    lv_obj_t *value = text(row, std::to_string(pct_v), fonts.body, TEXT(), w - P(12) - nw, (vh - line(fonts.body)) / 2, nw,
+                           LV_TEXT_ALIGN_RIGHT);
+    const int th = P(6), ks = P(22);
+    // A taller transparent touch strip around the thin track.
+    lv_obj_t *strip = box(row, sx, 0, sw, vh, CARD(), 0, LV_OPA_TRANSP);
+    box(strip, 0, (vh - th) / 2, sw, th, TRACK(), th / 2);
+    const int fw = sw * pct_v / 100;
+    lv_obj_t *fill = box(strip, 0, (vh - th) / 2, std::max(th, fw), th, accent(), th / 2);
+    lv_obj_t *knob = box(strip, std::clamp(fw - ks / 2, 0, sw - ks), (vh - ks) / 2, ks, ks, TEXT(), ks / 2);
+    drag(strip, [e, strip, fill, knob, value, sw, th, ks](lv_point_t p, bool commit) {
+      lv_area_t a;
+      lv_obj_get_coords(strip, &a);
+      const int v = std::clamp(int(std::lround((p.x - a.x1) * 100.0f / sw)), 0, 100);
+      const int fw = sw * v / 100;
+      lv_obj_set_width(fill, std::max(th, fw));
+      lv_obj_set_x(knob, std::clamp(fw - ks / 2, 0, sw - ks));
+      lv_label_set_text(value, std::to_string(v).c_str());
+      if (!commit) return;
+      set_pending(e, "volume_level", v / 100.0f);
+      char buf[8];
+      std::snprintf(buf, sizeof(buf), "%.2f", v / 100.0f);
+      request(e, "media_player.volume_set", "volume_level", buf, "panel_volume");
+    });
+    bottom = vy - P(14);
+  }
+  // Transport.
+  const int bh = P(64), by = bottom - bh;
+  transport(root, x + w / 2, by + bh / 2, P(52), bh, P(28), e, playing);
+  // Position: bar, then elapsed / total underneath.
+  const int bar = P(6), prog_h = bar + P(6) + line(fonts.small), prog_y = by - P(16) - prog_h;
+  {
+    MediaProgress m;
+    m.entity = e; m.w = w; m.h = bar; m.remaining = false;
+    m.group = box(root, x, prog_y, w, prog_h, BG(), 0, LV_OPA_TRANSP);
+    box(m.group, 0, 0, w, bar, TRACK(), bar / 2);
+    m.fill = box(m.group, 0, 0, bar, bar, accent(), bar / 2);
+    m.elapsed = text(m.group, "", fonts.small, MUTED(), 0, bar + P(6), w / 2);
+    m.total = text(m.group, "", fonts.small, MUTED(), w / 2, bar + P(6), w / 2, LV_TEXT_ALIGN_RIGHT);
+    lv_obj_add_flag(m.group, LV_OBJ_FLAG_HIDDEN);
+    media_progress.push_back(m);
+  }
+  // Title and "artist · room".
+  const std::string name = playback && !d.media_title.empty() ? onx_media::display_text(d.media_title)
+                                                              : playback ? label(d.state) : "Nothing playing";
+  const std::string sub = playback ? onx_media::display_text(d.media_artist) : "";
+  const lv_font_t *tf = fit(name, w, {fonts.title, fonts.body});
+  const int sub_y = prog_y - P(12) - line(fonts.body), title_y = sub_y - line(tf);
+  text(root, name, tf, TEXT(), x, title_y, w, LV_TEXT_ALIGN_CENTER);
+  if (!sub.empty()) text(root, sub, fonts.body, MUTED(), x, sub_y, w, LV_TEXT_ALIGN_CENTER);
+  // Artwork fills the space above, square and centred.
+  const int top = pad, room = title_y - P(12) - top;
+  const int art = wide() ? side_art : std::max(P(48), std::min({P(220), w - 2 * header_reserve, room}));
+  const int ax = wide() ? pad : (W - art) / 2, ay = wide() ? (H - art) / 2 : top + std::max(0, (room - art) / 2);
+  auto *frame = box(root, ax, ay, art, art, CONTROL(), P(14));
+  lv_obj_set_style_clip_corner(frame, true, 0);
+  onx_media::main_entity = e;
+  const void *source = artwork_source ? artwork_source(e) : nullptr;
+  if (source) {
+    if (!main_artwork) main_artwork = lv_image_create(lv_layer_top());
+    lv_obj_set_parent(main_artwork, frame);
+    lv_obj_remove_flag(main_artwork, LV_OBJ_FLAG_HIDDEN);
+    lv_image_set_src(main_artwork, source);
+    lv_image_header_t h{};
+    if (lv_image_decoder_get_info(source, &h) == LV_RESULT_OK && h.w && h.h) {
+      lv_image_set_pivot(main_artwork, h.w / 2, h.h / 2);
+      // Cover the square frame (crop the longer side).
+      lv_image_set_scale(main_artwork, art * 256 / std::max<int>(1, std::min(h.w, h.h)));
+      lv_obj_center(main_artwork);
+    }
+  } else icon(root, e, ax + art / 2, ay + art / 2, art * 40 / 100, playing ? accent() : SOFT_TEXT());
+  tick_media_progress();
 }
 
 inline void card_generic(lv_obj_t *c, const Tile &t, const EntityDetailState *d) {
@@ -1885,10 +2079,16 @@ inline void card_generic(lv_obj_t *c, const Tile &t, const EntityDetailState *d)
   const float pv = d != nullptr ? num(d->state) : NAN;
   if (available && !switchable && d->unit == "%" && std::isfinite(pv) && pv >= 0 && pv <= 100 && r.h < P(300) &&
       r.h >= P(110)) {
-    const int size = std::min(r.h - 2 * pad, r.w * 42 / 100);
+    // Title across the top; a smaller ring below it on the left, the context
+    // (two lines) and a tall chart beside it.
+    const int tw = r.w - 2 * pad;
+    const int nl = lines_for(t.name, fonts.title, tw, 2);
+    text(c, t.name, fonts.title, TEXT(), pad, pad, tw, LV_TEXT_ALIGN_LEFT, nl);
+    const int top = pad + nl * line(fonts.title) + P(10), avail = r.h - pad - top;
+    const int size = std::max(P(48), std::min(avail, r.w * 34 / 100));
     lv_obj_t *arc = lv_arc_create(c);
     lv_obj_set_size(arc, size, size);
-    lv_obj_set_pos(arc, pad, (r.h - size) / 2);
+    lv_obj_set_pos(arc, pad, top + (avail - size) / 2);
     lv_arc_set_rotation(arc, 270);
     lv_arc_set_bg_angles(arc, 0, 360);
     lv_arc_set_range(arc, 0, 1000);
@@ -1907,10 +2107,15 @@ inline void card_generic(lv_obj_t *c, const Tile &t, const EntityDetailState *d)
     lv_obj_remove_flag(arc, static_cast<lv_obj_flag_t>(LV_OBJ_FLAG_CLICKABLE | LV_OBJ_FLAG_SCROLLABLE));
     const std::string v = fmt(pv, pv < 10 ? 1 : 0) + "%";
     const lv_font_t *vf = fit(v, size - 2 * aw - P(8), {fonts.big, fonts.title, fonts.body});
-    text(c, v, vf, TEXT(), pad, (r.h - line(vf)) / 2, size, LV_TEXT_ALIGN_CENTER);
+    text(c, v, vf, TEXT(), pad, top + (avail - line(vf)) / 2, size, LV_TEXT_ALIGN_CENTER);
     const int nx = pad + size + P(14), nw = r.w - nx - pad;
-    int y = titled(c, t, nx, pad + P(4), nw) + P(10);
-    const int gh = std::min(P(60), r.h - pad - y);
+    int y = top;
+    if (!t.context.empty()) {
+      const int cl = lines_for(t.context, fonts.body, nw, 2);
+      text(c, t.context, fonts.body, SOFT_TEXT(), nx, y, nw, LV_TEXT_ALIGN_LEFT, cl);
+      y += cl * line(fonts.body) + P(8);
+    }
+    const int gh = r.h - pad - y;
     if (gh >= P(24)) chart(c, nx, y, nw, gh, e, card_history(e), accent(), false);
     return;
   }
@@ -1978,6 +2183,27 @@ inline void card_generic(lv_obj_t *c, const Tile &t, const EntityDetailState *d)
   const bool numeric = d != nullptr && std::isfinite(num(d->state)) && (domain == "sensor" || domain == "number" || domain == "input_number");
   const std::string value = numeric ? onx_detail_view::compact(d->state) : t.value;
   const std::string unit = numeric ? d->unit : "";
+  // Smart plugs: On/Off large with the power reading beside it, then the
+  // power history as 24 columns along the bottom.
+  if (domain == "switch" && available) {
+    const int i = onx_sensor_view::index(e);
+    if (i >= 0 && onx_sensor_view::configs[i].secondary[0]) {
+      const auto &s = onx_sensor_view::states[i];
+      const std::string state = d->state == "on" ? "On" : "Off";
+      text(c, state, fonts.big, TEXT(), pad, vy, text_width(state, fonts.big) + 1);
+      if (s.received && s.available) {
+        const int sx = pad + text_width(state, fonts.big) + P(10);
+        const std::string now = onx_detail_view::compact(s.value) + " " + s.unit + (s.unit == "W" ? " now" : "");
+        text(c, now, fonts.body, SOFT_TEXT(), sx, vy + line(fonts.big) - line(fonts.body) - P(4), r.w - sx - pad);
+      }
+      const int gy = vy + line(fonts.big) + P(10), gb = r.h - pad - line(fonts.small) - P(4);
+      auto history = card_history(e);
+      if (gb - gy >= P(24) && chart(c, pad, gy, r.w - 2 * pad, gb - gy, e, std::move(history), accent(), false, true))
+        text(c, std::string(s.unit == "kWh" ? "Energy" : "Power") + " · " + s.range_label(), fonts.small, MUTED(), pad,
+             gb + P(4), r.w - 2 * pad);
+      return;
+    }
+  }
   // With history: the reading under the title, then min / max, and the chart
   // fills the rest of the card.
   if (available && !runnable) {
@@ -2072,8 +2298,10 @@ inline void card_settings(lv_obj_t *c, const Tile &t) {
 }
 
 __attribute__((noinline)) inline void build_card(const Tile &t) {
-  lv_obj_t *c = box(root, t.r.x, t.r.y, t.r.w, t.r.h, t.key && t.on ? INSET() : CARD(),
-                    t.key ? P(9) : t.compact ? P(14) : P(18));
+  // Grid keys are small, so they use the stronger control surface (and a
+  // tint while on) to read as cards on the page background.
+  lv_obj_t *c = box(root, t.r.x, t.r.y, t.r.w, t.r.h, t.key ? (t.on ? soft() : CONTROL()) : CARD(),
+                    t.key ? P(14) : t.compact ? P(14) : P(18));
   lv_obj_set_style_clip_corner(c, false, 0);
   const auto *d = custom_logic_entity_sub::entity_detail(t.entity);
   const bool ready = d != nullptr && d->received && d->available;
@@ -2087,6 +2315,7 @@ __attribute__((noinline)) inline void build_card(const Tile &t) {
     if(t.icon_only) {
       if(t.artwork)lv_obj_set_style_clip_corner(c,true,0);
       icon(c,t.entity,t.r.w/2,t.r.h/2,t.artwork?std::max(t.r.w,t.r.h):std::min(t.r.w,t.r.h)*86/100,color);
+      if(t.on && t.effect && !icon_uses.empty())animate_icon(icon_uses.back().image,t.effect);
       if(t.artwork && t.on) {
         auto *frame=box(c,0,0,t.r.w,t.r.h,CARD(),P(9),LV_OPA_TRANSP);
         lv_obj_set_style_border_width(frame,P(2),0);
@@ -2096,6 +2325,7 @@ __attribute__((noinline)) inline void build_card(const Tile &t) {
     }
     icon(c, t.entity, t.r.w / 2, (t.r.h - name_height - pad) / 2,
          std::min(P(44), std::min(t.r.w,t.r.h) * 40 / 100), color);
+    if (t.on && t.effect && !icon_uses.empty()) animate_icon(icon_uses.back().image, t.effect);
     text(c, t.name, fonts.small, color, pad, t.r.h - name_height - pad,
          t.r.w - 2 * pad, LV_TEXT_ALIGN_CENTER);
     return;
@@ -2137,7 +2367,7 @@ inline void render_main(lv_obj_t *parent, const std::vector<Tile> &tiles, int wi
     onx_detail_view::View v;
     v.value.text = t.value; v.context.text = t.context; v.name.text = t.name; v.value_ring = t.ring;
     sig += "#" + std::to_string(t.r.x) + ',' + std::to_string(t.r.y) + ',' + std::to_string(t.r.w) + ',' +
-           std::to_string(t.r.h) + ',' + std::to_string(t.compact) + ',' + std::to_string(t.key) + ',' + std::to_string(t.icon_only) + ',' + std::to_string(t.on) + ',' +
+           std::to_string(t.r.h) + ',' + std::to_string(t.compact) + ',' + std::to_string(t.key) + ',' + std::to_string(t.icon_only) + ',' + std::to_string(t.on) + ',' + std::to_string(t.effect) + ',' +
            std::to_string(t.artwork) + ',' + signature(t.entity, custom_logic_entity_sub::entity_detail(t.entity), v, t.name);
   }
   if (sig == built_signature && main_mode) { refresh_icons(); tick_media_progress(); return; }
@@ -2164,7 +2394,7 @@ inline bool supports(const std::string &e) {
   if (custom_logic_entity_sub::is_timer_detail(e)) return true;
   for (const char *p : {"light.", "climate.", "fan.", "cover.", "switch.", "input_boolean.", "automation.", "scene.",
                         "script.", "button.", "input_button.", "sensor.", "binary_sensor.", "number.", "input_number.",
-                        "select.", "input_select.", "weather."})
+                        "select.", "input_select.", "weather.", "media_player."})
     if (has_prefix(e, p)) return true;
   return false;
 }
@@ -2197,6 +2427,7 @@ inline std::string signature(const std::string &e, const EntityDetailState *d, c
   if (const auto *c = changes_for(e)) s += '|' + std::to_string(c->items.size()) + ',' + std::to_string(std::time(nullptr) / 60);
   if (pending.entity == e) s += '|' + std::to_string(pending_value(e, pending.key));
   s += '|' + std::to_string(esphome::millis() - ran_at < 1500);
+  s += '|' + std::to_string(onx_playlist::browser.open && onx_playlist::browser.entity == e);
   if (shortcut) s += '|' + shortcut(e);
   if (custom_logic_entity_sub::is_timer_detail(e)) s += '|' + timer_signature();
   return s;
@@ -2237,6 +2468,29 @@ inline void hide() {
   if (root != nullptr) lv_obj_add_flag(root, LV_OBJ_FLAG_HIDDEN);
 }
 
+// Quick actions: every entry as a large tile, two columns over the whole
+// screen; a tap runs it and closes the view.
+inline void build_quick_actions(const std::string &e, const onx_playlist::Config &list) {
+  const int pad = P(16), bs = P(44), gap = P(10);
+  text(root, "Quick actions", fonts.title, TEXT(), pad, pad + (bs - line(fonts.title)) / 2, W - 2 * pad - bs - P(8));
+  circle(root, W - pad - bs / 2, pad + bs / 2, bs, CONTROL(), LV_SYMBOL_CLOSE, TEXT(), []() { onx_playlist::browser.clear(); });
+  const int n = list.count, cols = n == 1 ? 1 : 2, rows = (n + cols - 1) / cols;
+  const int top = pad + bs + P(14), avail = H - pad - top;
+  const int th = std::min(P(96), (avail - (rows - 1) * gap) / std::max(1, rows));
+  const int tw = (W - 2 * pad - (cols - 1) * gap) / cols;
+  for (int i = 0; i < n; ++i) {
+    const std::string action = list.entries[i].action, name = list.entries[i].name;
+    const std::string caption = name.empty() ? action : name;
+    lv_obj_t *b = button(root, pad + (i % cols) * (tw + gap), top + (i / cols) * (th + gap), tw, th, P(16), CONTROL(), "",
+                         fonts.body, TEXT(), [action]() {
+                           onx_playlist::browser.clear();
+                           if (run_quick_action) run_quick_action(action);
+                         });
+    const int lines = std::min(lines_for(caption, fonts.body, tw - P(20), 3), std::max(1, (th - P(12)) / line(fonts.body)));
+    lv_obj_t *l = text(b, caption, fonts.body, TEXT(), 0, 0, tw - P(20), LV_TEXT_ALIGN_CENTER, lines);
+    lv_obj_center(l);
+  }
+}
 // Draws (or keeps) the redesigned detail for `entity` inside `parent`.
 inline void render(lv_obj_t *parent, const std::string &e, const std::string &title, const onx_detail_view::View &v,
                    int width, int height) {
@@ -2249,7 +2503,7 @@ inline void render(lv_obj_t *parent, const std::string &e, const std::string &ti
   if (dragging) return;  // Never rebuild under a finger.
   const auto *d = custom_logic_entity_sub::entity_detail(e);
   const auto sig = signature(e, d, v, title);
-  if (sig == built_signature && !main_mode) { refresh_icons(); return; }
+  if (sig == built_signature && !main_mode) { refresh_icons(); tick_media_progress(); return; }
   clear();
   built_signature = sig;
   auto l = layout();
@@ -2258,22 +2512,17 @@ inline void render(lv_obj_t *parent, const std::string &e, const std::string &ti
   const bool has_shortcut = (action.rfind("script.", 0) == 0 || action.rfind("automation.", 0) == 0) &&
                             !has_prefix(e, "weather.") && !has_prefix(e, "select.") && !has_prefix(e, "input_select.");
   const auto *list = quick_actions ? quick_actions(e) : nullptr;
+  header_reserve = 0;
   if (list && list->count) {
-    const int bh = P(48), y = l.ctl.bottom() - bh;
-    auto *row = box(root, l.ctl.x, y, l.ctl.w, bh, BG(), 0);
-    lv_obj_add_flag(row, LV_OBJ_FLAG_SCROLLABLE);
-    lv_obj_set_scroll_dir(row, LV_DIR_HOR);
-    lv_obj_set_scrollbar_mode(row, LV_SCROLLBAR_MODE_AUTO);
-    int x = 0;
-    for (int i = 0; i < list->count; ++i) {
-      const std::string action = list->entries[i].action;
-      const std::string name = list->entries[i].name;
-      const int bw = std::max(P(120), std::min(l.ctl.w, int(name.size()) * P(10) + P(36)));
-      button(row, x, 0, bw, bh - P(4), P(16), CONTROL(), name.empty() ? action : name, fonts.body, TEXT(),
-             [action]() { if (run_quick_action) run_quick_action(action); });
-      x += bw + P(8);
-    }
-    l.ctl.h -= bh + P(10);
+    auto &browser = onx_playlist::browser;
+    if (browser.open && browser.entity == e) { build_quick_actions(e, *list); return; }
+    // A list button at the top right opens the quick actions full screen.
+    const int bs = P(44);
+    header_reserve = bs + P(8);
+    circle(root, W - P(16) - bs / 2, P(16) + bs / 2, bs, CONTROL(), LV_SYMBOL_LIST, TEXT(), [e]() {
+      custom_logic_entity_sub::select_control_entity(e);
+      onx_playlist::browser.toggle(e);
+    });
   }
   if (has_shortcut && !(list && list->count)) {
     const int bh = P(48), y = l.ctl.bottom() - bh;
@@ -2304,6 +2553,7 @@ inline void render(lv_obj_t *parent, const std::string &e, const std::string &ti
   else if (has_prefix(e, "number.") || has_prefix(e, "input_number.")) build_number(l, e, *d, title);
   else if (has_prefix(e, "select.") || has_prefix(e, "input_select.")) build_select(l, e, *d, title);
   else if (has_prefix(e, "weather.")) build_weather(e, *d, title);
+  else if (has_prefix(e, "media_player.")) build_media(l, e, *d, title);
   else build_toggle(l, e, *d, title);
 }
 // The panel's own (local Assist) timers, shown above everything.

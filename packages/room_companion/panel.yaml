@@ -148,7 +148,6 @@ interval:
           const int index = detail ? id(normal_device_detail_index) : id(normal_device_selected_index);
           const auto entity = index >= 0 && index < id(normal_device_count) ?
               id(ui_presenter)->get_normal_device_entity_id(index) : std::string();
-          const bool media = entity.rfind("media_player.",0)==0;
           const bool entity_detail = detail && (id(normal_device_detail_kind)==NORMAL_DEVICE_DETAIL_KIND_AUTOMATION ||
               id(normal_device_detail_kind)==NORMAL_DEVICE_DETAIL_KIND_LIGHT || id(normal_device_detail_kind)==NORMAL_DEVICE_DETAIL_KIND_SWITCH ||
               id(normal_device_detail_kind)==NORMAL_DEVICE_DETAIL_KIND_PLUG || id(normal_device_detail_kind)==NORMAL_DEVICE_DETAIL_KIND_CURTAIN);
@@ -162,10 +161,10 @@ interval:
           const bool normal = id(ui_presenter)->is_normal_mode_active() && !standby &&
               !id(screen_off_state) && !id(sleep_mode_state) && id(room_panel)->native_ui_can_render() &&
               // Timer popups open the timer detail, drawn here like any other.
-              !onx_notification::current.visible && !onx_playlist::browser.open;
+              !onx_notification::current.visible;
           // Media keeps its specialised artwork/transport view. Main pages and
           // generic details use the entire rectangle, without the round ring.
-          if (normal && !entity.empty() && ((!detail && id(normal_page_index)==0) || (entity_detail && !media))) {
+          if (normal && !entity.empty() && ((!detail && id(normal_page_index)==0) || entity_detail)) {
             onx_panel_pages::render(entity, onx_panel_ui::width, onx_panel_ui::height, detail, [](lv_obj_t *icon, const std::string &target) {
               id(apply_normal_entity_icon).execute(icon,target,"",false);
             });
@@ -173,7 +172,7 @@ interval:
             onx_panel_pages::render_settings(onx_panel_ui::width, onx_panel_ui::height);
           } else onx_panel_pages::hide();
           static uint32_t last_main_artwork = 0;
-          if (!detail && normal && !onx_media::main_entity.empty() && millis() - last_main_artwork >= 1000) {
+          if ((!detail || onx_panel_detail::active) && normal && !onx_media::main_entity.empty() && millis() - last_main_artwork >= 1000) {
             last_main_artwork = millis();
             id(refresh_normal_media_cover).execute();
           }
@@ -485,11 +484,12 @@ image:
     resize: 80x80
     type: RGB565
     transparency: alpha_channel
-  # Light detail colour wheel (hue around, saturation outwards).
+  # Light detail colour wheel (hue around, saturation outwards), from
+  # OpenHAPanel (Apache-2.0, see THIRD_PARTY_NOTICES.md).
   - platform: file
-    file: "../../assets/panel/color-wheel.svg"
+    file: "../../assets/panel/color-wheel-openhapanel.png"
     id: panel_color_wheel
-    resize: ${ (165 * (ui_scale | float)) | round | int }x${ (165 * (ui_scale | float)) | round | int }
+    resize: ${ (220 * (ui_scale | float)) | round | int }x${ (220 * (ui_scale | float)) | round | int }
     type: RGB565
     transparency: alpha_channel
   - platform: file
@@ -679,6 +679,16 @@ script:
           };
           onx_panel_ui::create_slideshow(id(standby_page)->obj, id(fonts_MiSans_Bold_24)->get_lv_font(),
                                          id(fonts_MiSans_Medium_14)->get_lv_font());
+          id(touch_input)->set_dock_tap([](int x) {
+            if(onx_notification_ui::owns_screen() || id(normal_device_detail_active))return;
+            const int target=onx_navigation::dock_target_at(x);
+            if(target==onx_navigation::DASHBOARD) { if(onx_navigation::shortcut_action)onx_navigation::shortcut_action(); return; }
+            if(target<0)return;
+            id(ui_presenter)->notify_user_activity();
+            onx_navigation::dock_offset=0;
+            id(normal_device_selected_index)=target;
+            id(show_normal_device_entry_page).execute(0);
+          });
           id(touch_input)->set_dock_scroll([](int direction) {
             if(!onx_navigation::visible || onx_notification_ui::owns_screen())return false;
             id(ui_presenter)->notify_user_activity();
@@ -687,5 +697,5 @@ script:
             return true;
           });
           id(touch_input)->set_passthrough_fn([](int x, int y) {
-            return onx_panel_ui::hit(x, y) || onx_notification_ui::bell_hit(x, y);
+            return onx_panel_ui::hit(x, y) || onx_notification_ui::bell_hit(x, y) || onx_notification_ui::toast_hit(x,y);
           });

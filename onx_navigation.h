@@ -49,9 +49,10 @@ inline int selected_rank=-1;
 inline bool visible=false;
 inline bool pin_right=false;
 inline std::array<bool,VISIBLE_ICONS> entry_available{};
-inline int dock_target(int offset) {
-  const int slot=offset+2;
-  return visible && slot>=0 && slot<VISIBLE_ICONS && entry_available[slot]?targets[slot]:NO_TARGET;
+inline int dock_count=0;
+inline int dock_target_at(int x) {
+  if(!visible || !dock_count || x<0 || x>=strip.width)return NO_TARGET;
+  return targets[x*dock_count/strip.width];
 }
 inline std::function<void()> shortcut_action;
 inline void icon_offset(void *widget,int32_t offset_milli) {
@@ -113,6 +114,36 @@ template<typename Bind> void render(std::vector<int> entries,int selected,Bind b
       if(pin<current)--center;
       entries.erase(pin);
     }
+  }
+  if(strip.enabled) {
+    const bool has_pin=pinned_target!=NO_TARGET;
+    const int total=int(entries.size());
+    const int scrolling=std::min(total,VISIBLE_ICONS-int(has_pin));
+    dock_count=scrolling+int(has_pin);
+    const int max_start=total-scrolling;
+    const int home=std::clamp(center-scrolling/2,0,max_start);
+    dock_min=-home;dock_max=max_start-home;
+    dock_offset=std::clamp(dock_offset,dock_min,dock_max);
+    for(int n=0;n<VISIBLE_ICONS;++n) {
+      auto *icon=icons[n];
+      if(n>=dock_count){lv_obj_add_flag(icon,LV_OBJ_FLAG_HIDDEN);continue;}
+      const bool pinned=has_pin && n==(pin_right?dock_count-1:0);
+      const int index=home+dock_offset+n-int(has_pin&&!pin_right);
+      targets[n]=pinned?pinned_target:entries[index];
+      const bool active=targets[n]==selected;
+      lv_obj_remove_flag(icon,LV_OBJ_FLAG_HIDDEN);
+      const int x=strip.width*(2*n+1)/(2*dock_count)-strip.width/2;
+      lv_obj_align(icon,LV_ALIGN_CENTER,x,strip.center_y-strip.height/2);
+      bind(icon,targets[n],active);
+      onx_render::style_opa(icon,active||pinned?LV_OPA_COVER:170,0);
+      if(active)lv_obj_align(marker,LV_ALIGN_CENTER,x,strip.center_y-strip.height/2);
+    }
+    const bool selected_visible=std::find(targets.begin(),targets.begin()+dock_count,selected)!=targets.begin()+dock_count;
+    if(selected_visible)lv_obj_remove_flag(marker,LV_OBJ_FLAG_HIDDEN);
+    else lv_obj_add_flag(marker,LV_OBJ_FLAG_HIDDEN);
+    onx_render::style_bg_color(marker,lv_color_hex(onx_display_settings::accent_soft()),0);
+    lv_obj_remove_flag(dock,LV_OBJ_FLAG_HIDDEN);visible=true;
+    return;
   }
   center=std::clamp(center,0,std::max(0,int(entries.size())-1));
   dock_min=-center;dock_max=std::max(0,int(entries.size())-1)-center;

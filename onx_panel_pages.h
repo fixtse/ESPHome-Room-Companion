@@ -46,6 +46,19 @@ struct StoredPages {
   std::array<uint64_t,onx_panel_artwork::LIMIT> images{};
 };
 inline StoredPages &stored=onx_memory::psram_object<StoredPages>();
+// Icon animations for action-grid keys, per entity entry (so they follow the
+// entity through page edits). A separate preference keeps StoredPages' format.
+enum Effect : uint8_t {EFFECT_NONE=0,EFFECT_PULSE=1,EFFECT_BLINK=2,EFFECT_SPIN=3};
+inline const char *effect_name(uint8_t e){return e==EFFECT_PULSE?"pulse":e==EFFECT_BLINK?"blink":e==EFFECT_SPIN?"spin":"none";}
+inline int effect_parse(const std::string &s){return s=="none"?EFFECT_NONE:s=="pulse"?EFFECT_PULSE:s=="blink"?EFFECT_BLINK:s=="spin"?EFFECT_SPIN:-1;}
+struct StoredEffects {
+  static constexpr uint32_t MAGIC=0x52434658;
+  uint32_t magic{MAGIC};
+  std::array<uint8_t,onx_memory::ENTRY_COUNT> fx{};
+};
+inline StoredEffects effects{};
+inline esphome::ESPPreferenceObject effects_preference;
+inline uint8_t effect_of(uint8_t entry){return entry<onx_memory::ENTRY_COUNT?effects.fx[entry]:EFFECT_NONE;}
 inline esphome::ESPPreferenceObject preference;
 inline bool loaded=false;
 // Set when entries change (slot save, preset, import); reconciled lazily.
@@ -133,6 +146,9 @@ inline bool load() {
   if(loaded)return true;
   if(!esphome::global_preferences)return false;
   preference=esphome::global_preferences->make_preference<StoredPages>(esphome::fnv1_hash("rc.pages.v3"));
+  effects_preference=esphome::global_preferences->make_preference<StoredEffects>(esphome::fnv1_hash("rc.pages.fx.v1"));
+  if(!effects_preference.load(&effects) || effects.magic!=StoredEffects::MAGIC)effects=StoredEffects{};
+  for(auto &f:effects.fx)if(f>EFFECT_SPIN)f=EFFECT_NONE;
   if(!preference.load(&stored) || stored.magic!=StoredPages::MAGIC || stored.count>MAX_PAGES) {
     auto legacy=custom_logic::make_ram_allocated<LegacyPages>();
     auto old_pref=esphome::global_preferences->make_preference<LegacyPages>(esphome::fnv1_hash("rc.pages.v2"));
@@ -240,6 +256,14 @@ inline void encode(JsonArray out) {
        std::any_of(page.artwork.begin(),page.artwork.end(),[](uint8_t i){return (i&ICON_ONLY)!=0;})) {
       auto flags=item["icon_only"].to<JsonArray>();
       for(int i=0;i<size_of(page);++i)flags.add((page.artwork[i]&ICON_ONLY)!=0);
+    }
+    if(Kind(page.kind)==Kind::ACTION_GRID) {
+      JsonObject animation;
+      for(int i=0;i<size_of(page);++i) {
+        const auto fx=effect_of(page.entries[i]);if(!fx)continue;
+        if(animation.isNull())animation=item["animation"].to<JsonObject>();
+        animation[entry_entity(page.entries[i])]=effect_name(fx);
+      }
     }
   }
 }
@@ -373,6 +397,7 @@ inline std::string rpc(const std::string &op,const std::string &data,const std::
     auto next_buffer=custom_logic::make_ram_allocated<StoredPages>();
     if(!next_buffer)return "{\"error\":\"Not enough memory to save pages\"}";
     auto &next=*next_buffer;
+    StoredEffects next_effects{};
     for(JsonObjectConst item:pages) {
       StoredPage page{};Kind kind;
       const std::string name=item["name"] | "",icon=item["icon"] | "";
@@ -410,14 +435,23 @@ inline std::string rpc(const std::string &op,const std::string &data,const std::
       }
       const auto first=lead(page);
       if(first==NO_ENTRY)return R"({"error":"Place at least one action on each grid"})";
+      if(!item["animation"].isNull()) {
+        if(kind!=Kind::ACTION_GRID || !item["animation"].is<JsonObjectConst>())return R"({"error":"Icon animations are set on action grids"})";
+        for(JsonPairConst fx:item["animation"].as<JsonObjectConst>()) {
+          const int entry=configured(fx.key().c_str()),value=effect_parse(fx.value() | "");
+          if(value<0)return R"({"error":"Choose none, pulse, blink or spin"})";
+          if(entry>=0 && entry<int(onx_memory::ENTRY_COUNT))next_effects.fx[entry]=uint8_t(value);
+        }
+      }
       for(int p=0;p<next.count;++p)
         if(lead(next.pages[p])==first)return R"({"error":"An entity can lead only one page"})";
       snprintf(page.name,sizeof(page.name),"%s",name.c_str());snprintf(page.icon,sizeof(page.icon),"%s",icon.c_str());
       next.pages[next.count++]=page;
     }
     reconcile(next);
-    if(!preference.save(&next) || !esphome::global_preferences->sync())return "{\"error\":\"Could not save pages\"}";
-    stored=next;
+    if(!preference.save(&next) || !effects_preference.save(&next_effects) || !esphome::global_preferences->sync())
+      return "{\"error\":\"Could not save pages\"}";
+    stored=next;effects=next_effects;
   }
   reconcile(stored);
   return onx_entity_config::build_json([](JsonObject root) {
@@ -578,6 +612,7 @@ template<typename Bind> void render(const std::string &entity,int width,int heig
     t.key=action_grid;
     t.icon_only=p && action_grid && (p->artwork[i]&ICON_ONLY);
     t.artwork=p?artwork_id(stored,*p,i):0;
+    t.effect=p && action_grid ? effect_of(p->entries[i]) : 0;
     tiles.push_back(std::move(t));
   }
   onx_panel_detail::render_main(layer,tiles,width,height);

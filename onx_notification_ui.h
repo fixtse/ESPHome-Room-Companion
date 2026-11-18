@@ -40,6 +40,8 @@ inline Hooks hooks;
 inline int width = 240, height = 240;
 inline lv_obj_t *bell = nullptr, *badge = nullptr, *badge_label = nullptr;
 inline lv_obj_t *toast = nullptr, *toast_title = nullptr, *toast_body = nullptr;
+// Transparent full-screen catcher behind the banner: a tap elsewhere dismisses it.
+inline lv_obj_t *toast_scrim = nullptr;
 inline lv_obj_t *panel = nullptr, *list = nullptr, *empty_label = nullptr, *count_label = nullptr, *clear_button = nullptr,
                 *handle = nullptr, *standby_button = nullptr, *preset_button = nullptr, *preset_list = nullptr;
 inline const void *clock_tile_image = nullptr, *preset_tile_image = nullptr;
@@ -342,7 +344,15 @@ inline void init(int screen_width, int screen_height, Fonts f, Hooks h) {
   lv_obj_center(badge_label);
   lv_obj_remove_flag(badge, LV_OBJ_FLAG_CLICKABLE);
 
-  // Arrival banner.
+  // Arrival banner, with a scrim behind it that swallows and dismisses taps.
+  toast_scrim = lv_obj_create(top);
+  lv_obj_remove_style_all(toast_scrim);
+  lv_obj_set_size(toast_scrim, lv_pct(100), lv_pct(100));
+  lv_obj_add_flag(toast_scrim, LV_OBJ_FLAG_CLICKABLE);
+  lv_obj_remove_flag(toast_scrim, static_cast<lv_obj_flag_t>(LV_OBJ_FLAG_SCROLLABLE | LV_OBJ_FLAG_GESTURE_BUBBLE));
+  lv_obj_add_event_cb(toast_scrim, [](lv_event_t *) { touched(); onx_notification::center.hide_toast(); refresh(); },
+                      LV_EVENT_PRESSED, nullptr);
+  lv_obj_add_flag(toast_scrim, LV_OBJ_FLAG_HIDDEN);
   toast = box(top, CARD, S(12));
   lv_obj_set_size(toast, width - 2 * S(8), LV_SIZE_CONTENT);
   lv_obj_align(toast, LV_ALIGN_TOP_LEFT, S(8), S(6));
@@ -359,7 +369,7 @@ inline void init(int screen_width, int screen_height, Fonts f, Hooks h) {
   lv_obj_set_pos(toast_bar, -S(4), 0);
   lv_obj_set_size(toast_bar, S(3), lv_pct(100));
   lv_obj_remove_flag(toast_bar, LV_OBJ_FLAG_CLICKABLE);
-  toast_icon = notification_icon(toast, 0);
+  toast_icon = notification_icon(toast, 0, 64);
   auto *toast_column = box(toast, CARD, 0);
   lv_obj_set_style_bg_opa(toast_column, LV_OPA_TRANSP, 0);
   lv_obj_set_flex_grow(toast_column, 1);
@@ -367,6 +377,7 @@ inline void init(int screen_width, int screen_height, Fonts f, Hooks h) {
   lv_obj_set_height(toast_column, LV_SIZE_CONTENT);
   lv_obj_set_flex_flow(toast_column, LV_FLEX_FLOW_COLUMN);
   lv_obj_add_flag(toast, LV_OBJ_FLAG_CLICKABLE);
+  lv_obj_remove_flag(toast, LV_OBJ_FLAG_GESTURE_BUBBLE);
   toast_title = text(toast_column, fonts.title, TEXT, "");
   toast_body = text(toast_column, fonts.body, MUTED, "");
   for (auto *label : {toast_title, toast_body}) {
@@ -375,6 +386,15 @@ inline void init(int screen_width, int screen_height, Fonts f, Hooks h) {
     lv_obj_set_style_max_height(label, 2 * lv_font_get_line_height(label == toast_title ? fonts.title : fonts.body), 0);
   }
   lv_obj_add_event_cb(toast, on_toast, LV_EVENT_CLICKED, nullptr);
+  lv_obj_add_event_cb(toast, [](lv_event_t *) {
+    auto *indev=lv_indev_active();
+    if(!indev)return;
+    const auto direction=lv_indev_get_gesture_dir(indev);
+    if(direction!=LV_DIR_LEFT && direction!=LV_DIR_RIGHT && direction!=LV_DIR_TOP)return;
+    touched();
+    lv_indev_wait_release(indev);
+    onx_notification::center.hide_toast();
+  }, LV_EVENT_GESTURE, nullptr);
 
   // List panel: header with the count and Clear all, the cards, and a handle
   // along the bottom (swipe up or tap it to close).
@@ -658,6 +678,7 @@ inline void refresh() {
     }
   }
   hide(toast, !show_toast);
+  hide(toast_scrim, !show_toast);
 
   hide(panel, !panel_open);
   // Rebuilt on changes, and once a minute while open so the times stay current.
@@ -675,6 +696,12 @@ inline void refresh() {
   lv_obj_move_foreground(badge);
 }
 
+inline bool toast_hit(int x,int y) {
+  if(!toast || !lv_obj_is_visible(toast))return false;
+  if(toast_scrim && lv_obj_is_visible(toast_scrim))return true;  // The whole screen dismisses it.
+  lv_area_t a;lv_obj_get_coords(toast,&a);
+  return x>=a.x1 && x<=a.x2 && y>=a.y1 && y<=a.y2;
+}
 // Touches on the visible bell go to LVGL rather than the gesture router.
 inline bool bell_hit(int x, int y) {
   if (bell == nullptr || lv_obj_has_flag(bell, LV_OBJ_FLAG_HIDDEN)) return false;

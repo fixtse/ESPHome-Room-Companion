@@ -41,13 +41,17 @@ commit `1dae5a280b6649514bed2b537b8c264e1d7a67aa`, copyright (c) 2025 strange_v,
 MIT License ([LICENSE](my_components/remote_webview/LICENSE)). Room Companion's
 display-handoff changes are listed in
 [NOTICE.md](my_components/remote_webview/NOTICE.md). At build time ESP-IDF also
-fetches `espressif/esp_websocket_client` (Apache-2.0) and
-[strange-v/jpegdec-esphome](https://github.com/strange-v/jpegdec-esphome)
-(bitbank2 JPEGDEC, Apache-2.0); they are not included in this repository.
+fetches `espressif/esp_websocket_client` (Apache-2.0), and ESPHome supplies
+bitbank2 JPEGDEC (Apache-2.0); they are not included in this repository.
 The optional server image `strangev/remote-webview-server` referenced in
 `deploy/remote-webview/` is a separate program under its own license.
 
 ## Icons, SVG rendering and fonts
+
+- Colour wheel: `assets/panel/color-wheel-openhapanel.png` is converted from
+  `main/assets/images/rgb_color_230.c` in
+  [OpenNextion/OpenHAPanel](https://github.com/OpenNextion/OpenHAPanel),
+  Apache License 2.0. The light colour presets follow that project's defaults.
 
 - Pictogrammers icons: retain [assets/entity_icons/LICENSE](assets/entity_icons/LICENSE)
   and [NOTICE.md](assets/entity_icons/NOTICE.md); icon terms are Apache 2.0 as

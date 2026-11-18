@@ -10,13 +10,8 @@ external_components:
       - remote_webview
       - room_companion
 
-esp32:
-  framework:
-    # esp_websocket_client is already required by the shared packages.
-    components:
-      - name: bitbank2/jpegdec
-        source: https://github.com/strange-v/jpegdec-esphome
-        ref: d6dee1282535da1871d9c97c46537669719c51fd
+# JPEGDEC comes from ESPHome's runtime_image library (2026.11+); a separate
+# IDF copy would shadow its newer API.
 
 remote_webview:
   id: dashboard_stream

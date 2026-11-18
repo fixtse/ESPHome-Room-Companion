@@ -100,6 +100,9 @@ voice_assistant:
     - script.execute:
         id: assist_show
         status: Listening...
+    - script.execute:
+        id: assist_pulse
+        active: true
   on_stt_end:
     - lvgl.label.update:
         id: assist_transcript
@@ -110,14 +113,23 @@ voice_assistant:
     - lvgl.label.update:
         id: assist_status
         text: Thinking...
+    - script.execute:
+        id: assist_pulse
+        active: false
   on_tts_start:
     - lvgl.label.update:
         id: assist_response
         text: !lambda 'return onx_notification::plain_text(x, 512);'
     - lvgl.widget.show: assist_response_card
   on_idle:
+    - script.execute:
+        id: assist_pulse
+        active: false
     - script.execute: assist_finished
   on_error:
+    - script.execute:
+        id: assist_pulse
+        active: false
     - lvgl.label.update:
         id: assist_status
         text: !lambda 'return onx_notification::clipped(message, 128);'
@@ -330,6 +342,47 @@ script:
           text: !lambda 'return status;'
       - lvgl.widget.show: assist_overlay
 
+  # While listening the inner ring breathes out towards the outer one and the
+  # outer ring brightens. Sizes inside the fixed outer ring, so nothing reflows
+  # and no transform buffer is needed.
+  - id: assist_pulse
+    parameters:
+      active: bool
+    then:
+      - lambda: |-
+          auto *inner = id(assist_mic_ring_inner), *outer = id(assist_mic_ring);
+          lv_anim_delete(inner, nullptr);
+          lv_anim_delete(outer, nullptr);
+          const int base = ${ (94 * (ui_scale | float)) | round | int }, full = ${ (118 * (ui_scale | float)) | round | int };
+          lv_obj_set_size(inner, base, base);
+          lv_obj_set_style_radius(inner, base / 2, 0);
+          lv_obj_set_style_bg_opa(outer, LV_OPA_20, 0);
+          if (!active) return;
+          lv_anim_t a;
+          lv_anim_init(&a);
+          lv_anim_set_var(&a, inner);
+          lv_anim_set_values(&a, base, full);
+          lv_anim_set_duration(&a, 750);
+          lv_anim_set_reverse_duration(&a, 750);
+          lv_anim_set_repeat_count(&a, LV_ANIM_REPEAT_INFINITE);
+          lv_anim_set_path_cb(&a, lv_anim_path_ease_in_out);
+          lv_anim_set_exec_cb(&a, [](void *o, int32_t v) {
+            auto *obj = static_cast<lv_obj_t *>(o);
+            lv_obj_set_size(obj, v, v);
+            lv_obj_set_style_radius(obj, v / 2, 0);
+          });
+          lv_anim_start(&a);
+          lv_anim_t b;
+          lv_anim_init(&b);
+          lv_anim_set_var(&b, outer);
+          lv_anim_set_values(&b, LV_OPA_20, LV_OPA_40);
+          lv_anim_set_duration(&b, 750);
+          lv_anim_set_reverse_duration(&b, 750);
+          lv_anim_set_repeat_count(&b, LV_ANIM_REPEAT_INFINITE);
+          lv_anim_set_path_cb(&b, lv_anim_path_ease_in_out);
+          lv_anim_set_exec_cb(&b, [](void *o, int32_t v) { lv_obj_set_style_bg_opa(static_cast<lv_obj_t *>(o), v, 0); });
+          lv_anim_start(&b);
+
   # Leave the reply on screen briefly, then return to the previous view.
   - id: assist_finished
     mode: restart
@@ -342,6 +395,9 @@ script:
                 - voice_assistant.is_running:
                 - media_player.is_announcing: panel_media_player
           then:
+            - script.execute:
+                id: assist_pulse
+                active: false
             - lvgl.widget.hide: assist_overlay
             - lambda: 'id(room_panel)->set_overlay(esphome::room_companion::OVERLAY_ASSIST, false);'
 

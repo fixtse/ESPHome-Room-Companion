@@ -237,6 +237,10 @@ inline void load_sensor_configs() {
       if((!saved.primary[0]||onx_config::valid_entity(saved.primary)) && (!saved.secondary[0]||onx_config::valid_entity(saved.secondary)) && saved.graph<=1)
         onx_sensor_view::configs[i]=saved;
     }
+    // A switch with a power/energy sensor always charts it, even when the
+    // sensor was set without the graph option.
+    auto &c=onx_sensor_view::configs[i];
+    if(std::string(c.primary).rfind("switch.",0)==0 && c.secondary[0])c.graph=1;
     onx_sensor_view::states[i].bind(onx_sensor_view::configs[i]);
   }
   sensor_configs_loaded=true;

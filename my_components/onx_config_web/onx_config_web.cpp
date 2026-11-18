@@ -1,3 +1,4 @@
+#include "esphome/core/alloc_helpers.h"
 #include <algorithm>
 #include "onx_config_web.h"
 #include "config_page.h"

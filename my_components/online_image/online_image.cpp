@@ -26,32 +26,8 @@ static constexpr uint32_t WORKER_STACK_BYTES=12*1024;
 class PsramJpegDecoder final : public runtime_image::JpegDecoder {
  public:
   using runtime_image::JpegDecoder::JpegDecoder;
-  int decode(uint8_t *buffer,size_t size) override {
-    if(expected_size_>0 && size<expected_size_)return 0;
-    if(!jpeg_.openRAM(buffer,size,draw_grayscale_))return runtime_image::DECODE_ERROR_INVALID_TYPE;
-    // JPEGDEC 1.8.4's grayscale writer always emits RGB565, even when the
-    // caller requests RGB8888. ESPHome's normal callback reads two uint16_t
-    // words per pixel, producing stripes and reading beyond valid pixels.
-    // Keep its color path unchanged; decode grayscale with an explicit format.
-    const bool grayscale=jpeg_.getBpp()==8;
-    jpeg_.close();
-    if(!grayscale)return runtime_image::JpegDecoder::decode(buffer,size);
-    if(!jpeg_.openRAM(buffer,size,draw_grayscale_))return runtime_image::DECODE_ERROR_INVALID_TYPE;
-    const auto type=jpeg_.getJPEGType();
-    if(type==JPEG_MODE_INVALID || type==JPEG_MODE_PROGRESSIVE) {
-      jpeg_.close();return runtime_image::DECODE_ERROR_UNSUPPORTED_FORMAT;
-    }
-    jpeg_.setUserPointer(this);
-    jpeg_.setPixelType(RGB565_LITTLE_ENDIAN);
-    if(!set_size(jpeg_.getWidth(),jpeg_.getHeight())) {
-      jpeg_.close();return runtime_image::DECODE_ERROR_OUT_OF_MEMORY;
-    }
-    const bool okay=jpeg_.decode(0,0,0);
-    jpeg_.close();
-    if(!okay)return runtime_image::DECODE_ERROR_INTERNAL_DECODER_ERROR;
-    decoded_bytes_=size;
-    return static_cast<int>(size);
-  }
+  // ESPHome 2026.11 keeps JPEGDEC in PSRAM and decodes directly to RGB565,
+  // so the former grayscale workaround is no longer needed.
   static void *operator new(size_t size,const std::nothrow_t &) noexcept {
     return heap_caps_malloc(size,MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
   }
