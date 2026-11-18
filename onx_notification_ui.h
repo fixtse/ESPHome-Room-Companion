@@ -259,7 +259,10 @@ inline void init(int screen_width, int screen_height, Fonts f, Hooks h) {
   timer_label = text(timer_chip, fonts.body, TEXT, "");
   lv_obj_remove_flag(timer_label, LV_OBJ_FLAG_CLICKABLE);
   lv_obj_center(timer_label);
-  lv_obj_align_to(timer_chip, bell, LV_ALIGN_OUT_LEFT_MID, -S(4), 0);
+  // Anchor the content-sized chip by its right edge. align_to() computes a
+  // one-time position while the label is empty, so later countdown text can
+  // grow across the bell and unread badge.
+  lv_obj_align(timer_chip, LV_ALIGN_TOP_RIGHT, -(4 + 44 + S(4)), 2 + (36 - S(28)) / 2);
   lv_obj_add_event_cb(timer_chip, [](lv_event_t *) { if (on_timer_chip) on_timer_chip(); }, LV_EVENT_CLICKED, nullptr);
   lv_obj_add_flag(timer_chip, LV_OBJ_FLAG_HIDDEN);
   badge = box(top, 0xE5484D, S(9));

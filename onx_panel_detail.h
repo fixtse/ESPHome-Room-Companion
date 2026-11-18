@@ -1001,7 +1001,9 @@ __attribute__((noinline)) inline void build_timers(const std::string &preferred,
   lv_obj_remove_flag(arc, static_cast<lv_obj_flag_t>(LV_OBJ_FLAG_CLICKABLE | LV_OBJ_FLAG_SCROLLABLE));
   const std::string value = !t.ready && !local ? "--:--" : ringing ? "0:00" : onx_timer::countdown(t.left);
   const int inner = size - 2 * P(14) - P(16);
-  const lv_font_t *vf = fit(value, inner, {hero_text(value) ? fonts.hero : nullptr, fonts.big, fonts.title});
+  // Keep countdowns at the normal reading size. The digit-only hero font can
+  // fit some second values but not others, causing a size jump on each tick.
+  const lv_font_t *vf = fit(value, inner, {fonts.big, fonts.title});
   const std::string sub = ringing ? "Time is up" : t.total > 0 ? "of " + onx_timer::countdown(t.total) : "";
   const int block = line(vf) + (sub.empty() ? 0 : line(fonts.small));
   const int vy = ay + (size - block) / 2;
