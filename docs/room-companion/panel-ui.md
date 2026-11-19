@@ -140,7 +140,7 @@ left edge also stops and closes it.
 
 With the wake-word firmware, choose **Okay Nabu**, **Hey Jarvis**, **Hey
 Mycroft** or **Kenobi** in the device's **Wake word** setting in Home
-Assistant. ESPHome 2026.10.2 listens for one selected phrase at a time.
+Assistant. ESPHome listens for one selected phrase at a time.
 Turn on **Wake word enabled** and leave the microphone unmuted for local
 detection. Okay Nabu is the default on a fresh setup.
 

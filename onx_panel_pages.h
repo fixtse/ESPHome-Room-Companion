@@ -502,6 +502,31 @@ inline Item item(const std::string &entity,bool detail=false) {
   return out;
 }
 inline lv_obj_t *layer=nullptr;
+inline lv_obj_t *carousel_clock=nullptr;
+
+inline void hide_carousel_clock() {
+  if (carousel_clock) lv_obj_add_flag(carousel_clock, LV_OBJ_FLAG_HIDDEN);
+}
+
+inline void refresh_carousel_clock(int width) {
+  const time_t now = std::time(nullptr);
+  if (now <= 1600000000) {
+    if (carousel_clock) lv_obj_add_flag(carousel_clock, LV_OBJ_FLAG_HIDDEN);
+    return;
+  }
+  using namespace onx_panel_detail;
+  const auto *font = fonts.header_clock != nullptr ? fonts.header_clock : fonts.small;
+  const auto value = clock(now);
+  if (!carousel_clock) {
+    carousel_clock = onx_panel_detail::text(layer, value, font, TEXT(), P(16),
+                                            (onx_panel_layout::MAIN_TOP - line(font)) / 2, width / 4);
+  } else {
+    onx_render::label(carousel_clock, value.c_str());
+    onx_render::style_text_color(carousel_clock, lv_color_hex(TEXT()), 0);
+    lv_obj_remove_flag(carousel_clock, LV_OBJ_FLAG_HIDDEN);
+  }
+}
+
 struct Card {
   lv_obj_t *box,*name,*value,*context,*hint,*icon,*bar;
   Item previous;
@@ -566,6 +591,7 @@ inline void suspend_underlay() {
   }
 }
 inline void hide() {
+  hide_carousel_clock();
   onx_panel_detail::hide();
   showing=false;if(layer)lv_obj_add_flag(layer,LV_OBJ_FLAG_HIDDEN);
   if(suspended_page)restore_underlay();
@@ -575,8 +601,39 @@ inline void label(lv_obj_t *obj,const std::string &text,int x,int y,int w,const 
   lv_obj_set_pos(obj,x,y);lv_obj_set_width(obj,w);
   if(text.empty())lv_obj_add_flag(obj,LV_OBJ_FLAG_HIDDEN);else lv_obj_remove_flag(obj,LV_OBJ_FLAG_HIDDEN);
 }
+inline std::vector<onx_panel_detail::Tile> main_tiles(const std::string &entity, const StoredPage *p, Kind kind,
+                                                    const std::array<onx_panel_layout::Rect,MAX_CELLS> &areas) {
+  std::vector<onx_panel_detail::Tile> tiles;
+  const int cells = p ? size_of(*p) : 1;
+  tiles.reserve(cells);
+  for (int i = 0; i < cells; ++i) {
+    const auto cell = p ? entry_entity(p->entries[i]) : entity;
+    const auto v = cell.empty() ? Item{} : item(cell, false);
+    const auto &r = areas[i];
+    onx_panel_detail::Tile t;
+    t.entity=cell;t.name=onx_media::display_text(v.name);t.value=v.value;t.context=v.context;
+    t.on=v.on;t.ring=v.ring;t.r={r.x,r.y,r.w,r.h};t.compact=kind==Kind::CONTROL_SENSORS && i>0;
+    t.key=kind==Kind::ACTION_GRID;
+    t.icon_only=p && t.key && (p->artwork[i]&ICON_ONLY);
+    t.artwork=p?artwork_id(stored,*p,i):0;
+    t.effect=p && t.key ? effect_of(p->entries[i]) : 0;
+    tiles.push_back(std::move(t));
+  }
+  return tiles;
+}
+
+inline onx_panel_detail::Tile settings_tile(int width, int height) {
+  const auto r = onx_panel_layout::geometry(Kind::SINGLE, width, height)[0];
+  onx_panel_detail::Tile t;
+  t.entity = onx_panel_detail::SETTINGS;
+  t.name = "Settings";
+  t.r = {r.x, r.y, r.w, r.h};
+  return t;
+}
+
 template<typename Bind> void render(const std::string &entity,int width,int height,bool detail,Bind bind) {
   if(!layer)return;
+  if (detail) hide_carousel_clock();
   if (detail) suspend_underlay();
   else if (suspended_page) restore_underlay();
   onx_render::style_bg_color(layer,lv_color_hex(onx_display_settings::background()),0);
@@ -603,19 +660,8 @@ template<typename Bind> void render(const std::string &entity,int width,int heig
   }
   // Main pages: cards drawn by the shared widget engine (onx_panel_detail.h).
   for(auto &c:cards){lv_obj_add_flag(c.box,LV_OBJ_FLAG_HIDDEN);c.initialized=false;}
-  std::vector<onx_panel_detail::Tile> tiles;
-  for(int i=0;i<count;++i) {
-    const auto v=entities[i].empty()?Item{}:item(entities[i],false);const auto r=rects[i];
-    onx_panel_detail::Tile t;
-    t.entity=entities[i];t.name=onx_media::display_text(v.name);t.value=v.value;t.context=v.context;
-    t.on=v.on;t.ring=v.ring;t.r={r.x,r.y,r.w,r.h};t.compact=kind==Kind::CONTROL_SENSORS && i>0;
-    t.key=action_grid;
-    t.icon_only=p && action_grid && (p->artwork[i]&ICON_ONLY);
-    t.artwork=p?artwork_id(stored,*p,i):0;
-    t.effect=p && action_grid ? effect_of(p->entries[i]) : 0;
-    tiles.push_back(std::move(t));
-  }
-  onx_panel_detail::render_main(layer,tiles,width,height);
+  onx_panel_detail::render_main(layer, main_tiles(entity, p, kind, rects), width, height);
+  if (!detail) refresh_carousel_clock(width);
 }
 // The carousel's Settings item, on the same base as the other main pages.
 inline void render_settings(int width,int height) {
@@ -629,14 +675,13 @@ inline void render_settings(int width,int height) {
   lv_obj_set_size(layer,width,height);lv_obj_set_pos(layer,0,0);
   if(lv_obj_get_index(layer)!=0)lv_obj_move_background(layer);
   lv_obj_remove_flag(layer,LV_OBJ_FLAG_HIDDEN);showing=true;detail_view=false;
-  onx_panel_detail::Tile t;
-  t.entity=onx_panel_detail::SETTINGS;t.name="Settings";
-  t.r={rects[0].x,rects[0].y,rects[0].w,rects[0].h};
-  onx_panel_detail::render_main(layer,{t},width,height);
+  onx_panel_detail::render_main(layer, {settings_tile(width, height)}, width, height);
+  refresh_carousel_clock(width);
 }
 // The panel's own Assist timers: full screen, above the dock.
 inline void show_timers(int width,int height) {
   if(!layer)return;
+  hide_carousel_clock();
   suspend_underlay();
   onx_render::style_bg_color(layer,lv_color_hex(onx_display_settings::background()),0);
   for(auto &c:cards){lv_obj_add_flag(c.box,LV_OBJ_FLAG_HIDDEN);c.initialized=false;}

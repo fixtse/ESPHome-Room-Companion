@@ -1,6 +1,6 @@
 {
-  "name": "Room Companion \u00b7 ESPHome 2026.10.2",
-  "image": "ghcr.io/esphome/esphome:2026.10.2",
+  "name": "Room Companion \u00b7 ESPHome 2026.11.0",
+  "image": "ghcr.io/esphome/esphome:2026.11.0",
   "overrideCommand": true,
   "remoteUser": "root",
   "customizations": {

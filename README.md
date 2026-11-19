@@ -33,7 +33,7 @@ Git history and AGPL license (see [third-party notices](THIRD_PARTY_NOTICES.md))
 
 ## Set up
 
-Use ESPHome **2026.10.2**, matching the development container.
+Use ESPHome **2026.11.0**, matching the development container.
 
 1. Copy `secrets.example.yaml` to ignored `secrets.yaml`. Fill in a unique API
    encryption key (`openssl rand -base64 32`) and OTA password.

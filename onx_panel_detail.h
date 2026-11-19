@@ -1987,7 +1987,8 @@ inline void card_media(lv_obj_t *c, const Tile &t, const EntityDetailState &d) {
   auto *frame = box(c, ax, pad, art, art, INSET(), P(10));
   lv_obj_set_style_clip_corner(frame, true, 0);
   if (onx_media::main_entity.empty()) onx_media::main_entity = t.entity;
-  const void *source = !t.artwork && artwork_source && onx_media::main_entity == t.entity ? artwork_source(t.entity) : nullptr;
+  const void *source = !t.artwork && artwork_source && onx_media::main_entity == t.entity
+      ? artwork_source(t.entity) : nullptr;
   if (source) {
     if (!main_artwork) main_artwork = lv_image_create(lv_layer_top());
     lv_obj_set_parent(main_artwork, frame);
@@ -2437,7 +2438,10 @@ __attribute__((noinline)) inline void build_card(const Tile &t) {
 }
 
 inline void ensure_root(lv_obj_t *parent) {
-  if (root != nullptr) return;
+  if (root != nullptr) {
+    if (lv_obj_get_parent(root) != parent) lv_obj_set_parent(root, parent);
+    return;
+  }
   root = lv_obj_create(parent);
   lv_obj_remove_flag(root, static_cast<lv_obj_flag_t>(LV_OBJ_FLAG_SCROLLABLE | LV_OBJ_FLAG_CLICKABLE));
   lv_obj_set_style_bg_opa(root, LV_OPA_TRANSP, 0);
@@ -2445,10 +2449,19 @@ inline void ensure_root(lv_obj_t *parent) {
   lv_obj_set_style_pad_all(root, 0, 0);
   lv_obj_set_style_radius(root, 0, 0);
 }
-inline void clear();
+inline void clear(bool invalidate_root = true);
 inline std::string signature(const std::string &e, const EntityDetailState *d, const onx_detail_view::View &v,
                              const std::string &title);
-// Draws (or keeps) a main page: the cards plus the time in the top row.
+inline void build_main_cards(const std::vector<Tile> &tiles) {
+  for (const auto &t : tiles) {
+    card_artwork = t.artwork;
+    card_on = t.on;
+    build_card(t);
+  }
+  card_artwork = 0;
+}
+
+// Draws or keeps the cards for the current page.
 inline void render_main(lv_obj_t *parent, const std::vector<Tile> &tiles, int width, int height) {
   ensure_root(parent);
   W = width; H = height;
@@ -2457,32 +2470,23 @@ inline void render_main(lv_obj_t *parent, const std::vector<Tile> &tiles, int wi
   lv_obj_remove_flag(root, LV_OBJ_FLAG_HIDDEN);
   active = true;
   if (dragging) return;
+  std::string sig = "main|" + std::to_string(W) + 'x' + std::to_string(H) + '|' + std::to_string(accent()) + '|' + std::to_string(BG());
   const time_t now = std::time(nullptr);
-  std::string sig = "main|" + std::to_string(W) + 'x' + std::to_string(H) + '|' + std::to_string(accent()) + '|' + std::to_string(BG()) + '|' +
-                    std::to_string(now > 1600000000 ? now / 60 : 0);
   for (const auto &t : tiles) {
     onx_detail_view::View v;
     v.value.text = t.value; v.context.text = t.context; v.name.text = t.name; v.value_ring = t.ring;
     sig += "#" + std::to_string(t.r.x) + ',' + std::to_string(t.r.y) + ',' + std::to_string(t.r.w) + ',' +
            std::to_string(t.r.h) + ',' + std::to_string(t.compact) + ',' + std::to_string(t.key) + ',' + std::to_string(t.icon_only) + ',' + std::to_string(t.on) + ',' + std::to_string(t.effect) + ',' +
            std::to_string(t.artwork) + ',' + signature(t.entity, custom_logic_entity_sub::entity_detail(t.entity), v, t.name);
+    // These cards show relative event times independently of the header clock.
+    if (runnable_entity(t.entity) || has_prefix(t.entity, "binary_sensor."))
+      sig += '|' + std::to_string(now > 1600000000 ? now / 60 : 0);
   }
   if (sig == built_signature && main_mode) { refresh_icons(); tick_media_progress(); return; }
-  clear();
+  clear(!main_mode);
   built_signature = sig;
   main_mode = true;
-  const auto *clock_font = fonts.header_clock != nullptr ? fonts.header_clock : fonts.small;
-  const int clock_bottom = !tiles.empty() && !tiles.front().key ? tiles.front().r.y : 40;
-  if (now > 1600000000 && !tiles.empty() && clock_bottom >= line(clock_font))
-    // Left of the top row: the Wi-Fi / Home Assistant status sits in the
-    // centre and the bell on the right.
-    text(root, clock(now), clock_font, TEXT(), P(16), (clock_bottom - line(clock_font)) / 2, W / 4);
-  for (const auto &t : tiles) {
-    card_artwork=t.artwork;
-    card_on=t.on;
-    build_card(t);
-  }
-  card_artwork=0;
+  build_main_cards(tiles);
   tick_media_progress();
 }
 
@@ -2541,7 +2545,7 @@ inline void detach_graph() {
     return;
   }
 }
-inline void clear() {
+inline void clear(bool invalidate_root) {
   detach_graph();
   detach_icons();
   detach_artwork();
@@ -2551,7 +2555,15 @@ inline void clear() {
   for (auto *o : targets) t.erase(std::remove(t.begin(), t.end(), o), t.end());
   targets.clear();
   media_progress.clear();
-  if (root != nullptr) lv_obj_clean(root);
+  if (root != nullptr) {
+    if (invalidate_root) {
+      lv_obj_clean(root);
+    } else {
+      // The main-page root is transparent and never scrolls. Deleting each
+      // child invalidates its own bounds; lv_obj_clean dirties the whole panel.
+      while (auto *child = lv_obj_get_child(root, -1)) lv_obj_delete(child);
+    }
+  }
   actions.clear();
   charts.clear();
   dragging = false;

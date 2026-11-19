@@ -44,7 +44,12 @@ constexpr int DASHBOARD=-2, NO_TARGET=-1;
 inline int pinned_target=NO_TARGET, dock_offset=0, selected_target=NO_TARGET;
 inline std::array<int,VISIBLE_ICONS> targets{};
 inline int dock_min=0,dock_max=0;
-inline void scroll_dock(int direction) { dock_offset=std::clamp(dock_offset+direction,dock_min,dock_max); }
+inline bool scroll_dock(int steps) {
+  const int next = std::clamp(dock_offset + steps, dock_min, dock_max);
+  if (next == dock_offset) return false;
+  dock_offset = next;
+  return true;
+}
 inline int selected_rank=-1;
 inline bool visible=false;
 inline bool pin_right=false;
@@ -73,8 +78,8 @@ inline void dance_step(void *o,int32_t t) {  // t: 0..1000
   lv_obj_set_style_translate_x(icon,int32_t(shimmy),0);
 }
 inline void dance_reset(lv_obj_t *icon) {
-  lv_obj_set_style_translate_y(icon,0,0);
-  lv_obj_set_style_translate_x(icon,0,0);
+  onx_render::style_number(icon, LV_STYLE_TRANSLATE_Y, 0, 0);
+  onx_render::style_number(icon, LV_STYLE_TRANSLATE_X, 0, 0);
 }
 inline void dance_rest(lv_anim_t *a) {dance_reset(static_cast<lv_obj_t *>(lv_anim_get_user_data(a)));}
 inline void dance(lv_obj_t *icon) {

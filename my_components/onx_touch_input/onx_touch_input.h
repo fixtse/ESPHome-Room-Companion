@@ -53,7 +53,7 @@ class TouchInput : public Component, public touchscreen::TouchListener {
 
   Trigger<int> *get_turn_trigger() { return &turn_trigger_; }
   void set_dock_tap(std::function<void(int)> f) { dock_tap_=std::move(f); }
-  void set_dock_scroll(std::function<bool(int)> f) { dock_scroll_=std::move(f); }
+  void set_dock_scroll(std::function<void(int)> f) { dock_scroll_=std::move(f); }
   Trigger<int> *get_strip_trigger() { return &strip_trigger_; }
 
   void setup() override {
@@ -96,14 +96,20 @@ class TouchInput : public Component, public touchscreen::TouchListener {
     x0_ = x; y0_ = y;
     for (int i = 0; i < passthrough_count_; ++i) {
       const auto &r = passthrough_[i];
-      if (x >= r.x0 && x < r.x1 && y >= r.y0 && y < r.y1) { state_ = State::IGNORED; return; }
+      if (x >= r.x0 && x < r.x1 && y >= r.y0 && y < r.y1) {
+        state_ = State::IGNORED;
+        return;
+      }
     }
     back_ = back_enabled_ && back_enabled_();
     left_back_ = back_ && swipe_left_back_ && swipe_left_back_();
     // Navigation can start over an LVGL control, but LVGL still owns taps there.
     const bool edge = x < EDGE && back_ && edge_back_ && edge_back_();
     const bool passthrough = !edge && passthrough_fn_ && passthrough_fn_(x, y);
-    if (passthrough && !left_back_) { state_ = State::IGNORED; return; }
+    if (passthrough && !left_back_) {
+      state_ = State::IGNORED;
+      return;
+    }
     // In detail views horizontal swipes page through the view; only a swipe
     // that starts at the left edge goes back.
     if (back_ && x >= EDGE && edge_back_ && edge_back_()) back_ = false;
@@ -130,10 +136,11 @@ class TouchInput : public Component, public touchscreen::TouchListener {
     if (native_) { last_swipe_ms_ = millis(); return; }
     if (page_swipe_ && page_swipe_()) {
       if (axis_ == 1 && y0_>=strip_top_ && dock_scroll_) {
-        const int step=std::max(24,spacing_/2);
-        if(std::abs(dx+consumed_*step)>=step) {
-          const int direction=dx+consumed_*step<0?1:-1;
-          if(dock_scroll_(direction))consumed_+=direction;
+        const int step = std::max(24, spacing_ / 2);
+        const int steps = (-dx - consumed_ * step) / step;
+        if (steps != 0) {
+          consumed_ += steps;
+          dock_scroll_(steps);
         }
         return;
       }
@@ -189,7 +196,7 @@ class TouchInput : public Component, public touchscreen::TouchListener {
   bool pull_up_{false};
   bool back_{false}, left_back_{false}, native_{false}, pull_{false}, pull_only_{false};
   uint32_t last_swipe_ms_{0};
-  std::function<bool(int)> dock_scroll_;
+  std::function<void(int)> dock_scroll_;
   std::function<void(int)> dock_tap_;
   Trigger<int> turn_trigger_, strip_trigger_;
   Rect passthrough_[4]{};

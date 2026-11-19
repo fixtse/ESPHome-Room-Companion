@@ -70,4 +70,20 @@ int main() {
   assert(grid_holds==1 && card_taps==1 && button.edges.empty());
   test_ms+=200;down(150,200);touch.release();
   assert(grid_holds==1 && card_taps==2 && button.edges.empty());
+
+  int dock_calls = 0, dock_offset = 0;
+  touch.set_dock_scroll([&](int steps) {
+    ++dock_calls;
+    dock_offset = std::clamp(dock_offset + steps, 0, 3);
+  });
+  down(270, 458);
+  move(135, 458);
+  assert(dock_calls == 1 && dock_offset == 3);  // Five steps arrive in one sample.
+  move(134, 458);
+  assert(dock_calls == 1);
+  move(162, 458);
+  assert(dock_calls == 2 && dock_offset == 2);  // Reversing exits the bound.
+  touch.release();
+  assert(turns == 1 && jumps == 1 && button.edges.empty());
+
 }

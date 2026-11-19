@@ -36,10 +36,12 @@ lvgl:
   touchscreens:
     - touchscreen_id: panel_touch
   resume_on_input: false
+  byte_order: big_endian
   update_interval: 16ms
-  # Keep 25%: smaller buffers are placed in internal RAM and starve Wi-Fi
-  # (8% aborted at boot). At this size it lives in PSRAM.
-  buffer_size: 25%
+  # Keep partial-refresh mode, but let a carousel-sized invalidation fit in
+  # one PSRAM buffer. This avoids interleaving several render bands and LCD
+  # address windows within a scrolling frame.
+  buffer_size: 100%
   default_font: fonts_MiSans_Medium_14
   log_level: WARN
 
@@ -501,6 +503,7 @@ script:
   - id: panel_ui_setup
     then:
       - lambda: |-
+          id(lcd_display)->enable_lvgl_pipeline(id(lvgl_ui)->get_disp());
           onx_panel_pages::setup(id(fonts_MiSans_Medium_14)->get_lv_font(),
               id(fonts_MiSans_Medium_24)->get_lv_font(), id(fonts_MiSans_Medium_32)->get_lv_font());
           onx_panel_pages::view_for = [](const std::string &entity,bool detail) {
@@ -534,7 +537,9 @@ script:
               if (onx_panel_pages::entities[i] == entity && onx_panel_pages::configured(entity) >= 0) return true;
             return false;
           };
-          onx_panel_detail::blocked = []() { return id(touch_input)->suppress_click() || onx_notification_ui::owns_screen(); };
+          onx_panel_detail::blocked = []() {
+            return id(touch_input)->suppress_click() || onx_notification_ui::owns_screen();
+          };
           onx_panel_detail::activity = []() { id(ui_presenter)->notify_user_activity(); };
           onx_panel_detail::light_state = [](const std::string &entity) {
             const int config = onx_panel_pages::configured(entity);
@@ -688,12 +693,10 @@ script:
             id(normal_device_selected_index)=target;
             id(show_normal_device_entry_page).execute(0);
           });
-          id(touch_input)->set_dock_scroll([](int direction) {
-            if(!onx_navigation::visible || onx_notification_ui::owns_screen())return false;
+          id(touch_input)->set_dock_scroll([](int steps) {
+            if (!onx_navigation::visible || onx_notification_ui::owns_screen()) return;
             id(ui_presenter)->notify_user_activity();
-            onx_navigation::scroll_dock(direction);
-            id(refresh_normal_device_page).execute();
-            return true;
+            if (onx_navigation::scroll_dock(steps)) id(refresh_normal_device_page).execute();
           });
           id(touch_input)->set_passthrough_fn([](int x, int y) {
             onx_notification_ui::hide_toast_unless(x, y);

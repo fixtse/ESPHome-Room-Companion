@@ -5,6 +5,12 @@
 #include "esphome/components/display/display_color_utils.h"
 #include "ili9xxx_defines.h"
 #include "ili9xxx_init.h"
+#if defined(USE_ESP32) && defined(USE_LVGL)
+#include "freertos/FreeRTOS.h"
+#include "freertos/event_groups.h"
+#include "freertos/task.h"
+#include "lvgl.h"
+#endif
 
 namespace esphome {
 namespace ili9xxx {
@@ -110,6 +116,9 @@ class ILI9XXXDisplay : public display::DisplayBuffer,
   void dump_config() override;
   void setup() override;
   void on_powerdown() override { this->command(ILI9XXX_SLPIN); }
+#if defined(USE_ESP32) && defined(USE_LVGL)
+  void enable_lvgl_pipeline(lv_display_t *display);
+#endif
 
   display::DisplayType get_display_type() override { return display::DisplayType::DISPLAY_TYPE_COLOR; }
   void draw_pixels_at(int x_start, int y_start, int w, int h, const uint8_t *ptr, display::ColorOrder order,
@@ -131,6 +140,16 @@ class ILI9XXXDisplay : public display::DisplayBuffer,
   // in PSRAM, so a flush never needs a large transient DMA allocation.
   void write_pixels_(const uint8_t *data, size_t length);
   uint8_t *dma_bounce_{nullptr};
+  void wait_for_pixel_transfer_();
+#if defined(USE_ESP32) && defined(USE_LVGL)
+  static void flush_pixels_(lv_display_t *display, const lv_area_t *area, uint8_t *pixels);
+  static void wait_for_flush_(lv_display_t *display);
+  static void pixel_worker_(void *arg);
+  EventGroupHandle_t transfer_done_{nullptr};
+  TaskHandle_t pixel_worker_handle_{nullptr};
+  lv_area_t transfer_area_{};
+  const uint8_t *transfer_pixels_{nullptr};
+#endif
 
   virtual void set_madctl();
   void display_();

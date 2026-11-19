@@ -23,6 +23,71 @@ static const uint16_t COLD_BOOT_SETTLE_MS = 120;  // Give the LCD time to stabil
 static const uint16_t RESET_PULSE_MS = 20;        // Keep the reset pulse width unchanged from upstream defaults.
 static const uint16_t POST_RESET_SETTLE_MS = 120; // Longer post-reset wait helps on boards that only wake after manual reset.
 
+#if defined(USE_ESP32) && defined(USE_LVGL)
+static constexpr EventBits_t TRANSFER_IDLE = BIT0;
+
+void ILI9XXXDisplay::enable_lvgl_pipeline(lv_display_t *display) {
+  if (display == nullptr || this->is_failed() || this->pixel_worker_handle_ != nullptr ||
+      this->is_18bitdisplay_ || this->rotation_ != display::DISPLAY_ROTATION_0_DEGREES ||
+      lv_display_get_rotation(display) != LV_DISPLAY_ROTATION_0 ||
+      lv_display_get_color_format(display) != LV_COLOR_FORMAT_RGB565_SWAPPED)
+    return;
+
+  auto *first = lv_display_get_buf_active(display);
+  if (first == nullptr || lv_display_get_render_mode(display) != LV_DISPLAY_RENDER_MODE_PARTIAL)
+    return;
+  auto *second = heap_caps_aligned_alloc(LV_DRAW_BUF_ALIGN, first->data_size, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
+  if (second != nullptr)
+    this->transfer_done_ = xEventGroupCreate();
+  if (this->transfer_done_ == nullptr ||
+      xTaskCreatePinnedToCore(pixel_worker_, "onx_lcd", 3072, this, 2, &this->pixel_worker_handle_,
+                              portNUM_PROCESSORS > 1 ? 1 - xPortGetCoreID() : tskNO_AFFINITY) != pdPASS) {
+    if (this->transfer_done_ != nullptr) vEventGroupDelete(this->transfer_done_);
+    this->transfer_done_ = nullptr;
+    heap_caps_free(second);
+    ESP_LOGW(TAG, "LCD pipeline allocation failed; using synchronous LVGL transfers");
+    return;
+  }
+  xEventGroupSetBits(this->transfer_done_, TRANSFER_IDLE);
+  const auto bytes = first->data_size;
+  lv_display_set_buffers(display, first->data, second, bytes, LV_DISPLAY_RENDER_MODE_PARTIAL);
+  lv_display_set_driver_data(display, this);
+  lv_display_set_flush_wait_cb(display, wait_for_flush_);
+  lv_display_set_flush_cb(display, flush_pixels_);
+  ESP_LOGI(TAG, "Double-buffered LCD transfers enabled (%u bytes per draw buffer)", static_cast<unsigned>(bytes));
+}
+
+void ILI9XXXDisplay::flush_pixels_(lv_display_t *display, const lv_area_t *area, uint8_t *pixels) {
+  auto *lcd = static_cast<ILI9XXXDisplay *>(lv_display_get_driver_data(display));
+  lcd->transfer_area_ = *area;
+  lcd->transfer_pixels_ = pixels;
+  xEventGroupClearBits(lcd->transfer_done_, TRANSFER_IDLE);
+  xTaskNotifyGive(lcd->pixel_worker_handle_);
+}
+
+void ILI9XXXDisplay::wait_for_flush_(lv_display_t *display) {
+  static_cast<ILI9XXXDisplay *>(lv_display_get_driver_data(display))->wait_for_pixel_transfer_();
+}
+
+void ILI9XXXDisplay::pixel_worker_(void *arg) {
+  auto *lcd = static_cast<ILI9XXXDisplay *>(arg);
+  for (;;) {
+    ulTaskNotifyTake(pdTRUE, portMAX_DELAY);
+    const auto area = lcd->transfer_area_;
+    lcd->draw_pixels_at(area.x1, area.y1, lv_area_get_width(&area), lv_area_get_height(&area),
+                        lcd->transfer_pixels_, display::COLOR_ORDER_RGB, display::COLOR_BITNESS_565, true, 0, 0, 0);
+    xEventGroupSetBits(lcd->transfer_done_, TRANSFER_IDLE);
+  }
+}
+#endif
+
+void ILI9XXXDisplay::wait_for_pixel_transfer_() {
+#if defined(USE_ESP32) && defined(USE_LVGL)
+  if (this->transfer_done_ != nullptr && xTaskGetCurrentTaskHandle() != this->pixel_worker_handle_)
+    xEventGroupWaitBits(this->transfer_done_, TRANSFER_IDLE, pdFALSE, pdTRUE, portMAX_DELAY);
+#endif
+}
+
 // store a 16 bit value in a buffer, big endian.
 static inline void put16_be(uint8_t *buf, uint16_t value) {
   buf[0] = value >> 8;
@@ -237,6 +302,7 @@ void HOT ILI9XXXDisplay::draw_absolute_pixel_internal(int x, int y, Color color)
 }
 
 void ILI9XXXDisplay::update() {
+  this->wait_for_pixel_transfer_();
   if (this->prossing_update_) {
     this->need_update_ = true;
     return;
@@ -339,6 +405,21 @@ void ILI9XXXDisplay::write_pixels_(const uint8_t *data, size_t length) {
     this->write_array(data, length);
     return;
   }
+#ifdef USE_SPI_PSRAM_DMA
+  // Keep every externally backed transaction cache-line aligned. The SPI
+  // delegate otherwise splits at 4092 bytes, misaligning the next chunk.
+  constexpr size_t alignment = 64;
+  constexpr size_t direct_chunk = SPI_MAX_BLOCK_SIZE / alignment * alignment;
+  if (this->psram_dma_ && esp_ptr_dma_ext_capable(data) &&
+      reinterpret_cast<uintptr_t>(data) % alignment == 0) {
+    while (length >= alignment) {
+      const size_t chunk = std::min(length / alignment * alignment, direct_chunk);
+      this->write_array(data, chunk);
+      data += chunk;
+      length -= chunk;
+    }
+  }
+#endif
 #endif
   while (length != 0) {
     const size_t chunk = std::min(length, DMA_BOUNCE_SIZE);
@@ -356,6 +437,7 @@ void ILI9XXXDisplay::write_pixels_(const uint8_t *data, size_t length) {
 void ILI9XXXDisplay::draw_pixels_at(int x_start, int y_start, int w, int h, const uint8_t *ptr,
                                     display::ColorOrder order, display::ColorBitness bitness, bool big_endian,
                                     int x_offset, int y_offset, int x_pad) {
+  this->wait_for_pixel_transfer_();
   if (w <= 0 || h <= 0)
     return;
   // if color mapping or software rotation is required, hand this off to the parent implementation. This will
@@ -416,12 +498,14 @@ void ILI9XXXDisplay::draw_pixels_at(int x_start, int y_start, int w, int h, cons
 uint32_t ILI9XXXDisplay::get_buffer_length_() { return this->get_width_internal() * this->get_height_internal(); }
 
 void ILI9XXXDisplay::command(uint8_t value) {
+  this->wait_for_pixel_transfer_();
   this->start_command_();
   this->write_byte(value);
   this->end_command_();
 }
 
 void ILI9XXXDisplay::data(uint8_t value) {
+  this->wait_for_pixel_transfer_();
   this->start_data_();
   this->write_byte(value);
   this->end_data_();

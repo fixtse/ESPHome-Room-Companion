@@ -11,7 +11,7 @@ shared
 state/configuration logic over reimplementing it. New rectangular firmware lives
 in `packages/room_companion/`; both model roots use one shared application.
 
-Pin ESPHome to 2026.10.2. Validate and compile both model roots after shared
+Pin ESPHome to 2026.11.0. Validate and compile both model roots after shared
 changes. If wake-word/extension examples change, also compile the example matrix
 using `scripts/validate-room-companion.sh --compile` in the pinned container.
 Never commit secrets, keys, `.env`, firmware blobs or private HA state. Keep
@@ -63,7 +63,7 @@ otherwise keep the model/example validation policy above.
 
    ```sh
    docker run --rm --name rc-35-TASK -v "$PWD":/config \
-     ghcr.io/esphome/esphome:2026.10.2 compile ONX3248G035.wake-word.yaml
+     ghcr.io/esphome/esphome:2026.11.0 compile ONX3248G035.wake-word.yaml
    ```
 
    Use a unique container name. If adding/removing profiling components leaves
@@ -132,7 +132,7 @@ transfer; do not claim the latter based only on a successful build or USB flash.
   `/home/fixt/git/esp-ota` (`fixtse/esp-ota`). After firmware changes, update
   `configs/onx3248g035.yaml` there to the exact published source commit and
   increment its project version. Preserve `ONX3248G035.wake-word.yaml` as the
-  release root. Keep this device's compiler pinned to ESPHome **2026.10.2**.
+  release root. Keep this device's compiler pinned to ESPHome **2026.11.0**.
 - Build and validate the OTA integration on devserv under the task lease, then
   publish the OTA application image using that repository's release tooling.
   Verify the release asset checksum and
