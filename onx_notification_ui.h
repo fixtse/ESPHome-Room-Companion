@@ -33,6 +33,9 @@ struct Hooks {
   std::function<void(const std::string &)> load_image;  // Start downloading a picture.
   std::function<void()> release_image;                  // Free the picture.
   std::function<void()> activity;                       // Keep the screen awake.
+  // Saves a new screen orientation (quarter turns); the panel then restarts.
+  std::function<bool(uint8_t)> set_orientation;
+  std::function<uint8_t()> orientation;
 };
 
 inline Fonts fonts;
@@ -40,10 +43,11 @@ inline Hooks hooks;
 inline int width = 240, height = 240;
 inline lv_obj_t *bell = nullptr, *badge = nullptr, *badge_label = nullptr;
 inline lv_obj_t *toast = nullptr, *toast_title = nullptr, *toast_body = nullptr;
-// Transparent full-screen catcher behind the banner: a tap elsewhere dismisses it.
-inline lv_obj_t *toast_scrim = nullptr;
 inline lv_obj_t *panel = nullptr, *list = nullptr, *empty_label = nullptr, *count_label = nullptr, *clear_button = nullptr,
-                *handle = nullptr, *standby_button = nullptr, *preset_button = nullptr, *preset_list = nullptr;
+                *handle = nullptr, *standby_button = nullptr, *preset_button = nullptr, *preset_list = nullptr,
+                *rotate_button = nullptr, *rotate_dialog = nullptr;
+// An opened notification returns to the centre when it was opened from there.
+inline bool detail_from_panel = false;
 inline const void *clock_tile_image = nullptr, *preset_tile_image = nullptr;
 inline bool presets_open = false;
 inline std::vector<std::string> preset_names;
@@ -171,6 +175,8 @@ inline void close_detail() {
   if (detail_id == 0) return;
   detail_id = 0;
   hide(detail, true);
+  if (detail_from_panel) panel_open = true;
+  detail_from_panel = false;
   refresh();
 }
 inline void open_panel() {
@@ -253,9 +259,11 @@ inline void update_presets() {
     preset_names.push_back(preset.name);
   }
 }
+// Quick toggles share the full width in one compact row.
 inline lv_obj_t *quick_tile(lv_obj_t *parent,const void *src,lv_event_cb_t cb) {
-  auto *tile=box(parent,surface(),S(24));
-  lv_obj_set_size(tile,S(62),S(48));
+  auto *tile=box(parent,surface(),S(18));
+  lv_obj_set_size(tile,1,S(36));
+  lv_obj_set_flex_grow(tile,1);
   lv_obj_add_flag(tile,LV_OBJ_FLAG_CLICKABLE);
   lv_obj_add_event_cb(tile,cb,LV_EVENT_CLICKED,nullptr);
   auto *icon=lv_image_create(tile);
@@ -286,6 +294,55 @@ inline void on_detail_dismiss(lv_event_t *) {
   onx_notification::center.dismiss(id);
 }
 
+// Orientation: the next quarter turn, confirmed in a dialog because the
+// screen size changes and the panel has to restart.
+inline const char *orientation_name(uint8_t turns) {
+  return turns == 0 ? "portrait" : turns == 1 ? "landscape (90°)" : turns == 2 ? "portrait, upside down" : "landscape (270°)";
+}
+inline void close_rotate_dialog() {
+  if (rotate_dialog == nullptr) return;
+  lv_obj_t *dialog = rotate_dialog;
+  rotate_dialog = nullptr;
+  lv_obj_delete_async(dialog);
+}
+inline void open_rotate_dialog() {
+  if (rotate_dialog != nullptr || !hooks.set_orientation) return;
+  const uint8_t next = ((hooks.orientation ? hooks.orientation() : 0) + 1) % 4;
+  rotate_dialog = box(lv_layer_top(), 0x000000, 0);
+  lv_obj_set_size(rotate_dialog, width, height);
+  lv_obj_set_style_bg_opa(rotate_dialog, LV_OPA_60, 0);
+  lv_obj_add_flag(rotate_dialog, LV_OBJ_FLAG_CLICKABLE);  // Blocks touches behind it.
+  lv_obj_t *card = box(rotate_dialog, surface(), S(16));
+  lv_obj_set_size(card, width - 2 * S(20), LV_SIZE_CONTENT);
+  lv_obj_center(card);
+  lv_obj_set_style_pad_all(card, S(16), 0);
+  lv_obj_set_flex_flow(card, LV_FLEX_FLOW_COLUMN);
+  lv_obj_set_style_pad_row(card, S(10), 0);
+  text(card, fonts.title, foreground(), "Rotate the screen?");
+  lv_obj_t *body = text(card, fonts.body, muted(), "");
+  lv_obj_set_width(body, lv_pct(100));
+  lv_label_set_long_mode(body, LV_LABEL_LONG_WRAP);
+  lv_label_set_text(body, (std::string("Switching to ") + orientation_name(next) +
+                           " restarts the panel. It is back in a few seconds.").c_str());
+  lv_obj_t *row = box(card, surface(), 0);
+  lv_obj_set_style_bg_opa(row, LV_OPA_TRANSP, 0);
+  lv_obj_set_size(row, lv_pct(100), LV_SIZE_CONTENT);
+  lv_obj_set_flex_flow(row, LV_FLEX_FLOW_ROW);
+  lv_obj_set_style_pad_column(row, S(10), 0);
+  lv_obj_t *cancel = button(row, "Cancel", onx_display_settings::control_surface(), [](lv_event_t *) { touched(); close_rotate_dialog(); }, nullptr);
+  lv_obj_t *accept = button(row, "Restart", accent(), [](lv_event_t *event) {
+    touched();
+    const uint8_t turns = static_cast<uint8_t>(reinterpret_cast<uintptr_t>(lv_event_get_user_data(event)));
+    if (hooks.set_orientation && hooks.set_orientation(turns)) {
+      // panel.yaml restarts once the saved orientation differs from the running one.
+      lv_obj_t *label = lv_obj_get_child(static_cast<lv_obj_t *>(lv_event_get_current_target(event)), 0);
+      if (label) lv_label_set_text(label, "Restarting…");
+    } else close_rotate_dialog();
+  }, reinterpret_cast<void *>(uintptr_t(next)));
+  for (auto *b : {cancel, accept}) { lv_obj_set_width(b, 1); lv_obj_set_flex_grow(b, 1); }
+  lv_obj_set_style_text_color(lv_obj_get_child(accept, 0),
+                              lv_color_hex(onx_display_settings::light_color(accent()) ? 0x161B22 : 0xFFFFFF), 0);
+}
 inline void build_header(lv_obj_t *parent, const char *title, lv_obj_t **out_row) {
   lv_obj_t *row = box(parent, BG, 0);
   lv_obj_set_size(row, lv_pct(100), S(44));
@@ -344,15 +401,7 @@ inline void init(int screen_width, int screen_height, Fonts f, Hooks h) {
   lv_obj_center(badge_label);
   lv_obj_remove_flag(badge, LV_OBJ_FLAG_CLICKABLE);
 
-  // Arrival banner, with a scrim behind it that swallows and dismisses taps.
-  toast_scrim = lv_obj_create(top);
-  lv_obj_remove_style_all(toast_scrim);
-  lv_obj_set_size(toast_scrim, lv_pct(100), lv_pct(100));
-  lv_obj_add_flag(toast_scrim, LV_OBJ_FLAG_CLICKABLE);
-  lv_obj_remove_flag(toast_scrim, static_cast<lv_obj_flag_t>(LV_OBJ_FLAG_SCROLLABLE | LV_OBJ_FLAG_GESTURE_BUBBLE));
-  lv_obj_add_event_cb(toast_scrim, [](lv_event_t *) { touched(); onx_notification::center.hide_toast(); refresh(); },
-                      LV_EVENT_PRESSED, nullptr);
-  lv_obj_add_flag(toast_scrim, LV_OBJ_FLAG_HIDDEN);
+  // Arrival banner.
   toast = box(top, CARD, S(12));
   lv_obj_set_size(toast, width - 2 * S(8), LV_SIZE_CONTENT);
   lv_obj_align(toast, LV_ALIGN_TOP_LEFT, S(8), S(6));
@@ -406,6 +455,36 @@ inline void init(int screen_width, int screen_height, Fonts f, Hooks h) {
   lv_obj_set_flex_flow(panel, LV_FLEX_FLOW_COLUMN);
   lv_obj_set_style_pad_row(panel, S(8), 0);
   lv_obj_add_event_cb(panel, on_gesture, LV_EVENT_GESTURE, nullptr);
+  // Quick toggles first, then the notifications with their count and Clear all.
+  auto *tiles=box(panel,BG,0);
+  lv_obj_set_style_bg_opa(tiles,LV_OPA_TRANSP,0);
+  lv_obj_set_size(tiles,lv_pct(100),S(36));
+  lv_obj_set_flex_flow(tiles,LV_FLEX_FLOW_ROW);
+  lv_obj_set_style_pad_column(tiles,S(8),0);
+  standby_button=quick_tile(tiles,clock_tile_image,[](lv_event_t *) {
+    if(controls_blocked && controls_blocked())return;
+    touched();
+    if(toggle_standby_timeout)toggle_standby_timeout();
+  });
+  preset_button=quick_tile(tiles,preset_tile_image,[](lv_event_t *) {
+    if(controls_blocked && controls_blocked())return;
+    touched();
+    presets_open=!presets_open;
+    preset_error.clear();
+    preset_signature.clear();
+    refresh();
+  });
+  rotate_button=box(tiles,surface(),S(18));
+  lv_obj_set_size(rotate_button,1,S(36));
+  lv_obj_set_flex_grow(rotate_button,1);
+  lv_obj_add_flag(rotate_button,LV_OBJ_FLAG_CLICKABLE);
+  lv_obj_add_event_cb(rotate_button,[](lv_event_t *) {
+    if(controls_blocked && controls_blocked())return;
+    touched();
+    open_rotate_dialog();
+  },LV_EVENT_CLICKED,nullptr);
+  lv_obj_center(text(rotate_button,fonts.symbol,foreground(),LV_SYMBOL_REFRESH));
+  update_standby_button();
   lv_obj_t *header = box(panel, BG, 0);
   lv_obj_set_style_bg_opa(header, LV_OPA_TRANSP, 0);
   lv_obj_set_size(header, lv_pct(100), S(36));
@@ -424,25 +503,6 @@ inline void init(int screen_width, int screen_height, Fonts f, Hooks h) {
   lv_obj_set_style_radius(clear_button, S(15), 0);
   lv_obj_set_style_pad_hor(clear_button, S(12), 0);
   lv_obj_set_style_text_font(lv_obj_get_child(clear_button, 0), fonts.small, 0);
-  auto *tiles=box(panel,BG,0);
-  lv_obj_set_style_bg_opa(tiles,LV_OPA_TRANSP,0);
-  lv_obj_set_size(tiles,lv_pct(100),S(48));
-  lv_obj_set_flex_flow(tiles,LV_FLEX_FLOW_ROW);
-  lv_obj_set_style_pad_column(tiles,S(8),0);
-  standby_button=quick_tile(tiles,clock_tile_image,[](lv_event_t *) {
-    if(controls_blocked && controls_blocked())return;
-    touched();
-    if(toggle_standby_timeout)toggle_standby_timeout();
-  });
-  preset_button=quick_tile(tiles,preset_tile_image,[](lv_event_t *) {
-    if(controls_blocked && controls_blocked())return;
-    touched();
-    presets_open=!presets_open;
-    preset_error.clear();
-    preset_signature.clear();
-    refresh();
-  });
-  update_standby_button();
   preset_list=box(panel,BG,0);
   lv_obj_set_style_bg_opa(preset_list,LV_OPA_TRANSP,0);
   lv_obj_set_width(preset_list,lv_pct(100));
@@ -602,6 +662,7 @@ inline void open_detail(uint32_t id) {
   auto *item = onx_notification::center.find(id);
   if (item == nullptr) return;
   touched();
+  detail_from_panel = panel_open;
   panel_open = false;
   detail_id = id;
   onx_emoji::set_label(detail_title, item->title.c_str());
@@ -678,7 +739,6 @@ inline void refresh() {
     }
   }
   hide(toast, !show_toast);
-  hide(toast_scrim, !show_toast);
 
   hide(panel, !panel_open);
   // Rebuilt on changes, and once a minute while open so the times stay current.
@@ -696,11 +756,18 @@ inline void refresh() {
   lv_obj_move_foreground(badge);
 }
 
+// A touch anywhere else hides the arrival banner (the notification stays in
+// the centre) and still reaches whatever was touched.
+inline void hide_toast_unless(int x,int y);
 inline bool toast_hit(int x,int y) {
   if(!toast || !lv_obj_is_visible(toast))return false;
-  if(toast_scrim && lv_obj_is_visible(toast_scrim))return true;  // The whole screen dismisses it.
   lv_area_t a;lv_obj_get_coords(toast,&a);
   return x>=a.x1 && x<=a.x2 && y>=a.y1 && y<=a.y2;
+}
+inline void hide_toast_unless(int x,int y) {
+  if(!onx_notification::center.toast_visible(esphome::millis()) || toast_hit(x,y))return;
+  onx_notification::center.hide_toast();
+  refresh();
 }
 // Touches on the visible bell go to LVGL rather than the gesture router.
 inline bool bell_hit(int x, int y) {

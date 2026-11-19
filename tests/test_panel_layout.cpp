@@ -47,7 +47,7 @@ int main() {
         for(int i=0;i<rows*cols;++i) {
           const auto r=keys[i];
           assert(r.w>0 && r.h>0 && r.x>=8 && r.x+r.w<=width-8);
-          assert(r.y>=MAIN_TOP && r.y+r.h<=height-44);
+          assert(r.y>=MAIN_TOP+6 && r.y+r.h<=height-56);  // Room under the status row and above the dock.
           if(i%cols)assert(r.x==keys[i-1].x+keys[i-1].w+8);
           if(i>=cols)assert(r.y==keys[i-cols].y+keys[i-cols].h+8);
         }

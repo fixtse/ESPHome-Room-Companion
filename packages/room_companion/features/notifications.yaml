@@ -33,6 +33,17 @@ esphome:
               id(entity_icon_downloader)->set_artwork_busy(onx_media::downloading);
             };
             hooks.activity = []() { id(ui_presenter)->notify_user_activity(); };
+            // Orientation from the centre's quick toggles: saved like the web
+            // setting; panel.yaml restarts once it differs from the running one.
+            hooks.orientation = []() { return onx_display_settings::orientation.turns; };
+            hooks.set_orientation = [](uint8_t turns) {
+              if (turns > 3) return false;
+              auto next = onx_display_settings::orientation;
+              next.turns = turns;
+              if (!onx_entity_config::orientation_preference.save(&next) || !esphome::global_preferences->sync()) return false;
+              onx_display_settings::orientation = next;
+              return true;
+            };
             onx_notification_ui::toggle_standby_timeout = []() {
               if (!id(touch_input)->suppress_click()) id(panel_standby_timeout_enabled).toggle();
             };
@@ -59,7 +70,7 @@ switch:
 
 image:
   - platform: file
-    file: "../../../assets/panel/standby-clock.svg"
+    file: "../../../assets/panel/screen-sleep.svg"
     id: panel_standby_clock_icon
     resize: ${ (24 * (ui_scale | float)) | round | int }x${ (24 * (ui_scale | float)) | round | int }
     type: RGB565

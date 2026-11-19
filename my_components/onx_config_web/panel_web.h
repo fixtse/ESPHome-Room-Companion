@@ -649,10 +649,10 @@ static const char PANEL_JS[] = R"ONXPANEL(
  globalThis.ONX_PANEL_GEOMETRY=(kind,w,h,detail=false,rows=2,columns=2)=>{
   const top=detail?12:40,bottom=detail?12:52,gap=8,pad=12,body=h-top-bottom,inner=w-pad*2;
   if(kind===gridLayout){
-   const usableW=w-16-gap*(columns-1),usableH=body+8-gap*(rows-1);
+   const usableW=w-16-gap*(columns-1),usableH=body-6-4-gap*(rows-1);  // As onx_panel_layout.h (GRID_TOP 6, GRID_BOTTOM 4).
    return Array.from({length:rows*columns},(_,i)=>{
     const c=i%columns,r=Math.floor(i/columns),x=Math.floor(c*usableW/columns),y=Math.floor(r*usableH/rows);
-    return {x:8+x+c*gap,y:top+y+r*gap,w:Math.floor((c+1)*usableW/columns)-x,h:Math.floor((r+1)*usableH/rows)-y};
+    return {x:8+x+c*gap,y:top+6+y+r*gap,w:Math.floor((c+1)*usableW/columns)-x,h:Math.floor((r+1)*usableH/rows)-y};
    });
   }
   const rects=[{x:pad,y:top,w:inner,h:body}];
@@ -1081,9 +1081,10 @@ static const char PANEL_JS[] = R"ONXPANEL(
    if(bottom-vy<F.big.lh){if(bar&&bottom+P(10)>vy)level(r.x+pad,r.y+bottom+P(10),r.w-2*pad,P(12),t.ring/1000);return}
    const numeric=isFinite(num(d.state))&&['sensor','number','input_number'].includes(domain),value=numeric?compact(d.state):t.value,unit=numeric?d.unit:'';
    if(domain==='switch'&&available&&d.power!==undefined){
-    const state=d.state==='on'?'On':'Off';text(state,F.big,TEXT,r.x+pad,r.y+vy,width(state,F.big)+1);const sx=pad+width(state,F.big)+P(10);
-    text(d.power+' '+(d.power_unit||'')+(d.power_unit==='W'?' now':''),F.body,SOFT,r.x+sx,r.y+vy+F.big.lh-F.body.lh-P(4),r.w-sx-pad);
-    const gy=vy+F.big.lh+P(10),gb=r.h-pad-F.small.lh-P(4);if(gb-gy>=P(24)&&chart(hst.points,hst.now,hst.range,r.x+pad,r.y+gy,r.w-2*pad,gb-gy,ACCENT,false,true))text((d.power_unit==='kWh'?'Energy':'Power')+' · '+rangeLabel(hst.range),F.small,MUTED,r.x+pad,r.y+gb+P(4),r.w-2*pad);return;
+    const state=d.state==='on'?'On':'Off',caption=F.small.lh+P(4),sf=r.h-pad-vy-F.big.lh-P(10)-caption>=P(48)?F.big:F.title,label=r.h-pad-vy-sf.lh-P(8)-caption>=P(40);
+    text(state,sf,TEXT,r.x+pad,r.y+vy,width(state,sf)+1);const sx=pad+width(state,sf)+P(10);
+    text(d.power+' '+(d.power_unit||'')+(d.power_unit==='W'?' now':''),F.body,SOFT,r.x+sx,r.y+vy+sf.lh-F.body.lh-(sf===F.big?P(4):0),r.w-sx-pad);
+    const gy=vy+sf.lh+P(8),gb=r.h-pad-(label?caption:0);if(gb-gy>=P(20)&&chart(hst.points,hst.now,hst.range,r.x+pad,r.y+gy,r.w-2*pad,gb-gy,ACCENT,false,true)&&label)text((d.power_unit==='kWh'?'Energy':'Power')+' · '+rangeLabel(hst.range),F.small,MUTED,r.x+pad,r.y+gb+P(4),r.w-2*pad);return;
    }
    if(available&&!runnable){const big=bottom-vy>=F.hero.lh+F.small.lh+P(120)&&numeric&&heroSafe(value),vh=big?F.hero.lh:F.big.lh,sy=vy+vh,gy=sy+F.small.lh+P(8);
     if(hst.points.length>=2&&bottom-gy>=P(44)){const delta=hst.points.at(-1).value-hst.points[0].value,ch=chart(hst.points,hst.now,hst.range,r.x+pad,r.y+gy,r.w-2*pad,bottom-gy,ACCENT,true);

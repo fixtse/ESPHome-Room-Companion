@@ -55,6 +55,56 @@ inline int dock_target_at(int x) {
   return targets[x*dock_count/strip.width];
 }
 inline std::function<void()> shortcut_action;
+// A touched dock icon does a little dance: it hops up, falls back, bounces once
+// and shimmies while in the air. One animation computes the whole motion from
+// its progress and always ends (or is cancelled) with the icon at rest, so an
+// icon can never be left raised or lowered. Only its translation changes (no
+// rotation or pivot, which shift how an image is drawn): nothing else moves and
+// no extra buffer is needed.
+inline void dance_step(void *o,int32_t t) {  // t: 0..1000
+  auto *icon=static_cast<lv_obj_t *>(o);
+  const float p=t/1000.0f,hop=std::max(8,strip.icon*55/100);
+  float y=0;
+  if(p<0.22f){const float k=p/0.22f;y=-hop*(1-(1-k)*(1-k));}                 // Up, easing out.
+  else if(p<0.55f){const float k=(p-0.22f)/0.33f;y=-hop*(1-k*k);}            // Fall, accelerating.
+  else if(p<0.78f){y=-hop*0.28f*std::sin(3.14159f*(p-0.55f)/0.23f);}         // One small bounce.
+  const float shimmy=p<0.7f?hop*0.3f*std::sin(6.28318f*2.5f*p)*(1-p/0.7f):0;  // Side to side, dying out.
+  lv_obj_set_style_translate_y(icon,int32_t(y),0);
+  lv_obj_set_style_translate_x(icon,int32_t(shimmy),0);
+}
+inline void dance_reset(lv_obj_t *icon) {
+  lv_obj_set_style_translate_y(icon,0,0);
+  lv_obj_set_style_translate_x(icon,0,0);
+}
+inline void dance_rest(lv_anim_t *a) {dance_reset(static_cast<lv_obj_t *>(lv_anim_get_user_data(a)));}
+inline void dance(lv_obj_t *icon) {
+  if(icon==nullptr || lv_obj_has_flag(icon,LV_OBJ_FLAG_HIDDEN))return;
+  lv_anim_delete(icon,dance_step);
+  lv_anim_t a;lv_anim_init(&a);
+  lv_anim_set_var(&a,icon);lv_anim_set_user_data(&a,icon);
+  lv_anim_set_exec_cb(&a,dance_step);lv_anim_set_values(&a,0,1000);
+  lv_anim_set_duration(&a,620);lv_anim_set_path_cb(&a,lv_anim_path_linear);
+  lv_anim_set_completed_cb(&a,dance_rest);lv_anim_set_deleted_cb(&a,dance_rest);
+  lv_anim_start(&a);
+}
+// Touching an edge icon re-centres the dock, so the icon slots change targets.
+// Remember the touched target and dance whichever slot shows it after the
+// next layout (or straight away if the dock does not move).
+inline int pending_dance=NO_TARGET;
+inline uint32_t pending_dance_at=0;
+inline void dance_pending() {
+  if(pending_dance==NO_TARGET)return;
+  const int target=pending_dance;pending_dance=NO_TARGET;
+  if(lv_tick_elaps(pending_dance_at)>1500)return;
+  for(int n=0;n<dock_count;++n)if(targets[n]==target){dance(icons[n]);return;}
+}
+inline void press_at(int x) {
+  const int target=dock_target_at(x);
+  if(target==NO_TARGET)return;
+  pending_dance=target;pending_dance_at=lv_tick_get();
+  // Selecting the current page does not lay the dock out again.
+  if(target==selected_target || target==DASHBOARD)dance_pending();
+}
 inline void icon_offset(void *widget,int32_t offset_milli) {
   const auto point=arc_point(offset_milli);
   lv_obj_align(static_cast<lv_obj_t *>(widget),LV_ALIGN_CENTER,point.x-screen_width()/2,point.y-screen_height()/2);
@@ -132,6 +182,8 @@ template<typename Bind> void render(std::vector<int> entries,int selected,Bind b
       targets[n]=pinned?pinned_target:entries[index];
       const bool active=targets[n]==selected;
       lv_obj_remove_flag(icon,LV_OBJ_FLAG_HIDDEN);
+      // Any icon that is not mid-dance sits exactly at its place.
+      if(lv_anim_get(icon,dance_step)==nullptr)dance_reset(icon);
       const int x=strip.width*(2*n+1)/(2*dock_count)-strip.width/2;
       lv_obj_align(icon,LV_ALIGN_CENTER,x,strip.center_y-strip.height/2);
       bind(icon,targets[n],active);
@@ -143,6 +195,7 @@ template<typename Bind> void render(std::vector<int> entries,int selected,Bind b
     else lv_obj_add_flag(marker,LV_OBJ_FLAG_HIDDEN);
     onx_render::style_bg_color(marker,lv_color_hex(onx_display_settings::accent_soft()),0);
     lv_obj_remove_flag(dock,LV_OBJ_FLAG_HIDDEN);visible=true;
+    dance_pending();
     return;
   }
   center=std::clamp(center,0,std::max(0,int(entries.size())-1));

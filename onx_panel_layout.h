@@ -47,10 +47,12 @@ inline std::array<Rect,MAX_CELLS> geometry(Kind k,int w,int h,bool detail=false,
   const int top=detail?DETAIL_TOP:MAIN_TOP,bottom=detail?12:52,gap=8,pad=12,body=h-top-bottom,inner=w-pad*2;
   std::array<Rect,MAX_CELLS> out{};
   if(k==Kind::ACTION_GRID && grid_axis(rows) && grid_axis(cols)) {
-    const int usable_w=w-16-gap*(cols-1), usable_h=body+8-gap*(rows-1);
+    // Grids keep a little room below the status row and above the dock.
+    constexpr int GRID_TOP=6,GRID_BOTTOM=4;
+    const int usable_w=w-16-gap*(cols-1), usable_h=body-GRID_TOP-GRID_BOTTOM-gap*(rows-1);
     for(int i=0;i<rows*cols;++i) {
       const int c=i%cols,r=i/cols;
-      out[i]={8+c*usable_w/cols+c*gap,top+r*usable_h/rows+r*gap,
+      out[i]={8+c*usable_w/cols+c*gap,top+GRID_TOP+r*usable_h/rows+r*gap,
               (c+1)*usable_w/cols-c*usable_w/cols,(r+1)*usable_h/rows-r*usable_h/rows};
     }
     return out;

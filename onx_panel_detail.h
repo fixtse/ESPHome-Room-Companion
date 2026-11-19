@@ -2190,15 +2190,20 @@ inline void card_generic(lv_obj_t *c, const Tile &t, const EntityDetailState *d)
     if (i >= 0 && onx_sensor_view::configs[i].secondary[0]) {
       const auto &s = onx_sensor_view::states[i];
       const std::string state = d->state == "on" ? "On" : "Off";
-      text(c, state, fonts.big, TEXT(), pad, vy, text_width(state, fonts.big) + 1);
+      // Short (split) cards: a smaller state and no caption, so the chart
+      // still gets a useful height.
+      const int caption = line(fonts.small) + P(4);
+      const lv_font_t *sf = r.h - pad - vy - line(fonts.big) - P(10) - caption >= P(48) ? fonts.big : fonts.title;
+      const bool label = r.h - pad - vy - line(sf) - P(8) - caption >= P(40);
+      text(c, state, sf, TEXT(), pad, vy, text_width(state, sf) + 1);
       if (s.received && s.available) {
-        const int sx = pad + text_width(state, fonts.big) + P(10);
+        const int sx = pad + text_width(state, sf) + P(10);
         const std::string now = onx_detail_view::compact(s.value) + " " + s.unit + (s.unit == "W" ? " now" : "");
-        text(c, now, fonts.body, SOFT_TEXT(), sx, vy + line(fonts.big) - line(fonts.body) - P(4), r.w - sx - pad);
+        text(c, now, fonts.body, SOFT_TEXT(), sx, vy + line(sf) - line(fonts.body) - (sf == fonts.big ? P(4) : 0), r.w - sx - pad);
       }
-      const int gy = vy + line(fonts.big) + P(10), gb = r.h - pad - line(fonts.small) - P(4);
+      const int gy = vy + line(sf) + P(8), gb = r.h - pad - (label ? caption : 0);
       auto history = card_history(e);
-      if (gb - gy >= P(24) && chart(c, pad, gy, r.w - 2 * pad, gb - gy, e, std::move(history), accent(), false, true))
+      if (gb - gy >= P(20) && chart(c, pad, gy, r.w - 2 * pad, gb - gy, e, std::move(history), accent(), false, true) && label)
         text(c, std::string(s.unit == "kWh" ? "Energy" : "Power") + " · " + s.range_label(), fonts.small, MUTED(), pad,
              gb + P(4), r.w - 2 * pad);
       return;

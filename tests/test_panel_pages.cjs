@@ -246,8 +246,8 @@ const {chromium}=require('playwright');
   assert.equal(await save(),true);
   assert.equal(payloads.at(-1).pages[0].animation,undefined,'No animation is omitted from the payload');
   const keys=await page.evaluate(()=>ONX_PANEL_GEOMETRY('action_grid',480,320,false,4,4));
-  assert.equal(keys.length,16);assert(keys.every(r=>r.w>0&&r.h>0&&r.y+r.h<=276));
-  assert.equal(keys.at(-1).y+keys.at(-1).h,276);
+  assert.equal(keys.length,16);assert(keys.every(r=>r.w>0&&r.h>0&&r.y>=46&&r.y+r.h<=264));
+  assert.equal(keys.at(-1).y+keys.at(-1).h,264);
   // The same selector crops artwork for a non-grid position and for the dock.
   await page.evaluate(()=>ONX_PAGES.set([{name:'Artwork',icon:'',layout:'single',entities:['light.kitchen']}]));
   const png=await page.evaluate(()=>{
