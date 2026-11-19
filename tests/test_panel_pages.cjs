@@ -233,16 +233,16 @@ const {chromium}=require('playwright');
   await page.check('#member-icon-only-value');
   assert(await page.locator('[data-member="15"]').evaluate(n=>n.classList.contains('icon-only')));
   assert.equal(await page.locator('#member-animation').isVisible(),true,'Grid keys offer an icon animation');
-  await page.selectOption('#member-animation-value','spin');
-  assert.match(await page.locator('#member-animation-sample').getAttribute('class'),/fx-spin/,'The sample previews the effect');
+  await page.check('#member-animation-value');
+  assert.match(await page.locator('#member-animation-sample').getAttribute('class'),/fx-pulse/,'The sample previews the effect');
   assert.equal(await save(),true);
   assert.deepEqual(payloads.at(-1).pages,[{
    name:'Keys',icon:'',layout:'action_grid',rows:4,columns:4,
    entities:[...Array(15).fill(''),'light.kitchen'],
    icon_only:[...Array(15).fill(false),true],
-   animation:{'light.kitchen':'spin'}
+   animation:{'light.kitchen':'pulse'}
   }]);
-  await page.selectOption('#member-animation-value','none');
+  await page.uncheck('#member-animation-value');
   assert.equal(await save(),true);
   assert.equal(payloads.at(-1).pages[0].animation,undefined,'No animation is omitted from the payload');
   const keys=await page.evaluate(()=>ONX_PANEL_GEOMETRY('action_grid',480,320,false,4,4));

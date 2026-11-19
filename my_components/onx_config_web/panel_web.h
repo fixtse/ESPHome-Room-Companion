@@ -301,7 +301,7 @@ static const char PANEL_JS[] = R"ONXPANEL(
   $('member-icon-only').hidden=!member||!p||!isGrid(p);
   $('member-icon-only-value').disabled=locked;$('member-icon-only-value').checked=iconOnly(p,selectedPos);
   $('member-animation').hidden=!member||!p||!isGrid(p);
-  {const fx=animationOf(p,e),sample=$('member-animation-sample');$('member-animation-value').disabled=locked;$('member-animation-value').value=fx;
+  {const fx=animationOf(p,e),sample=$('member-animation-sample');$('member-animation-value').disabled=locked;$('member-animation-value').checked=fx!=='none';
    if(member){setIcon(sample,iconOf(e));sample.className='mdi fx-sample'+(fx!=='none'?' fx-'+fx:'')}}
   if(member){
    const preview=view==='page'&&artUrl(positionArt(p,selectedPos));
@@ -322,7 +322,7 @@ static const char PANEL_JS[] = R"ONXPANEL(
  $('delete-page').onclick=()=>{const p=pageConfigs[selectedPage];if(!p)return;const title=pageTitle(p,selectedPage);pageConfigs.splice(selectedPage,1);for(const e of p.entities)release(e);status('“'+title+'” deleted. Discard changes to restore it.');selectPage(Math.max(0,selectedPage-1))};
  $('page-up').onclick=()=>movePage(selectedPage,selectedPage-1);$('page-down').onclick=()=>movePage(selectedPage,selectedPage+1);
  $('page-name').oninput=()=>{const p=pageConfigs[selectedPage];if(p){p.name=$('page-name').value;touch()}};
- $('member-animation-value').onchange=()=>{const p=pageConfigs[selectedPage];if(p&&isGrid(p)){setAnimation(p,p.entities[selectedPos],$('member-animation-value').value);touch()}};
+ $('member-animation-value').onchange=()=>{const p=pageConfigs[selectedPage];if(p&&isGrid(p)){setAnimation(p,p.entities[selectedPos],$('member-animation-value').checked?'pulse':'none');touch()}};
  $('member-icon-only-value').onchange=()=>{const p=pageConfigs[selectedPage];if(p&&isGrid(p)){setIconOnly(p,selectedPos,$('member-icon-only-value').checked);touch()}};
  $('member-replace').onclick=()=>{const p=pageConfigs[selectedPage];if(p)pickFor(p,selectedPos)};
  $('member-remove').onclick=()=>{if(view==='timer'){removeTimer(timerEntity);return}const p=pageConfigs[selectedPage];if(p)removeAt(p,selectedPos)};

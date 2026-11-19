@@ -77,7 +77,9 @@ onx_config_web:
           }
         };
         #ifdef USE_ROOM_COMPANION
-        const auto *page = onx_panel_pages::led_by(query.entity);
+        // Any member returns its whole page, so selecting a second member keeps
+        // the other positions' live data.
+        const auto *page = onx_panel_pages::info(query.entity);
         #endif
         for (size_t i = 0; i < (int)custom_logic::CONFIGURABLE_DEVICE_SLOT_COUNT; ++i) {
           const auto entity = custom_logic::cached_device_entity_id(i);

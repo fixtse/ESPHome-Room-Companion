@@ -52,6 +52,14 @@ onx_touch_input:
     - lambda: |-
         id(ui_presenter)->notify_user_activity();
         onx_notification_ui::open_panel();
+  # Swipe up on the lower half closes the notification centre (the LVGL
+  # gesture misses swipes that start on its buttons or the list).
+  pull_up_enabled: |-
+    return onx_notification_ui::swipe_closes();
+  on_pull_up:
+    - lambda: |-
+        id(ui_presenter)->notify_user_activity();
+        onx_notification_ui::close_panel();
   on_back:
     - script.execute: panel_back
   on_turn:

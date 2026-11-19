@@ -403,7 +403,7 @@ __attribute__((noinline)) inline void build_light(const Layout &l, const std::st
   text(root, title, fit(title, info.w, {fonts.title, fonts.body}), TEXT(), info.x, info.y, info.w);
   int y = info.y + line(fonts.title) + P(10);
   lv_obj_t *value = text(root, !d.available ? "—" : dimmable ? (on ? pct(level) : "Off") : (on ? "On" : "Off"), fonts.big, TEXT(),
-                         info.x, y, info.w, LV_TEXT_ALIGN_CENTER);
+                         info.x, y, info.w, wide() ? LV_TEXT_ALIGN_LEFT : LV_TEXT_ALIGN_CENTER);
   y += line(fonts.big) + P(12);
 
   // Mode bar: power | modes.
@@ -454,14 +454,18 @@ __attribute__((noinline)) inline void build_light(const Layout &l, const std::st
         swatches.push_back({c, 0});
   }
   int control_bottom = bar_y - P(16);
-  if (!swatches.empty() && !wide()) {
+  // Landscape: the row scrolls inside the right column, between the value and
+  // the mode bar.
+  const int row_x = wide() ? info.x : 0, row_w = wide() ? info.w : W;
+  if (!swatches.empty() && bar_y - P(12) - (P(48) + (wide() ? 0 : P(60))) >= y) {
     const int ss = P(40), sg = P(12), rh = ss + P(8), ry = bar_y - P(12) - rh;
-    lv_obj_t *row = box(root, 0, ry, W, rh, BG(), 0, LV_OPA_TRANSP);
+    lv_obj_t *row = box(root, row_x, ry, row_w, rh, BG(), 0, LV_OPA_TRANSP);
     lv_obj_add_flag(row, LV_OBJ_FLAG_SCROLLABLE);
     lv_obj_set_scroll_dir(row, LV_DIR_HOR);
     lv_obj_set_scrollbar_mode(row, LV_SCROLLBAR_MODE_OFF);
     const int total = int(swatches.size()) * (ss + sg) - sg;
-    int x = std::max(pad, (W - total) / 2);
+    const int inset = wide() ? P(4) : pad;
+    int x = std::max(inset, (row_w - total) / 2);
     for (const auto &sw : swatches) {
       const uint32_t rgb = sw.rgb; const int k = sw.kelvin;
       lv_obj_t *b = button(row, x, P(4), ss, ss, LV_RADIUS_CIRCLE, rgb, "", fonts.small, TEXT(), [e, rgb, k]() {
@@ -476,7 +480,7 @@ __attribute__((noinline)) inline void build_light(const Layout &l, const std::st
       lv_obj_set_style_border_color(b, lv_color_hex(TRACK()), 0);
       x += ss + sg;
     }
-    if (x - sg + pad > W) lv_obj_set_width(row, W);  // Wider than the screen: scrolls.
+    (void)x;  // Wider than the row: it scrolls.
     control_bottom = ry - P(12);
   }
   // The large control.
@@ -868,6 +872,46 @@ __attribute__((noinline)) inline void build_action(const Layout &l, const std::s
   } else if (running) {
     button(root, l.ctl.x, l.ctl.y, l.ctl.w, P(48), P(16), CONTROL(), "Stop script", fonts.body, TEXT(),
            [e]() { request(e, "script.turn_off", "", "off", "panel_stop"); });
+  }
+  // Run history (the same data as the page card): last run, a 24 h strip and
+  // the most recent runs. Fills the right column in landscape and the space
+  // below the button in portrait.
+  if (automation) return;  // Automation triggers are not recorded on the panel.
+  const time_t now = std::time(nullptr);
+  const auto *log = changes_for(e);
+  time_t last = log != nullptr && !log->items.empty() ? log->items.front().at : 0;
+  if (!last && !script) custom_logic_entity_sub::parse_ha_datetime_epoch(d.state, &last);
+  int y = l.ctl.y + ((automation || running) ? P(48) + P(14) : 0);
+  const int x = l.ctl.x, w = l.ctl.w, bottom = l.ctl.bottom();
+  if (y + line(fonts.body) > bottom) return;
+  text(root, last ? "Last run " + onx_sensor_view::relative(last, now) : std::string("No runs recorded yet"), fonts.body, TEXT(), x, y, w);
+  y += line(fonts.body) + P(12);
+  const int sh = P(16);
+  if (now > 1577836800 && y + line(fonts.small) * 2 + sh + P(8) <= bottom) {
+    text(root, "Runs, last 24 h", fonts.small, MUTED(), x, y, w);
+    y += line(fonts.small) + P(2);
+    lv_obj_t *strip = box(root, x, y, w, sh, CARD(), P(4));
+    if (log != nullptr)
+      for (const auto &run : log->items) {
+        if (run.at > now || now - run.at >= 86400) continue;
+        box(strip, int(int64_t(86400 - (now - run.at)) * (w - P(4)) / 86400), 0, P(4), sh, accent(), P(2));
+      }
+    y += sh + P(4);
+    text(root, "-24 h", fonts.small, MUTED(), x, y, w / 2);
+    text(root, "now", fonts.small, MUTED(), x + w / 2, y, w / 2, LV_TEXT_ALIGN_RIGHT);
+    y += line(fonts.small) + P(14);
+  }
+  // Recent runs as rows while they fit.
+  if (log == nullptr || log->items.empty()) return;
+  const int rh = line(fonts.body) + P(6);
+  if (y + line(fonts.small) + rh > bottom) return;
+  text(root, "Recent runs", fonts.small, MUTED(), x, y, w);
+  y += line(fonts.small) + P(4);
+  for (const auto &run : log->items) {
+    if (y + rh > bottom) break;
+    text(root, clock(run.at), fonts.body, TEXT(), x, y, w / 2);
+    text(root, onx_sensor_view::relative(run.at, now), fonts.body, SOFT_TEXT(), x + w / 2, y, w / 2, LV_TEXT_ALIGN_RIGHT);
+    y += rh;
   }
 }
 
@@ -1771,16 +1815,23 @@ inline int titled(lv_obj_t *c, const Tile &t, int x, int y, int w, uint32_t cont
 inline void card_weather(lv_obj_t *c, const Tile &t, const EntityDetailState &d) {
   const Rect r = t.r;
   const int pad = P(16), is = std::min(P(84), r.h / 3);
-  text(c, t.name, fonts.small, SOFT_TEXT(), pad, pad, r.w - 2 * pad - is);
+  // Wide cards (landscape): the reading on the left half, the tiles on the right.
+  const bool split = r.w >= r.h * 3 / 2 && r.w >= P(360);
+  const int lw = split ? r.w * 46 / 100 : r.w;
+  text(c, t.name, fonts.small, SOFT_TEXT(), pad, pad, lw - 2 * pad - is);
   int y = pad + line(fonts.small);
   const std::string temp = present(d.target, "°").empty() ? "—" : present(d.target, "°");
   const bool hero = r.h >= P(240) && hero_text(temp);
   const lv_font_t *tf = hero ? fonts.hero : fonts.big;
-  text(c, temp, tf, TEXT(), pad - (hero ? P(3) : 0), y - (hero ? P(6) : 0), r.w - 2 * pad - is);
+  text(c, temp, tf, TEXT(), pad - (hero ? P(3) : 0), y - (hero ? P(6) : 0), lw - 2 * pad - is);
   y += line(tf) - (hero ? P(14) : P(2));
-  text(c, condition(d.state), fonts.body, TEXT(), pad, y, r.w - 2 * pad - is);
+  text(c, condition(d.state), fonts.body, TEXT(), pad, y, lw - 2 * pad - (split ? 0 : is));
   y += line(fonts.body) + P(14);
-  icon(c, t.entity, r.w - pad - is / 2, pad + is / 2 + P(8), is, TEXT());
+  if (split) {  // The icon under the reading, using the left column's height.
+    const int iy = y, ih = r.h - pad - iy, s2 = std::min({P(96), ih, lw - 2 * pad});
+    if (s2 >= P(40)) icon(c, t.entity, pad + s2 / 2, iy + ih / 2, s2, TEXT());
+    else icon(c, t.entity, lw - pad - is / 2, pad + is / 2 + P(8), is, TEXT());
+  } else icon(c, t.entity, r.w - pad - is / 2, pad + is / 2 + P(8), is, TEXT());
   std::vector<std::pair<std::string, std::string>> stats;
   const std::string bearing = compass(d.wind_bearing);
   auto add = [&](const std::string &name, const std::string &value) { if (!value.empty()) stats.push_back({name, value}); };
@@ -1790,10 +1841,14 @@ inline void card_weather(lv_obj_t *c, const Tile &t, const EntityDetailState &d)
   add("Visibility", present(d.visibility, d.visibility_unit));
   add("UV index", present(d.uv_index, ""));
   add("Feels like", present(d.apparent_temperature, "°"));
-  const int gap = P(8), th = P(56), cols = 2, tw = (r.w - 2 * pad - gap) / cols;
-  const int rows = std::min<int>((stats.size() + 1) / 2, (r.h - pad - y + gap) / (th + gap));
+  const int gap = P(8), cols = 2, gx = split ? lw : pad, gw = split ? r.w - lw - pad : r.w - 2 * pad;
+  if (split) y = pad;
+  const int tw = (gw - gap) / cols, need = (int(stats.size()) + 1) / 2;
+  // Split cards share their height between the rows (up to 3).
+  const int th = split && need ? std::clamp((r.h - 2 * pad - (need - 1) * gap) / need, P(48), P(72)) : P(56);
+  const int rows = std::min<int>(need, (r.h - pad - y + gap) / (th + gap));
   for (int i = 0; i < std::min<int>(stats.size(), rows * cols); ++i)
-    tile(c, {pad + (i % cols) * (tw + gap), y + (i / cols) * (th + gap), tw, th}, stats[i].first, stats[i].second, INSET());
+    tile(c, {gx + (i % cols) * (tw + gap), y + (i / cols) * (th + gap), tw, th}, stats[i].first, stats[i].second, INSET());
   // Short cards: the first readings on one line instead of tiles.
   if (rows == 0 && !stats.empty() && r.h - pad - y + P(14) >= line(fonts.small)) {
     std::string summary;

@@ -202,6 +202,14 @@ inline void on_toast(lv_event_t *) {
   if (id) open_detail(id);
 }
 inline void on_close_panel(lv_event_t *) { touched(); close_panel(); }
+// The touch handler's swipe up closes the centre unless a list could still
+// scroll down (then the swipe scrolls it, as before).
+inline bool swipe_closes() {
+  if (!panel_open || detail_id != 0 || rotate_dialog != nullptr) return false;
+  for (lv_obj_t *l : {list, preset_list})
+    if (l != nullptr && !lv_obj_has_flag(l, LV_OBJ_FLAG_HIDDEN) && lv_obj_get_scroll_bottom(l) > 0) return false;
+  return true;
+}
 // Swipe up anywhere on the centre (the list stops scrolling at its ends).
 inline void on_gesture(lv_event_t *) {
   lv_indev_t *indev = lv_indev_active();

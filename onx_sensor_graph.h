@@ -48,6 +48,9 @@ inline void render(lv_obj_t *parent,const std::string &entity,uint32_t now,uint3
       lv_label_set_long_mode(label,LV_LABEL_LONG_DOT);
     }
   }
+  // The panel detail parks the shared canvas on lv_layer_top() when it lets
+  // go of it; showing it there would draw it above overlays such as Assist.
+  if(lv_obj_get_parent(canvas)!=parent){lv_obj_set_parent(canvas,parent);lv_obj_align(canvas,LV_ALIGN_TOP_MID,0,onx_geom::S(104));}
   lv_obj_set_size(canvas,width>0?width:onx_geom::S(186),height>0?height:onx_geom::S(65));
   lv_obj_clear_flag(canvas,LV_OBJ_FLAG_HIDDEN);ink=color;count=0;range_seconds=onx_sensor_view::states[i].range_seconds;
   plot_right=std::max(1,static_cast<int>(lv_obj_get_style_width(canvas,LV_PART_MAIN))-1);
