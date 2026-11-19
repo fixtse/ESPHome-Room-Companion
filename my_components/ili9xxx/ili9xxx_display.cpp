@@ -133,10 +133,15 @@ void ILI9XXXDisplay::enable_lvgl_pipeline(lv_display_t *display) {
 
 void ILI9XXXDisplay::flush_pixels_(lv_display_t *display, const lv_area_t *area, uint8_t *pixels) {
   auto *lcd = static_cast<ILI9XXXDisplay *>(lv_display_get_driver_data(display));
-  lcd->transfer_area_ = *area;
-  lcd->transfer_pixels_ = pixels;
-  xEventGroupClearBits(lcd->transfer_done_, TRANSFER_IDLE);
-  xTaskNotifyGive(lcd->pixel_worker_handle_);
+  lcd->submit_rgb565(area->x1, area->y1, lv_area_get_width(area), lv_area_get_height(area), pixels);
+}
+
+void ILI9XXXDisplay::submit_rgb565(int x, int y, int width, int height, const uint8_t *pixels) {
+  this->wait_for_pixel_transfer_();
+  this->transfer_area_ = {x, y, x + width - 1, y + height - 1};
+  this->transfer_pixels_ = pixels;
+  xEventGroupClearBits(this->transfer_done_, TRANSFER_IDLE);
+  xTaskNotifyGive(this->pixel_worker_handle_);
 }
 
 void ILI9XXXDisplay::wait_for_flush_(lv_display_t *display) {
@@ -562,10 +567,29 @@ void ILI9XXXDisplay::draw_pixels_at(int x_start, int y_start, int w, int h, cons
   // x_ and y_offset are offsets into the source buffer, unrelated to our own offsets into the display.
   auto stride = x_offset + w + x_pad;
   if (!this->is_18bitdisplay_) {
-    if (x_offset == 0 && x_pad == 0 && y_offset == 0) {
-      // we could deal here with a non-zero y_offset, but if x_offset is zero, y_offset probably will be so don't bother
-      this->write_pixels_(ptr, w * h * 2);
+    if (stride == w) {
+      this->write_pixels_(ptr + static_cast<size_t>(y_offset) * stride * 2, static_cast<size_t>(w) * h * 2);
     } else {
+#ifdef USE_ILI9XXX_QUEUED_SPI
+      const size_t row_bytes = static_cast<size_t>(w) * 2;
+      if (this->queued_io_ != nullptr && row_bytes <= DMA_BOUNCE_SIZE) {
+        // JPEG blocks can have padded or clipped scanlines. Pack several
+        // visible rows into the existing DMA buffer before joining the queue.
+        const size_t rows_per_transfer = DMA_BOUNCE_SIZE / row_bytes;
+        const auto *row = ptr + (static_cast<size_t>(y_offset) * stride + x_offset) * 2;
+        const size_t source_stride = static_cast<size_t>(stride) * 2;
+        size_t remaining = h;
+        while (remaining != 0) {
+          const size_t rows = std::min(remaining, rows_per_transfer);
+          for (size_t i = 0; i < rows; ++i)
+            std::memcpy(this->dma_bounce_ + i * row_bytes, row + i * source_stride, row_bytes);
+          if (!this->queue_pixels_(this->dma_bounce_, rows * row_bytes)) break;
+          remaining -= rows;
+          if (remaining != 0) row += rows * source_stride;
+        }
+        return;  // The queued transport owns chip select.
+      }
+#endif
       for (size_t y = 0; y != static_cast<size_t>(h); y++) {
         this->write_pixels_(ptr + ((y + y_offset) * stride + x_offset) * 2, w * 2);
       }

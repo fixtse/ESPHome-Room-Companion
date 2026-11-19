@@ -206,6 +206,7 @@ void RoomPanel::close_dashboard() {
   dashboard_open_ = false;
   publish_();
   update_owner_(millis());
+  if (stream_) stream_->release_frame_snapshot();
 }
 
 void RoomPanel::set_overlay(Overlay overlay, bool on) {
@@ -229,7 +230,41 @@ void RoomPanel::update_owner_(uint32_t now) {
   } else {
     stream_lost_ms_ = 0;
   }
+  const bool notice_backdrop = dashboard_open_ && !asleep && overlays_ == OVERLAY_NOTICE;
+  if (!notice_backdrop) show_backdrop_(false);
   give_display_to_(want);
+  if (notice_backdrop) show_backdrop_(true);
+}
+
+void RoomPanel::show_backdrop_(bool show) {
+  if (show == backdrop_visible_) return;
+  if (show) {
+    const auto snapshot = stream_->frame_snapshot();
+    if (!snapshot.pixels) return;
+    if (!backdrop_) {
+      backdrop_ = lv_image_create(lv_display_get_layer_top(lvgl_->get_disp()));
+      lv_obj_remove_flag(backdrop_, LV_OBJ_FLAG_CLICKABLE);
+      lv_obj_set_pos(backdrop_, 0, 0);
+    }
+    backdrop_image_.header.magic = LV_IMAGE_HEADER_MAGIC;
+    backdrop_image_.header.cf = snapshot.big_endian ? LV_COLOR_FORMAT_RGB565_SWAPPED : LV_COLOR_FORMAT_RGB565;
+    backdrop_image_.header.w = snapshot.width;
+    backdrop_image_.header.h = snapshot.height;
+    backdrop_image_.header.stride = snapshot.width * 2;
+    backdrop_image_.data_size = static_cast<uint32_t>(snapshot.width) * snapshot.height * 2;
+    backdrop_image_.data = snapshot.pixels;
+    lv_image_set_src(backdrop_, &backdrop_image_);
+    lv_obj_move_foreground(backdrop_);
+    lv_obj_remove_flag(backdrop_, LV_OBJ_FLAG_HIDDEN);
+  } else {
+    lv_obj_add_flag(backdrop_, LV_OBJ_FLAG_HIDDEN);
+    lv_image_set_src(backdrop_, static_cast<const void *>(nullptr));
+    lv_image_cache_drop(&backdrop_image_);
+    lv_image_header_cache_drop(&backdrop_image_);
+    backdrop_image_.data = nullptr;
+  }
+  backdrop_visible_ = show;
+  if (backdrop_changed_) backdrop_changed_(show);
 }
 
 void RoomPanel::give_display_to_(bool stream) {

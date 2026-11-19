@@ -156,6 +156,17 @@ inline bool owns_screen() {
   return panel_open || detail_id != 0 || onx_notification::center.toast_visible(esphome::millis());
 }
 
+inline void set_dashboard_backdrop(bool visible) {
+  if (!panel || !detail || !toast) return;
+  const auto opacity = visible ? LV_OPA_80 : LV_OPA_COVER;
+  lv_obj_set_style_bg_opa(panel, opacity, 0);
+  lv_obj_set_style_bg_opa(detail, opacity, 0);
+  if (visible) {
+    lv_obj_move_foreground(panel_open ? panel : detail_id ? detail : toast);
+    if (rotate_dialog) lv_obj_move_foreground(rotate_dialog);
+  }
+}
+
 inline void refresh();
 inline lv_obj_t *notification_icon(lv_obj_t *parent, uint32_t id, int size = 28) {
   auto *icon = lv_image_create(parent);

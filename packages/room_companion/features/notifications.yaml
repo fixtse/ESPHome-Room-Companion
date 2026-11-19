@@ -53,6 +53,8 @@ esphome:
               id(timer_show).execute();
             };
             onx_notification_ui::init(onx_panel_ui::width, onx_panel_ui::height, fonts, hooks);
+            id(dashboard_stream)->enable_frame_snapshot();
+            id(room_panel)->set_backdrop_changed(onx_notification_ui::set_dashboard_backdrop);
 
 switch:
   - platform: template

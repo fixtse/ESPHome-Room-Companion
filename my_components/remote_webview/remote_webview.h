@@ -14,6 +14,7 @@
 #include "freertos/queue.h"
 #include "freertos/semphr.h"
 #include <atomic>
+#include <functional>
 
 #if defined(CONFIG_IDF_TARGET_ESP32P4)
   #include "driver/jpeg_decode.h"
@@ -34,6 +35,20 @@ namespace remote_webview {
 class RemoteWebView : public Component {
  public:
   void set_display(display::Display *d) { display_ = d; }
+  void enable_frame_snapshot() { capture_snapshot_ = true; }
+  struct FrameSnapshot {
+    const uint8_t *pixels;
+    int width, height;
+    bool big_endian;
+  };
+  // The display owner calls this while the stream is inactive.
+  FrameSnapshot frame_snapshot() const;
+  void release_frame_snapshot();
+  void set_pixel_pipeline(std::function<void(int, int, int, int, const uint8_t *)> submit,
+                          std::function<void()> wait) {
+    submit_pixels_ = std::move(submit);
+    wait_pixels_ = std::move(wait);
+  }
   void set_touchscreen(touchscreen::Touchscreen *t) { touch_ = t; }
   void set_device_id(const std::string &s) { device_id_ = s; }
   // Room Companion: may be called at runtime; the WS task reads url_ on reconnect.
@@ -133,6 +148,23 @@ class RemoteWebView : public Component {
   bool touch_disabled_{true};
   std::atomic<bool> active_{false};
   SemaphoreHandle_t draw_mtx_{nullptr};
+  std::function<void(int, int, int, int, const uint8_t *)> submit_pixels_;
+  std::function<void()> wait_pixels_;
+  uint8_t *draw_blocks_{nullptr};
+  size_t next_draw_block_{0};
+  bool draw_blocks_attempted_{false};
+  bool draw_pending_{false};
+  void drain_draw_();
+  void begin_snapshot_();
+  void finish_snapshot_(bool complete);
+  void copy_snapshot_pixels_(int x, int y, int w, int h, const uint8_t *pixels, size_t stride);
+  struct SnapshotBounds {
+    int left{}, top{}, right{}, bottom{};
+  };
+  SnapshotBounds snapshot_dirty_{};
+  uint8_t *snapshot_front_{nullptr}, *snapshot_work_{nullptr};
+  bool capture_snapshot_{false};
+  bool snapshot_attempted_{false}, snapshot_valid_{false}, snapshot_synced_{false}, snapshot_open_{false};
 
 #if REMOTE_WEBVIEW_HW_JPEG
   jpeg_decoder_handle_t hw_dec_{nullptr};
@@ -174,7 +206,7 @@ class RemoteWebView : public Component {
   int64_t  ft_rx_end_us_{0};    // last message of the frame enqueued
   uint32_t ft_queue_us_{0};     // sum of queue waits of the frame's messages
   uint32_t ft_decode_us_{0};    // JPEG decoding, excluding drawing
-  uint32_t ft_draw_us_{0};      // draw_pixels_at calls
+  uint32_t ft_draw_us_{0};      // Pixel staging and time blocked on the LCD
 
   uint32_t stats_interval_ms_{0};  // 0 = stats disabled
   PerfStats st_{};

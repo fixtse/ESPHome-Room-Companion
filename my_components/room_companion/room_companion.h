@@ -76,8 +76,9 @@ class RoomPanel : public Component {
 
   // Overlays and input.
   void set_overlay(Overlay overlay, bool on);
+  void set_backdrop_changed(std::function<void(bool)> callback) { backdrop_changed_ = std::move(callback); }
   // Touch drives the native UI only when it is visible and no overlay owns input.
-  bool native_ui_can_render() const { return !stream_owner_ && (overlays_ & ~OVERLAY_NOTICE) == 0; }
+  bool native_ui_can_render() const { return !stream_owner_ && !backdrop_visible_ && (overlays_ & ~OVERLAY_NOTICE) == 0; }
   bool native_ui_has_touch() const { return !stream_owner_ && overlays_ == 0; }
 
   // Configuration page hook: returns "" when the op is not ours.
@@ -95,6 +96,7 @@ class RoomPanel : public Component {
   void apply_(bool boot, const StreamSettings &previous);
   void update_owner_(uint32_t now);
   void give_display_to_(bool stream);
+  void show_backdrop_(bool show);
   void publish_();
 
   lvgl::LvglComponent *lvgl_{nullptr};
@@ -114,6 +116,10 @@ class RoomPanel : public Component {
   bool dashboard_open_{false};
   uint8_t overlays_{0};
   bool stream_owner_{false};
+  bool backdrop_visible_{false};
+  lv_obj_t *backdrop_{nullptr};
+  lv_image_dsc_t backdrop_image_{};
+  std::function<void(bool)> backdrop_changed_;
   uint32_t stream_lost_ms_{0};
   std::atomic<uint32_t> corner_since_ms_{0};
   std::atomic<bool> corner_requested_{false};

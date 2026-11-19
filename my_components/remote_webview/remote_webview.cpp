@@ -16,11 +16,13 @@
 #include "freertos/idf_additions.h"
 
 #include <algorithm>
+#include <cstring>
 
 namespace esphome {
 namespace remote_webview {
 
 static const char *const TAG = "Remote_WebView";
+static constexpr size_t DRAW_BLOCK_BYTES = 16 * 1024;
 RemoteWebView *RemoteWebView::self_ = nullptr;
 
 //Below two functions are part of automation template testing
@@ -217,8 +219,17 @@ void RemoteWebView::set_active(bool active) {
   if (!active) {
     active_.store(false);
     touch_disabled_ = true;
-    // Wait for a draw in progress, so the caller owns the display afterwards.
-    if (draw_mtx_ && xSemaphoreTake(draw_mtx_, pdMS_TO_TICKS(500)) == pdTRUE) xSemaphoreGive(draw_mtx_);
+    // Finish the last SPI transfer before LVGL can take the display back.
+    if (draw_mtx_ && xSemaphoreTake(draw_mtx_, portMAX_DELAY) == pdTRUE) {
+      drain_draw_();
+      snapshot_open_ = false;
+      snapshot_synced_ = false;
+      heap_caps_free(draw_blocks_);
+      draw_blocks_ = nullptr;
+      draw_blocks_attempted_ = false;
+      next_draw_block_ = 0;
+      xSemaphoreGive(draw_mtx_);
+    }
     return;
   }
   touch_disabled_ = false;
@@ -228,6 +239,79 @@ void RemoteWebView::set_active(bool active) {
   last_full_frame_req_us_.store(0);
   if (ws_send_request_full_frame_()) last_full_frame_req_us_.store(esp_timer_get_time());
   notify_ws_task_();
+}
+
+RemoteWebView::FrameSnapshot RemoteWebView::frame_snapshot() const {
+  return {!active_.load() && snapshot_valid_ ? snapshot_front_ : nullptr,
+          display_width_, display_height_, rgb565_big_endian_};
+}
+
+void RemoteWebView::release_frame_snapshot() {
+  if (!draw_mtx_ || xSemaphoreTake(draw_mtx_, portMAX_DELAY) != pdTRUE) return;
+  if (!active_.load()) {
+    heap_caps_free(snapshot_front_);
+    heap_caps_free(snapshot_work_);
+    snapshot_front_ = snapshot_work_ = nullptr;
+    snapshot_attempted_ = snapshot_valid_ = snapshot_synced_ = snapshot_open_ = false;
+    snapshot_dirty_ = {};
+  }
+  xSemaphoreGive(draw_mtx_);
+}
+
+void RemoteWebView::begin_snapshot_() {
+  if (!capture_snapshot_ || !draw_mtx_ || xSemaphoreTake(draw_mtx_, portMAX_DELAY) != pdTRUE) return;
+  if (active_.load()) {
+    if (!snapshot_attempted_ && frame_is_full_) {
+      snapshot_attempted_ = true;
+      const size_t bytes = static_cast<size_t>(display_width_) * display_height_ * 2;
+      snapshot_front_ = static_cast<uint8_t *>(heap_caps_calloc(1, bytes, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT));
+      snapshot_work_ = static_cast<uint8_t *>(heap_caps_calloc(1, bytes, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT));
+      if (!snapshot_front_ || !snapshot_work_) {
+        heap_caps_free(snapshot_front_);
+        heap_caps_free(snapshot_work_);
+        snapshot_front_ = snapshot_work_ = nullptr;
+        ESP_LOGW(TAG, "No PSRAM for dashboard notification backdrop");
+      }
+    }
+    if (snapshot_front_) {
+      if (snapshot_open_) snapshot_synced_ = false;  // Previous frame lacked its final packet.
+      // Only the previous update's bounds can differ between the two copies.
+      const auto bounds = snapshot_dirty_;
+      const size_t bytes = static_cast<size_t>(bounds.right - bounds.left) * 2;
+      for (int y = bounds.top; y < bounds.bottom; ++y) {
+        const size_t offset = (static_cast<size_t>(y) * display_width_ + bounds.left) * 2;
+        std::memcpy(snapshot_work_ + offset, snapshot_front_ + offset, bytes);
+      }
+      snapshot_dirty_ = {};
+      snapshot_open_ = true;
+    }
+  }
+  xSemaphoreGive(draw_mtx_);
+}
+
+void RemoteWebView::finish_snapshot_(bool complete) {
+  if (!snapshot_open_) return;
+  snapshot_open_ = false;
+  snapshot_synced_ = active_.load() && complete && (frame_is_full_ || snapshot_synced_);
+  if (!snapshot_synced_) return;
+  std::swap(snapshot_front_, snapshot_work_);
+  snapshot_valid_ = true;
+}
+
+void RemoteWebView::copy_snapshot_pixels_(int x, int y, int w, int h, const uint8_t *pixels, size_t stride) {
+  if (!snapshot_open_) return;
+  for (int row = 0; row < h; ++row) {
+    const size_t offset = (static_cast<size_t>(y + row) * display_width_ + x) * 2;
+    std::memcpy(snapshot_work_ + offset, pixels + row * stride, static_cast<size_t>(w) * 2);
+  }
+  if (snapshot_dirty_.right == 0) {
+    snapshot_dirty_ = {x, y, x + w, y + h};
+  } else {
+    snapshot_dirty_.left = std::min(snapshot_dirty_.left, x);
+    snapshot_dirty_.top = std::min(snapshot_dirty_.top, y);
+    snapshot_dirty_.right = std::max(snapshot_dirty_.right, x + w);
+    snapshot_dirty_.bottom = std::max(snapshot_dirty_.bottom, y + h);
+  }
 }
 
 bool RemoteWebView::open_url(const std::string &s) {
@@ -604,6 +688,7 @@ void RemoteWebView::process_frame_packet_(const uint8_t *data, size_t len)
     ft_queue_us_ = 0;
     ft_decode_us_ = 0;
     ft_draw_us_ = 0;
+    begin_snapshot_();
   }
   ft_rx_end_us_ = msg_enqueue_us_;
   ft_queue_us_ += (uint32_t)(msg_dequeue_us_ - msg_enqueue_us_);
@@ -646,6 +731,13 @@ void RemoteWebView::process_frame_packet_(const uint8_t *data, size_t len)
   }
 
   if (fi.flags & proto::kFlafLastOfFrame) {
+    if (draw_mtx_ && xSemaphoreTake(draw_mtx_, portMAX_DELAY) == pdTRUE) {
+      const int64_t start = esp_timer_get_time();
+      drain_draw_();
+      finish_snapshot_(frame_complete_ && (frame_is_full_ || !screen_out_of_sync_()));
+      ft_draw_us_ += static_cast<uint32_t>(esp_timer_get_time() - start);
+      xSemaphoreGive(draw_mtx_);
+    }
     // "Done with this frame" (drawn or not), sent first so the server can pace the next one.
     // Short timeouts keep decoding from blocking; a lost ack is covered by the next one
     // (acks are cumulative) or by the server's timeout.
@@ -841,6 +933,12 @@ int RemoteWebView::jpeg_draw_cb_(JPEGDRAW *p) {
   return 1;
 }
 
+void RemoteWebView::drain_draw_() {
+  if (!draw_pending_) return;
+  wait_pixels_();
+  draw_pending_ = false;
+}
+
 void RemoteWebView::draw_rgb565_clipped_(int x, int y, int w, int h, int stride, const uint8_t *pixels,
                                          int clip_x1, int clip_y1) {
   int x_off = 0, y_off = 0;
@@ -853,11 +951,39 @@ void RemoteWebView::draw_rgb565_clipped_(int x, int y, int w, int h, int stride,
   if (!active_.load() || !draw_mtx_ || xSemaphoreTake(draw_mtx_, pdMS_TO_TICKS(100)) != pdTRUE) return;
   if (!active_.load()) { xSemaphoreGive(draw_mtx_); return; }
   const int64_t t0 = esp_timer_get_time();
-  display_->draw_pixels_at(x, y, w, h, pixels,
-                           esphome::display::COLOR_ORDER_RGB,
-                           esphome::display::COLOR_BITNESS_565,
-                           rgb565_big_endian_,
-                           x_off, y_off, stride - x_off - w);
+  const size_t row_bytes = static_cast<size_t>(w) * 2;
+  const size_t stride_bytes = static_cast<size_t>(stride) * 2;
+  const auto *src = pixels + y_off * stride_bytes + x_off * 2;
+  copy_snapshot_pixels_(x, y, w, h, src, stride_bytes);
+  const bool can_stage = submit_pixels_ && wait_pixels_ && rgb565_big_endian_ &&
+                         row_bytes * h <= DRAW_BLOCK_BYTES;
+  if (can_stage && !draw_blocks_attempted_) {
+    draw_blocks_attempted_ = true;
+    draw_blocks_ = static_cast<uint8_t *>(
+        heap_caps_aligned_alloc(32, 2 * DRAW_BLOCK_BYTES, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT));
+  }
+  if (can_stage && draw_blocks_) {
+    // JPEGDEC reuses its callback buffer. The alternate staging block lets us
+    // copy these pixels while the previous block is still on the wire.
+    auto *block = draw_blocks_ + next_draw_block_ * DRAW_BLOCK_BYTES;
+    if (stride_bytes == row_bytes) {
+      std::memcpy(block, src, row_bytes * h);
+    } else {
+      for (int row = 0; row < h; ++row)
+        std::memcpy(block + row * row_bytes, src + row * stride_bytes, row_bytes);
+    }
+    drain_draw_();
+    submit_pixels_(x, y, w, h, block);
+    draw_pending_ = true;
+    next_draw_block_ ^= 1;
+  } else {
+    drain_draw_();
+    display_->draw_pixels_at(x, y, w, h, pixels,
+                             esphome::display::COLOR_ORDER_RGB,
+                             esphome::display::COLOR_BITNESS_565,
+                             rgb565_big_endian_,
+                             x_off, y_off, stride - x_off - w);
+  }
   xSemaphoreGive(draw_mtx_);
   ft_draw_us_ += (uint32_t)(esp_timer_get_time() - t0);
 }
