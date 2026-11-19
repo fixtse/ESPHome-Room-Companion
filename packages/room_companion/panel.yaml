@@ -45,6 +45,14 @@ lvgl:
   default_font: fonts_MiSans_Medium_14
   log_level: WARN
 
+# Larger idle clock digits, used when the chosen clock content leaves room.
+font:
+  - file: "../../fonts/MiSans-Bold.ttf"
+    id: panel_clock_big_font
+    size: ${ (88 * (font_scale | float)) | round | int }
+    bpp: ${font_bpp}
+    glyphs: "0123456789:-. "
+
 select:
   - platform: template
     id: panel_idle_screen
@@ -624,7 +632,10 @@ script:
             b.humidity_icon = id(standby_humidity_icon_widget); b.humidity = id(standby_humidity_widget);
             b.date = id(standby_date_widget); b.time = id(standby_time_widget);
             onx_idle_clock::fonts = {id(fonts_MiSans_Medium_12)->get_lv_font(), id(fonts_MiSans_Medium_14)->get_lv_font(),
-                id(fonts_MiSans_Medium_16)->get_lv_font(), id(fonts_MiSans_Medium_24)->get_lv_font()};
+                id(fonts_MiSans_Medium_16)->get_lv_font(), id(fonts_MiSans_Medium_24)->get_lv_font(),
+                id(fonts_MiSans_Bold_64)->get_lv_font(), id(panel_clock_big_font)->get_lv_font(),
+                id(fonts_MiSans_Medium_32)->get_lv_font(), id(fonts_MiSans_Medium_20)->get_lv_font(),
+                id(fonts_MiSans_Medium_24)->get_lv_font()};
             onx_idle_clock::condition_image = [](const std::string &c) -> const void * {
               if (c == "clear-night") return id(standby_weather_icon_clear_night_img)->get_lv_image_dsc();
               if (c == "cloudy") return id(standby_weather_icon_cloudy_img)->get_lv_image_dsc();

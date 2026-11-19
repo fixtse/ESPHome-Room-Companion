@@ -90,6 +90,40 @@ inline bool save(esphome::api::APIServer *api, const std::string &temp, const st
   subscribe(api);
   return true;
 }
+
+// What the idle clock shows besides the time and date (bit mask, Device
+// settings → Clock & idle screen): current weather, today's high/low/rain,
+// the daily forecast and the playing media.
+enum Part : uint8_t { WEATHER = 1, TODAY = 2, FORECAST = 4, MEDIA = 8, ALL_PARTS = 15 };
+struct Layout { uint32_t magic{0x4F4E584C}; uint8_t parts{ALL_PARTS}; };
+inline Layout layout;
+inline bool layout_loaded = false;
+inline esphome::ESPPreferenceObject layout_preference;
+inline void load_layout() {
+  if (layout_loaded || esphome::global_preferences == nullptr) return;
+  layout_preference = esphome::global_preferences->make_preference<Layout>(esphome::fnv1_hash("onx.clock_layout.v1"));
+  Layout saved{};
+  if (layout_preference.load(&saved) && saved.magic == 0x4F4E584C && saved.parts <= ALL_PARTS) layout = saved;
+  layout_loaded = true;
+}
+inline uint8_t parts() { load_layout(); return layout.parts; }
+// "0".."15"; empty leaves the setting unchanged.
+inline bool valid_layout(const std::string &value) {
+  return value.empty() || (value.size() <= 2 && value.find_first_not_of("0123456789") == std::string::npos &&
+                           std::atoi(value.c_str()) <= ALL_PARTS);
+}
+inline bool save_layout(const std::string &value) {
+  load_layout();
+  if (value.empty()) return true;
+  if (!valid_layout(value)) return false;
+  const int v = std::atoi(value.c_str());
+  if (layout.parts == v) return true;
+  Layout next = layout;
+  next.parts = uint8_t(v);
+  if (!layout_preference.save(&next) || !esphome::global_preferences->sync()) return false;
+  layout = next;
+  return true;
+}
 inline std::string first_icon() { return config.temperature[0] ? temperature.chosen_icon(config.temperature) : ""; }
 inline std::string second_icon() { return config.humidity[0] ? humidity.chosen_icon(config.humidity) : ""; }
 inline std::string temperature_text(const std::string &weather_value, const std::string &weather_unit) {

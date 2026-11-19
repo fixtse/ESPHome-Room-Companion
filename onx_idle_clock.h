@@ -27,6 +27,7 @@
 #include "onx_display_settings.h"
 #include "onx_panel_ui.h"
 #include "custom_logic_entity_sub.h"
+#include "onx_clock_sensors.h"
 
 namespace onx_idle_clock {
 using onx_geom::S;
@@ -112,7 +113,10 @@ struct Base {  // The shared standby page's widgets.
   std::vector<lv_obj_t *> weather_icons;
   lv_obj_t *temp_icon{}, *temp{}, *humidity_icon{}, *humidity{}, *date{}, *time{};
 };
-struct Fonts { const lv_font_t *tiny{}, *small{}, *body{}, *value{}; };
+struct Fonts {
+  const lv_font_t *tiny{}, *small{}, *body{}, *value{};
+  const lv_font_t *clock{}, *clock_big{}, *clock_ampm{}, *date{}, *date_big{};
+};
 struct Column { lv_obj_t *day{}, *icon{}, *high{}, *low{}; };
 
 inline Base base;
@@ -220,10 +224,28 @@ inline void update(lv_obj_t *page, int W, int H, const std::string &weather_stat
   for (auto *o : {base.wifi_on, base.wifi_off}) at(o, m, icon_y);
   for (auto *o : {base.ha_on, base.ha_off}) at(o, m + S(28), icon_y);
 
+  // ---- what to show (Device settings → Clock & idle screen)
+  const uint8_t parts = onx_clock_sensors::parts();
+  const bool show_weather = parts & onx_clock_sensors::WEATHER;
+  const bool show_today = (parts & onx_clock_sensors::TODAY) && !today_text.empty();
+  const int days_max = std::min<int>(ahead.size(), wide ? int(columns.size()) : (W >= S(300) ? 5 : 4));
+  const bool show_forecast = (parts & onx_clock_sensors::FORECAST) && days_max > 0;
+  const bool show_media = (parts & onx_clock_sensors::MEDIA) && player != nullptr;
+  // The standby refresh toggles the weather widgets' hidden flags each second,
+  // so turned-off weather is faded out rather than hidden.
+  auto fade = [](lv_obj_t *o, bool on) { if (o) onx_render::style_opa(o, on ? LV_OPA_COVER : LV_OPA_TRANSP, 0); };
+  for (auto *o : base.weather_icons) fade(o, show_weather);
+  for (auto *o : {base.temp_icon, base.temp, base.humidity_icon, base.humidity}) fade(o, show_weather);
+  show(condition, show_weather);
+  show(today, show_today);
+  if (!show_weather) show(humidity_caption, false);
+
   // ---- now playing card
-  const int card_h = S(50), card_w = wide ? W * 58 / 100 - m - S(8) : W - 2 * m;
-  show(media, player != nullptr);
-  if (player != nullptr) {
+  const bool any_side = show_weather || show_today || show_forecast;
+  const int split = any_side ? W * 58 / 100 : W;
+  const int card_h = S(50), card_w = wide ? split - m - (any_side ? S(8) : m) : W - 2 * m;
+  show(media, show_media);
+  if (show_media) {
     size(media, card_w, card_h);
     at(media, m, H - m - card_h + S(4));
     onx_render::style_bg_color(media, lv_color_hex(onx_display_settings::surface()), 0);
@@ -248,124 +270,173 @@ inline void update(lv_obj_t *page, int W, int H, const std::string &weather_stat
     onx_render::style_bg_color(media_bar, lv_color_hex(onx_display_settings::accent()), LV_PART_INDICATOR);
   }
 
-  const lv_font_t *time_font = lv_obj_get_style_text_font(base.time, LV_PART_MAIN);
-  const lv_font_t *date_font = lv_obj_get_style_text_font(base.date, LV_PART_MAIN);
-  // Large digits carry generous line spacing; tuck the date under them.
-  const int time_h = line(time_font), date_gap = -time_h / 7;
+  // ---- clock fonts: the larger set when it fits the space it is given
+  const bool ampm = onx_display_settings::datetime.hour_format == 1 && onx_display_settings::datetime.show_ampm;
+  const char *time_text = lv_label_get_text(base.time);
+  auto clock_font = [&](bool big, int max_w) {
+    if (ampm) return fonts.clock_ampm;
+    if (big && fonts.clock_big && text_width(time_text, fonts.clock_big) <= max_w) return fonts.clock_big;
+    return fonts.clock;
+  };
+  auto date_font = [&](const lv_font_t *tf) { return tf == fonts.clock_big ? fonts.date_big : fonts.date; };
+  auto clock_h = [&](const lv_font_t *tf) { return line(tf) - line(tf) / 7 + line(date_font(tf)); };
+  auto apply_clock = [&](const lv_font_t *tf) {
+    onx_render::style_text_font(base.time, tf, 0);
+    onx_render::style_text_font(base.date, date_font(tf), 0);
+  };
   const int weather_icon = S(49);
   for (auto *l : {condition, humidity_caption, today}) color(l, muted);
+  const int top0 = S(34);
+  const int bottom = H - m - (show_media ? card_h + S(8) : 0);
+
+  // Forecast cells: 2 = large icons, 1 = icons, 0 = high and low only.
+  auto fc_h = [&](int mode) {
+    return mode == 0 ? line(fonts.small) + line(fonts.body)
+                     : line(fonts.small) + (mode == 2 ? S(42) : S(32)) + S(4) + line(fonts.body) + line(fonts.small);
+  };
+  auto draw_forecast_columns = [&](int x, int y, int w, int n, int mode) {
+    const int cw = w / n, icon = mode == 2 ? S(40) : S(30);
+    size(forecast, w, fc_h(mode));
+    at(forecast, x, y);
+    for (int i = 0; i < int(columns.size()); ++i) {
+      auto &c = columns[i];
+      const bool on = i < n;
+      for (auto *o : {c.day, c.high}) { show(o, on); if (on) { width(o, cw); align_text(o, LV_TEXT_ALIGN_CENTER); } }
+      show(c.low, on && mode > 0);
+      show(c.icon, on && mode > 0);
+      if (!on) continue;
+      if (mode > 0) { width(c.low, cw); align_text(c.low, LV_TEXT_ALIGN_CENTER); }
+      const Day &d = *ahead[i];
+      set_text(c.day, weekday(d.date));
+      set_text(c.high, mode > 0 ? degrees(d.high) : degrees(d.high) + " " + degrees(d.low));
+      set_text(c.low, degrees(d.low));
+      color(c.day, muted); color(c.high, fg); color(c.low, muted);
+      int cy = 0;
+      at(c.day, i * cw, cy); cy += line(fonts.small);
+      if (mode > 0) {
+        const void *src = condition_image ? condition_image(d.condition) : nullptr;
+        if (lv_image_get_src(c.icon) != src) lv_image_set_src(c.icon, src);
+        size(c.icon, icon, icon);
+        at(c.icon, i * cw + (cw - icon) / 2, cy + S(2));
+        cy += icon + S(4);
+      }
+      at(c.high, i * cw, cy); cy += line(fonts.body);
+      at(c.low, i * cw, cy);
+    }
+  };
 
   if (!wide) {
-    // ---- portrait: top to bottom
-    const int bottom = player != nullptr ? H - m - card_h - S(8) : H - m;
-    const int clock_h = time_h + date_gap + line(date_font);
-    // Temperature and humidity share one row: drop to the body font when the
-    // large one would make them touch.
+    // ---- portrait: pick the largest sizes that fit, then share out the rest
     const int tx = m + weather_icon + S(10);
     auto row_fits = [&](const lv_font_t *f) {
       return tx + S(20) + text_width(lv_label_get_text(base.temp), f) + S(14) + S(20) +
              text_width(lv_label_get_text(base.humidity), f) <= W - m;
     };
     const lv_font_t *vf = row_fits(fonts.value) ? fonts.value : fonts.body;
+    auto weather_h = [&](const lv_font_t *f) { return std::max(weather_icon, line(f) + line(fonts.small)); };
+    bool big = true;
+    int mode = 2;
+    bool forecast_on = show_forecast;
+    auto needed = [&]() {
+      int h = clock_h(clock_font(big, W - 2 * m)), k = 0;
+      if (show_weather) { h += weather_h(vf); ++k; }
+      if (show_today) { h += line(fonts.small); ++k; }
+      if (forecast_on) { h += fc_h(mode); ++k; }
+      return h + k * S(8);
+    };
+    const int avail = bottom - top0;
+    // Shrink in order: forecast icons, clock size, weather value size, forecast.
+    while (needed() > avail) {
+      if (forecast_on && mode > 1) --mode;
+      else if (big) big = false;
+      else if (vf == fonts.value) vf = fonts.body;
+      else if (forecast_on && mode > 0) --mode;
+      else if (forecast_on) forecast_on = false;
+      else break;
+    }
+    const lv_font_t *tf = clock_font(big, W - 2 * m);
+    apply_clock(tf);
     for (auto *l : {base.temp, base.humidity}) onx_render::style_text_font(l, vf, 0);
-    const int weather_h = std::max(weather_icon, line(vf) + line(fonts.small)) +
-                          (today_text.empty() ? 0 : S(6) + line(fonts.small));
-    // Forecast: days, icons, highs and lows; icons drop first when space is short.
-    const int col_full = line(fonts.small) + S(30) + S(4) + line(fonts.body) + line(fonts.small);
-    const int col_compact = line(fonts.small) + line(fonts.body);  // High and low on one line.
-    const int n = std::min<int>(ahead.size(), W >= S(300) ? 5 : 4);
-    int top = S(34);
-    const int gap = S(10);
-    const int fixed = top + clock_h + gap + weather_h;
-    int fc_h = 0;
-    bool icons = false;
-    if (n > 0) {
-      if (bottom - fixed - gap >= col_full) { fc_h = col_full; icons = true; }
-      else if (bottom - fixed - gap >= col_compact) fc_h = col_compact;
+    // Free space becomes even gaps between the blocks (capped), the rest centres them.
+    const int blocks = 1 + show_weather + show_today + forecast_on;
+    const int content = needed() - (blocks - 1) * S(8);
+    const int free = std::max(0, avail - content);
+    const int gap = std::clamp(free / (blocks + 1), S(8), S(40));
+    int y = top0 + std::max(0, (free - gap * (blocks - 1)) / 2);
+    onx_panel_ui::place(base.time, LV_ALIGN_TOP_MID, 0, y);
+    onx_panel_ui::place(base.date, LV_ALIGN_TOP_MID, 0, y + line(tf) - line(tf) / 7);
+    y += clock_h(tf) + gap;
+    if (show_weather) {
+      const int wh = weather_h(vf);
+      for (auto *o : base.weather_icons) at(o, m, y + (wh - weather_icon) / 2);
+      const int vy = y + (wh - line(vf) - line(fonts.small)) / 2;
+      at(base.temp_icon, tx, vy + (line(vf) - S(16)) / 2);
+      at(base.temp, tx + S(20), vy);
+      at(condition, tx, vy + line(vf));
+      const int hw = text_width(lv_label_get_text(base.humidity), vf);
+      onx_panel_ui::place(base.humidity, LV_ALIGN_TOP_RIGHT, -m, vy);
+      onx_panel_ui::place(base.humidity_icon, LV_ALIGN_TOP_RIGHT, -m - hw - S(4), vy + (line(vf) - S(16)) / 2);
+      onx_panel_ui::place(humidity_caption, LV_ALIGN_TOP_RIGHT, -m, vy + line(vf));
+      show(humidity_caption, tx + text_width(lv_label_get_text(condition), fonts.small) + S(12) +
+                                 text_width("Humidity", fonts.small) <= W - m);
+      y += wh + gap;
     }
-    const int used = clock_h + gap + weather_h + (fc_h ? gap + fc_h : 0);
-    // Centre the whole block in the free space when there is room to spare.
-    top = std::max(top, top + (bottom - top - used) / 3);
-    onx_panel_ui::place(base.time, LV_ALIGN_TOP_MID, 0, top);
-    onx_panel_ui::place(base.date, LV_ALIGN_TOP_MID, 0, top + time_h + date_gap);
-    int y = top + clock_h + gap;
-    for (auto *o : base.weather_icons) at(o, m, y + (weather_h - (today_text.empty() ? 0 : S(6) + line(fonts.small)) - weather_icon) / 2);
-    const int vy = y + std::max(0, (weather_icon - line(vf) - line(fonts.small)) / 2);
-    at(base.temp_icon, tx, vy + (line(vf) - S(16)) / 2);
-    at(base.temp, tx + S(20), vy);
-    at(condition, tx, vy + line(vf));
-    const int hw = text_width(lv_label_get_text(base.humidity), vf);
-    onx_panel_ui::place(base.humidity, LV_ALIGN_TOP_RIGHT, -m, vy);
-    onx_panel_ui::place(base.humidity_icon, LV_ALIGN_TOP_RIGHT, -m - hw - S(4), vy + (line(vf) - S(16)) / 2);
-    onx_panel_ui::place(humidity_caption, LV_ALIGN_TOP_RIGHT, -m, vy + line(vf));
-    // The caption only when it clears the condition text.
-    show(humidity_caption, tx + text_width(lv_label_get_text(condition), fonts.small) + S(12) +
-                               text_width("Humidity", fonts.small) <= W - m);
-    show(today, !today_text.empty());
-    onx_panel_ui::place(today, LV_ALIGN_TOP_MID, 0, y + weather_h - line(fonts.small));
-    y += weather_h + gap;
-    show(forecast, fc_h > 0);
-    if (fc_h > 0) {
-      const int cw = (W - 2 * m) / n;
-      size(forecast, W - 2 * m, fc_h);
-      at(forecast, m, y);
-      for (int i = 0; i < int(columns.size()); ++i) {
-        auto &c = columns[i];
-        const bool on = i < n;
-        for (auto *o : {c.day, c.high, c.low}) { show(o, on); if (on) { width(o, cw); align_text(o, LV_TEXT_ALIGN_CENTER); } }
-        show(c.low, on && icons);
-        show(c.icon, on && icons);
-        if (!on) continue;
-        const Day &d = *ahead[i];
-        set_text(c.day, weekday(d.date));
-        set_text(c.high, icons ? degrees(d.high) : degrees(d.high) + " " + degrees(d.low));
-        set_text(c.low, degrees(d.low));
-        color(c.day, muted); color(c.high, fg); color(c.low, muted);
-        int cy = 0;
-        at(c.day, i * cw, cy); cy += line(fonts.small);
-        if (icons) {
-          const void *src = condition_image ? condition_image(d.condition) : nullptr;
-          if (lv_image_get_src(c.icon) != src) lv_image_set_src(c.icon, src);
-          size(c.icon, S(30), S(30));
-          at(c.icon, i * cw + (cw - S(30)) / 2, cy + S(2));
-          cy += S(34);
-        }
-        at(c.high, i * cw, cy); cy += line(fonts.body);
-        at(c.low, i * cw, cy);
-      }
+    if (show_today) {
+      onx_panel_ui::place(today, LV_ALIGN_TOP_MID, 0, y);
+      y += line(fonts.small) + gap;
     }
+    show(forecast, forecast_on);
+    if (forecast_on) draw_forecast_columns(m, y, W - 2 * m, days_max, mode);
     return;
   }
 
-  // ---- landscape: clock column on the left, weather column on the right
-  const int split = W * 58 / 100, rx = split + S(8), rw = W - rx - m;
-  const int bottom = player != nullptr ? H - m - card_h - S(10) : H - m;
-  const int clock_h = time_h + date_gap + line(date_font);
-  const int top = std::max(S(40), S(40) + (bottom - S(40) - clock_h) / 2);
-  const int time_w = text_width(lv_label_get_text(base.time), time_font);
+  // ---- landscape: clock (and media) on the left, a weather column on the right.
+  // With no weather parts the clock takes the whole width.
+  const int rx = split + S(8), rw = W - rx - m;
+  const lv_font_t *tf = clock_font(true, split - 2 * m);
+  apply_clock(tf);
+  for (auto *l : {base.temp, base.humidity}) onx_render::style_text_font(l, fonts.value, 0);
+  const int ch = clock_h(tf);
+  const int top = std::max(top0, top0 + (bottom - top0 - ch) / 2);
+  const int time_w = text_width(time_text, tf);
   const int cx = std::max(m, (split - time_w) / 2);
-  at(base.time, cx, top);
-  at(base.date, cx + S(4), top + time_h + date_gap);
-  int y = S(40);
-  for (auto *o : base.weather_icons) at(o, rx, y);
-  const int tx = rx + weather_icon + S(8);
-  at(base.temp_icon, tx, y + (line(fonts.value) - S(16)) / 2);
-  at(base.temp, tx + S(20), y);
-  at(condition, tx, y + line(fonts.value));
-  y += std::max(weather_icon, line(fonts.value) + line(fonts.small)) + S(8);
-  at(base.humidity_icon, rx, y + (line(fonts.value) - S(16)) / 2);
-  at(base.humidity, rx + S(20), y);
-  const int hw = text_width(lv_label_get_text(base.humidity), fonts.value);
-  at(humidity_caption, rx + S(26) + hw, y + line(fonts.value) - line(fonts.small) - S(2));
-  y += line(fonts.value) + S(4);
-  show(today, !today_text.empty());
-  at(today, rx, y);
-  width(today, rw);
-  if (lv_label_get_long_mode(today) != LV_LABEL_LONG_DOT) lv_label_set_long_mode(today, LV_LABEL_LONG_DOT);
-  if (!today_text.empty()) y += line(fonts.small) + S(10);
-  // Forecast rows: day, icon, high and low, as many as fit.
+  if (any_side) {
+    at(base.time, cx, top);
+    at(base.date, cx + S(4), top + line(tf) - line(tf) / 7);
+  } else {
+    onx_panel_ui::place(base.time, LV_ALIGN_TOP_MID, 0, top);
+    onx_panel_ui::place(base.date, LV_ALIGN_TOP_MID, 0, top + line(tf) - line(tf) / 7);
+  }
+  // Right column: measure, then spread the blocks over the height.
   const int rh = std::max(S(26), line(fonts.body) + S(4));
-  const int rows = std::min<int>({int(ahead.size()), int(columns.size()), std::max(0, (H - m - y) / rh)});
+  const int weather_block = show_weather ? std::max(weather_icon, line(fonts.value) + line(fonts.small)) + S(6) + line(fonts.value) : 0;
+  const int today_block = show_today ? line(fonts.small) : 0;
+  int fixed = weather_block + today_block;
+  const int rows = show_forecast ? std::min(days_max, std::max(0, (H - m - top0 - fixed - S(16)) / rh)) : 0;
+  const int blocks = (show_weather ? 1 : 0) + (show_today ? 1 : 0) + (rows > 0 ? 1 : 0);
+  const int content = fixed + rows * rh;
+  const int gap = blocks > 1 ? std::clamp((H - m - top0 - content) / (blocks + 1), S(8), S(28)) : 0;
+  int y = top0 + std::max(0, (H - m - top0 - content - gap * (blocks - 1)) / 2);
+  if (show_weather) {
+    for (auto *o : base.weather_icons) at(o, rx, y);
+    const int tx = rx + weather_icon + S(8);
+    at(base.temp_icon, tx, y + (line(fonts.value) - S(16)) / 2);
+    at(base.temp, tx + S(20), y);
+    at(condition, tx, y + line(fonts.value));
+    y += std::max(weather_icon, line(fonts.value) + line(fonts.small)) + S(6);
+    at(base.humidity_icon, rx, y + (line(fonts.value) - S(16)) / 2);
+    at(base.humidity, rx + S(20), y);
+    const int hw = text_width(lv_label_get_text(base.humidity), fonts.value);
+    at(humidity_caption, rx + S(26) + hw, y + line(fonts.value) - line(fonts.small) - S(2));
+    show(humidity_caption, rx + S(26) + hw + text_width("Humidity", fonts.small) <= W - m);
+    y += line(fonts.value) + gap;
+  }
+  if (show_today) {
+    at(today, rx, y);
+    width(today, rw);
+    if (lv_label_get_long_mode(today) != LV_LABEL_LONG_DOT) lv_label_set_long_mode(today, LV_LABEL_LONG_DOT);
+    y += line(fonts.small) + gap;
+  }
   show(forecast, rows > 0);
   if (rows > 0) {
     size(forecast, rw, rows * rh);
@@ -377,6 +448,7 @@ inline void update(lv_obj_t *page, int W, int H, const std::string &weather_stat
     for (auto *o : {c.day, c.icon, c.high, c.low}) show(o, on);
     if (!on) continue;
     const Day &d = *ahead[i];
+    for (auto *o : {c.day, c.high, c.low}) { width(o, LV_SIZE_CONTENT); align_text(o, LV_TEXT_ALIGN_LEFT); }
     set_text(c.day, weekday(d.date));
     set_text(c.high, degrees(d.high));
     set_text(c.low, degrees(d.low));

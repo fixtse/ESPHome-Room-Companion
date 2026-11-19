@@ -70,8 +70,11 @@ script:
           lv_obj_add_flag(id(normal_device_homeassistant_online_widget), LV_OBJ_FLAG_HIDDEN);
           lv_obj_add_flag(id(normal_device_homeassistant_offline_widget), LV_OBJ_FLAG_HIDDEN);
       - lambda: |-
+          #ifndef USE_ROOM_COMPANION
+          // The rectangular panels size the clock in onx_idle_clock.h.
           onx_render::style_text_font(id(standby_time_widget), onx_display_settings::datetime.hour_format == 1 && onx_display_settings::datetime.show_ampm ?
               id(fonts_MiSans_Medium_32)->get_lv_font() : id(fonts_MiSans_Bold_64)->get_lv_font(), 0);
+          #endif
       - lambda: |-
           auto now = id(ha_time).now();
           const bool ready = id(ha_time_ready) && now.is_valid();

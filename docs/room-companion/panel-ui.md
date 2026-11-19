@@ -120,6 +120,15 @@ clock sensors), today's high, low and chance of rain, a daily forecast (from
 is playing. Landscape puts the clock and media on the left and the weather and
 forecast in a right-hand column. Missing parts are hidden. Timers are not
 shown: the timer screen covers the clock while one runs.
+
+Choose what the clock shows in the configuration page under **Device settings →
+Clock & idle screen → Clock screen content**: a preset (*Time only*, *Time &
+weather*, *Weather & forecast*, *Everything*) or any mix of current weather,
+today's high/low/rain, daily forecast and playing media. The preview updates as
+you choose. The layout uses the room it has: with fewer items the clock switches
+to larger digits, the weather values and forecast icons get bigger, and the
+spacing grows; when space is short they shrink in steps before anything is
+dropped.
 - **Slideshow pictures**: picture addresses separated by spaces, commas or
   new lines (JPEG/PNG over HTTP, e.g. `http://homeassistant.local:8123/local/photos/1.jpg`).
   An address that returns a different picture each time (a camera snapshot or a

@@ -313,6 +313,7 @@ onx_config_web:
         onx_clock_sensors::load();
         root["clock_temperature"] = std::string(onx_clock_sensors::config.temperature);
         root["clock_humidity"] = std::string(onx_clock_sensors::config.humidity);
+        root["clock_layout"] = std::to_string(onx_clock_sensors::parts());
         root["notifications_cover_timers"] = onx_display_settings::behavior.cover_timers?"1":"0";
         root["idle_view"] = onx_display_settings::idle.media?"media":"clock";
         root["background_color"] = onx_display_settings::color_text(onx_display_settings::background());
@@ -334,6 +335,7 @@ onx_config_web:
           (!query.hold_cue.empty() && query.hold_cue!="0" && query.hold_cue!="1") ||
           (query.clock_temperature!="none" && !onx_clock_sensors::valid(query.clock_temperature)) ||
           (query.clock_humidity!="none" && !onx_clock_sensors::valid(query.clock_humidity)) ||
+          !onx_clock_sensors::valid_layout(query.clock_layout) ||
           (!query.notifications_cover_timers.empty() && query.notifications_cover_timers!="0" && query.notifications_cover_timers!="1") ||
           (!query.media_view.empty() && query.media_view!="classic" && query.media_view!="material") ||
           (!query.idle_view.empty() && query.idle_view!="clock" && query.idle_view!="media") ||
@@ -361,6 +363,8 @@ onx_config_web:
         return onx_entity_config::error("Could not persist appearance settings; retry");
       if (!onx_clock_sensors::save(id(api_server), query.clock_temperature, query.clock_humidity))
         return onx_entity_config::error("Could not save the clock sensors; retry");
+      if (!onx_clock_sensors::save_layout(query.clock_layout))
+        return onx_entity_config::error("Could not save the clock screen content; retry");
       if (!onx_entity_config::save_hold_cue(query.hold_cue))
         return onx_entity_config::error("Could not persist appearance settings; retry");
       // Panels apply a new orientation at boot (panel.yaml restarts after a change).
