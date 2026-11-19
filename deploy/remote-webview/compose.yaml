@@ -16,7 +16,7 @@ services:
     environment:
       TILE_SIZE: 32
       FULL_FRAME_TILE_COUNT: 1
-      FULL_FRAME_AREA_THRESHOLD: 0.5
+      FULL_FRAME_AREA_THRESHOLD: 0.8
       FULL_FRAME_EVERY: 50
       EVERY_NTH_FRAME: 1
       # SPI panels decode and push a full 320x480 frame in roughly 100 ms.

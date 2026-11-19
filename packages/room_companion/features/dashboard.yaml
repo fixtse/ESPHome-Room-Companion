@@ -22,11 +22,14 @@ remote_webview:
   touchscreen_id: panel_touch
   tile_size: 32
   full_frame_tile_count: 1
-  full_frame_area_threshold: 0.5
+  # Keep partial updates when scrolling changes most, but not all, of the view.
+  full_frame_area_threshold: 0.8
   full_frame_every: 50
   every_nth_frame: 1
-  # Lower bound between frames; at least one full-screen decode + SPI transfer.
+  # Pacing floor for small updates. Frame acknowledgements also let the
+  # server account for frames that take longer to decode and send to the LCD.
   min_frame_interval: ${stream_min_frame_interval}
+  stats_interval: 5s
   jpeg_quality: 80
   max_bytes_per_msg: 61440
   current_url_sensor:
