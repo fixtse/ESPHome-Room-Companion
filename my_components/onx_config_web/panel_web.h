@@ -1059,7 +1059,7 @@ static const char PANEL_JS[] = R"ONXPANEL(
   };
   const cardGeneric=(t,d,v)=>{
    const r=t.r,e=t.entity,domain=e.split('.')[0],pad=P(14),cs=P(44),tx=pad+cs+P(12),available=d.available!==false&&!!v;
-   const switchable=available&&['switch','input_boolean','automation','fan'].includes(domain),runnable=available&&['scene','script','button','input_button'].includes(domain),pv=num(d.state),hst=history(v);
+   const switchable=available&&['switch','input_boolean','automation','fan','siren'].includes(domain),runnable=available&&['scene','script','button','input_button'].includes(domain),pv=num(d.state),hst=history(v);
    if(available&&!switchable&&d.unit==='%'&&isFinite(pv)&&pv>=0&&pv<=100&&r.h<P(300)&&r.h>=P(110)){
     const tw=r.w-2*pad,nl=linesFor(t.name,F.title,tw,2);text(t.name,F.title,TEXT,r.x+pad,r.y+pad,tw,'left',nl);
     const top=pad+nl*F.title.lh+P(10),avail=r.h-pad-top,size=Math.max(P(48),Math.min(avail,Math.trunc(r.w*34/100))),aw=Math.max(P(8),Math.trunc(size/10)),cx=r.x+pad+size/2,cy=r.y+top+avail/2;

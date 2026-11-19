@@ -10,6 +10,12 @@ script:
               lv_obj_clear_flag(obj, LV_OBJ_FLAG_HIDDEN);
             }
           };
+          const bool wifi_connected = id(normal_wifi_connected);
+          const bool ha_connected = id(api_server)->is_connected_with_state_subscription();
+          set_hidden(id(standby_wifi_online_widget), !wifi_connected);
+          set_hidden(id(standby_wifi_offline_widget), wifi_connected);
+          set_hidden(id(standby_homeassistant_online_widget), !ha_connected);
+          set_hidden(id(standby_homeassistant_offline_widget), ha_connected);
           const std::string &state = id(standby_weather_state);
           const bool known =
               state == "clear-night" ||

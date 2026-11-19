@@ -658,7 +658,7 @@ script:
             } else if (domain == "script" || domain == "automation") {
               const auto service = domain == "script" ? "script.turn_on" : "automation.trigger";
               onx_panel_detail::request(entity, service, "", "on", "panel_run");
-            } else if (domain == "switch" || domain == "input_boolean" || domain == "light" || domain == "fan") {
+            } else if (domain == "switch" || domain == "input_boolean" || domain == "light" || domain == "fan" || domain == "siren") {
               const auto state = onx_controls::effective(*d, "state");
               onx_panel_detail::request(entity, domain + ".toggle", "", state == "on" ? "off" : "on", "panel_power");
             }

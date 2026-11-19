@@ -18,6 +18,7 @@ inline std::string actual(const EntityDetailState &d, const std::string &key) {
   if (key == "preset_mode") return d.preset;
   if (key == "fan_mode") return d.fan_mode;
   if (key == "swing_mode") return d.swing_mode;
+  if (key == "swing_horizontal_mode") return d.hswing_mode;
   if (key == "humidity") return d.humidity;
   if (key == "volume_level") return d.volume;
   if (key == "source") return d.source;
@@ -40,6 +41,7 @@ inline std::vector<std::string> settings(const EntityDetailState &d) {
       out.push_back("range"); out.push_back("target_temp_low"); out.push_back("target_temp_high");
     }
     list("preset_mode", d.presets, 16); list("fan_mode", d.fan_modes, 8); list("swing_mode", d.swing_modes, 32);
+    list("swing_horizontal_mode", d.hswing_modes, 512);
     if ((d.features & 4) && std::isfinite(detail_number(d.humidity))) out.push_back("humidity");
     if (out.empty()) out.push_back("state");
   } else if (has_prefix(d.entity_id, "fan.")) {
@@ -80,6 +82,7 @@ inline std::string choices(const EntityDetailState &d, const std::string &key) {
   if (key == "preset_mode") return d.presets;
   if (key == "fan_mode") return d.fan_modes;
   if (key == "swing_mode") return d.swing_modes;
+  if (key == "swing_horizontal_mode") return d.hswing_modes;
   if (key == "source") return d.sources;
   if (key == "direction") return "['forward', 'reverse']";
   if (key == "oscillating" || key == "is_volume_muted") return "['false', 'true']";

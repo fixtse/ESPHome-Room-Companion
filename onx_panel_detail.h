@@ -22,6 +22,8 @@
 #include <vector>
 #include "lvgl.h"
 #include "esphome/core/hal.h"
+#include "esphome/core/preferences.h"
+#include "esphome/core/helpers.h"
 #include "onx_render.h"
 #include "onx_panel_ui.h"
 #include "onx_display_settings.h"
@@ -128,7 +130,8 @@ inline std::vector<Changes> changes;
 // Scripts, scenes and buttons log their runs the same way: a script turning
 // on, or a scene/button's state (its last-activated time) changing.
 inline bool runnable_entity(const std::string &e) {
-  return has_prefix(e, "script.") || has_prefix(e, "scene.") || has_prefix(e, "button.") || has_prefix(e, "input_button.");
+  return has_prefix(e, "script.") || has_prefix(e, "scene.") || has_prefix(e, "button.") || has_prefix(e, "input_button.") ||
+         has_prefix(e, "event.");
 }
 inline void track(time_t now) {
   if (now < 1577836800) return;
@@ -149,6 +152,11 @@ inline void track(time_t now) {
       time_t stamp = 0;
       if (custom_logic_entity_sub::parse_ha_datetime_epoch(d.state, &stamp) && stamp <= now && stamp > now - 3600) at = stamp;
     }
+    if (has_prefix(d.entity_id, "event.")) {
+      time_t stamp = 0;
+      if (custom_logic_entity_sub::parse_ha_datetime_epoch(d.state, &stamp) && stamp <= now) at = stamp;
+      it->items.insert(it->items.begin(), {d.event_type.empty() ? std::string("event") : d.event_type, at});
+    } else
     it->items.insert(it->items.begin(), {d.state, at});
     if (it->items.size() > (runs ? 16U : 5U)) it->items.pop_back();
   }
@@ -668,6 +676,8 @@ __attribute__((noinline)) inline void build_climate(const Layout &l, const std::
   struct Option { const char *key, *name, *service; std::string list, value; uint32_t bit; };
   const Option options[] = {{"preset_mode", "Preset", "climate.set_preset_mode", d.presets, effective(d, "preset_mode"), 16},
                             {"swing_mode", "Swing", "climate.set_swing_mode", d.swing_modes, effective(d, "swing_mode"), 32},
+                            {"swing_horizontal_mode", "Horizontal swing", "climate.set_swing_horizontal_mode", d.hswing_modes,
+                             effective(d, "swing_horizontal_mode"), 512},
                             {"fan_mode", "Fan", "climate.set_fan_mode", d.fan_modes, effective(d, "fan_mode"), 8}};
   const auto available = [&d](const Option &o) {
     return (d.features & o.bit) && !onx_control::options(o.list).empty();
@@ -816,6 +826,102 @@ __attribute__((noinline)) inline void build_cover(const Layout &l, const std::st
     button(root, l.ctl.x + i * (bw + gap), l.ctl.y, bw, bh, P(14), hot ? strong() : CONTROL(), b.caption, fonts.body, TEXT(),
            [e, b]() { request(e, b.service, "", "", "panel_cover"); });
   }
+}
+
+// Siren: power plus the turn_on options Home Assistant advertises through
+// supported_features (TONES 4, VOLUME_SET 8, DURATION 16). The choices stay on
+// the panel and are sent with the next turn_on.
+struct SirenChoice { std::string entity, tone; int volume{-1}, duration{0}; };
+inline std::vector<SirenChoice> siren_choices;
+// Each siren's choices persist in flash under a key derived from its entity id.
+struct SirenStored { char tone[40]; int16_t volume; int16_t duration; };
+inline esphome::ESPPreferenceObject siren_pref(const std::string &e) {
+  return esphome::global_preferences->make_preference<SirenStored>(esphome::fnv1_hash("onx.siren.v1." + e));
+}
+inline SirenChoice &siren_choice(const std::string &e) {
+  for (auto &c : siren_choices) if (c.entity == e) return c;
+  if (siren_choices.size() >= 8) siren_choices.erase(siren_choices.begin());
+  SirenChoice c{e};
+  SirenStored st{};
+  auto pref = siren_pref(e);
+  if (pref.load(&st)) {
+    st.tone[sizeof(st.tone) - 1] = 0;
+    c.tone = st.tone; c.volume = std::clamp<int>(st.volume, -1, 100); c.duration = std::clamp<int>(st.duration, 0, 300);
+  }
+  siren_choices.push_back(std::move(c));
+  return siren_choices.back();
+}
+inline void siren_save(const SirenChoice &c) {
+  SirenStored st{};
+  snprintf(st.tone, sizeof(st.tone), "%s", c.tone.c_str());
+  st.volume = c.volume; st.duration = c.duration;
+  auto pref = siren_pref(c.entity);
+  pref.save(&st);
+}
+inline void siren_turn_on(const std::string &e, uint32_t features) {
+  const auto &c = siren_choice(e);
+  std::vector<onx_control::Value> values{{"panel_power", "", "on"}};
+  // Options are not reported back as state; mark them confirmed up front.
+  if ((features & 4) && !c.tone.empty()) values.push_back({"siren_tone", "tone", c.tone, true});
+  if ((features & 8) && c.volume >= 0) values.push_back({"siren_volume", "volume_level", fmt(c.volume / 100.0f, 2), true});
+  if ((features & 16) && c.duration > 0) values.push_back({"siren_duration", "duration", std::to_string(c.duration), true});
+  custom_logic_entity_sub::select_control_entity(e);
+  custom_logic_entity_sub::request_control(e, "siren.turn_on", std::move(values));
+}
+__attribute__((noinline)) inline void build_siren(const Layout &l, const std::string &e, const EntityDetailState &d, const std::string &title) {
+  const bool on = d.state == "on";
+  const uint32_t f = d.features;
+  header(l.head, title, on ? "Sounding" : "Off");
+  const int rows = ((f & 4) && !onx_control::options(d.tones).empty()) + bool(f & 8) + bool(f & 16);
+  const int size = std::min({P(150), l.vis.w, l.vis.h - line(fonts.big) - P(16)});
+  const int cx = l.vis.x + l.vis.w / 2, cy = l.vis.y + (l.vis.h - line(fonts.big) - P(12)) / 2;
+  circle(root, cx, cy, size, on ? strong() : CONTROL(), LV_SYMBOL_POWER, on ? TEXT() : SOFT_TEXT(), [e, on, f]() {
+    if (on) request(e, "siren.turn_off", "", "off", "panel_power");
+    else siren_turn_on(e, f);
+  });
+  text(root, on ? "Sounding" : "Off", fonts.big, TEXT(), l.vis.x, cy + size / 2 + P(10), l.vis.w, LV_TEXT_ALIGN_CENTER);
+  if (!rows) return;
+  auto &c = siren_choice(e);
+  const int gap = P(8), bh = std::min(P(48), (l.ctl.h - gap * (rows - 1)) / rows), sw = P(56);
+  int y = wide() ? l.ctl.y : std::max(l.ctl.y, cy + size / 2 + P(16) + line(fonts.big));
+  auto stepper = [&](const std::string &caption, std::function<void(int)> step) {
+    button(root, l.ctl.x, y, sw, bh, P(14), CONTROL(), "-", fonts.body, TEXT(), [step]() { step(-1); });
+    lv_obj_t *mid = row(root, {l.ctl.x + sw + gap, y, l.ctl.w - 2 * (sw + gap), bh}, caption, "");
+    lv_obj_set_style_bg_opa(mid, LV_OPA_TRANSP, 0);
+    button(root, l.ctl.x + l.ctl.w - sw, y, sw, bh, P(14), CONTROL(), "+", fonts.body, TEXT(), [step]() { step(1); });
+    y += bh + gap;
+  };
+  const auto tones = onx_control::options(d.tones);
+  if ((f & 4) && !tones.empty()) {
+    button(root, l.ctl.x, y, l.ctl.w, bh, P(14), CONTROL(), "Tone: " + (c.tone.empty() ? std::string("Default") : label(c.tone)),
+           fonts.body, TEXT(), [e, tones]() {
+             auto &s = siren_choice(e);
+             auto it = std::find(tones.begin(), tones.end(), s.tone);
+             s.tone = it == tones.end() ? tones.front() : (it + 1 == tones.end() ? std::string() : *(it + 1));
+             siren_save(s);
+             built_signature.clear();
+           });
+    y += bh + gap;
+  }
+  if (f & 8)
+    stepper("Volume " + (c.volume < 0 ? std::string("default") : std::to_string(c.volume) + "%"), [e](int dir) {
+      auto &s = siren_choice(e);
+      s.volume = s.volume < 0 ? (dir > 0 ? 50 : -1) : s.volume + dir * 10;
+      if (s.volume > 100) s.volume = 100;
+      if (s.volume < 0) s.volume = -1;
+      siren_save(s);
+      built_signature.clear();
+    });
+  if (f & 16)
+    stepper("Duration " + (c.duration <= 0 ? std::string("default") : std::to_string(c.duration) + " s"), [e](int dir) {
+      auto &s = siren_choice(e);
+      static const int steps[] = {0, 5, 10, 30, 60, 120, 300};
+      int i = 0;
+      while (i < 6 && steps[i] < s.duration) ++i;
+      s.duration = steps[std::clamp(i + dir, 0, 6)];
+      siren_save(s);
+      built_signature.clear();
+    });
 }
 
 __attribute__((noinline)) inline void build_toggle(const Layout &l, const std::string &e, const EntityDetailState &d, const std::string &title) {
@@ -1390,11 +1496,22 @@ __attribute__((noinline)) inline void build_sensor(const Layout &l, const std::s
 inline std::string binary_text(const std::string &kind, const std::string &state) {
   const bool on = state == "on";
   if (state != "on" && state != "off") return label(state);
-  if (kind == "door" || kind == "window" || kind == "opening" || kind == "garage_door") return on ? "Open" : "Closed";
-  if (kind == "motion" || kind == "occupancy" || kind == "presence") return on ? "Detected" : "Clear";
-  if (kind == "moisture") return on ? "Wet" : "Dry";
-  if (kind == "lock") return on ? "Unlocked" : "Locked";
-  if (kind == "connectivity") return on ? "Connected" : "Disconnected";
+  // Home Assistant binary_sensor device-class wording.
+  struct Pair { const char *kind, *on, *off; };
+  static const Pair pairs[] = {
+      {"battery", "Low", "Normal"}, {"battery_charging", "Charging", "Not charging"},
+      {"co", "Detected", "Clear"}, {"cold", "Cold", "Normal"}, {"connectivity", "Connected", "Disconnected"},
+      {"door", "Open", "Closed"}, {"garage_door", "Open", "Closed"}, {"opening", "Open", "Closed"},
+      {"window", "Open", "Closed"}, {"gas", "Detected", "Clear"}, {"glass_break", "Detected", "Clear"},
+      {"heat", "Hot", "Normal"}, {"light", "Light detected", "No light"}, {"lock", "Unlocked", "Locked"},
+      {"moisture", "Wet", "Dry"}, {"motion", "Detected", "Clear"}, {"moving", "Moving", "Not moving"},
+      {"occupancy", "Detected", "Clear"}, {"plug", "Plugged in", "Unplugged"}, {"power", "Power", "No power"},
+      {"presence", "Home", "Away"}, {"problem", "Problem", "OK"}, {"running", "Running", "Not running"},
+      {"safety", "Unsafe", "Safe"}, {"smoke", "Detected", "Clear"}, {"sound", "Detected", "Clear"},
+      {"tamper", "Tampering", "Clear"}, {"update", "Update available", "Up-to-date"},
+      {"vibration", "Detected", "Clear"}};
+  for (const auto &p : pairs)
+    if (kind == p.kind) return on ? p.on : p.off;
   return on ? "On" : "Off";
 }
 __attribute__((noinline)) inline void build_binary(const Layout &l, const std::string &e, const EntityDetailState &d, const std::string &title) {
@@ -1421,6 +1538,35 @@ __attribute__((noinline)) inline void build_binary(const Layout &l, const std::s
   for (const auto &item : c->items) {
     if (y + rh > l.ctl.bottom() + P(4)) break;
     lv_obj_t *r = row(root, {l.ctl.x, y, l.ctl.w, rh}, binary_text(kind, item.state), clock(item.at));
+    lv_obj_set_style_bg_opa(r, LV_OPA_TRANSP, 0);
+    y += rh + gap;
+  }
+}
+
+__attribute__((noinline)) inline void build_event(const Layout &l, const std::string &e, const EntityDetailState &d, const std::string &title) {
+  const auto kind = onx_detail_view::sensor_class(e);
+  const bool never = d.state.empty() || d.state == "unknown";
+  header(l.head, title, kind == "doorbell" ? "Doorbell" : kind == "motion" ? "Motion events" : kind == "button" ? "Remote button" : "Events");
+  const int size = std::min({P(170), l.vis.w, l.vis.h - P(40)});
+  const int cx = l.vis.x + l.vis.w / 2, cy = l.vis.y + (l.vis.h - P(30)) / 2;
+  lv_obj_t *disc = box(root, cx - size / 2, cy - size / 2, size, size, never ? CARD() : soft(), LV_RADIUS_CIRCLE);
+  lv_obj_set_style_border_width(disc, P(3), 0);
+  lv_obj_set_style_border_color(disc, lv_color_hex(never ? CONTROL() : accent()), 0);
+  lv_obj_t *state = text(disc, never ? "No events" : label(d.event_type.empty() ? "event" : d.event_type), fonts.body,
+                         never ? TEXT() : accent(), 0, 0, size - P(16), LV_TEXT_ALIGN_CENTER, 2);
+  lv_obj_center(state);
+  if (!never)
+    text(root, onx_detail_view::event_ago(d.state), fonts.small, MUTED(), l.vis.x, cy + size / 2 + P(10), l.vis.w, LV_TEXT_ALIGN_CENTER);
+  const auto *c = changes_for(e);
+  if (!c || c->items.empty()) {
+    text(root, "New events appear here while the panel is running", fonts.small, MUTED(), l.ctl.x, l.ctl.y, l.ctl.w);
+    return;
+  }
+  const int rh = P(36), gap = P(6);
+  int y = l.ctl.y;
+  for (const auto &item : c->items) {
+    if (y + rh > l.ctl.bottom() + P(4)) break;
+    lv_obj_t *r = row(root, {l.ctl.x, y, l.ctl.w, rh}, label(item.state), clock(item.at));
     lv_obj_set_style_bg_opa(r, LV_OPA_TRANSP, 0);
     y += rh + gap;
   }
@@ -2129,7 +2275,7 @@ inline void card_generic(lv_obj_t *c, const Tile &t, const EntityDetailState *d)
   const int pad = P(14), cs = P(44), tx = pad + cs + P(12);
   const bool available = d != nullptr && d->available;
   const bool switchable = available && (domain == "switch" || domain == "input_boolean" || domain == "automation" ||
-                                        domain == "fan");
+                                        domain == "fan" || domain == "siren");
   const bool runnable = available && (domain == "scene" || domain == "script" || domain == "button" || domain == "input_button");
   // Percentages in a short card: a ring with the value, the name beside it and
   // a sparkline below the name.
@@ -2496,7 +2642,7 @@ inline bool supports(const std::string &e) {
   if (custom_logic_entity_sub::is_timer_detail(e)) return true;
   for (const char *p : {"light.", "climate.", "fan.", "cover.", "switch.", "input_boolean.", "automation.", "scene.",
                         "script.", "button.", "input_button.", "sensor.", "binary_sensor.", "number.", "input_number.",
-                        "select.", "input_select.", "weather.", "media_player."})
+                        "select.", "input_select.", "weather.", "media_player.", "siren.", "event."})
     if (has_prefix(e, p)) return true;
   return false;
 }
@@ -2508,7 +2654,7 @@ inline std::string signature(const std::string &e, const EntityDetailState *d, c
   s += '|' + d->state + '|' + effective(*d, "state") + '|' + d->unit + '|' + d->current + '|' + effective(*d, "temperature") +
        '|' + d->low + '|' + d->high + '|' + d->modes + '|' + d->brightness + '|' + d->position + '|' +
        effective(*d, "percentage") + '|' + effective(*d, "oscillating") + '|' + effective(*d, "direction") + '|' +
-       effective(*d, "preset_mode") + '|' + effective(*d, "fan_mode") + '|' + effective(*d, "swing_mode") + '|' + d->presets +
+       effective(*d, "preset_mode") + '|' + effective(*d, "fan_mode") + '|' + effective(*d, "swing_mode") + '|' + effective(*d, "swing_horizontal_mode") + '|' + d->presets +
        '|' + d->options + '|' + d->humidity + '|' + d->apparent_temperature + '|' + d->wind_speed + '|' +
        std::to_string(d->features) + '|' + std::to_string(d->available) + '|' + std::to_string(d->received) + '|' +
        std::to_string(d->forecast_count) + '|' + std::to_string(d->forecast_pending) + '|' + d->timer_duration;
@@ -2735,6 +2881,8 @@ inline void render(lv_obj_t *parent, const std::string &e, const std::string &ti
   else if (has_prefix(e, "automation.") || has_prefix(e, "scene.") || has_prefix(e, "script.") || has_prefix(e, "button.") || has_prefix(e, "input_button."))
     build_action(l, e, *d, title);
   else if (has_prefix(e, "binary_sensor.")) build_binary(l, e, *d, title);
+  else if (has_prefix(e, "event.")) build_event(l, e, *d, title);
+  else if (has_prefix(e, "siren.")) build_siren(l, e, *d, title);
   else if (has_prefix(e, "sensor.")) build_sensor(l, e, *d, title, v);
   else if (has_prefix(e, "number.") || has_prefix(e, "input_number.")) build_number(l, e, *d, title);
   else if (has_prefix(e, "select.") || has_prefix(e, "input_select.")) build_select(l, e, *d, title);
