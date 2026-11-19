@@ -10,13 +10,14 @@
 # page. See docs/room-companion/dashboard-stream.md.
 services:
   remote-webview:
-    image: strangev/remote-webview-server:1.3.0
+    build: .
+    image: room-companion/remote-webview-server:1.3.0-ack1
     container_name: remote-webview
     restart: unless-stopped
     environment:
       TILE_SIZE: 32
       FULL_FRAME_TILE_COUNT: 1
-      FULL_FRAME_AREA_THRESHOLD: 0.8
+      FULL_FRAME_AREA_THRESHOLD: 0.5
       FULL_FRAME_EVERY: 50
       EVERY_NTH_FRAME: 1
       # SPI panels decode and push a full 320x480 frame in roughly 100 ms.

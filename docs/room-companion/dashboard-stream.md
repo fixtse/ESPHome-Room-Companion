@@ -15,7 +15,9 @@ cd deploy/remote-webview
 docker compose up -d
 ```
 
-`compose.yaml` pins `strangev/remote-webview-server:1.3.0`, keeps the browser
+`compose.yaml` builds on `strangev/remote-webview-server:1.3.0` and limits each
+acknowledging panel to one outstanding frame, with a three-second recovery
+timeout. It keeps the browser
 profile in `./pw-data`, and turns on reduced motion, which makes SPI panels feel
 much smoother. One server can drive several panels at their own sizes.
 
