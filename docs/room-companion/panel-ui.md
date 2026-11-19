@@ -113,6 +113,16 @@ Home Assistant entities (device configuration):
   random-photo service) also works on its own.
 - **Slideshow interval**: seconds per picture (5–600).
 
+For photos hosted by Home Assistant, put JPEG or PNG files in
+`/config/www/room-companion/` and enter their full URLs under **Slideshow
+pictures**, for example `http://192.168.1.10:8123/local/room-companion/01.jpg`.
+Use the Home Assistant address reachable from the panel. Open each URL in a
+private browser window to check that it serves the image without signing in.
+Home Assistant serves `/local/` files without authentication. If you just
+created the `www` directory, restart Home Assistant once. The picture list
+allows up to 255 characters, so use short filenames for multiple photos.
+Select **Photo slideshow** and wait for the standby timeout.
+
 *Dashboard* opens the stream when the panel goes idle; it needs a configured
 server and is limited by the stream's frame rate.
 

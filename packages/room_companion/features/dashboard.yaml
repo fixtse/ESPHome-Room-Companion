@@ -47,6 +47,7 @@ text:
   - platform: template
     id: dashboard_url_text
     name: Dashboard address
+    entity_category: config
     icon: mdi:web
     mode: text
     max_length: 255

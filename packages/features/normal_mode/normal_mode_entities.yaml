@@ -162,6 +162,7 @@ select:
   - platform: template
     id: preset_select
     name: Preset
+    entity_category: config
     icon: mdi:view-carousel-outline
     options:
       - Custom
@@ -478,6 +479,7 @@ switch:
   - platform: gpio
     id: normal_gpio_io10
     name: "HMI IO10"
+    entity_category: config
     pin: GPIO10
     restore_mode: RESTORE_DEFAULT_OFF
     on_turn_on:
@@ -503,6 +505,7 @@ switch:
   - platform: gpio
     id: normal_gpio_io11
     name: "HMI IO11"
+    entity_category: config
     pin: GPIO11
     restore_mode: RESTORE_DEFAULT_OFF
     on_turn_on:
@@ -528,6 +531,7 @@ switch:
   - platform: gpio
     id: normal_gpio_io17
     name: "HMI IO17"
+    entity_category: config
     pin: GPIO17
     restore_mode: RESTORE_DEFAULT_OFF
     on_turn_on:
@@ -553,6 +557,7 @@ switch:
   - platform: gpio
     id: normal_gpio_io18
     name: "HMI IO18"
+    entity_category: config
     pin: GPIO18
     restore_mode: RESTORE_DEFAULT_OFF
     on_turn_on:

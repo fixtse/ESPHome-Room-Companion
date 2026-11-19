@@ -25,6 +25,7 @@ micro_wake_word:
 switch:
   - platform: template
     name: Wake word enabled
+    entity_category: config
     id: wake_word_enabled
     icon: mdi:microphone-message
     optimistic: true
