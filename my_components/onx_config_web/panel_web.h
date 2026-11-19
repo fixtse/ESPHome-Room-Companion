@@ -246,10 +246,13 @@ static const char PANEL_JS[] = R"ONXPANEL(
   let svg=grid.querySelector('svg.page-live');
   if(!svg){svg=document.createElementNS('http://www.w3.org/2000/svg','svg');svg.classList.add('page-live');svg.setAttribute('aria-hidden','true');grid.prepend(svg)}
   const e=lead(p),a=app(),views=a?.views?.()||[];
-  grid.classList.toggle('live',!!e);
-  if(!e){svg.replaceChildren();return}
+  // Hide the plain cell text only while live data is actually drawn; until
+  // then (or if it is unavailable) the cells keep showing their entity.
+  const view=e?views.find(v=>v.entity===e):null;
+  grid.classList.toggle('live',!!view);
+  if(!view){svg.replaceChildren();return}
   const slot=(a?.slots?.()||[]).find(s=>s.entity===e)||{entity:e,name:''};
-  globalThis.ONX_PANEL_PREVIEW(svg,slot,views.find(v=>v.entity===e),views,'main',a?.settings?.()||lastSettings);
+  globalThis.ONX_PANEL_PREVIEW(svg,slot,view,views,'main',a?.settings?.()||lastSettings);
  }
  function pageButton(p,i,savedList){
   const b=el('button','page-item');b.type='button';const meta=(isGrid(p)?p.rows+' × '+p.columns+' grid':LAYOUTS[p.layout].label)+' · '+p.entities.filter(Boolean).length+'/'+p.entities.length;
