@@ -41,6 +41,8 @@ onx_touch_input:
            (id(normal_device_detail_active) && id(normal_device_detail_kind) == NORMAL_DEVICE_DETAIL_KIND_SETTINGS);
   # Media closes with either horizontal swipe; other details use edge-back.
   edge_back: |-
+    if (id(room_panel)->dashboard_open() && !onx_notification_ui::panel_open && onx_notification_ui::detail_id == 0)
+      return true;
     const auto entity = id(ui_presenter)->get_normal_device_entity_id(id(normal_device_detail_index));
     return id(normal_device_detail_active) && entity.rfind("media_player.", 0) != 0 && id(room_panel)->native_ui_has_touch();
   swipe_left_back: |-
@@ -84,7 +86,11 @@ script:
           if (onx_notification_ui::panel_open) { onx_notification_ui::close_panel(); return; }
           if (onx_panel_detail::timers.overlay) { id(timer_close).execute(); return; }
           if (!lv_obj_has_flag(id(assist_overlay), LV_OBJ_FLAG_HIDDEN)) { id(assist_stop).execute(); return; }
-          if (id(room_panel)->dashboard_open()) { id(room_panel)->close_dashboard(); return; }
+          if (id(room_panel)->dashboard_open()) {
+            if (onx_notification::center.toast_visible(millis())) onx_notification::center.hide_toast();
+            else id(room_panel)->close_dashboard();
+            return;
+          }
           if (!id(normal_device_detail_active)) return;
           // A timer popup returns to the control that was selected before it.
           if (onx_timer::popup.visible) {

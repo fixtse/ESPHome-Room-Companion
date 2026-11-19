@@ -133,9 +133,6 @@ class ILI9XXXDisplay : public display::DisplayBuffer,
 #endif
 #if defined(USE_ESP32) && defined(USE_LVGL)
   void enable_lvgl_pipeline(lv_display_t *display);
-  bool has_pixel_pipeline() const { return this->pixel_worker_handle_ != nullptr; }
-  void submit_rgb565(int x, int y, int width, int height, const uint8_t *pixels);
-  void wait_for_pixels() { this->wait_for_pixel_transfer_(); }
 #endif
 
   display::DisplayType get_display_type() override { return display::DisplayType::DISPLAY_TYPE_COLOR; }

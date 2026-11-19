@@ -62,7 +62,7 @@ panel is awake and there is no overlay:
 | Setup | Wi-Fi not connected |
 | Assist | Pipeline listening; cleared 6 s after it ends |
 | Notice | `show_message`; cleared on dismiss/timeout |
-| Menu | Horizontal swipe returns from the dashboard to native controls |
+| Menu | Swipe from the left edge to return from the dashboard to native controls |
 
 Handing over pauses LVGL (`resume_on_input: false`) before the stream is
 activated; taking the panel back deactivates the stream, waits for any in-flight

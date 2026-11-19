@@ -133,15 +133,10 @@ void ILI9XXXDisplay::enable_lvgl_pipeline(lv_display_t *display) {
 
 void ILI9XXXDisplay::flush_pixels_(lv_display_t *display, const lv_area_t *area, uint8_t *pixels) {
   auto *lcd = static_cast<ILI9XXXDisplay *>(lv_display_get_driver_data(display));
-  lcd->submit_rgb565(area->x1, area->y1, lv_area_get_width(area), lv_area_get_height(area), pixels);
-}
-
-void ILI9XXXDisplay::submit_rgb565(int x, int y, int width, int height, const uint8_t *pixels) {
-  this->wait_for_pixel_transfer_();
-  this->transfer_area_ = {x, y, x + width - 1, y + height - 1};
-  this->transfer_pixels_ = pixels;
-  xEventGroupClearBits(this->transfer_done_, TRANSFER_IDLE);
-  xTaskNotifyGive(this->pixel_worker_handle_);
+  lcd->transfer_area_ = *area;
+  lcd->transfer_pixels_ = pixels;
+  xEventGroupClearBits(lcd->transfer_done_, TRANSFER_IDLE);
+  xTaskNotifyGive(lcd->pixel_worker_handle_);
 }
 
 void ILI9XXXDisplay::wait_for_flush_(lv_display_t *display) {

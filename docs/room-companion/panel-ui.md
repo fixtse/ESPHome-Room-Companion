@@ -22,7 +22,7 @@ second carousel renderer.
 | Detail view | Swipe right **starting at the left edge** | Back |
 | Anywhere in the native UI | Swipe down **from the top edge** | Open the notification centre (the only way on detail screens) |
 | Notification centre | Swipe up, or tap the handle at the bottom | Close it |
-| Dashboard stream | Swipe left / right | Back to the native UI |
+| Dashboard stream | Swipe from the left edge | Back to the native UI |
 
 ## Header, notifications and dashboard
 

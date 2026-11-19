@@ -199,7 +199,6 @@ void RoomPanel::open_dashboard() {
     return;
   }
   dashboard_open_ = true;
-  if (!stream_->is_connected()) message_trigger_.trigger("Connecting to the dashboard server...", true);
   publish_();
   update_owner_(millis());
 }

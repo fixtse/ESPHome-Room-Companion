@@ -509,13 +509,6 @@ script:
     then:
       - lambda: |-
           id(lcd_display)->enable_lvgl_pipeline(id(lvgl_ui)->get_disp());
-          if (id(lcd_display)->has_pixel_pipeline()) {
-            id(dashboard_stream)->set_pixel_pipeline(
-                [](int x, int y, int width, int height, const uint8_t *pixels) {
-                  id(lcd_display)->submit_rgb565(x, y, width, height, pixels);
-                },
-                []() { id(lcd_display)->wait_for_pixels(); });
-          }
           onx_panel_pages::setup(id(fonts_MiSans_Medium_14)->get_lv_font(),
               id(fonts_MiSans_Medium_24)->get_lv_font(), id(fonts_MiSans_Medium_32)->get_lv_font());
           onx_panel_detail::unbind_icon = [](lv_obj_t *widget) { id(entity_icon_downloader)->unbind(widget); };

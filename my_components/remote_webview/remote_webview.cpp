@@ -22,7 +22,6 @@ namespace esphome {
 namespace remote_webview {
 
 static const char *const TAG = "Remote_WebView";
-static constexpr size_t DRAW_BLOCK_BYTES = 16 * 1024;
 RemoteWebView *RemoteWebView::self_ = nullptr;
 
 //Below two functions are part of automation template testing
@@ -221,13 +220,8 @@ void RemoteWebView::set_active(bool active) {
     touch_disabled_ = true;
     // Finish the last SPI transfer before LVGL can take the display back.
     if (draw_mtx_ && xSemaphoreTake(draw_mtx_, portMAX_DELAY) == pdTRUE) {
-      drain_draw_();
       snapshot_open_ = false;
       snapshot_synced_ = false;
-      heap_caps_free(draw_blocks_);
-      draw_blocks_ = nullptr;
-      draw_blocks_attempted_ = false;
-      next_draw_block_ = 0;
       xSemaphoreGive(draw_mtx_);
     }
     return;
@@ -732,10 +726,7 @@ void RemoteWebView::process_frame_packet_(const uint8_t *data, size_t len)
 
   if (fi.flags & proto::kFlafLastOfFrame) {
     if (draw_mtx_ && xSemaphoreTake(draw_mtx_, portMAX_DELAY) == pdTRUE) {
-      const int64_t start = esp_timer_get_time();
-      drain_draw_();
       finish_snapshot_(frame_complete_ && (frame_is_full_ || !screen_out_of_sync_()));
-      ft_draw_us_ += static_cast<uint32_t>(esp_timer_get_time() - start);
       xSemaphoreGive(draw_mtx_);
     }
     // "Done with this frame" (drawn or not), sent first so the server can pace the next one.
@@ -933,12 +924,6 @@ int RemoteWebView::jpeg_draw_cb_(JPEGDRAW *p) {
   return 1;
 }
 
-void RemoteWebView::drain_draw_() {
-  if (!draw_pending_) return;
-  wait_pixels_();
-  draw_pending_ = false;
-}
-
 void RemoteWebView::draw_rgb565_clipped_(int x, int y, int w, int h, int stride, const uint8_t *pixels,
                                          int clip_x1, int clip_y1) {
   int x_off = 0, y_off = 0;
@@ -951,39 +936,14 @@ void RemoteWebView::draw_rgb565_clipped_(int x, int y, int w, int h, int stride,
   if (!active_.load() || !draw_mtx_ || xSemaphoreTake(draw_mtx_, pdMS_TO_TICKS(100)) != pdTRUE) return;
   if (!active_.load()) { xSemaphoreGive(draw_mtx_); return; }
   const int64_t t0 = esp_timer_get_time();
-  const size_t row_bytes = static_cast<size_t>(w) * 2;
   const size_t stride_bytes = static_cast<size_t>(stride) * 2;
   const auto *src = pixels + y_off * stride_bytes + x_off * 2;
   copy_snapshot_pixels_(x, y, w, h, src, stride_bytes);
-  const bool can_stage = submit_pixels_ && wait_pixels_ && rgb565_big_endian_ &&
-                         row_bytes * h <= DRAW_BLOCK_BYTES;
-  if (can_stage && !draw_blocks_attempted_) {
-    draw_blocks_attempted_ = true;
-    draw_blocks_ = static_cast<uint8_t *>(
-        heap_caps_aligned_alloc(32, 2 * DRAW_BLOCK_BYTES, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT));
-  }
-  if (can_stage && draw_blocks_) {
-    // JPEGDEC reuses its callback buffer. The alternate staging block lets us
-    // copy these pixels while the previous block is still on the wire.
-    auto *block = draw_blocks_ + next_draw_block_ * DRAW_BLOCK_BYTES;
-    if (stride_bytes == row_bytes) {
-      std::memcpy(block, src, row_bytes * h);
-    } else {
-      for (int row = 0; row < h; ++row)
-        std::memcpy(block + row * row_bytes, src + row * stride_bytes, row_bytes);
-    }
-    drain_draw_();
-    submit_pixels_(x, y, w, h, block);
-    draw_pending_ = true;
-    next_draw_block_ ^= 1;
-  } else {
-    drain_draw_();
-    display_->draw_pixels_at(x, y, w, h, pixels,
-                             esphome::display::COLOR_ORDER_RGB,
-                             esphome::display::COLOR_BITNESS_565,
-                             rgb565_big_endian_,
-                             x_off, y_off, stride - x_off - w);
-  }
+  display_->draw_pixels_at(x, y, w, h, pixels,
+                           esphome::display::COLOR_ORDER_RGB,
+                           esphome::display::COLOR_BITNESS_565,
+                           rgb565_big_endian_,
+                           x_off, y_off, stride - x_off - w);
   xSemaphoreGive(draw_mtx_);
   ft_draw_us_ += (uint32_t)(esp_timer_get_time() - t0);
 }
