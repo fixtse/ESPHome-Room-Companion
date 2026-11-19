@@ -147,13 +147,14 @@ interval:
               id(show_normal_device_entry_page).execute(0);
             }
           }
-          const int index = detail ? id(normal_device_detail_index) : id(normal_device_selected_index);
-          const auto entity = index >= 0 && index < id(normal_device_count) ?
-              id(ui_presenter)->get_normal_device_entity_id(index) : std::string();
           const bool entity_detail = detail && (id(normal_device_detail_kind)==NORMAL_DEVICE_DETAIL_KIND_AUTOMATION ||
               id(normal_device_detail_kind)==NORMAL_DEVICE_DETAIL_KIND_LIGHT || id(normal_device_detail_kind)==NORMAL_DEVICE_DETAIL_KIND_SWITCH ||
               id(normal_device_detail_kind)==NORMAL_DEVICE_DETAIL_KIND_PLUG || id(normal_device_detail_kind)==NORMAL_DEVICE_DETAIL_KIND_CURTAIN);
           const bool standby = id(ui_presenter)->is_standby_active();
+          static bool was_standby = false;
+          const bool entered = standby && !was_standby;
+          const bool exited = !standby && was_standby;
+          was_standby = standby;
           // Load a fully populated clock before hiding the opaque card layer.
           // The periodic standby refresh remains responsible for later updates.
           if (standby && !id(screen_off_state) && !id(sleep_mode_state) &&
@@ -164,6 +165,13 @@ interval:
               !id(screen_off_state) && !id(sleep_mode_state) && id(room_panel)->native_ui_can_render() &&
               // Timer popups open the timer detail, drawn here like any other.
               !onx_notification::current.visible;
+          // Restore the dock and status icons in the same pass as the cards.
+          // The normal periodic refresh only runs once a second.
+          if (exited && normal && !detail && id(normal_page_index) == 0)
+            id(refresh_normal_device_page).execute();
+          const int index = detail ? id(normal_device_detail_index) : id(normal_device_selected_index);
+          const auto entity = index >= 0 && index < id(normal_device_count) ?
+              id(ui_presenter)->get_normal_device_entity_id(index) : std::string();
           // Media keeps its specialised artwork/transport view. Main pages and
           // generic details use the entire rectangle, without the round ring.
           if (normal && !entity.empty() && ((!detail && id(normal_page_index)==0) || entity_detail)) {
@@ -205,10 +213,7 @@ interval:
                                       id(normal_playlist_overlay), id(normal_automation_detail_action), id(normal_automation_detail_title)}, &lv_font_montserrat_28);
           }
           // Idle screen.
-          static bool was_standby = false;
           const auto mode = id(panel_idle_screen).active_index().value_or(0);
-          const bool entered = standby && !was_standby;
-          was_standby = standby;
           onx_panel_ui::update_idle_badge(onx_notification::center.items.size(),
               standby && mode == onx_panel_ui::IDLE_CLOCK && !id(screen_off_state) && !id(sleep_mode_state));
           if (entered && mode == onx_panel_ui::IDLE_DASHBOARD && id(room_panel)->stream_status() != "not configured")

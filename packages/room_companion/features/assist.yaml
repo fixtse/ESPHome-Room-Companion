@@ -104,12 +104,10 @@ voice_assistant:
         id: assist_pulse
         active: true
   on_stt_end:
-    - lvgl.label.update:
-        id: assist_transcript
+    - script.execute:
+        id: assist_add_bubble
         text: !lambda 'return onx_notification::plain_text(x, 384);'
-    - lambda: |-
-        if (x.empty()) lv_obj_add_flag(id(assist_transcript_bubble), LV_OBJ_FLAG_HIDDEN);
-        else lv_obj_remove_flag(id(assist_transcript_bubble), LV_OBJ_FLAG_HIDDEN);
+        user: true
     - lvgl.label.update:
         id: assist_status
         text: Thinking...
@@ -117,10 +115,10 @@ voice_assistant:
         id: assist_pulse
         active: false
   on_tts_start:
-    - lvgl.label.update:
-        id: assist_response
+    - script.execute:
+        id: assist_add_bubble
         text: !lambda 'return onx_notification::plain_text(x, 512);'
-    - lvgl.widget.show: assist_response_card
+        user: false
   on_idle:
     - script.execute:
         id: assist_pulse
@@ -291,14 +289,6 @@ script:
                 condition:
                   lambda: 'return id(assist_ready) && !id(microphone_muted).state;'
                 then:
-                  - lvgl.label.update:
-                      id: assist_transcript
-                      text: ""
-                  - lvgl.label.update:
-                      id: assist_response
-                      text: ""
-                  - lvgl.widget.hide: assist_response_card
-                  - lvgl.widget.hide: assist_transcript_bubble
                   - voice_assistant.start:
                 else:
                   - script.execute:
@@ -319,23 +309,55 @@ script:
           id(room_panel)->set_overlay(esphome::room_companion::OVERLAY_ASSIST, true);
           // Above the bottom dock and other top-layer widgets, in the accent colour.
           lv_obj_move_foreground(id(assist_overlay));
+          auto *overlay = id(assist_overlay);
+          auto *conversation = id(assist_conversation);
+          // A fresh session starts with an empty conversation; a continued
+          // one (follow-up question, tap to talk again) keeps its history.
+          if (lv_obj_has_flag(overlay, LV_OBJ_FLAG_HIDDEN)) lv_obj_clean(conversation);
+          // Landscape: microphone, status, hint and buttons in a column on the
+          // left, the conversation filling the right. Portrait: stacked, with
+          // the conversation between the status and the hint.
+          const bool landscape = onx_panel_ui::width > onx_panel_ui::height;
+          auto *side = id(assist_side);
+          if (landscape && lv_obj_get_parent(id(assist_hint)) != side) {
+            lv_obj_set_flex_flow(overlay, LV_FLEX_FLOW_ROW);
+            lv_obj_set_style_pad_column(overlay, onx_geom::S(12), 0);
+            lv_obj_set_size(side, onx_panel_ui::width * 40 / 100, LV_PCT(100));
+            lv_obj_set_style_pad_row(side, onx_geom::S(8), 0);
+            lv_obj_set_parent(id(assist_hint), side);
+            // A smaller microphone leaves room for the buttons below it.
+            for (auto *obj : {id(assist_mic_ring), id(assist_mic_ring_inner), id(assist_mic)}) {
+              const int size = lv_obj_get_style_width(obj, LV_PART_MAIN) * 3 / 4;
+              lv_obj_set_size(obj, size, size);
+              lv_obj_set_style_radius(obj, size / 2, 0);
+            }
+            // Short screens: the microphone already says "tap to talk".
+            if (onx_panel_ui::height < 300) lv_obj_add_flag(id(assist_hint), LV_OBJ_FLAG_HIDDEN);
+            lv_obj_set_parent(id(assist_controls), side);
+            lv_obj_set_style_flex_grow(id(assist_side_spacer), 1, 0);
+            lv_obj_remove_flag(id(assist_side_spacer), LV_OBJ_FLAG_HIDDEN);
+            lv_obj_set_size(conversation, 0, LV_PCT(100));
+            lv_obj_set_style_flex_grow(conversation, 1, 0);
+          }
           const auto accent = lv_color_hex(onx_display_settings::accent());
           for (auto *obj : {id(assist_mic), id(assist_mic_ring), id(assist_mic_ring_inner)})
             lv_obj_set_style_bg_color(obj, accent, 0);
           lv_obj_set_style_text_color(id(assist_status), accent, 0);
           // Bubbles and buttons follow the panel's palette.
           const auto surface = lv_color_hex(onx_display_settings::surface());
-          for (auto *obj : {id(assist_response_card), id(assist_mute_button), id(assist_stop_button)})
+          for (auto *obj : {id(assist_mute_button), id(assist_stop_button)})
             lv_obj_set_style_bg_color(obj, surface, 0);
-          lv_obj_set_style_bg_color(id(assist_transcript_bubble), lv_color_hex(onx_display_settings::control_surface()), 0);
           lv_obj_set_style_bg_color(id(assist_overlay), lv_color_hex(onx_display_settings::background()), 0);
           lv_label_set_text(id(assist_hint), onx_panel_ui::wake_word_on && onx_panel_ui::wake_word_on()
               ? "Say your wake word or tap the microphone" : "Tap the microphone to talk");
-          lv_obj_set_width(id(assist_transcript), LV_SIZE_CONTENT);
-          lv_obj_set_width(id(assist_response), LV_SIZE_CONTENT);
-          const int bubble = lv_obj_get_width(id(assist_overlay)) * 72 / 100;
-          lv_obj_set_style_max_width(id(assist_transcript), bubble, 0);
-          lv_obj_set_style_max_width(id(assist_response), bubble, 0);
+          // Existing bubbles follow a palette change.
+          const auto user_bg = lv_color_hex(onx_display_settings::control_surface());
+          for (uint32_t i = 0; i < lv_obj_get_child_count(conversation); i++) {
+            auto *row = lv_obj_get_child(conversation, i);
+            auto *bubble = lv_obj_get_child(row, 0);
+            if (bubble) lv_obj_set_style_bg_color(bubble, lv_obj_get_style_flex_main_place(row, LV_PART_MAIN) == LV_FLEX_ALIGN_END
+                                                            ? user_bg : surface, 0);
+          }
       - script.execute: assist_sync_mute
       - lvgl.label.update:
           id: assist_status
@@ -383,6 +405,51 @@ script:
           lv_anim_set_exec_cb(&b, [](void *o, int32_t v) { lv_obj_set_style_bg_opa(static_cast<lv_obj_t *>(o), v, 0); });
           lv_anim_start(&b);
 
+  # Appends a bubble to the conversation (what was heard on the right, the
+  # reply on the left), drops the oldest beyond a short history and scrolls
+  # so the newest is in view: a long bubble shows from its first line.
+  - id: assist_add_bubble
+    parameters:
+      text: string
+      user: bool
+    then:
+      - lambda: |-
+          if (text.empty()) return;
+          auto *conversation = id(assist_conversation);
+          // Bubbles are created here, so the column layout is set here too.
+          lv_obj_set_flex_flow(conversation, LV_FLEX_FLOW_COLUMN);
+          lv_obj_set_style_pad_row(conversation, onx_geom::S(8), 0);
+          while (lv_obj_get_child_count(conversation) >= 8) lv_obj_delete(lv_obj_get_child(conversation, 0));
+          auto *row = lv_obj_create(conversation);
+          lv_obj_remove_style_all(row);
+          lv_obj_set_size(row, LV_PCT(100), LV_SIZE_CONTENT);
+          lv_obj_set_flex_flow(row, LV_FLEX_FLOW_ROW);
+          lv_obj_set_flex_align(row, user ? LV_FLEX_ALIGN_END : LV_FLEX_ALIGN_START,
+                                LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_START);
+          lv_obj_remove_flag(row, LV_OBJ_FLAG_CLICKABLE);
+          lv_obj_add_flag(row, LV_OBJ_FLAG_SCROLL_CHAIN_VER);
+          auto *bubble = lv_obj_create(row);
+          lv_obj_remove_style_all(bubble);
+          lv_obj_set_size(bubble, LV_SIZE_CONTENT, LV_SIZE_CONTENT);
+          lv_obj_set_style_radius(bubble, onx_geom::S(14), 0);
+          lv_obj_set_style_bg_opa(bubble, LV_OPA_COVER, 0);
+          lv_obj_set_style_bg_color(bubble, lv_color_hex(user ? onx_display_settings::control_surface()
+                                                              : onx_display_settings::surface()), 0);
+          lv_obj_set_style_pad_hor(bubble, onx_geom::S(12), 0);
+          lv_obj_set_style_pad_ver(bubble, onx_geom::S(8), 0);
+          lv_obj_remove_flag(bubble, LV_OBJ_FLAG_CLICKABLE);
+          lv_obj_add_flag(bubble, LV_OBJ_FLAG_SCROLL_CHAIN_VER);
+          auto *label = lv_label_create(bubble);
+          lv_label_set_long_mode(label, LV_LABEL_LONG_WRAP);
+          lv_obj_set_width(label, LV_SIZE_CONTENT);
+          lv_obj_update_layout(conversation);
+          lv_obj_set_style_max_width(label, lv_obj_get_content_width(conversation) * 80 / 100, 0);
+          lv_obj_set_style_text_font(label, id(fonts_MiSans_Medium_14)->get_lv_font(), 0);
+          lv_obj_set_style_text_color(label, lv_color_hex(user ? 0xFFFFFF : 0xD2D2D2), 0);
+          lv_label_set_text(label, text.c_str());
+          lv_obj_update_layout(conversation);
+          lv_obj_scroll_to_view(row, LV_ANIM_ON);
+
   # Leave the reply on screen briefly, then return to the previous view.
   - id: assist_finished
     mode: restart
@@ -427,136 +494,98 @@ lvgl:
             flex_align_cross: CENTER
             pad_row: ${ (8 * (ui_scale | float)) | round | int }
           widgets:
-            # Microphone: tap to talk again, or to stop listening/speaking.
+            # Microphone and status; in landscape also the hint and buttons.
             - obj:
-                id: assist_mic_ring
-                width: ${ (120 * (ui_scale | float)) | round | int }
-                height: ${ (120 * (ui_scale | float)) | round | int }
-                radius: ${ (60 * (ui_scale | float)) | round | int }
-                bg_color: 0x62B0FF
-                bg_opa: 18%
+                id: assist_side
+                width: 100%
+                height: SIZE_CONTENT
+                bg_opa: TRANSP
                 border_width: 0
                 pad_all: 0
                 scrollable: false
-                on_click:
-                  - script.execute: toggle_assist
+                clickable: false
+                layout:
+                  type: FLEX
+                  flex_flow: COLUMN
+                  flex_align_main: CENTER
+                  flex_align_cross: CENTER
+                  pad_row: ${ (8 * (ui_scale | float)) | round | int }
                 widgets:
+                  # Microphone: tap to talk again, or to stop listening/speaking.
                   - obj:
-                      id: assist_mic_ring_inner
-                      align: center
-                      width: ${ (94 * (ui_scale | float)) | round | int }
-                      height: ${ (94 * (ui_scale | float)) | round | int }
-                      radius: ${ (47 * (ui_scale | float)) | round | int }
+                      id: assist_mic_ring
+                      width: ${ (120 * (ui_scale | float)) | round | int }
+                      height: ${ (120 * (ui_scale | float)) | round | int }
+                      radius: ${ (60 * (ui_scale | float)) | round | int }
                       bg_color: 0x62B0FF
-                      bg_opa: 30%
+                      bg_opa: 18%
                       border_width: 0
                       pad_all: 0
                       scrollable: false
-                      clickable: false
+                      on_click:
+                        - script.execute: toggle_assist
                       widgets:
                         - obj:
-                            id: assist_mic
+                            id: assist_mic_ring_inner
                             align: center
-                            width: ${ (68 * (ui_scale | float)) | round | int }
-                            height: ${ (68 * (ui_scale | float)) | round | int }
-                            radius: ${ (34 * (ui_scale | float)) | round | int }
+                            width: ${ (94 * (ui_scale | float)) | round | int }
+                            height: ${ (94 * (ui_scale | float)) | round | int }
+                            radius: ${ (47 * (ui_scale | float)) | round | int }
                             bg_color: 0x62B0FF
-                            bg_opa: COVER
+                            bg_opa: 30%
                             border_width: 0
                             pad_all: 0
                             scrollable: false
                             clickable: false
                             widgets:
-                              - label:
+                              - obj:
+                                  id: assist_mic
                                   align: center
-                                  text: "🎤"
-                                  text_font: fonts_MiSans_Medium_32
-                                  text_color: 0xFFFFFF
-            # Listening... / Thinking... / Speaking... or an error.
-            - label:
-                id: assist_status
-                text: ""
-                width: 100%
-                long_mode: DOT
-                text_align: CENTER
-                text_font: fonts_MiSans_Medium_14
-                text_color: 0x62B0FF
-            # The conversation.
+                                  width: ${ (68 * (ui_scale | float)) | round | int }
+                                  height: ${ (68 * (ui_scale | float)) | round | int }
+                                  radius: ${ (34 * (ui_scale | float)) | round | int }
+                                  bg_color: 0x62B0FF
+                                  bg_opa: COVER
+                                  border_width: 0
+                                  pad_all: 0
+                                  scrollable: false
+                                  clickable: false
+                                  widgets:
+                                    - label:
+                                        align: center
+                                        text: "🎤"
+                                        text_font: fonts_MiSans_Medium_32
+                                        text_color: 0xFFFFFF
+                  # Listening... / Thinking... / Speaking... or an error.
+                  - label:
+                      id: assist_status
+                      text: ""
+                      width: 100%
+                      long_mode: DOT
+                      text_align: CENTER
+                      text_font: fonts_MiSans_Medium_14
+                      text_color: 0x62B0FF
+                  # Pushes the hint and buttons to the bottom (landscape only).
+                  - obj:
+                      id: assist_side_spacer
+                      hidden: true
+                      width: 1
+                      height: 0
+                      bg_opa: TRANSP
+                      border_width: 0
+                      clickable: false
+                      scrollable: false
+            # The conversation, scrolled to the newest bubble.
             - obj:
+                id: assist_conversation
                 width: 100%
                 flex_grow: 1
                 bg_opa: TRANSP
                 border_width: 0
                 pad_all: 0
                 pad_top: ${ (6 * (ui_scale | float)) | round | int }
-                scrollable: false
-                clickable: false
-                layout:
-                  type: FLEX
-                  flex_flow: COLUMN
-                  pad_row: ${ (8 * (ui_scale | float)) | round | int }
-                widgets:
-                  # What was heard (right).
-                  - obj:
-                      width: 100%
-                      height: SIZE_CONTENT
-                      bg_opa: TRANSP
-                      border_width: 0
-                      pad_all: 0
-                      scrollable: false
-                      clickable: false
-                      layout:
-                        type: FLEX
-                        flex_flow: ROW
-                        flex_align_main: END
-                      widgets:
-                        - obj:
-                            id: assist_transcript_bubble
-                            hidden: true
-                            width: SIZE_CONTENT
-                            height: SIZE_CONTENT
-                            radius: ${ (14 * (ui_scale | float)) | round | int }
-                            bg_color: 0x2E3440
-                            bg_opa: COVER
-                            border_width: 0
-                            pad_left: ${ (12 * (ui_scale | float)) | round | int }
-                            pad_right: ${ (12 * (ui_scale | float)) | round | int }
-                            pad_top: ${ (8 * (ui_scale | float)) | round | int }
-                            pad_bottom: ${ (8 * (ui_scale | float)) | round | int }
-                            scrollable: false
-                            clickable: false
-                            widgets:
-                              - label:
-                                  id: assist_transcript
-                                  text: ""
-                                  width: SIZE_CONTENT
-                                  long_mode: WRAP
-                                  text_font: fonts_MiSans_Medium_14
-                                  text_color: 0xFFFFFF
-                  # The reply (left).
-                  - obj:
-                      id: assist_response_card
-                      hidden: true
-                      width: SIZE_CONTENT
-                      height: SIZE_CONTENT
-                      radius: ${ (14 * (ui_scale | float)) | round | int }
-                      bg_color: 0x232323
-                      bg_opa: COVER
-                      border_width: 0
-                      pad_left: ${ (12 * (ui_scale | float)) | round | int }
-                      pad_right: ${ (12 * (ui_scale | float)) | round | int }
-                      pad_top: ${ (8 * (ui_scale | float)) | round | int }
-                      pad_bottom: ${ (8 * (ui_scale | float)) | round | int }
-                      scrollable: false
-                      clickable: false
-                      widgets:
-                        - label:
-                            id: assist_response
-                            text: ""
-                            width: SIZE_CONTENT
-                            long_mode: WRAP
-                            text_font: fonts_MiSans_Medium_14
-                            text_color: 0xD2D2D2
+                scrollbar_mode: AUTO
+                scroll_dir: VER
             - label:
                 id: assist_hint
                 text: "Tap the microphone to talk"
@@ -567,6 +596,7 @@ lvgl:
                 text_color: 0x9C9C9E
             # Mute and Stop.
             - obj:
+                id: assist_controls
                 width: 100%
                 height: SIZE_CONTENT
                 bg_opa: TRANSP
