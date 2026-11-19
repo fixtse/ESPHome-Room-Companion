@@ -20,6 +20,10 @@ esphome:
             onx_notification_ui::clock_tile_image = id(panel_standby_clock_icon)->get_lv_image_dsc();
             onx_notification_ui::preset_tile_image = id(panel_preset_layers_icon)->get_lv_image_dsc();
             onx_notification_ui::controls_blocked = []() { return id(touch_input)->suppress_click(); };
+            // The centre follows a swipe up and decides on release.
+            id(touch_input)->set_pull_up_drag(
+                [](int dy) { onx_notification_ui::drag_panel(dy); },
+                [](int dy, uint32_t ms) { return onx_notification_ui::release_panel_drag(dy, ms); });
             onx_notification_ui::Hooks hooks;
             hooks.load_image = [](const std::string &url) {
               id(entity_icon_downloader)->set_artwork_busy(true);

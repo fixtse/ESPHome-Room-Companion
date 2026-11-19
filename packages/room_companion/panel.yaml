@@ -214,8 +214,20 @@ interval:
           }
           // Idle screen.
           const auto mode = id(panel_idle_screen).active_index().value_or(0);
-          onx_panel_ui::update_idle_badge(onx_notification::center.items.size(),
-              standby && mode == onx_panel_ui::IDLE_CLOCK && !id(screen_off_state) && !id(sleep_mode_state));
+          const bool idle_clock = standby && mode == onx_panel_ui::IDLE_CLOCK && !id(screen_off_state) && !id(sleep_mode_state);
+          onx_panel_ui::update_idle_badge(onx_notification::center.items.size(), idle_clock);
+          if (idle_clock) {
+            static bool laid_out = false;
+            const bool on_page = lv_scr_act() == id(standby_page)->obj;
+            std::string today;
+            if (id(ha_time_ready)) { auto now = id(ha_time).now(); if (now.is_valid()) today = now.strftime("%Y-%m-%d"); }
+            if (on_page)
+              onx_idle_clock::update(id(standby_page)->obj, onx_panel_ui::width, onx_panel_ui::height,
+                                     id(standby_weather_state), today, entered || !laid_out);
+            laid_out = on_page;
+            if (id(normal_ha_api_connected) && onx_idle_clock::forecast_due(id(standby_weather_entity_id), millis()))
+              id(request_idle_forecast).execute(id(standby_weather_entity_id));
+          }
           if (entered && mode == onx_panel_ui::IDLE_DASHBOARD && id(room_panel)->stream_status() != "not configured")
             id(room_panel)->open_dashboard();
           const bool slideshow = standby && mode == onx_panel_ui::IDLE_SLIDESHOW;
@@ -385,6 +397,7 @@ esphome:
     - ../../onx_panel_artwork.h
     - ../../onx_panel_detail.h
     - ../../onx_panel_pages.h
+    - ../../onx_idle_clock.h
   on_boot:
     # Orientation (Device settings → Display orientation; no accelerometer):
     # before the SPI display (HARDWARE), touchscreen and LVGL read the
@@ -505,6 +518,43 @@ image:
     transparency: alpha_channel
 
 script:
+  # Daily forecast for the idle clock (onx_idle_clock.h), separate from the
+  # weather page's own request so the idle weather entity needs no page.
+  - id: request_idle_forecast
+    mode: queued
+    max_runs: 2
+    parameters:
+      entity: string
+    then:
+      - homeassistant.action:
+          action: weather.get_forecasts
+          data:
+            entity_id: !lambda return entity;
+            type: daily
+          capture_response: true
+          response_template: !lambda |-
+            return "{% set ns = namespace(days=[]) %}{% for f in response.get('" + entity + "', {}).get('forecast', [])[:6] %}{% set ns.days = ns.days + [dict(date=f.get('datetime',''), condition=f.get('condition',''), high=f.get('temperature'), low=f.get('templow'), rain=f.get('precipitation_probability'))] %}{% endfor %}{{ dict(days=ns.days) }}";
+          on_success:
+            - lambda: |-
+                if (entity != onx_idle_clock::forecast_entity) return;
+                auto number = [](JsonVariantConst v) -> std::string {
+                  if (v.isNull() || (!v.is<float>() && !v.is<int>())) return "";
+                  return onx_detail_view::compact(std::to_string(v.as<float>()));
+                };
+                int n = 0;
+                for (JsonObjectConst day : response["response"]["days"].as<JsonArrayConst>()) {
+                  if (n >= int(onx_idle_clock::days.size())) break;
+                  auto &f = onx_idle_clock::days[n++];
+                  f.date = std::string(day["date"] | "").substr(0, 32);
+                  f.condition = std::string(day["condition"] | "").substr(0, 40);
+                  f.high = number(day["high"]); f.low = number(day["low"]); f.rain = number(day["rain"]);
+                }
+                onx_idle_clock::day_count = n;
+                onx_idle_clock::forecast_received(entity);
+          on_error:
+            - lambda: |-
+                ESP_LOGW("idle_clock", "Forecast for %s failed: %s", entity.c_str(), error.c_str());
+                onx_idle_clock::forecast_failed(entity);
   - id: panel_ui_setup
     then:
       - lambda: |-
@@ -559,6 +609,41 @@ script:
           onx_panel_detail::settings_icon = id(panel_settings_icon)->get_lv_image_dsc();
           onx_panel_ui::create_idle_badge(id(standby_page)->obj, id(fonts_MiSans_Medium_14)->get_lv_font(),
               id(panel_bell_icon)->get_lv_image_dsc());
+          // Idle clock layout (onx_idle_clock.h) over the shared standby widgets.
+          {
+            auto &b = onx_idle_clock::base;
+            b.wifi_on = id(standby_wifi_online_widget); b.wifi_off = id(standby_wifi_offline_widget);
+            b.ha_on = id(standby_homeassistant_online_widget); b.ha_off = id(standby_homeassistant_offline_widget);
+            b.weather_icons = {id(standby_weather_unknown_widget), id(standby_weather_clear_night_widget),
+                id(standby_weather_cloudy_widget), id(standby_weather_exceptional_widget), id(standby_weather_fog_widget),
+                id(standby_weather_hail_widget), id(standby_weather_lightning_widget), id(standby_weather_lightning_rainy_widget),
+                id(standby_weather_partlycloudy_widget), id(standby_weather_pouring_widget), id(standby_weather_rainy_widget),
+                id(standby_weather_snowy_widget), id(standby_weather_snowy_rainy_widget), id(standby_weather_sunny_widget),
+                id(standby_weather_windy_widget), id(standby_weather_windy_variant_widget)};
+            b.temp_icon = id(standby_temperature_icon_widget); b.temp = id(standby_temperature_widget);
+            b.humidity_icon = id(standby_humidity_icon_widget); b.humidity = id(standby_humidity_widget);
+            b.date = id(standby_date_widget); b.time = id(standby_time_widget);
+            onx_idle_clock::fonts = {id(fonts_MiSans_Medium_12)->get_lv_font(), id(fonts_MiSans_Medium_14)->get_lv_font(),
+                id(fonts_MiSans_Medium_16)->get_lv_font(), id(fonts_MiSans_Medium_24)->get_lv_font()};
+            onx_idle_clock::condition_image = [](const std::string &c) -> const void * {
+              if (c == "clear-night") return id(standby_weather_icon_clear_night_img)->get_lv_image_dsc();
+              if (c == "cloudy") return id(standby_weather_icon_cloudy_img)->get_lv_image_dsc();
+              if (c == "exceptional") return id(standby_weather_icon_exceptional_img)->get_lv_image_dsc();
+              if (c == "fog") return id(standby_weather_icon_fog_img)->get_lv_image_dsc();
+              if (c == "hail") return id(standby_weather_icon_hail_img)->get_lv_image_dsc();
+              if (c == "lightning") return id(standby_weather_icon_lightning_img)->get_lv_image_dsc();
+              if (c == "lightning-rainy") return id(standby_weather_icon_lightning_rainy_img)->get_lv_image_dsc();
+              if (c == "partlycloudy") return id(standby_weather_icon_partlycloudy_img)->get_lv_image_dsc();
+              if (c == "pouring") return id(standby_weather_icon_pouring_img)->get_lv_image_dsc();
+              if (c == "rainy") return id(standby_weather_icon_rainy_img)->get_lv_image_dsc();
+              if (c == "snowy") return id(standby_weather_icon_snowy_img)->get_lv_image_dsc();
+              if (c == "snowy-rainy") return id(standby_weather_icon_snowy_rainy_img)->get_lv_image_dsc();
+              if (c == "sunny") return id(standby_weather_icon_sunny_img)->get_lv_image_dsc();
+              if (c == "windy") return id(standby_weather_icon_windy_img)->get_lv_image_dsc();
+              if (c == "windy-variant") return id(standby_weather_icon_windy_variant_img)->get_lv_image_dsc();
+              return id(standby_weather_icon_unknown_img)->get_lv_image_dsc();
+            };
+          }
           // Elapsed / total time on the media detail.
           onx_panel_ui::time_font = id(fonts_MiSans_Medium_12)->get_lv_font();
           onx_panel_ui::media_duration = []() -> float {

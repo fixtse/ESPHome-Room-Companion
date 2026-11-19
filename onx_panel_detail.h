@@ -1171,6 +1171,113 @@ inline void timer_button(lv_obj_t *parent, const Rect &r, const char *symbol, co
     lv_obj_center(text(b, std::string(symbol) + "  " + caption, fonts.small, fg, 0, 0, r.w - P(8), LV_TEXT_ALIGN_CENTER));
   }
 }
+// The one action a timer row offers: Stop for a sounding panel timer, pause /
+// resume for HA timer helpers. Voice and Google timers are controlled on
+// their own device. Returns false when there is none.
+inline bool timer_quick_action(const TimerItem &t, const char **symbol, std::function<void()> *fn) {
+  const bool local = t.key.rfind("local:", 0) == 0;
+  if (local && t.state == "ringing") {
+    *symbol = LV_SYMBOL_STOP; *fn = []() { if (stop_ringing) stop_ringing(); }; return true;
+  }
+  if (!t.helper || !t.ready) return false;
+  const std::string e = t.entity;
+  if (t.state == "active") { *symbol = LV_SYMBOL_PAUSE; *fn = [e]() { request(e, "timer.pause", "", "", "panel_timer"); }; return true; }
+  if (t.state == "paused") { *symbol = LV_SYMBOL_PLAY; *fn = [e]() { request(e, "timer.start", "", "", "panel_timer"); }; return true; }
+  if (t.state == "ringing") { *symbol = LV_SYMBOL_CLOSE; *fn = [e]() { request(e, "timer.cancel", "", "", "panel_timer"); }; return true; }
+  return false;
+}
+// Several running timers: one card each, finished first, then by time left.
+// Portrait stacks rows; landscape uses a two-column grid. Tap a card for its
+// full screen (ring, Cancel / Pause / +1 min).
+__attribute__((noinline)) inline void build_timer_list(const std::vector<TimerItem> &items) {
+  std::vector<const TimerItem *> list;
+  for (const auto &t : items)
+    if (running(t)) list.push_back(&t);
+  const int pad = P(16), gap = P(10);
+  int active = 0;
+  for (const auto *t : list) active += t->state == "active";
+  text(root, "Timers", fonts.title, TEXT(), pad, pad, W / 2);
+  const std::string summary = std::to_string(active) + " running" +
+                              (int(list.size()) > active ? " \xC2\xB7 " + std::to_string(list.size() - active) + " more" : "");
+  text(root, summary, fonts.small, MUTED(), W / 2, pad + (line(fonts.title) - line(fonts.small)) / 2, W / 2 - pad, LV_TEXT_ALIGN_RIGHT);
+  const int top = pad + line(fonts.title) + P(10), bottom = H - pad;
+  const bool landscape = wide();
+  const int cols = landscape ? 2 : 1;
+  const int card_h = landscape ? P(96) : P(76);
+  const int fit_rows = std::max(1, (bottom - top + gap) / (card_h + gap));
+  int shown = std::min<int>(list.size(), fit_rows * cols);
+  const int hidden = int(list.size()) - shown;
+  if (hidden > 0) shown = std::max(1, shown - 1);  // Leave a slot for the "+N more" note.
+  const int cw = (W - 2 * pad - (cols - 1) * gap) / cols;
+  for (int i = 0; i < shown; ++i) {
+    const TimerItem &t = *list[i];
+    const bool ringing = t.state == "ringing", paused = t.state == "paused";
+    const int x = pad + (i % cols) * (cw + gap), y = top + (i / cols) * (card_h + gap);
+    lv_obj_t *card = box(root, x, y, cw, card_h, CARD(), P(16));
+    if (ringing) {
+      lv_obj_set_style_border_width(card, P(2), 0);
+      lv_obj_set_style_border_color(card, lv_color_hex(accent()), 0);
+    }
+    const double fraction = ringing ? 1.0 : t.total > 0 ? std::clamp(t.left / t.total, 0.0, 1.0) : 0.0;
+    const uint32_t tone = paused ? SOFT_TEXT() : accent();
+    const std::string left = ringing ? "0:00" : !t.ready ? "--:--" : onx_timer::countdown(t.left);
+    std::string sub = t.name;
+    if (ringing) sub += " \xC2\xB7 time is up";
+    else if (paused) sub += " \xC2\xB7 paused";
+    else if (t.total > 0) sub += " \xC2\xB7 of " + onx_timer::countdown(t.total);
+    const char *symbol = nullptr;
+    std::function<void()> action;
+    const bool has_action = timer_quick_action(t, &symbol, &action);
+    const int bs = P(44), cp = P(14);
+    if (!landscape) {
+      // Ring, countdown with name, action button.
+      const int ring = P(46);
+      lv_obj_t *arc = lv_arc_create(card);
+      lv_obj_set_size(arc, ring, ring);
+      lv_obj_set_pos(arc, cp, (card_h - ring) / 2);
+      lv_arc_set_rotation(arc, 270);
+      lv_arc_set_bg_angles(arc, 0, 360);
+      lv_arc_set_range(arc, 0, 1000);
+      lv_arc_set_value(arc, int(std::lround(fraction * 1000)));
+      lv_obj_set_style_arc_width(arc, P(5), LV_PART_MAIN);
+      lv_obj_set_style_arc_width(arc, P(5), LV_PART_INDICATOR);
+      lv_obj_set_style_arc_color(arc, lv_color_hex(TRACK()), LV_PART_MAIN);
+      lv_obj_set_style_arc_color(arc, lv_color_hex(tone), LV_PART_INDICATOR);
+      lv_obj_set_style_arc_rounded(arc, true, LV_PART_INDICATOR);
+      lv_obj_set_style_opa(arc, LV_OPA_TRANSP, LV_PART_KNOB);
+      lv_obj_set_style_bg_opa(arc, LV_OPA_TRANSP, LV_PART_MAIN);
+      lv_obj_set_style_pad_all(arc, 0, LV_PART_MAIN);
+      lv_obj_remove_flag(arc, static_cast<lv_obj_flag_t>(LV_OBJ_FLAG_CLICKABLE | LV_OBJ_FLAG_SCROLLABLE));
+      const int tx = cp + ring + P(14), tw = cw - tx - cp - (has_action ? bs + P(10) : 0);
+      const int block = line(fonts.title) + line(fonts.small);
+      text(card, left, fonts.title, ringing ? accent() : TEXT(), tx, (card_h - block) / 2, tw);
+      text(card, sub, fonts.small, MUTED(), tx, (card_h - block) / 2 + line(fonts.title), tw);
+    } else {
+      // Countdown and action on top, name below, progress bar along the bottom.
+      const int tw = cw - 2 * cp - (has_action ? bs + P(8) : 0);
+      text(card, left, fonts.title, ringing ? accent() : TEXT(), cp, cp - P(2), tw);
+      text(card, sub, fonts.small, MUTED(), cp, cp + line(fonts.title), cw - 2 * cp);
+      lv_obj_t *track = box(card, cp, card_h - cp - P(4), cw - 2 * cp, P(4), TRACK(), P(2));
+      const int fill = int((cw - 2 * cp) * fraction);
+      if (fill > 0) box(track, 0, 0, fill, P(4), tone, P(2));
+    }
+    if (has_action) {
+      const int by = landscape ? cp - P(6) : (card_h - bs) / 2;
+      lv_obj_t *b = button(card, cw - cp - bs, by, bs, bs, bs / 2, ringing ? accent() : CONTROL(), symbol, fonts.symbol,
+                           TEXT(), action);
+      (void) b;
+    }
+    interactive(card);
+    const std::string key = t.key;
+    on(card, LV_EVENT_CLICKED, [key](lv_event_t *) { if (allowed()) { timers.focus = key; built_signature.clear(); } });
+  }
+  if (hidden > 0) {
+    const int i = shown;
+    const int x = pad + (i % cols) * (cw + gap), y = top + (i / cols) * (card_h + gap);
+    text(root, "+" + std::to_string(list.size() - shown) + " more timers", fonts.small, MUTED(), x, y + (card_h - line(fonts.small)) / 2, cw,
+         LV_TEXT_ALIGN_CENTER);
+  }
+}
 // The focused timer, controls and the other timers. `preferred` is the
 // detail's own entity (or "" on the local timer screen).
 __attribute__((noinline)) inline void build_timers(const std::string &preferred, const std::string &fallback_title) {
@@ -1178,6 +1285,13 @@ __attribute__((noinline)) inline void build_timers(const std::string &preferred,
   std::stable_sort(items.begin(), items.end(), [](const TimerItem &a, const TimerItem &b) {
     return rank(a) != rank(b) ? rank(a) < rank(b) : a.left < b.left;
   });
+  int running_count = 0;
+  for (const auto &t : items) running_count += running(t);
+  // A focused timer that has gone away returns to the list.
+  if (!timers.focus.empty() &&
+      std::none_of(items.begin(), items.end(), [](const TimerItem &t) { return t.key == timers.focus && running(t); }))
+    timers.focus.clear();
+  if (timers.focus.empty() && running_count >= 2) { build_timer_list(items); return; }
   int focus = -1;
   for (int i = 0; i < int(items.size()); ++i)
     if (!timers.focus.empty() && items[i].key == timers.focus) focus = i;
@@ -1200,9 +1314,15 @@ __attribute__((noinline)) inline void build_timers(const std::string &preferred,
   const int pad = P(16);
   const bool landscape = wide();
   const Rect col = landscape ? Rect{W * 48 / 100 + P(8), pad, W - W * 48 / 100 - P(8) - pad, H - 2 * pad} : Rect{pad, pad, W - 2 * pad, H - 2 * pad};
-  const lv_font_t *nf = fit(t.name, col.w, {fonts.title, fonts.body});
-  text(root, t.name, nf, TEXT(), col.x, col.y, col.w);
-  text(root, context, fonts.small, ringing ? accent() : MUTED(), col.x, col.y + line(nf), col.w);
+  // With several running timers, a button returns to the list.
+  const int list_w = running_count >= 2 ? P(44) : 0;
+  if (list_w)
+    button(root, col.right() - list_w, col.y, list_w, list_w, list_w / 2, CONTROL(), LV_SYMBOL_LIST, fonts.symbol, TEXT(),
+           []() { timers.focus.clear(); built_signature.clear(); });
+  const int name_w = col.w - (list_w ? list_w + P(8) : 0);
+  const lv_font_t *nf = fit(t.name, name_w, {fonts.title, fonts.body});
+  text(root, t.name, nf, TEXT(), col.x, col.y, name_w);
+  text(root, context, fonts.small, ringing ? accent() : MUTED(), col.x, col.y + line(nf), name_w);
   int y = col.y + line(nf) + line(fonts.small) + P(14);
   // Controls: only what the timer's own system supports.
   struct Control { const char *symbol; std::string caption; bool primary; std::function<void()> fn; };

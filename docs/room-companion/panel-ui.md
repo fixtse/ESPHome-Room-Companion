@@ -21,7 +21,7 @@ second carousel renderer.
 | Media player | Swipe up / down | Change volume |
 | Detail view | Swipe right **starting at the left edge** | Back |
 | Anywhere in the native UI | Swipe down **from the top edge** | Open the notification centre (the only way on detail screens) |
-| Notification centre | Swipe up, or tap the handle at the bottom | Close it |
+| Notification centre | Swipe up past a third of the screen (or flick up), or tap the handle at the bottom | Close it; the centre follows the finger and springs back from a shorter drag |
 | Dashboard stream | Swipe from the left edge | Back to the native UI |
 
 ## Header, notifications and dashboard
@@ -36,7 +36,9 @@ second carousel renderer.
   unread, a thumbnail with its time underneath (*now*, *5 min*, then the time
   of day), a full-width text-column title, up to two lines of the message, and ×
   to dismiss. Tap a card for its detail with the small title thumbnail. Swipe up (or tap the
-  handle) to close. A banner announces new notifications. Home Assistant sends
+  handle) to close: the centre moves with the finger, the handle reads
+  *Release to close* once the drag is far enough, and it closes only when the
+  finger lifts. A shorter drag springs back. A banner announces new notifications. Home Assistant sends
   them with the device's *show message* action.
 - **Settings uses the main-page base.** The carousel's Settings item is a card
   on the same background, with the time row, bell and status icons, like the
@@ -58,7 +60,7 @@ Each type has a direct touch control next to the usual swipe/knob step:
 | Cover | Window with the blind drawn to the position (drag when position is supported), Open / Stop / Close |
 | Switch, input boolean, automation | Large toggle; plugs with a power sensor show its reading and graph |
 | Scene, script, button | Large run button with a confirmation ring |
-| Timer | Progress ring and countdown; HA timers add +1 min, Pause/Resume and Cancel |
+| Timer | Progress ring and countdown; HA timers add +1 min, Pause/Resume and Cancel. With two or more running timers it opens as a list (rows in portrait, a 2-column grid in landscape) with each timer's progress, time left and a Pause/Resume (or Stop) button; finished timers come first. Tap a timer for its full screen, and the list button to return |
 | Sensor | Name (two lines when long), large value with its unit, a level bar for percentages, 12 h trend, graph (when enabled) and min / avg / max of the same history |
 | Binary sensor | State disc (Home Assistant device-class wording) and the last changes the panel has seen; kept in flash across reboots (saved at most every 10 minutes), not fetched from Home Assistant |
 | Event | Latest event type and how long ago it fired, plus recent events (kept across reboots like binary sensors). Icon follows the device class (doorbell, button, motion). Events are read-only |
@@ -109,6 +111,15 @@ Home Assistant entities (device configuration):
 
 - **Idle screen**: *Clock* (default), *Photo slideshow* or *Dashboard*. The idle
   screen appears after the standby timeout.
+
+The *Clock* uses the whole screen. Wi-Fi and Home Assistant status sit at the
+top left and the notification count at the top right. Below the clock and date
+it shows the weather (condition, temperature and humidity, or the configured
+clock sensors), today's high, low and chance of rain, a daily forecast (from
+`weather.get_forecasts`, refreshed every 30 minutes) and the media player that
+is playing. Landscape puts the clock and media on the left and the weather and
+forecast in a right-hand column. Missing parts are hidden. Timers are not
+shown: the timer screen covers the clock while one runs.
 - **Slideshow pictures**: picture addresses separated by spaces, commas or
   new lines (JPEG/PNG over HTTP, e.g. `http://homeassistant.local:8123/local/photos/1.jpg`).
   An address that returns a different picture each time (a camera snapshot or a

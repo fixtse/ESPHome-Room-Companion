@@ -48,6 +48,12 @@ class TouchInput : public Component, public touchscreen::TouchListener {
   // the notification centre; LVGL keeps receiving the touch.
   void set_pull_up_enabled(std::function<bool()> &&f) { pull_up_enabled_ = std::move(f); }
   Trigger<> *get_pull_up_trigger() { return &pull_up_trigger_; }
+  // Optional live feedback for that swipe: `drag` gets the vertical travel while
+  // the finger moves; `release` gets the travel and duration and decides
+  // whether the overlay closes (otherwise any upward travel of 40 px does).
+  void set_pull_up_drag(std::function<void(int)> &&drag, std::function<bool(int, uint32_t)> &&release) {
+    pull_up_drag_ = std::move(drag); pull_up_release_ = std::move(release);
+  }
   Trigger<> *get_back_trigger() { return &back_trigger_; }
   bool suppress_click() const { return state_ == State::SWIPE || (last_swipe_ms_ && millis() - last_swipe_ms_ < 180); }
 
@@ -115,8 +121,9 @@ class TouchInput : public Component, public touchscreen::TouchListener {
     if (back_ && x >= EDGE && edge_back_ && edge_back_()) back_ = false;
     native_ = passthrough || (native_touch_ && native_touch_());
     pull_ = y < EDGE && pull_down_enabled_ && pull_down_enabled_();
-    // The lower half: starts above the notification list's end and the handle.
-    pull_up_ = strip_top_ < 100000 && y >= strip_top_ / 2 && pull_up_enabled_ && pull_up_enabled_();
+    // With drag feedback the swipe can start anywhere; otherwise only on the
+    // lower half (above the notification list's end and the handle).
+    pull_up_ = pull_up_enabled_ && (pull_up_drag_ || (strip_top_ < 100000 && y >= strip_top_ / 2)) && pull_up_enabled_();
     const bool enabled = enabled_now_();
     if (!back_ && !pull_ && !pull_up_ && !enabled) { state_ = State::IGNORED; return; }
     pull_only_ = !back_ && !enabled;  // e.g. a pull-down over the dashboard stream
@@ -131,6 +138,7 @@ class TouchInput : public Component, public touchscreen::TouchListener {
       if (state_ == State::DOWN) state_ = State::SWIPE;  // A held finger keeps the button down.
     }
     if (axis_ == 1 && (back_ || left_back_)) { last_swipe_ms_ = millis(); return; }
+    if (axis_ == 2 && pull_up_ && pull_up_drag_) { last_swipe_ms_ = millis(); pull_up_drag_(dy); return; }
     if (axis_ == 2 && (pull_ || pull_up_)) { last_swipe_ms_ = millis(); return; }
     if (pull_only_) return;
     if (native_) { last_swipe_ms_ = millis(); return; }
@@ -165,6 +173,11 @@ class TouchInput : public Component, public touchscreen::TouchListener {
     if (state == State::SWIPE && axis_ == 2 && pull_ && y_ - y0_ >= 50) {
       last_swipe_ms_ = millis(); pull_down_trigger_.trigger(); return;
     }
+    if (state == State::SWIPE && axis_ == 2 && pull_up_ && pull_up_release_) {
+      last_swipe_ms_ = millis();
+      if (pull_up_release_(y_ - y0_, millis() - down_ms_)) pull_up_trigger_.trigger();
+      return;
+    }
     if (state == State::SWIPE && axis_ == 2 && pull_up_ && y0_ - y_ >= 40) {
       last_swipe_ms_ = millis(); pull_up_trigger_.trigger(); return;
     }
@@ -192,6 +205,8 @@ class TouchInput : public Component, public touchscreen::TouchListener {
   std::function<bool()> enabled_, back_enabled_, native_touch_, page_swipe_, edge_back_, swipe_left_back_, pull_down_enabled_,
       pull_up_enabled_;
   std::function<bool(int, int)> passthrough_fn_;
+  std::function<void(int)> pull_up_drag_;
+  std::function<bool(int, uint32_t)> pull_up_release_;
   Trigger<> back_trigger_, pull_down_trigger_, pull_up_trigger_;
   bool pull_up_{false};
   bool back_{false}, left_back_{false}, native_{false}, pull_{false}, pull_only_{false};

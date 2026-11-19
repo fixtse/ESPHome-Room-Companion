@@ -198,7 +198,22 @@ inline void open_panel() {
   built_revision = 0;
   refresh();
 }
+inline int drag_offset = 0;  // Panel lift while a swipe up is in progress (<= 0).
+inline lv_obj_t *handle_hint = nullptr;
+inline bool drag_closes(int dy) { return -dy >= height / 3; }
+inline void set_drag_offset(int offset) {
+  if (panel == nullptr || offset == drag_offset) return;
+  drag_offset = offset;
+  lv_obj_set_style_translate_y(panel, offset, 0);
+  if (handle_hint != nullptr) {
+    const char *want = drag_closes(offset) ? "Release to close" : "Swipe up to close";
+    if (std::strcmp(lv_label_get_text(handle_hint), want) != 0) lv_label_set_text_static(handle_hint, want);
+    lv_obj_set_style_text_color(handle_hint, lv_color_hex(drag_closes(offset) ? accent() : muted()), 0);
+  }
+}
 inline void close_panel() {
+  lv_anim_delete(panel, nullptr);
+  set_drag_offset(0);
   panel_open = false;
   presets_open = false;
   preset_error.clear();
@@ -212,7 +227,11 @@ inline void on_toast(lv_event_t *) {
   onx_notification::center.hide_toast();
   if (id) open_detail(id);
 }
-inline void on_close_panel(lv_event_t *) { touched(); close_panel(); }
+inline void on_close_panel(lv_event_t *) {
+  if (controls_blocked && controls_blocked()) return;
+  touched();
+  close_panel();
+}
 // The touch handler's swipe up closes the centre unless a list could still
 // scroll down (then the swipe scrolls it, as before).
 inline bool swipe_closes() {
@@ -221,14 +240,32 @@ inline bool swipe_closes() {
     if (l != nullptr && !lv_obj_has_flag(l, LV_OBJ_FLAG_HIDDEN) && lv_obj_get_scroll_bottom(l) > 0) return false;
   return true;
 }
-// Swipe up anywhere on the centre (the list stops scrolling at its ends).
-inline void on_gesture(lv_event_t *) {
-  lv_indev_t *indev = lv_indev_active();
-  if (indev == nullptr || lv_indev_get_gesture_dir(indev) != LV_DIR_TOP) return;
-  touched();
-  close_panel();
+// Swipe up: the centre follows the finger and only closes on release, once
+// lifted past a third of the screen (or flicked). A shorter drag springs back,
+// so a swipe that changes its mind never closes it mid-drag.
+inline void drag_panel(int dy) {
+  if (!panel_open || panel == nullptr) return;
+  lv_anim_delete(panel, nullptr);
+  // Downward drags barely move it, to show that direction does nothing.
+  set_drag_offset(dy < 0 ? dy : dy / 6);
+}
+inline bool release_panel_drag(int dy, uint32_t ms) {
+  if (!panel_open || panel == nullptr) return false;
+  const bool flick = ms > 0 && ms < 260 && -dy >= S(70);
+  if (drag_closes(dy) || flick) return true;
+  if (drag_offset == 0) return false;
+  lv_anim_t a;
+  lv_anim_init(&a);
+  lv_anim_set_var(&a, panel);
+  lv_anim_set_values(&a, drag_offset, 0);
+  lv_anim_set_duration(&a, 160);
+  lv_anim_set_path_cb(&a, lv_anim_path_ease_out);
+  lv_anim_set_exec_cb(&a, [](void *, int32_t v) { set_drag_offset(v); });
+  lv_anim_start(&a);
+  return false;
 }
 inline void on_clear(lv_event_t *) {
+  if (controls_blocked && controls_blocked()) return;
   touched();
   onx_notification::center.clear();
   close_panel();
@@ -294,12 +331,14 @@ inline lv_obj_t *quick_tile(lv_obj_t *parent,const void *src,lv_event_cb_t cb) {
   return tile;
 }
 inline void on_item(lv_event_t *event) {
+  if (controls_blocked && controls_blocked()) return;
   touched();
   open_detail(static_cast<uint32_t>(reinterpret_cast<uintptr_t>(lv_event_get_user_data(event))));
 }
 inline void on_item_dismiss(lv_event_t *event) {
-  touched();
   lv_event_stop_bubbling(event);
+  if (controls_blocked && controls_blocked()) return;
+  touched();
   // Dismissing rebuilds the list, which deletes this button: defer it until the
   // event has finished.
   lv_async_call([](void *user) {
@@ -474,7 +513,6 @@ inline void init(int screen_width, int screen_height, Fonts f, Hooks h) {
   lv_obj_set_style_pad_bottom(panel, S(4), 0);
   lv_obj_set_flex_flow(panel, LV_FLEX_FLOW_COLUMN);
   lv_obj_set_style_pad_row(panel, S(8), 0);
-  lv_obj_add_event_cb(panel, on_gesture, LV_EVENT_GESTURE, nullptr);
   // Quick toggles first, then the notifications with their count and Clear all.
   auto *tiles=box(panel,BG,0);
   lv_obj_set_style_bg_opa(tiles,LV_OPA_TRANSP,0);
@@ -560,8 +598,8 @@ inline void init(int screen_width, int screen_height, Fonts f, Hooks h) {
   lv_obj_t *grip = box(handle, MUTED, S(2));
   lv_obj_set_size(grip, S(36), S(4));
   lv_obj_remove_flag(grip, LV_OBJ_FLAG_CLICKABLE);
-  lv_obj_t *hint = text(handle, fonts.small, MUTED, "Swipe up to close");
-  lv_obj_remove_flag(hint, LV_OBJ_FLAG_CLICKABLE);
+  handle_hint = text(handle, fonts.small, MUTED, "Swipe up to close");
+  lv_obj_remove_flag(handle_hint, LV_OBJ_FLAG_CLICKABLE);
 
   // Detail view.
   detail = box(top, BG, 0);

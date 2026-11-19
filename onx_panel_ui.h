@@ -323,7 +323,7 @@ inline void create_slideshow(lv_obj_t *standby_page, const lv_font_t *time_font,
   show(slide_layer, false);
 }
 
-// Notification count at the bottom centre of the idle clock (hidden when none).
+// Notification count at the top right of the idle clock (hidden when none).
 inline void create_idle_badge(lv_obj_t *standby_page, const lv_font_t *font, const void *bell) {
   idle_badge = lv_obj_create(standby_page);
   lv_obj_remove_flag(idle_badge, static_cast<lv_obj_flag_t>(LV_OBJ_FLAG_SCROLLABLE | LV_OBJ_FLAG_CLICKABLE));
@@ -331,8 +331,8 @@ inline void create_idle_badge(lv_obj_t *standby_page, const lv_font_t *font, con
   lv_obj_set_style_radius(idle_badge, LV_RADIUS_CIRCLE, 0);
   lv_obj_set_style_border_width(idle_badge, 0, 0);
   lv_obj_set_style_bg_opa(idle_badge, LV_OPA_COVER, 0);
-  lv_obj_set_style_pad_hor(idle_badge, S(12), 0);
-  lv_obj_set_style_pad_ver(idle_badge, S(6), 0);
+  lv_obj_set_style_pad_hor(idle_badge, S(9), 0);
+  lv_obj_set_style_pad_ver(idle_badge, S(3), 0);
   lv_obj_set_style_pad_column(idle_badge, S(6), 0);
   lv_obj_set_flex_flow(idle_badge, LV_FLEX_FLOW_ROW);
   lv_obj_set_flex_align(idle_badge, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
@@ -345,15 +345,15 @@ inline void create_idle_badge(lv_obj_t *standby_page, const lv_font_t *font, con
   idle_badge_label = lv_label_create(idle_badge);
   lv_obj_set_style_text_font(idle_badge_label, font, 0);
   lv_label_set_text(idle_badge_label, "");
-  lv_obj_align(idle_badge, LV_ALIGN_BOTTOM_MID, 0, -S(18));
+  lv_obj_align(idle_badge, LV_ALIGN_TOP_RIGHT, -S(12), S(8));
   show(idle_badge, false);
 }
 inline void update_idle_badge(size_t count, bool visible) {
   if (idle_badge == nullptr) return;
   visible = visible && count > 0;
   if (visible) {
-    char out[24];
-    snprintf(out, sizeof(out), count == 1 ? "%u notification" : "%u notifications", static_cast<unsigned>(count > 99 ? 99 : count));
+    char out[8];
+    snprintf(out, sizeof(out), "%u", static_cast<unsigned>(count > 99 ? 99 : count));
     if (strcmp(lv_label_get_text(idle_badge_label), out) != 0) lv_label_set_text(idle_badge_label, out);
     onx_render::style_bg_color(idle_badge, lv_color_hex(onx_display_settings::surface()), 0);
     onx_render::style_text_color(idle_badge_label, lv_color_hex(onx_display_settings::foreground()), 0);
