@@ -3,6 +3,8 @@
 #include "esphome/core/log.h"
 #include "esphome/components/json/json_util.h"
 #include "esphome/components/wifi/wifi_component.h"
+#include "src/misc/cache/instance/lv_image_cache.h"
+#include "src/misc/cache/instance/lv_image_header_cache.h"
 
 // Power state (copied into the build by `esphome: includes:`).
 #include "onx_power_state.h"
