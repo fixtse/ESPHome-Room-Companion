@@ -24,6 +24,7 @@ class IconDownloader : public Component {
 
   // Stable per-widget ownership keeps LVGL descriptors alive across cache eviction.
   void bind(lv_obj_t *widget, const std::string &icon, image::Image *fallback, bool active = false);
+  void unbind(lv_obj_t *widget) { this->bindings_.erase(widget); }
  protected:
   struct Bitmap {
     uint8_t *pixels;

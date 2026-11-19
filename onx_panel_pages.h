@@ -592,6 +592,7 @@ inline void suspend_underlay() {
 }
 inline void hide() {
   hide_carousel_clock();
+  onx_panel_detail::leave_main_page();
   onx_panel_detail::hide();
   showing=false;if(layer)lv_obj_add_flag(layer,LV_OBJ_FLAG_HIDDEN);
   if(suspended_page)restore_underlay();
@@ -633,7 +634,10 @@ inline onx_panel_detail::Tile settings_tile(int width, int height) {
 
 template<typename Bind> void render(const std::string &entity,int width,int height,bool detail,Bind bind) {
   if(!layer)return;
-  if (detail) hide_carousel_clock();
+  if (detail) {
+    hide_carousel_clock();
+    onx_panel_detail::leave_main_page();
+  }
   if (detail) suspend_underlay();
   else if (suspended_page) restore_underlay();
   onx_render::style_bg_color(layer,lv_color_hex(onx_display_settings::background()),0);
@@ -660,6 +664,7 @@ template<typename Bind> void render(const std::string &entity,int width,int heig
   }
   // Main pages: cards drawn by the shared widget engine (onx_panel_detail.h).
   for(auto &c:cards){lv_obj_add_flag(c.box,LV_OBJ_FLAG_HIDDEN);c.initialized=false;}
+  if (!detail) onx_panel_detail::activate_main_page(entity);
   onx_panel_detail::render_main(layer, main_tiles(entity, p, kind, rects), width, height);
   if (!detail) refresh_carousel_clock(width);
 }
@@ -675,6 +680,7 @@ inline void render_settings(int width,int height) {
   lv_obj_set_size(layer,width,height);lv_obj_set_pos(layer,0,0);
   if(lv_obj_get_index(layer)!=0)lv_obj_move_background(layer);
   lv_obj_remove_flag(layer,LV_OBJ_FLAG_HIDDEN);showing=true;detail_view=false;
+  onx_panel_detail::activate_main_page(onx_panel_detail::SETTINGS);
   onx_panel_detail::render_main(layer, {settings_tile(width, height)}, width, height);
   refresh_carousel_clock(width);
 }
@@ -682,6 +688,7 @@ inline void render_settings(int width,int height) {
 inline void show_timers(int width,int height) {
   if(!layer)return;
   hide_carousel_clock();
+  onx_panel_detail::leave_main_page();
   suspend_underlay();
   onx_render::style_bg_color(layer,lv_color_hex(onx_display_settings::background()),0);
   for(auto &c:cards){lv_obj_add_flag(c.box,LV_OBJ_FLAG_HIDDEN);c.initialized=false;}

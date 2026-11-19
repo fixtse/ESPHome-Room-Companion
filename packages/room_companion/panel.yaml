@@ -506,6 +506,7 @@ script:
           id(lcd_display)->enable_lvgl_pipeline(id(lvgl_ui)->get_disp());
           onx_panel_pages::setup(id(fonts_MiSans_Medium_14)->get_lv_font(),
               id(fonts_MiSans_Medium_24)->get_lv_font(), id(fonts_MiSans_Medium_32)->get_lv_font());
+          onx_panel_detail::unbind_icon = [](lv_obj_t *widget) { id(entity_icon_downloader)->unbind(widget); };
           onx_panel_pages::view_for = [](const std::string &entity,bool detail) {
             auto title = custom_logic::ha_entity_title_from_registry_cache(entity);
             auto view = detail ? onx_detail_view::build(entity,title) : onx_detail_view::carousel(entity,title);

@@ -1666,6 +1666,7 @@ inline uint32_t INSET() {return CONTROL();}  // Surfaces inside a card (same as 
 // widget: a fixed pool of image objects is re-parented on every rebuild
 // instead of creating new widgets.
 inline std::function<void(lv_obj_t *, const std::string &)> bind_icon;
+inline std::function<void(lv_obj_t *)> unbind_icon;
 struct IconUse { lv_obj_t *image; std::string entity; int cx, cy, size; const void *src; bool custom, on; };
 inline std::array<lv_obj_t *, 16> icon_pool{};
 inline onx_memory::StateArray<onx_panel_artwork::Image,16> artwork_cache;
@@ -2575,6 +2576,82 @@ inline void hide() {
   active = false;
   clear();
   if (root != nullptr) lv_obj_add_flag(root, LV_OBJ_FLAG_HIDDEN);
+}
+
+// Save only recently visited main pages. Media and custom artwork use shared
+// mutable image storage, so those pages keep the regular rebuild path.
+struct RetainedPage {
+  std::string key, signature;
+  lv_obj_t *root{nullptr};
+  decltype(targets) touch_targets;
+  decltype(actions) callbacks;
+  decltype(charts) chart_data;
+  decltype(icon_pool) icons{};
+  decltype(icon_uses) image_uses;
+};
+inline std::array<RetainedPage, 2> retained_pages;
+inline size_t next_retained_page = 0;
+inline std::string main_page_key;
+
+inline void delete_page_widgets(lv_obj_t *page_root, const decltype(icon_pool) &icons) {
+  for (auto *icon : icons) {
+    if (!icon) continue;
+    lv_obj_delete(icon);
+    if (unbind_icon) unbind_icon(icon);
+  }
+  if (page_root) lv_obj_delete(page_root);
+}
+
+inline void leave_main_page() {
+  if (main_page_key.empty()) return;
+  const bool retain = main_mode && root && !dragging && onx_media::main_entity.empty() &&
+                      std::none_of(icon_uses.begin(), icon_uses.end(), [](const IconUse &icon) { return icon.custom; });
+  if (!retain) {
+    main_page_key.clear();
+    return;
+  }
+  lv_obj_add_flag(root, LV_OBJ_FLAG_HIDDEN);
+  auto &live_targets = onx_panel_ui::touch_targets;
+  for (auto *target : targets)
+    live_targets.erase(std::remove(live_targets.begin(), live_targets.end(), target), live_targets.end());
+  for (auto *icon : icon_pool)
+    if (icon) lv_anim_delete(icon, nullptr);
+  auto &slot = retained_pages[next_retained_page];
+  next_retained_page = (next_retained_page + 1) % retained_pages.size();
+  delete_page_widgets(slot.root, slot.icons);
+  slot = {std::move(main_page_key), std::move(built_signature), root, std::move(targets), std::move(actions),
+          std::move(charts), icon_pool, std::move(icon_uses)};
+  main_page_key.clear();
+  root = nullptr;
+  icon_pool.fill(nullptr);
+  active = false;
+  main_mode = false;
+}
+
+inline void activate_main_page(const std::string &key) {
+  if (key == main_page_key) return;
+  RetainedPage saved;
+  for (auto &slot : retained_pages) {
+    if (slot.key != key) continue;
+    saved = std::move(slot);
+    slot = {};
+    break;
+  }
+  leave_main_page();
+  main_page_key = key;
+  if (!saved.root) return;
+  if (root) clear();
+  delete_page_widgets(root, icon_pool);
+  root = saved.root;
+  built_signature = std::move(saved.signature);
+  targets = std::move(saved.touch_targets);
+  actions = std::move(saved.callbacks);
+  charts = std::move(saved.chart_data);
+  icon_pool = saved.icons;
+  icon_uses = std::move(saved.image_uses);
+  auto &live_targets = onx_panel_ui::touch_targets;
+  live_targets.insert(live_targets.end(), targets.begin(), targets.end());
+  main_mode = true;
 }
 
 // Quick actions: every entry as a large tile, two columns over the whole

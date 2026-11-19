@@ -2,6 +2,16 @@
 # application uses (lcd_display, lcd_backlight, lvgl_ui).
 # Pin map verified against the official examples for both models.
 # PCF8574 pin numbers here are ZERO-based (vendor examples use one-based enums).
+external_components:
+  - source:
+      type: local
+      path: ../../../my_components
+    components: [onx_touch_bus]
+
+onx_touch_bus:
+  id: fast_touch_bus
+  i2c_id: board_i2c
+
 i2c:
   id: board_i2c
   sda: GPIO8
@@ -68,7 +78,7 @@ display:
 touchscreen:
   - platform: cst816
     id: panel_touch
-    i2c_id: board_i2c
+    i2c_id: fast_touch_bus
     display: lcd_display
     address: 0x15
     update_interval: 12ms
