@@ -1,5 +1,5 @@
 # Rectangular OpenNextion panel hardware, exposed under the IDs the shared
-# application uses (bus_spi, lcd_display, lcd_backlight, lvgl_ui).
+# application uses (lcd_display, lcd_backlight, lvgl_ui).
 # Pin map verified against the official examples for both models.
 # PCF8574 pin numbers here are ZERO-based (vendor examples use one-based enums).
 i2c:
@@ -13,11 +13,6 @@ pcf8574:
   - id: board_expander
     i2c_id: board_i2c
     address: 0x38
-
-spi:
-  id: bus_spi
-  clk_pin: GPIO5
-  mosi_pin: GPIO1
 
 output:
   - platform: ledc
@@ -50,12 +45,13 @@ display:
   - platform: ili9xxx
     id: lcd_display
     model: ${display_model}
-    spi_id: bus_spi
-    data_rate: ${lcd_spi_data_rate}
-    psram_dma: true
+    queued_spi:
+      clk_pin: GPIO5
+      mosi_pin: GPIO1
+      cs_pin: GPIO2
+      data_rate: ${lcd_spi_data_rate}
     color_order: BGR
     dc_pin: GPIO3
-    cs_pin: GPIO2
     reset_pin:
       pcf8574: board_expander
       number: 5
