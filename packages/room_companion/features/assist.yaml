@@ -13,6 +13,12 @@
 # Assist timers, so those are done by voice; HA timer helpers on the panel get
 # Cancel / Pause / +1 min buttons.
 globals:
+  - id: assist_mic_percent
+    type: int
+    initial_value: '100'
+  - id: assist_compact
+    type: bool
+    initial_value: 'false'
   - id: assist_ready
     type: bool
     initial_value: 'false'
@@ -105,15 +111,15 @@ voice_assistant:
         active: true
   on_stt_end:
     - script.execute:
+        id: assist_pulse
+        active: false
+    - script.execute:
         id: assist_add_bubble
         text: !lambda 'return onx_notification::plain_text(x, 384);'
         user: true
     - lvgl.label.update:
         id: assist_status
         text: Thinking...
-    - script.execute:
-        id: assist_pulse
-        active: false
   on_tts_start:
     - script.execute:
         id: assist_add_bubble
@@ -313,7 +319,8 @@ script:
           auto *conversation = id(assist_conversation);
           // A fresh session starts with an empty conversation; a continued
           // one (follow-up question, tap to talk again) keeps its history.
-          if (lv_obj_has_flag(overlay, LV_OBJ_FLAG_HIDDEN)) lv_obj_clean(conversation);
+          const bool fresh = lv_obj_has_flag(overlay, LV_OBJ_FLAG_HIDDEN);
+          if (fresh) lv_obj_clean(conversation);
           // Landscape: microphone, status, hint and buttons in a column on the
           // left, the conversation filling the right. Portrait: stacked, with
           // the conversation between the status and the hint.
@@ -325,14 +332,6 @@ script:
             lv_obj_set_size(side, onx_panel_ui::width * 40 / 100, LV_PCT(100));
             lv_obj_set_style_pad_row(side, onx_geom::S(8), 0);
             lv_obj_set_parent(id(assist_hint), side);
-            // A smaller microphone leaves room for the buttons below it.
-            for (auto *obj : {id(assist_mic_ring), id(assist_mic_ring_inner), id(assist_mic)}) {
-              const int size = lv_obj_get_style_width(obj, LV_PART_MAIN) * 3 / 4;
-              lv_obj_set_size(obj, size, size);
-              lv_obj_set_style_radius(obj, size / 2, 0);
-            }
-            // Short screens: the microphone already says "tap to talk".
-            if (onx_panel_ui::height < 300) lv_obj_add_flag(id(assist_hint), LV_OBJ_FLAG_HIDDEN);
             lv_obj_set_parent(id(assist_controls), side);
             lv_obj_set_style_flex_grow(id(assist_side_spacer), 1, 0);
             lv_obj_remove_flag(id(assist_side_spacer), LV_OBJ_FLAG_HIDDEN);
@@ -350,6 +349,11 @@ script:
           lv_obj_set_style_bg_color(id(assist_overlay), lv_color_hex(onx_display_settings::background()), 0);
           lv_label_set_text(id(assist_hint), onx_panel_ui::wake_word_on && onx_panel_ui::wake_word_on()
               ? "Say your wake word or tap the microphone" : "Tap the microphone to talk");
+          // A fresh session starts with the full-size microphone and hint.
+          if (fresh) {
+            id(assist_compact) = false;
+            id(assist_mic_scale).execute(false);
+          }
           // Existing bubbles follow a palette change.
           const auto user_bg = lv_color_hex(onx_display_settings::control_surface());
           for (uint32_t i = 0; i < lv_obj_get_child_count(conversation); i++) {
@@ -373,9 +377,15 @@ script:
     then:
       - lambda: |-
           auto *inner = id(assist_mic_ring_inner), *outer = id(assist_mic_ring);
+          // Only the inner ring's size and the outer ring's opacity animate
+          // here; the current microphone scale (assist_mic_scale) is kept.
           lv_anim_delete(inner, nullptr);
           lv_anim_delete(outer, nullptr);
-          const int base = ${ (94 * (ui_scale | float)) | round | int }, full = ${ (118 * (ui_scale | float)) | round | int };
+          const int percent = id(assist_mic_percent);
+          const int outer_size = onx_geom::S(120) * percent / 100;
+          lv_obj_set_size(outer, outer_size, outer_size);
+          lv_obj_set_style_radius(outer, outer_size / 2, 0);
+          const int base = onx_geom::S(94) * percent / 100, full = onx_geom::S(118) * percent / 100;
           lv_obj_set_size(inner, base, base);
           lv_obj_set_style_radius(inner, base / 2, 0);
           lv_obj_set_style_bg_opa(outer, LV_OPA_20, 0);
@@ -448,7 +458,74 @@ script:
           lv_obj_set_style_text_color(label, lv_color_hex(user ? 0xFFFFFF : 0xD2D2D2), 0);
           lv_label_set_text(label, text.c_str());
           lv_obj_update_layout(conversation);
+          // Once the conversation overflows, make room for it: hide the hint
+          // and shrink the microphone (animated) for the rest of the session.
+          if (!id(assist_compact) && lv_obj_get_scroll_top(conversation) + lv_obj_get_scroll_bottom(conversation) > 0) {
+            id(assist_compact) = true;
+            id(assist_mic_scale).execute(true);
+            lv_obj_update_layout(conversation);
+          }
           lv_obj_scroll_to_view(row, LV_ANIM_ON);
+
+  # Sizes the microphone rings and shows/hides the hint for the current mode:
+  # full size in portrait, 3/4 in landscape (room for the buttons below it),
+  # and half size with no hint once the conversation needs the space.
+  - id: assist_mic_scale
+    parameters:
+      animate: bool
+    then:
+      - lambda: |-
+          const bool landscape = onx_panel_ui::width > onx_panel_ui::height;
+          const bool compact = id(assist_compact);
+          const int percent = compact ? 50 : landscape ? 75 : 100;
+          id(assist_mic_percent) = percent;
+          // Short landscape screens: the microphone already says "tap to talk".
+          if (compact || (landscape && onx_panel_ui::height < 300)) lv_obj_add_flag(id(assist_hint), LV_OBJ_FLAG_HIDDEN);
+          else lv_obj_remove_flag(id(assist_hint), LV_OBJ_FLAG_HIDDEN);
+          struct Ring { lv_obj_t *obj; int base; };
+          const Ring rings[] = {{id(assist_mic_ring), onx_geom::S(120)},
+                                {id(assist_mic_ring_inner), onx_geom::S(94)},
+                                {id(assist_mic), onx_geom::S(68)}};
+          // The emoji shrinks with the microphone (transform scale, 256 = 1x).
+          auto *icon = lv_obj_get_child(id(assist_mic), 0);
+          for (const auto &ring : rings) {
+            const int target = ring.base * percent / 100;
+            const int from = lv_obj_get_width(ring.obj);
+            auto apply = [](void *o, int32_t v) {
+              auto *obj = static_cast<lv_obj_t *>(o);
+              lv_obj_set_size(obj, v, v);
+              lv_obj_set_style_radius(obj, v / 2, 0);
+            };
+            lv_anim_delete(ring.obj, nullptr);
+            if (!animate || from <= 0 || from == target) { apply(ring.obj, target); continue; }
+            lv_anim_t a;
+            lv_anim_init(&a);
+            lv_anim_set_var(&a, ring.obj);
+            lv_anim_set_values(&a, from, target);
+            lv_anim_set_duration(&a, 300);
+            lv_anim_set_path_cb(&a, lv_anim_path_ease_out);
+            lv_anim_set_exec_cb(&a, apply);
+            lv_anim_start(&a);
+          }
+          if (icon) {
+            const int scale = 256 * percent / 100;
+            lv_obj_set_style_transform_pivot_x(icon, LV_PCT(50), 0);
+            lv_obj_set_style_transform_pivot_y(icon, LV_PCT(50), 0);
+            lv_anim_delete(icon, nullptr);
+            auto apply = [](void *o, int32_t v) { lv_obj_set_style_transform_scale(static_cast<lv_obj_t *>(o), v, 0); };
+            const int from = lv_obj_get_style_transform_scale_x(icon, LV_PART_MAIN);
+            if (!animate || from == scale) apply(icon, scale);
+            else {
+              lv_anim_t a;
+              lv_anim_init(&a);
+              lv_anim_set_var(&a, icon);
+              lv_anim_set_values(&a, from, scale);
+              lv_anim_set_duration(&a, 300);
+              lv_anim_set_path_cb(&a, lv_anim_path_ease_out);
+              lv_anim_set_exec_cb(&a, apply);
+              lv_anim_start(&a);
+            }
+          }
 
   # Leave the reply on screen briefly, then return to the previous view.
   - id: assist_finished
