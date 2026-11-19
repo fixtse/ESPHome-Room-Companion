@@ -21,7 +21,7 @@ second carousel renderer.
 | Media player | Swipe up / down | Change volume |
 | Detail view | Swipe right **starting at the left edge** | Back |
 | Anywhere in the native UI | Swipe down **from the top edge** | Open the notification centre (the only way on detail screens) |
-| Notification centre | Swipe up past a third of the screen (or flick up), or tap the handle at the bottom | Close it; the centre follows the finger and springs back from a shorter drag |
+| Notification centre | Swipe up past a fifth of the screen (or flick up); a swipe from the bottom handle area always works, or tap the handle at the bottom | Close it; the centre follows the finger and springs back from a shorter drag |
 | Dashboard stream | Swipe from the left edge | Back to the native UI |
 
 ## Header, notifications and dashboard

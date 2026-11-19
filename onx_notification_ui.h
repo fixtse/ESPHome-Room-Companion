@@ -200,7 +200,7 @@ inline void open_panel() {
 }
 inline int drag_offset = 0;  // Panel lift while a swipe up is in progress (<= 0).
 inline lv_obj_t *handle_hint = nullptr;
-inline bool drag_closes(int dy) { return -dy >= height / 3; }
+inline bool drag_closes(int dy) { return -dy >= height / 5; }
 inline void set_drag_offset(int offset) {
   if (panel == nullptr || offset == drag_offset) return;
   drag_offset = offset;
@@ -240,6 +240,11 @@ inline bool swipe_closes() {
     if (l != nullptr && !lv_obj_has_flag(l, LV_OBJ_FLAG_HIDDEN) && lv_obj_get_scroll_bottom(l) > 0) return false;
   return true;
 }
+// Bottom of the open centre (handle and the strip above it): a swipe up from
+// here always closes it, even while the list could still scroll.
+inline bool close_zone(int, int y) {
+  return panel_open && detail_id == 0 && rotate_dialog == nullptr && y >= height - S(84);
+}
 // Swipe up: the centre follows the finger and only closes on release, once
 // lifted past a third of the screen (or flicked). A shorter drag springs back,
 // so a swipe that changes its mind never closes it mid-drag.
@@ -251,7 +256,7 @@ inline void drag_panel(int dy) {
 }
 inline bool release_panel_drag(int dy, uint32_t ms) {
   if (!panel_open || panel == nullptr) return false;
-  const bool flick = ms > 0 && ms < 260 && -dy >= S(70);
+  const bool flick = ms > 0 && ms < 350 && -dy >= S(36);
   if (drag_closes(dy) || flick) return true;
   if (drag_offset == 0) return false;
   lv_anim_t a;
@@ -592,7 +597,7 @@ inline void init(int screen_width, int screen_height, Fonts f, Hooks h) {
   lv_obj_set_flex_flow(handle, LV_FLEX_FLOW_COLUMN);
   lv_obj_set_flex_align(handle, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
   lv_obj_set_style_pad_row(handle, S(4), 0);
-  lv_obj_set_style_pad_ver(handle, S(4), 0);
+  lv_obj_set_style_pad_ver(handle, S(8), 0);
   lv_obj_add_flag(handle, LV_OBJ_FLAG_CLICKABLE);
   lv_obj_add_event_cb(handle, on_close_panel, LV_EVENT_CLICKED, nullptr);
   lv_obj_t *grip = box(handle, MUTED, S(2));

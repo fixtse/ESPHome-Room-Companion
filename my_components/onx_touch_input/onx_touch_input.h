@@ -54,6 +54,9 @@ class TouchInput : public Component, public touchscreen::TouchListener {
   void set_pull_up_drag(std::function<void(int)> &&drag, std::function<bool(int, uint32_t)> &&release) {
     pull_up_drag_ = std::move(drag); pull_up_release_ = std::move(release);
   }
+  // A swipe up that starts where this returns true always closes the overlay,
+  // even while its list could still scroll (e.g. the handle at the bottom).
+  void set_pull_up_zone(std::function<bool(int, int)> &&f) { pull_up_zone_ = std::move(f); }
   Trigger<> *get_back_trigger() { return &back_trigger_; }
   bool suppress_click() const { return state_ == State::SWIPE || (last_swipe_ms_ && millis() - last_swipe_ms_ < 180); }
 
@@ -67,7 +70,7 @@ class TouchInput : public Component, public touchscreen::TouchListener {
   }
   void loop() override {
     // Hold is time-based: promote a still finger to a held button.
-    if (!(dock_scroll_ && y0_>=strip_top_ && page_swipe_ && page_swipe_()) && !native_ && !back_ && !pull_only_ && state_ == State::DOWN && millis() - down_ms_ >= hold_ms_) {
+    if (!(dock_scroll_ && y0_>=strip_top_ && page_swipe_ && page_swipe_()) && !native_ && !back_ && !pull_only_ && !zone_ && state_ == State::DOWN && millis() - down_ms_ >= hold_ms_) {
       if (hold_fn_ && hold_fn_(x0_, y0_)) { state_ = State::IGNORED; return; }
       state_ = State::HELD;
       press_(true);
@@ -100,6 +103,13 @@ class TouchInput : public Component, public touchscreen::TouchListener {
   bool enabled_now_() { return !enabled_ || enabled_(); }
   void begin_(int x, int y) {
     x0_ = x; y0_ = y;
+    // The overlay's close zone wins over passthrough and disabled input.
+    if (pull_up_zone_ && pull_up_zone_(x, y)) {
+      back_ = left_back_ = native_ = pull_ = pull_only_ = false;
+      pull_up_ = zone_ = true;
+      state_ = State::DOWN; x_ = x; y_ = y; down_ms_ = millis(); consumed_ = 0; axis_ = 0;
+      return;
+    }
     for (int i = 0; i < passthrough_count_; ++i) {
       const auto &r = passthrough_[i];
       if (x >= r.x0 && x < r.x1 && y >= r.y0 && y < r.y1) {
@@ -107,6 +117,7 @@ class TouchInput : public Component, public touchscreen::TouchListener {
         return;
       }
     }
+    zone_ = false;
     back_ = back_enabled_ && back_enabled_();
     left_back_ = back_ && swipe_left_back_ && swipe_left_back_();
     // Navigation can start over an LVGL control, but LVGL still owns taps there.
@@ -138,6 +149,7 @@ class TouchInput : public Component, public touchscreen::TouchListener {
       if (state_ == State::DOWN) state_ = State::SWIPE;  // A held finger keeps the button down.
     }
     if (axis_ == 1 && (back_ || left_back_)) { last_swipe_ms_ = millis(); return; }
+    if (zone_ && axis_ != 2) { last_swipe_ms_ = millis(); return; }
     if (axis_ == 2 && pull_up_ && pull_up_drag_) { last_swipe_ms_ = millis(); pull_up_drag_(dy); return; }
     if (axis_ == 2 && (pull_ || pull_up_)) { last_swipe_ms_ = millis(); return; }
     if (pull_only_) return;
@@ -181,7 +193,7 @@ class TouchInput : public Component, public touchscreen::TouchListener {
     if (state == State::SWIPE && axis_ == 2 && pull_up_ && y0_ - y_ >= 40) {
       last_swipe_ms_ = millis(); pull_up_trigger_.trigger(); return;
     }
-    if (native_ || pull_only_) return;
+    if (native_ || pull_only_ || zone_) return;  // LVGL handles taps in the close zone.
     if (state == State::HELD) { press_(false); return; }
     if (state != State::DOWN) return;  // Swipes and ignored touches end here.
     if (y0_ >= strip_top_ && spacing_ > 0) {
@@ -207,8 +219,9 @@ class TouchInput : public Component, public touchscreen::TouchListener {
   std::function<bool(int, int)> passthrough_fn_;
   std::function<void(int)> pull_up_drag_;
   std::function<bool(int, uint32_t)> pull_up_release_;
+  std::function<bool(int, int)> pull_up_zone_;
   Trigger<> back_trigger_, pull_down_trigger_, pull_up_trigger_;
-  bool pull_up_{false};
+  bool pull_up_{false}, zone_{false};
   bool back_{false}, left_back_{false}, native_{false}, pull_{false}, pull_only_{false};
   uint32_t last_swipe_ms_{0};
   std::function<void(int)> dock_scroll_;
