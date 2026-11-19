@@ -2,6 +2,9 @@
 # streamed as JPEG tiles (vendored strange-v/RemoteWebViewClient with a display
 # handoff). Open it from a "[Local] Dashboard" control in the carousel or the
 # Dashboard switch; swipe left or right to return.
+substitutions:
+  dashboard_notice_seconds: "8"
+
 external_components:
   - source:
       type: local
@@ -41,7 +44,17 @@ room_companion:
   default_url: ${default_dashboard_url}
   on_message:
     - lambda: |-
-        onx_notification::center.add("Dashboard", message, 8, "", millis());
+        const auto item = onx_notification::center.add("Dashboard", message, ${dashboard_notice_seconds}, "", millis());
+        if (transient && item) id(dismiss_dashboard_notice).execute(item);
+
+script:
+  - id: dismiss_dashboard_notice
+    mode: restart
+    parameters:
+      item: uint32_t
+    then:
+      - delay: ${dashboard_notice_seconds}s
+      - lambda: 'onx_notification::center.dismiss(item);'
 
 text:
   - platform: template

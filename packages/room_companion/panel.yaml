@@ -414,8 +414,6 @@ esphome:
       then:
         - lambda: |-
             onx_geom::scale = ${ui_scale};
-            // "[Local] Dashboard" and "[Local] Assist" become valid slot entities.
-            custom_logic::panel_local_entries = true;
             onx_navigation::shortcut_action = []() {
               if (id(touch_input)->suppress_click() || onx_notification_ui::owns_screen()) return;
               id(ui_presenter)->notify_user_activity();

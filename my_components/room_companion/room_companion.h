@@ -58,7 +58,7 @@ class RoomPanel : public Component {
     settings_.url = url;
   }
   Trigger<bool> *get_owner_trigger() { return &owner_trigger_; }
-  Trigger<std::string> *get_message_trigger() { return &message_trigger_; }
+  Trigger<std::string, bool> *get_message_trigger() { return &message_trigger_; }
 
   void setup() override;
   void loop() override;
@@ -104,7 +104,7 @@ class RoomPanel : public Component {
   switch_::Switch *dashboard_switch_{nullptr};
   CornerListener *listener_{nullptr};
   Trigger<bool> owner_trigger_;
-  Trigger<std::string> message_trigger_;
+  Trigger<std::string, bool> message_trigger_;
 
   StreamSettings settings_;
   std::string boot_server_;

@@ -330,7 +330,7 @@ script:
           lv_obj_set_style_bg_color(id(assist_transcript_bubble), lv_color_hex(onx_display_settings::control_surface()), 0);
           lv_obj_set_style_bg_color(id(assist_overlay), lv_color_hex(onx_display_settings::background()), 0);
           lv_label_set_text(id(assist_hint), onx_panel_ui::wake_word_on && onx_panel_ui::wake_word_on()
-              ? "Say \u201COkay Nabu\u201D or tap the microphone" : "Tap the microphone to talk");
+              ? "Say your wake word or tap the microphone" : "Tap the microphone to talk");
           lv_obj_set_width(id(assist_transcript), LV_SIZE_CONTENT);
           lv_obj_set_width(id(assist_response), LV_SIZE_CONTENT);
           const int bubble = lv_obj_get_width(id(assist_overlay)) * 72 / 100;

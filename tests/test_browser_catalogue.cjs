@@ -17,11 +17,11 @@ class Socket {
  }
  close(){this.onclose?.()}
 }
-const context={URL,URLSearchParams,crypto:webcrypto,TextEncoder,btoa:s=>Buffer.from(s,'binary').toString('base64'),setTimeout,clearTimeout,WebSocket:Socket,window:{sessionStorage},location:{origin:'http://192.168.10.52',search:'',assign:url=>urls.push(url)},history:{replaceState(){}},fetch:async(url,options)=>{http.push({url,options});return {ok:true,json:async()=>({access_token:'browser-secret',refresh_token:'refresh-secret',expires_in:1800})}}};
+const context={ONX_PANEL:true,URL,URLSearchParams,crypto:webcrypto,TextEncoder,btoa:s=>Buffer.from(s,'binary').toString('base64'),setTimeout,clearTimeout,WebSocket:Socket,window:{sessionStorage},location:{origin:'http://192.168.10.52',search:'',assign:url=>urls.push(url)},history:{replaceState(){}},fetch:async(url,options)=>{http.push({url,options});return {ok:true,json:async()=>({access_token:'browser-secret',refresh_token:'refresh-secret',expires_in:1800})}}};
 vm.runInNewContext(js,context);const {catalogue,search,Client,baseUrl}=context.OnxHA;
 (async()=>{
  const client=new Client(sessionStorage);sessionStorage.setItem('onx.ha.auth',JSON.stringify({base:'http://ha.local:8123',access:'browser-secret',refresh:'refresh-secret',expires:Date.now()+60000}));
- const items=await client.load();assert.equal(items.length,12016);assert(client.ready);assert.equal(http.length,0);assert(urls.every(u=>u.startsWith('ws://ha.local:8123/')));
+ const items=await client.load();assert.equal(items.length,12014);assert(client.ready);assert.equal(http.length,0);assert(urls.every(u=>u.startsWith('ws://ha.local:8123/')));
  for(const domain of deviceDomains)assert.equal(search(items,'',domain).total,1);
  const match=search(items,'calentador','climate');assert.equal(match.total,1);assert.equal(match.items[0].area,'Kitchen');assert.equal(match.items[0].icon,'mdi:radiator');assert.equal(match.items[0].iconOverride,'1');
  // HA can render an integration icon without either an icon state attribute or registry override.
@@ -39,10 +39,10 @@ vm.runInNewContext(js,context);const {catalogue,search,Client,baseUrl}=context.O
  const icons=catalogue([{entity_id:'fan.test',attributes:{icon:'mdi:fan'}},{entity_id:'light.test',attributes:{icon:'javascript:bad'}}]);assert.equal(icons.find(i=>i.entity==='fan.test').icon,'mdi:fan');assert.equal(icons.find(i=>i.entity==='fan.test').iconOverride,'0');assert.equal(icons.find(i=>i.entity==='light.test').icon,'');
  assert.equal(search(items,'','sensor').total,12000);assert.equal(search(items,'','sensor',30).items.length,30);
  assert.equal(search(items,'','light').items[0].type,'RGB Light');
- assert.equal(search(items,'','switch').total,4);assert.equal(search(items,'','actions').total,0);
+ assert.equal(search(items,'','switch').total,2);assert.equal(search(items,'','actions').total,0);
  sessionStorage.setItem('onx.ha.auth',JSON.stringify({base:'http://ha.local:8123',access:'expired',refresh:'refresh-secret',expires:0}));
  await client.load();assert.equal(http.length,1);assert.equal(http[0].url,'http://ha.local:8123/auth/token');assert(!http.some(r=>r.url.includes('192.168.10.52')));
- client.disconnect();assert.equal(sessionStorage.getItem('onx.ha.auth'),null);assert.equal(client.items.length,4);await assert.rejects(()=>client.token(),/Connect/);
+ client.disconnect();assert.equal(sessionStorage.getItem('onx.ha.auth'),null);assert.deepEqual(Array.from(client.items,item=>item.entity),['[Local] Dashboard','[Local] Assist']);await assert.rejects(()=>client.token(),/Connect/);
  context.location.search='?code=bogus&state=invalid';await assert.rejects(()=>client.finishLogin(),/expired/);assert.equal(http.length,1);
  context.location.search='';await client.login('http://ha.local:8123');const flow=JSON.parse(sessionStorage.getItem('onx.ha.flow'));assert(flow.state.length>=32);assert(flow.verifier);assert(urls.at(-1).includes('code_challenge='));
  context.location.search='?code=valid&state='+flow.state;await client.finishLogin();assert.equal(http.length,2);assert(http[1].options.body.has('code_verifier'));assert.equal(sessionStorage.getItem('onx.ha.flow'),null);

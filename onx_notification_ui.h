@@ -43,7 +43,8 @@ inline Hooks hooks;
 inline int width = 240, height = 240;
 inline lv_obj_t *bell = nullptr, *badge = nullptr, *badge_label = nullptr;
 inline lv_obj_t *toast = nullptr, *toast_title = nullptr, *toast_body = nullptr;
-inline lv_obj_t *panel = nullptr, *list = nullptr, *empty_label = nullptr, *count_label = nullptr, *clear_button = nullptr,
+inline lv_obj_t *panel = nullptr, *list = nullptr, *empty_label = nullptr, *header_label = nullptr,
+                *count_label = nullptr, *clear_button = nullptr,
                 *handle = nullptr, *standby_button = nullptr, *preset_button = nullptr, *preset_list = nullptr,
                 *rotate_button = nullptr, *rotate_dialog = nullptr;
 // An opened notification returns to the centre when it was opened from there.
@@ -242,8 +243,8 @@ inline void update_presets() {
   preset_signature=std::move(signature);
   lv_obj_clean(preset_list);
   preset_names.clear();
-  auto caption=onx_presets::applying.empty()?std::string("Presets"):"Applying "+onx_presets::applying+"…";
-  text(preset_list,fonts.title,foreground(),caption.c_str());
+  if(!onx_presets::applying.empty())
+    text(preset_list,fonts.small,foreground(),("Applying "+onx_presets::applying+"…").c_str());
   if(!preset_error.empty())text(preset_list,fonts.small,foreground(),preset_error.c_str());
   if(onx_presets::summaries.empty())text(preset_list,fonts.body,muted(),"No saved presets");
   for(const auto &preset:onx_presets::summaries) {
@@ -492,7 +493,7 @@ inline void init(int screen_width, int screen_height, Fonts f, Hooks h) {
   lv_obj_set_flex_align(header, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
   lv_obj_set_style_pad_column(header, S(6), 0);
   lv_obj_set_style_pad_left(header, S(4), 0);
-  text(header, fonts.title, TEXT, "Notifications");
+  header_label = text(header, fonts.title, TEXT, "Notifications");
   count_label = text(header, fonts.title, MUTED, "");
   lv_obj_t *spacer = box(header, BG, 0);
   lv_obj_set_style_bg_opa(spacer, LV_OPA_TRANSP, 0);
@@ -715,7 +716,11 @@ inline void refresh() {
   lv_obj_set_style_text_color(detail_age, lv_color_hex(accent()), 0);
   char count_text[16] = "";
   if (!center.items.empty()) snprintf(count_text, sizeof(count_text), "\xC2\xB7 %u", static_cast<unsigned>(center.items.size()));
+  const char *heading = presets_open ? "Presets" : "Notifications";
+  if (std::strcmp(lv_label_get_text(header_label), heading) != 0)
+    lv_label_set_text_static(header_label, heading);
   lv_label_set_text(count_label, count_text);
+  hide(count_label, presets_open);
   hide(clear_button, presets_open || center.items.empty());
   lv_obj_set_style_bg_color(panel, lv_color_hex(bg()), 0);
   lv_obj_set_style_bg_color(clear_button, lv_color_hex(surface()), 0);

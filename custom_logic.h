@@ -32,9 +32,9 @@ namespace custom_logic {
 
 static const char *const TAG = "CustomLogic";
 static constexpr size_t MAX_HA_ENTITY_COUNT = 81;  // 40 entries, 40 press actions, standby weather
-static constexpr size_t LOCAL_HMI_GPIO_SWITCH_PRESET_OPTION_COUNT = 4;
+static constexpr size_t PANEL_LOCAL_OPTION_COUNT = 2;
 static constexpr size_t MAX_HA_ENTITY_OPTION_COUNT =
-    MAX_HA_ENTITY_COUNT + 1 + LOCAL_HMI_GPIO_SWITCH_PRESET_OPTION_COUNT;
+    MAX_HA_ENTITY_COUNT + 1 + PANEL_LOCAL_OPTION_COUNT;
 static constexpr size_t CONFIGURABLE_DEVICE_SLOT_COUNT = onx_memory::ENTRY_COUNT;
 enum NormalDeviceDetailKind : int {
   NORMAL_DEVICE_DETAIL_KIND_NONE = 0,
@@ -54,12 +54,6 @@ enum NormalDeviceDetailKind : int {
 static constexpr uint8_t NORMAL_LIGHT_FEEDBACK_BRIGHTNESS = 0x01;
 static constexpr uint8_t NORMAL_LIGHT_FEEDBACK_COLOR_TEMPERATURE = 0x02;
 static constexpr uint8_t NORMAL_LIGHT_FEEDBACK_RGB = 0x04;
-static const char *const LOCAL_HMI_GPIO_SWITCH_PRESET_OPTIONS[LOCAL_HMI_GPIO_SWITCH_PRESET_OPTION_COUNT] = {
-    "[Local] HMI IO10",
-    "[Local] HMI IO11",
-    "[Local] HMI IO17",
-    "[Local] HMI IO18",
-};
 static std::array<uint8_t, CONFIGURABLE_DEVICE_SLOT_COUNT> normal_light_feedback_suppression_masks{};
 
 inline void set_normal_light_feedback_suppressed(size_t ui_slot, uint8_t attribute_mask, bool suppressed) {
@@ -1262,54 +1256,39 @@ inline std::string trim_copy(const std::string &value) {
   return value.substr(begin, end - begin);
 }
 
-// Touch panels add two local controls (dashboard stream, Assist). They reuse
-// the local-switch path with reserved IO numbers; the panel never accepts them.
-inline bool panel_local_entries = false;
+// Dashboard and Assist reuse the local-switch path with reserved control IDs.
 constexpr int PANEL_LOCAL_DASHBOARD = 90, PANEL_LOCAL_ASSIST = 91;
 
-inline bool is_local_hmi_gpio_switch_preset_option(const std::string &option) {
-  const std::string normalized_option = trim_copy(option);
-  if (panel_local_entries && (normalized_option == "[Local] Dashboard" || normalized_option == "[Local] Assist")) {
-    return true;
+static constexpr const char *PANEL_LOCAL_OPTIONS[PANEL_LOCAL_OPTION_COUNT] = {
+    "[Local] Dashboard",
+    "[Local] Assist",
+};
+
+inline bool is_retired_panel_gpio(const std::string &entity_id) {
+  for (const char *pin : {"10", "11", "17", "18"}) {
+    if (entity_id == std::string("[Local] HMI IO") + pin ||
+        entity_id == std::string("[Preset] Local IO") + pin) return true;
   }
-  for (const char *preset_option : LOCAL_HMI_GPIO_SWITCH_PRESET_OPTIONS) {
-    if (normalized_option == preset_option) {
-      return true;
-    }
-  }
-  return normalized_option == "[Preset] Local IO10" ||
-         normalized_option == "[Preset] Local IO11" ||
-         normalized_option == "[Preset] Local IO17" ||
-         normalized_option == "[Preset] Local IO18";
+  return false;
 }
 
 inline int local_hmi_gpio_switch_io_from_entity_id(const std::string &entity_id) {
   const std::string normalized_entity_id = trim_copy(entity_id);
-  if (panel_local_entries && normalized_entity_id == "[Local] Dashboard") return PANEL_LOCAL_DASHBOARD;
-  if (panel_local_entries && normalized_entity_id == "[Local] Assist") return PANEL_LOCAL_ASSIST;
-  if (normalized_entity_id == "[Local] HMI IO10" || normalized_entity_id == "[Preset] Local IO10") {
-    return 10;
-  }
-  if (normalized_entity_id == "[Local] HMI IO11" || normalized_entity_id == "[Preset] Local IO11") {
-    return 11;
-  }
-  if (normalized_entity_id == "[Local] HMI IO17" || normalized_entity_id == "[Preset] Local IO17") {
-    return 17;
-  }
-  if (normalized_entity_id == "[Local] HMI IO18" || normalized_entity_id == "[Preset] Local IO18") {
-    return 18;
-  }
+  if (normalized_entity_id == PANEL_LOCAL_OPTIONS[0]) return PANEL_LOCAL_DASHBOARD;
+  if (normalized_entity_id == PANEL_LOCAL_OPTIONS[1]) return PANEL_LOCAL_ASSIST;
   return -1;
 }
 
+inline bool is_local_hmi_gpio_switch_preset_option(const std::string &option) {
+  return local_hmi_gpio_switch_io_from_entity_id(option) >= 0;
+}
+
 inline std::string local_hmi_gpio_switch_display_name_from_entity_id(const std::string &entity_id) {
-  const int io = local_hmi_gpio_switch_io_from_entity_id(entity_id);
-  if (io < 0) {
-    return "";
+  switch (local_hmi_gpio_switch_io_from_entity_id(entity_id)) {
+    case PANEL_LOCAL_DASHBOARD: return "Dashboard";
+    case PANEL_LOCAL_ASSIST: return "Assist";
+    default: return "";
   }
-  if (io == PANEL_LOCAL_DASHBOARD) return "Dashboard";
-  if (io == PANEL_LOCAL_ASSIST) return "Assist";
-  return "HMI IO" + std::to_string(io);
 }
 
 inline std::string extract_entity_id_from_device1_option(const std::string &option) {
@@ -2938,6 +2917,7 @@ inline void load_device_config_if_needed(size_t slot) {
   }
   stored.entity_id[MAX_HA_ENTITY_ID_LENGTH] = '\0';
   stored.custom_type[sizeof(stored.custom_type) - 1] = '\0';
+  if (is_retired_panel_gpio(stored.entity_id)) return;
   cached_device_entity_id(slot) = stored.entity_id;
   cached_device_custom_type(slot) = stored.custom_type;
   cached_device_custom_light_capability_mask(slot) =
@@ -4188,12 +4168,12 @@ inline bool compare_ha_entity_for_select(const StoredHaEntity &a, const StoredHa
 }
 
 inline size_t build_filtered_config_options(HaEntityOptionArray &options, bool (*predicate)(const char *),
-                                            bool include_local_gpio_switch_presets = false) {
+                                            bool include_panel_local_options = false) {
   load_ha_entities_if_needed();
   options[0] = "none";
   size_t option_count = 1;
-  if (include_local_gpio_switch_presets) {
-    for (const char *preset_option : LOCAL_HMI_GPIO_SWITCH_PRESET_OPTIONS) {
+  if (include_panel_local_options) {
+    for (const char *preset_option : PANEL_LOCAL_OPTIONS) {
       options[option_count++] = preset_option;
     }
   }
@@ -4260,7 +4240,7 @@ inline bool apply_device_config_options(size_t slot, esphome::select::Select *my
   const std::string configured = cached_device_entity_id(slot);
   staged_options[0] = "none";
   size_t option_count = 1;
-  for (const char *preset : LOCAL_HMI_GPIO_SWITCH_PRESET_OPTIONS) staged_options[option_count++] = preset;
+  for (const char *preset : PANEL_LOCAL_OPTIONS) staged_options[option_count++] = preset;
   if (!configured.empty() && !is_local_hmi_gpio_switch_preset_option(configured.c_str())) {
     staged_options[option_count++] = ha_entity_title_from_registry_cache(configured) + " / " + configured;
   }

@@ -1,4 +1,4 @@
-# Optional local wake word ("Okay Nabu"). Import only after tap-to-talk audio is
+# Optional local wake words. Import only after tap-to-talk audio is
 # verified. The "Wake word enabled" switch remembers its state; set
 # wake_word_restore_mode: RESTORE_DEFAULT_ON in your root YAML to start enabled.
 # Detection runs whenever the switch is on, Assist is connected, the microphone
@@ -15,6 +15,9 @@ micro_wake_word:
     channels: 0
   models:
     - model: okay_nabu
+    - model: hey_jarvis
+    - model: hey_mycroft
+    - model: https://raw.githubusercontent.com/formatBCE/Respeaker-Lite-ESPHome-integration/6d68e61f1d615c59bd7d47e8f4e8c09e53583892/microwakeword/models/v2/kenobi.json
   on_wake_word_detected:
     - if:
         condition:

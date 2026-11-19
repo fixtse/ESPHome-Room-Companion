@@ -435,18 +435,6 @@ script:
 
           auto local_hmi_gpio_switch_state = [&](const std::string &entity_id, bool *state) -> bool {
             switch (local_hmi_gpio_switch_io_from_entity_id(entity_id)) {
-              case 10:
-                *state = id(normal_gpio_io10).state;
-                return true;
-              case 11:
-                *state = id(normal_gpio_io11).state;
-                return true;
-              case 17:
-                *state = id(normal_gpio_io17).state;
-                return true;
-              case 18:
-                *state = id(normal_gpio_io18).state;
-                return true;
               case custom_logic::PANEL_LOCAL_DASHBOARD:
               case custom_logic::PANEL_LOCAL_ASSIST:
                 *state = onx_navigation::local_state && onx_navigation::local_state(local_hmi_gpio_switch_io_from_entity_id(entity_id));
@@ -1546,59 +1534,6 @@ script:
                    is_local_hmi_gpio_switch_entity_id(id(ui_presenter)->get_normal_device_entity_id(detail_index))
                        ? "YES"
                        : "NO");
-      - lambda: |-
-          int detail_index = id(normal_device_detail_index);
-          if (detail_index < 0) detail_index = 0;
-          if (detail_index > 19) detail_index = 19;
-          const std::string entity_id = id(ui_presenter)->get_normal_device_entity_id(detail_index);
-          if (!is_local_hmi_gpio_switch_entity_id(entity_id)) {
-            return;
-          }
-          bool new_state = false;
-          switch (local_hmi_gpio_switch_io_from_entity_id(entity_id)) {
-            case 10:
-              new_state = !id(normal_gpio_io10).state;
-              if (new_state) {
-                id(normal_gpio_io10).turn_on();
-              } else {
-                id(normal_gpio_io10).turn_off();
-              }
-              break;
-            case 11:
-              new_state = !id(normal_gpio_io11).state;
-              if (new_state) {
-                id(normal_gpio_io11).turn_on();
-              } else {
-                id(normal_gpio_io11).turn_off();
-              }
-              break;
-            case 17:
-              new_state = !id(normal_gpio_io17).state;
-              if (new_state) {
-                id(normal_gpio_io17).turn_on();
-              } else {
-                id(normal_gpio_io17).turn_off();
-              }
-              break;
-            case 18:
-              new_state = !id(normal_gpio_io18).state;
-              if (new_state) {
-                id(normal_gpio_io18).turn_on();
-              } else {
-                id(normal_gpio_io18).turn_off();
-              }
-              break;
-            default:
-              return;
-          }
-          id(app_storage)->set_normal_ui_device_state(detail_index, new_state);
-          id(normal_device_detail_is_on) = new_state;
-          id(hmi_switch_state) = new_state;
-          ESP_LOGI("normal_mode", "local HMI GPIO switch toggled: index=%d entity_id=%s state=%s",
-                   detail_index, entity_id.c_str(), new_state ? "ON" : "OFF");
-          onx_action_feedback::sent(entity_id, millis());
-          id(refresh_normal_action_feedback).execute();
-          id(refresh_normal_switch_detail_page).execute();
       - script.execute: emit_normal_switch_or_light_control_event
 
   - id: emit_normal_automation_control_event
@@ -2070,18 +2005,6 @@ script:
           }
           auto local_hmi_gpio_switch_state = [&](const std::string &entity_id, bool *state) -> bool {
             switch (local_hmi_gpio_switch_io_from_entity_id(entity_id)) {
-              case 10:
-                *state = id(normal_gpio_io10).state;
-                return true;
-              case 11:
-                *state = id(normal_gpio_io11).state;
-                return true;
-              case 17:
-                *state = id(normal_gpio_io17).state;
-                return true;
-              case 18:
-                *state = id(normal_gpio_io18).state;
-                return true;
               case custom_logic::PANEL_LOCAL_DASHBOARD:
               case custom_logic::PANEL_LOCAL_ASSIST:
                 *state = onx_navigation::local_state && onx_navigation::local_state(local_hmi_gpio_switch_io_from_entity_id(entity_id));

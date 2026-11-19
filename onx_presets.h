@@ -483,7 +483,7 @@ inline std::string apply(const std::string &raw_name) {
       // Slots missing from an older preset are cleared.
       JsonObjectConst wanted = i < slots.size() ? slots[i].as<JsonObjectConst>() : JsonObjectConst();
       esphome::onx_config_web::Query query;
-      if (wanted.isNull()) {
+      if (wanted.isNull() || custom_logic::is_retired_panel_gpio(wanted["entity"] | std::string())) {
         if ((now[i]["entity"] | std::string()).empty()) continue;
         query.op = "save";
         query.slot = static_cast<int>(i);

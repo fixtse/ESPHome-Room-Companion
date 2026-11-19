@@ -192,12 +192,12 @@ void RoomPanel::set_dashboard_url(const std::string &url) {
 // ---------------------------------------------------------------- dashboard & ownership
 void RoomPanel::open_dashboard() {
   if (stream_ == nullptr || settings_.server.empty() || settings_.url.empty()) {
-    message_trigger_.trigger("Set the dashboard server and address on the panel's web page (Visit).");
+    message_trigger_.trigger("Set the dashboard server and address on the panel's web page (Visit).", false);
     publish_();
     return;
   }
   dashboard_open_ = true;
-  if (!stream_->is_connected()) message_trigger_.trigger("Connecting to the dashboard server...");
+  if (!stream_->is_connected()) message_trigger_.trigger("Connecting to the dashboard server...", true);
   publish_();
   update_owner_(millis());
 }

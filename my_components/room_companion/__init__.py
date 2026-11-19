@@ -45,5 +45,9 @@ async def to_code(config):
     for conf in config.get("on_owner", []):
         await automation.build_automation(var.get_owner_trigger(), [(cg.bool_, "dashboard")], conf)
     for conf in config.get("on_message", []):
-        await automation.build_automation(var.get_message_trigger(), [(cg.std_string, "message")], conf)
+        await automation.build_automation(
+            var.get_message_trigger(),
+            [(cg.std_string, "message"), (cg.bool_, "transient")],
+            conf,
+        )
     cg.add_define("USE_ROOM_COMPANION")

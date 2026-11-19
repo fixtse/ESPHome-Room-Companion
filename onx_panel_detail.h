@@ -2084,7 +2084,15 @@ inline void card_generic(lv_obj_t *c, const Tile &t, const EntityDetailState *d)
     const int tw = r.w - 2 * pad;
     const int nl = lines_for(t.name, fonts.title, tw, 2);
     text(c, t.name, fonts.title, TEXT(), pad, pad, tw, LV_TEXT_ALIGN_LEFT, nl);
-    const int top = pad + nl * line(fonts.title) + P(10), avail = r.h - pad - top;
+    int top = pad + nl * line(fonts.title) + P(4);
+    // The context (e.g. "Resets in 1 hour") goes straight under the name.
+    if (!t.context.empty()) {
+      const int cl = lines_for(t.context, fonts.body, tw, 2);
+      text(c, t.context, fonts.body, SOFT_TEXT(), pad, top, tw, LV_TEXT_ALIGN_LEFT, cl);
+      top += cl * line(fonts.body);
+    }
+    top += P(10);
+    const int avail = r.h - pad - top;
     const int size = std::max(P(48), std::min(avail, r.w * 34 / 100));
     lv_obj_t *arc = lv_arc_create(c);
     lv_obj_set_size(arc, size, size);
@@ -2108,15 +2116,9 @@ inline void card_generic(lv_obj_t *c, const Tile &t, const EntityDetailState *d)
     const std::string v = fmt(pv, pv < 10 ? 1 : 0) + "%";
     const lv_font_t *vf = fit(v, size - 2 * aw - P(8), {fonts.big, fonts.title, fonts.body});
     text(c, v, vf, TEXT(), pad, top + (avail - line(vf)) / 2, size, LV_TEXT_ALIGN_CENTER);
+    // The chart beside the ring, over the ring's full height.
     const int nx = pad + size + P(14), nw = r.w - nx - pad;
-    int y = top;
-    if (!t.context.empty()) {
-      const int cl = lines_for(t.context, fonts.body, nw, 2);
-      text(c, t.context, fonts.body, SOFT_TEXT(), nx, y, nw, LV_TEXT_ALIGN_LEFT, cl);
-      y += cl * line(fonts.body) + P(8);
-    }
-    const int gh = r.h - pad - y;
-    if (gh >= P(24)) chart(c, nx, y, nw, gh, e, card_history(e), accent(), false);
+    if (avail >= P(24) && nw >= P(48)) chart(c, nx, top, nw, avail, e, card_history(e), accent(), false);
     return;
   }
   chip_icon(c, e, pad, pad, cs, t.on);
@@ -2164,6 +2166,41 @@ inline void card_generic(lv_obj_t *c, const Tile &t, const EntityDetailState *d)
         }
       text(c, "-24 h", fonts.small, MUTED(), pad, sy + sh + P(4), sw / 2);
       text(c, "now", fonts.small, MUTED(), pad + sw / 2, sy + sh + P(4), sw / 2, LV_TEXT_ALIGN_RIGHT);
+    }
+    return;
+  }
+  // Wide, short cards (landscape): the round button on the left, last run
+  // and the 24 h strip beside it.
+  if (runnable && r.w >= r.h && room >= P(84) && r.w - 2 * pad - std::min(P(150), room) >= P(140)) {
+    const int s = std::min(P(150), room);
+    const int cy = top + (bottom - top) / 2;
+    lv_obj_t *b = circle(c, pad + s / 2, cy, s, accent(), LV_SYMBOL_PLAY, TEXT(), run);
+    lv_obj_set_style_border_width(b, std::max(P(4), s / 18), 0);
+    lv_obj_set_style_border_color(b, lv_color_hex(CONTROL()), 0);
+    const time_t now = std::time(nullptr);
+    const auto *log = changes_for(e);
+    time_t last = log != nullptr && !log->items.empty() ? log->items.front().at : 0;
+    if (!last && domain != "script") custom_logic_entity_sub::parse_ha_datetime_epoch(d->state, &last);
+    const int rx = pad + s + P(16), rw = r.w - rx - pad;
+    const std::string caption = last ? "Last run " + onx_sensor_view::relative(last, now) : std::string("Tap to run");
+    const int sh = P(16);
+    const bool strip_fits = now > 1577836800 && bottom - top >= line(fonts.body) + P(12) + line(fonts.small) * 2 + sh + P(8);
+    const int block = line(fonts.body) + (strip_fits ? P(12) + line(fonts.small) + P(2) + sh + P(4) + line(fonts.small) : 0);
+    int y = cy - block / 2;
+    text(c, caption, fonts.body, TEXT(), rx, y, rw);
+    if (strip_fits) {
+      y += line(fonts.body) + P(12);
+      text(c, "Runs, last 24 h", fonts.small, MUTED(), rx, y, rw);
+      y += line(fonts.small) + P(2);
+      auto *strip = box(c, rx, y, rw, sh, INSET(), P(4));
+      if (log != nullptr)
+        for (const auto &run : log->items) {
+          if (run.at > now || now - run.at >= 86400) continue;
+          box(strip, int(int64_t(86400 - (now - run.at)) * (rw - P(4)) / 86400), 0, P(4), sh, accent(), P(2));
+        }
+      y += sh + P(4);
+      text(c, "-24 h", fonts.small, MUTED(), rx, y, rw / 2);
+      text(c, "now", fonts.small, MUTED(), rx + rw / 2, y, rw / 2, LV_TEXT_ALIGN_RIGHT);
     }
     return;
   }

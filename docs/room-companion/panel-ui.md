@@ -134,9 +134,15 @@ while there are any.
 Laid out like Home Assistant's voice dialog: the microphone in accent rings
 (tap to talk again or stop), the status (*Listening…*, *Thinking…*,
 *Speaking…*), what was heard as a bubble on the right and the reply on the
-left, a hint (*Say “Okay Nabu” or tap the microphone* while the wake word is
+left, a hint (*Say your wake word or tap the microphone* while the wake word is
 on), then a mute button (highlighted while muted) and *Stop*. A swipe from the
 left edge also stops and closes it.
+
+With the wake-word firmware, choose **Okay Nabu**, **Hey Jarvis**, **Hey
+Mycroft** or **Kenobi** in the device's **Wake word** setting in Home
+Assistant. ESPHome 2026.10.2 listens for one selected phrase at a time.
+Turn on **Wake word enabled** and leave the microphone unmuted for local
+detection. Okay Nabu is the default on a fresh setup.
 
 ## Not yet done
 
