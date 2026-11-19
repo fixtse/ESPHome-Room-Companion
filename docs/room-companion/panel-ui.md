@@ -60,7 +60,9 @@ Each type has a direct touch control next to the usual swipe/knob step:
 | Scene, script, button | Large run button with a confirmation ring |
 | Timer | Progress ring and countdown; HA timers add +1 min, Pause/Resume and Cancel |
 | Sensor | Name (two lines when long), large value with its unit, a level bar for percentages, 12 h trend, graph (when enabled) and min / avg / max of the same history |
-| Binary sensor | State disc and the last changes seen by the panel since boot (history is not fetched) |
+| Binary sensor | State disc (Home Assistant device-class wording) and the last changes the panel has seen; kept in flash across reboots (saved at most every 10 minutes), not fetched from Home Assistant |
+| Event | Latest event type and how long ago it fired, plus recent events (kept across reboots like binary sensors). Icon follows the device class (doorbell, button, motion). Events are read-only |
+| Siren | Power plus the advertised options: tone (tap to cycle), volume and duration steps. Choices are stored per siren and sent with the next turn-on |
 | Number | Large value, horizontal slider (sent on release) and − / + steps |
 | Select | Scrollable option list; tap selects immediately |
 | Weather | Place name with the condition icon in the top-right corner, large temperature with conditions, feels-like and today's range beside it, humidity / wind / rain tiles and a five-day list (day, conditions, low, range bar, high) |

@@ -14,6 +14,7 @@
 // while a finger is dragging one of its controls.
 #include <algorithm>
 #include <array>
+#include <cstring>
 #include <cmath>
 #include <ctime>
 #include <functional>
@@ -133,8 +134,59 @@ inline bool runnable_entity(const std::string &e) {
   return has_prefix(e, "script.") || has_prefix(e, "scene.") || has_prefix(e, "button.") || has_prefix(e, "input_button.") ||
          has_prefix(e, "event.");
 }
+// The recent changes survive reboots: a compact copy is kept in flash and
+// written at most every ten minutes while something new was recorded.
+struct StoredChanges {
+  struct Item { char state[24]; uint32_t at; };
+  struct Entry { char entity[64], last[40]; uint8_t count; Item items[5]; };
+  uint8_t count;
+  Entry entries[12];
+};
+inline bool changes_dirty = false, changes_loaded = false;
+inline uint32_t changes_saved_ms = 0;
+inline esphome::ESPPreferenceObject changes_pref() {
+  return esphome::global_preferences->make_preference<StoredChanges>(esphome::fnv1_hash("onx.changes.v1"));
+}
+inline void load_changes() {
+  changes_loaded = true;
+  auto stored = std::make_unique<StoredChanges>();
+  auto pref = changes_pref();
+  if (!pref.load(stored.get())) return;
+  for (uint8_t i = 0; i < std::min<uint8_t>(stored->count, 12); ++i) {
+    auto &e = stored->entries[i];
+    e.entity[sizeof(e.entity) - 1] = e.last[sizeof(e.last) - 1] = 0;
+    Changes c{e.entity, e.last, {}};
+    for (uint8_t j = 0; j < std::min<uint8_t>(e.count, 5); ++j) {
+      e.items[j].state[sizeof(e.items[j].state) - 1] = 0;
+      c.items.push_back({e.items[j].state, time_t(e.items[j].at)});
+    }
+    if (!c.entity.empty()) changes.push_back(std::move(c));
+  }
+}
+inline void save_changes() {
+  auto stored = std::make_unique<StoredChanges>();
+  std::memset(stored.get(), 0, sizeof(StoredChanges));
+  // Keep the most recently added entities.
+  const size_t first = changes.size() > 12 ? changes.size() - 12 : 0;
+  for (size_t i = first; i < changes.size(); ++i) {
+    auto &e = stored->entries[stored->count++];
+    snprintf(e.entity, sizeof(e.entity), "%s", changes[i].entity.c_str());
+    snprintf(e.last, sizeof(e.last), "%s", changes[i].last.c_str());
+    for (const auto &item : changes[i].items) {
+      if (e.count >= 5) break;
+      snprintf(e.items[e.count].state, sizeof(e.items[e.count].state), "%s", item.state.c_str());
+      e.items[e.count++].at = uint32_t(item.at);
+    }
+  }
+  auto pref = changes_pref();
+  pref.save(stored.get());
+  changes_dirty = false;
+  changes_saved_ms = esphome::millis();
+}
 inline void track(time_t now) {
   if (now < 1577836800) return;
+  if (!changes_loaded) load_changes();
+  if (changes_dirty && esphome::millis() - changes_saved_ms >= 600000) save_changes();
   for (const auto &d : custom_logic_entity_sub::entity_details) {
     const bool runs = runnable_entity(d.entity_id);
     if ((!runs && !has_prefix(d.entity_id, "binary_sensor.")) || !d.received || !d.available) continue;
@@ -159,6 +211,7 @@ inline void track(time_t now) {
     } else
     it->items.insert(it->items.begin(), {d.state, at});
     if (it->items.size() > (runs ? 16U : 5U)) it->items.pop_back();
+    changes_dirty = true;
   }
 }
 inline const Changes *changes_for(const std::string &entity) {
