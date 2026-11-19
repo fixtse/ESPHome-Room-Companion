@@ -597,7 +597,7 @@ inline void init(int screen_width, int screen_height, Fonts f, Hooks h) {
   lv_obj_set_flex_flow(handle, LV_FLEX_FLOW_COLUMN);
   lv_obj_set_flex_align(handle, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
   lv_obj_set_style_pad_row(handle, S(4), 0);
-  lv_obj_set_style_pad_ver(handle, S(8), 0);
+  lv_obj_set_style_pad_ver(handle, S(4), 0);
   lv_obj_add_flag(handle, LV_OBJ_FLAG_CLICKABLE);
   lv_obj_add_event_cb(handle, on_close_panel, LV_EVENT_CLICKED, nullptr);
   lv_obj_t *grip = box(handle, MUTED, S(2));
