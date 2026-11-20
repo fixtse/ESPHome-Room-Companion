@@ -58,13 +58,14 @@ const {chromium}=require('playwright');
   await page.locator('#dock-settings-form button[type=submit]').click();
   await page.waitForFunction(()=>document.getElementById('dock-status').textContent==='Saved.');
   assert.deepEqual(dashPayloads.at(-1),{toolbar_side:'left',dock_pin:'dashboard'});
+  await page.evaluate(()=>{document.getElementById('page-settings').hidden=true;document.getElementById('page-connection').hidden=false});
   await page.fill('#dash-url','http://homeassistant.local:8123/room/0');
   await page.locator('#panel-dashboard button[type=submit]').click();
   await page.waitForFunction(()=>document.getElementById('dash-status').textContent.startsWith('Saved.'));
   assert.equal(Object.hasOwn(dashPayloads.at(-1),'toolbar_side'),false);
   assert.equal(dashPayloads.at(-1).url,'http://homeassistant.local:8123/room/0');
   assert.equal(await page.locator('#dash-toolbar-side').inputValue(),'left');
-  await page.evaluate(()=>document.getElementById('page-settings').hidden=true);
+  await page.evaluate(()=>document.getElementById('page-connection').hidden=true);
   await page.evaluate(()=>{
    window.testSlots=[{entity:'light.kitchen',name:'Kitchen lights'},{entity:'switch.fan',name:'Fan'},{entity:'sensor.temperature',name:'Temperature'},{entity:'sensor.humidity',name:'Humidity'},{entity:'binary_sensor.door',name:'Door'}];
    window.testViews=testSlots.map((s,i)=>({entity:s.entity,layout:'value',available:true,value_ring:500,icon:'mdi:lightbulb',lines:[{text:'Sensor'},{text:i===2?'21 °C':i===3?'54 %':i===4?'Closed':'On'},{text:''},{text:''},{text:s.name}],carousel:{layout:'carousel',lines:[{text:''},{text:i===2?'21 °C':i===3?'54 %':i===4?'Closed':'On'},{text:''},{text:''},{text:s.name}],navigator:[]}}));
@@ -73,7 +74,7 @@ const {chromium}=require('playwright');
    window.added=[];window.nextPick=null;
    // Mirrors config_app.h: selecting or changing an entry re-renders the editor.
    window.act=0;window.target=null;const again=()=>{ONX_PANEL_EDITOR(testSlots,act,false,testDraw,target);testDraw()};
-   globalThis.ONX_APP={pick:(accept,done)=>{window.lastAccept=accept;if(window.nextPick)done(window.nextPick)},item:()=>null,slots:()=>testSlots,select:i=>{window.selected=window.act=i;again()},
+   globalThis.ONX_APP={pick:(accept,done)=>{window.lastAccept=accept;if(window.nextPick)done(window.nextPick)},item:()=>null,slots:()=>testSlots,views:()=>testViews,settings:()=>({}),select:i=>{window.selected=window.act=i;again()},
     add:item=>{testSlots.push({entity:item.entity,name:item.name});added.push(item.entity);return testSlots.length-1},clear:i=>{testSlots[i]={entity:'',name:''}},setTimer:(i,on)=>{testSlots[i].timerHidden=on?'1':'0'},saveAll:async()=>true,refresh:again,dirtyAt:()=>false,message:t=>{window.lastMessage=t}};
    ONX_PAGES.set([{name:'',icon:'',layout:'single',entities:['light.kitchen']}]);
    ONX_PANEL_EDITOR(testSlots,0,false,testDraw);testDraw();

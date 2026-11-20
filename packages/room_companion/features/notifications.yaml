@@ -24,6 +24,14 @@ esphome:
             id(touch_input)->set_pull_up_drag(
                 [](int dy) { onx_notification_ui::drag_panel(dy); },
                 [](int dy, uint32_t ms) { return onx_notification_ui::release_panel_drag(dy, ms); });
+            id(touch_input)->set_pull_down_drag(
+                [](int dy) { onx_notification_ui::drag_open(dy); },
+                [](int dy, uint32_t ms) { return onx_notification_ui::release_open(dy, ms); });
+            // A list scrolled to its end hands the swipe to the close sheet;
+            // LVGL stops scrolling it until the finger lifts.
+            id(touch_input)->set_pull_up_handoff([]() {
+              for (lv_indev_t *i = lv_indev_get_next(nullptr); i != nullptr; i = lv_indev_get_next(i)) lv_indev_wait_release(i);
+            });
             id(touch_input)->set_pull_up_zone([](int x, int y) { return onx_notification_ui::close_zone(x, y); });
             onx_notification_ui::Hooks hooks;
             hooks.load_image = [](const std::string &url) {

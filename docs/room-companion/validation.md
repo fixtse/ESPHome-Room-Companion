@@ -184,3 +184,55 @@ hardware-tested. On devserv, isolated checkout
   references panel-only `touch_input` and `panel_dark_mode` IDs inside a C++
   preprocessor guard, which ESPHome still checks during configuration. The base
   and example matrix therefore was not compiled in this run.
+
+
+### 2026-11-19: timer, voice/SoundSense and web fixes — 3.5-inch USB deployment
+
+Validated on devserv in
+`/home/fixt/agent-work/room-companion-timers-20261119`, branch
+`fix/timer-touch-20261119`, base commit `90e6bc1b6963363759ff5c62617d6f4ede38d2a6`
+plus the uncommitted changes. Only the 3.5-inch firmware roots were compiled,
+as requested. Both `ONX3248G035.yaml` and `ONX3248G035.wake-word.yaml` passed
+`docker run ... ghcr.io/esphome/esphome:2026.11.0 compile <root>`.
+
+Changes include preserving timer widgets through touch release, internal Assist
+timer Pause/Resume through Home Assistant, contextual Stop/Snooze models and
+sensitivity controls, panel-native SoundSense-compatible metering/dynamic volume,
+the web editor's shadowed `view` initialization fix, selected clock-preset text
+contrast, and dashboard settings under the Home Assistant tab.
+
+Remote verification passed:
+
+- C++ unit executables built from `tests/test_sound_sense.cpp`,
+  `tests/test_timer_state.cpp` and `tests/test_touch_input.cpp` (touch stubs).
+- `tests/test_panel_pages.cjs` and `tests/test_panel_startup.cjs`, using the
+  Playwright 1.56.1 container and driver. This covers live page rendering,
+  dashboard placement, selected-preset contrast on orange/dark/light accents,
+  and startup/tab editing without script errors in desktop dark/light and
+  mobile dark configurations. The page-test mock was corrected to expose the
+  real app's `views()` and `settings()` interface before the successful rerun.
+- A 341-file source manifest matched both the local sources and remote checkout,
+  including new untracked implementation/test files. Its SHA-256 is
+  `7302d3dd486a38305acebe4b419cb40762f498b0f8084084aeebaae66be4c54e`.
+  This manifest precedes the documentation record added after flashing.
+
+Deployed root: `ONX3248G035.wake-word.yaml`, firmware version `2026.11.0.99`,
+ESPHome 2026.11.0, config hash `0x0d365dc1`, build timestamp
+`2026-11-19 21:23:26 UTC`. Final factory image SHA-256:
+`943144a86f6603014d3268df29963c1a158e3379d0d12ed244a651bd4f826308`.
+The transferred image matched the devserv checksum. USB identity checks confirmed
+ESP32-S3 MAC `80:b5:4e:db:c6:e4` on `/dev/ttyUSB0`; the existing esptool wrote
+7,156,352 bytes at offset zero, reported **`Hash of data verified.`**, and reset
+the board. No erase was performed. The original local nohup launcher exited
+before any write; the successful final flash ran under a user systemd unit.
+
+Build/test/flash completion callbacks were delivered by SchedulerSE, with durable
+event claims and recorded exit statuses. The devserv lease was released once
+all remote verification and the image transfer finished. No commit or OTA release
+was created. Firmware and private logs remain outside Git.
+
+This establishes build validation and verified USB writing only. No post-flash
+boot/network check, wake-word recognition, Stop/Snooze acoustics, SoundSense
+calibration, speaker/Assist operation, physical touch responsiveness or visual
+appearance was hardware-tested in this build. Earlier runtime measurements in
+this document and `memory-budget.md` belong to their explicitly dated firmware.

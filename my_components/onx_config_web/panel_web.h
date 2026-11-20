@@ -248,11 +248,11 @@ static const char PANEL_JS[] = R"ONXPANEL(
   const e=lead(p),a=app(),views=a?.views?.()||[];
   // Hide the plain cell text only while live data is actually drawn; until
   // then (or if it is unavailable) the cells keep showing their entity.
-  const view=e?views.find(v=>v.entity===e):null;
-  grid.classList.toggle('live',!!view);
-  if(!view){svg.replaceChildren();return}
+  const liveView=e?views.find(v=>v.entity===e):null;
+  grid.classList.toggle('live',!!liveView);
+  if(!liveView){svg.replaceChildren();return}
   const slot=(a?.slots?.()||[]).find(s=>s.entity===e)||{entity:e,name:''};
-  globalThis.ONX_PANEL_PREVIEW(svg,slot,view,views,'main',a?.settings?.()||lastSettings);
+  globalThis.ONX_PANEL_PREVIEW(svg,slot,liveView,views,'main',a?.settings?.()||lastSettings);
  }
  function pageButton(p,i,savedList){
   const b=el('button','page-item');b.type='button';const meta=(isGrid(p)?p.rows+' × '+p.columns+' grid':LAYOUTS[p.layout].label)+' · '+p.entities.filter(Boolean).length+'/'+p.entities.length;
@@ -1158,8 +1158,8 @@ static const char PANEL_JS[] = R"ONXPANEL(
   orientation.closest('label')?.after(hint);
  }
 
- // Dashboard stream settings, below Device settings.
- const anchor=$('settings-form');
+ // Dashboard stream settings belong with the Home Assistant connection.
+ const anchor=$('page-connection');
  if(!anchor)return;
  const form=document.createElement('form');
  form.className='panel';form.id='panel-dashboard';
@@ -1176,7 +1176,7 @@ static const char PANEL_JS[] = R"ONXPANEL(
   'Changing the server or zoom needs a restart.</p>'+
   '<p class="hint" id="dash-status" role="status"></p>'+
   '<div class="settings-actions"><button class="primary" type="submit">Save dashboard</button></div>';
- anchor.after(form);
+ anchor.append(form);
  const show=state=>{
   $('dash-server').value=state.server||'';$('dash-url').value=state.url||'';$('dash-scale').value=state.scale||1;
 
@@ -1244,7 +1244,14 @@ static const char PANEL_JS[] = R"ONXPANEL(
  }
  // The page uses the panel's accent colour (updates while choosing one).
  const colorValue=$('color-value');
- if(colorValue)new MutationObserver(()=>{const v=colorValue.textContent.trim();if(/^#[0-9a-f]{6}$/i.test(v))document.documentElement.style.setProperty('--accent',v)}).observe(colorValue,{childList:true,characterData:true,subtree:true});
+ const applyAccent=()=>{
+  const v=colorValue?.textContent.trim();if(!/^#[0-9a-f]{6}$/i.test(v))return;
+  const rgb=[1,3,5].map(i=>parseInt(v.slice(i,i+2),16)/255).map(c=>c<=0.04045?c/12.92:((c+0.055)/1.055)**2.4);
+  const luminance=rgb[0]*0.2126+rgb[1]*0.7152+rgb[2]*0.0722;
+  document.documentElement.style.setProperty('--accent',v);
+  document.documentElement.style.setProperty('--accent-ink',luminance>0.179?'#000':'#fff');
+ };
+ if(colorValue){applyAccent();new MutationObserver(applyAccent).observe(colorValue,{childList:true,characterData:true,subtree:true})}
  // Hold progress belonged to the physical button.
  const cue=$('hold-cue')?.closest('label');
  if(cue){hideNode(cue);if(cue.nextElementSibling?.classList.contains('field-note'))hideNode(cue.nextElementSibling)}

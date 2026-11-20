@@ -1,29 +1,62 @@
-# Optional local wake words. Import only after tap-to-talk audio is
-# verified. The "Wake word enabled" switch remembers its state; set
-# wake_word_restore_mode: RESTORE_DEFAULT_ON in your root YAML to start enabled.
-# Detection runs whenever the switch is on, Assist is connected, the microphone
-# is not muted and no request is running. It keeps one CPU core busy, which
-# competes with dashboard-stream decoding.
+# Local activation phrases plus context-only Stop and Snooze. Detection pauses
+# while Assist captures a command, and resumes for interruptible announcements.
 substitutions:
   wake_word_restore_mode: RESTORE_DEFAULT_OFF
 
 micro_wake_word:
   id: local_wake_word
   task_stack_in_psram: true
+  stop_after_detection: false
   microphone:
     microphone: panel_microphone
     channels: 0
   models:
     - model: okay_nabu
+      id: wake_okay_nabu
     - model: hey_jarvis
+      id: wake_hey_jarvis
     - model: hey_mycroft
+      id: wake_hey_mycroft
     - model: https://raw.githubusercontent.com/formatBCE/Respeaker-Lite-ESPHome-integration/6d68e61f1d615c59bd7d47e8f4e8c09e53583892/microwakeword/models/v2/kenobi.json
+      id: wake_kenobi
+    - model: https://github.com/OHF-Voice/micro-wake-word/releases/download/stop/stop.json
+      id: wake_stop
+      internal: true
+    - model: https://raw.githubusercontent.com/formatBCE/Respeaker-Lite-ESPHome-integration/6d68e61f1d615c59bd7d47e8f4e8c09e53583892/microwakeword/models/v2/snooze.json
+      id: wake_snooze
+      internal: true
   on_wake_word_detected:
     - if:
         condition:
-          lambda: 'return id(assist_ready) && !id(microphone_muted).state;'
+          lambda: 'return id(wake_word_enabled).state && id(assist_ready) && !id(microphone_muted).state;'
         then:
-          - script.execute: toggle_assist
+          - homeassistant.event:
+              event: esphome.wake_word_detected
+              data:
+                wake_word: !lambda return wake_word;
+          - if:
+              condition:
+                lambda: 'return onx_panel_detail::timers.ringing;'
+              then:
+                - if:
+                    condition:
+                      lambda: 'return wake_word == "Snooze" && id(timer_snooze_enabled).state;'
+                    then:
+                      - script.execute: timer_snooze
+                    else:
+                      - script.execute: timer_stop
+              else:
+                - if:
+                    condition:
+                      lambda: 'return wake_word == "Stop";'
+                    then:
+                      - script.execute: assist_stop
+                    else:
+                      - if:
+                          condition:
+                            lambda: 'return wake_word != "Snooze";'
+                          then:
+                            - script.execute: toggle_assist
 
 switch:
   - platform: template
@@ -35,34 +68,80 @@ switch:
     restore_mode: ${wake_word_restore_mode}
     turn_off_action:
       - micro_wake_word.stop:
+  - platform: template
+    name: Timer snooze enabled
+    entity_category: config
+    id: timer_snooze_enabled
+    icon: mdi:alarm-snooze
+    optimistic: true
+    restore_mode: RESTORE_DEFAULT_ON
   - id: !extend microphone_muted
     turn_on_action:
       - micro_wake_word.stop:
 
-# The Assist screen's hint mentions the wake word while it is on.
+select:
+  - platform: template
+    name: Wake word sensitivity
+    id: wake_word_sensitivity
+    entity_category: config
+    optimistic: true
+    restore_value: true
+    initial_option: Slightly sensitive
+    options:
+      - Slightly sensitive
+      - Moderately sensitive
+      - Very sensitive
+    on_value:
+      - lambda: |-
+          // Model-specific cutoffs from the referenced Voice satellite config.
+          if (x == "Very sensitive") {
+            id(wake_okay_nabu).set_probability_cutoff(143);
+            id(wake_hey_jarvis).set_probability_cutoff(212);
+            id(wake_hey_mycroft).set_probability_cutoff(237);
+          } else if (x == "Moderately sensitive") {
+            id(wake_okay_nabu).set_probability_cutoff(176);
+            id(wake_hey_jarvis).set_probability_cutoff(235);
+            id(wake_hey_mycroft).set_probability_cutoff(242);
+          } else {
+            id(wake_okay_nabu).set_probability_cutoff(217);
+            id(wake_hey_jarvis).set_probability_cutoff(247);
+            id(wake_hey_mycroft).set_probability_cutoff(253);
+          }
+
 esphome:
   on_boot:
     - priority: -100
       then:
+        - micro_wake_word.disable_model: wake_stop
+        - micro_wake_word.disable_model: wake_snooze
         - lambda: |-
             onx_panel_ui::wake_word_on = []() { return id(wake_word_enabled).state; };
 
 voice_assistant:
   micro_wake_word: local_wake_word
-  # The pipeline uses the microphone; detection resumes from the interval below.
   on_start:
     - micro_wake_word.stop:
 
 interval:
-  - interval: 1s
+  - interval: 250ms
     then:
-      - if:
-          condition:
-            and:
-              - lambda: 'return id(wake_word_enabled).state && id(assist_ready) && !id(microphone_muted).state;'
-              - not:
-                  voice_assistant.is_running:
-              - not:
-                  micro_wake_word.is_running:
-          then:
-            - micro_wake_word.start:
+      - lambda: |-
+          const bool enabled = id(wake_word_enabled).state && id(assist_ready) && !id(microphone_muted).state;
+          const bool announcing = id(panel_media_player).state == esphome::media_player::MEDIA_PLAYER_STATE_ANNOUNCING;
+          static bool was_announcing = false;
+          static uint32_t announcement_since = 0;
+          if (announcing && !was_announcing) announcement_since = millis();
+          was_announcing = announcing;
+          const bool ringing = onx_panel_detail::timers.ringing;
+          const bool stop = enabled && (ringing || (announcing && millis() - announcement_since >= 1000));
+          const bool snooze = enabled && ringing && id(timer_snooze_enabled).state;
+          // Avoid repeated enable/disable calls and preserve HA's chosen wake phrase.
+          if (id(wake_stop).is_enabled() != stop) {
+            if (stop) id(wake_stop).enable(); else id(wake_stop).disable();
+          }
+          if (id(wake_snooze).is_enabled() != snooze) {
+            if (snooze) id(wake_snooze).enable(); else id(wake_snooze).disable();
+          }
+          const bool should_run = enabled && (!id(assist).is_running() || announcing || ringing);
+          if (should_run && !id(local_wake_word).is_running()) id(local_wake_word).start();
+          else if (!should_run && id(local_wake_word).is_running()) id(local_wake_word).stop();

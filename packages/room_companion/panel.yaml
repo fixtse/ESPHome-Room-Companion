@@ -39,8 +39,10 @@ lvgl:
   byte_order: big_endian
   update_interval: 16ms
   # Keep partial-refresh mode, but let a carousel-sized invalidation fit in
-  # one PSRAM buffer. This avoids interleaving several render bands and LCD
-  # address windows within a scrolling frame.
+  # one PSRAM buffer. A 12.5% internal-RAM buffer was measured on 2026-11-20:
+  # LVGL time doubled (13.1 s vs 6.2 s per minute), frame times did not
+  # improve and the wake-word audio ring buffer overflowed
+  # (docs/room-companion/touch-latency.md).
   buffer_size: 100%
   default_font: fonts_MiSans_Medium_14
   log_level: WARN
@@ -132,9 +134,14 @@ interval:
           then:
             - ble.enable:
   # Rectangular-panel UI (onx_panel_ui.h): bell, media layout, idle screen.
-  - interval: 100ms
+  # Runs every 100 ms, or on the next 16 ms check after a tap requested it.
+  - interval: 16ms
     then:
       - lambda: |-
+          static uint32_t last_pass = 0;
+          if (!onx_panel_ui::render_requested && millis() - last_pass < 100) return;
+          onx_panel_ui::render_requested = false;
+          last_pass = millis();
           if (onx_panel_pages::layer == nullptr) return;
           // Fully covered native content keeps its last frame without rebuilding.
           if (onx_notification_ui::panel_open || onx_notification_ui::detail_id != 0) return;
@@ -601,10 +608,19 @@ script:
               if (onx_panel_pages::entities[i] == entity && onx_panel_pages::configured(entity) >= 0) return true;
             return false;
           };
+          onx_panel_detail::timer_interaction_pending = []() { return id(touch_input)->interaction_pending(); };
+          onx_controls::overlay_control_visible = [](const std::string &entity) {
+            if (!onx_panel_detail::active || !onx_panel_detail::timer_screen_active ||
+                !onx_panel_detail::root || !lv_obj_is_visible(onx_panel_detail::root) ||
+                onx_notification_ui::owns_screen() || !lv_obj_has_flag(id(assist_overlay), LV_OBJ_FLAG_HIDDEN)) return false;
+            for (const auto &t : onx_panel_detail::all_timers())
+              if (t.helper && t.entity == entity) return true;
+            return false;
+          };
           onx_panel_detail::blocked = []() {
             return id(touch_input)->suppress_click() || onx_notification_ui::owns_screen();
           };
-          onx_panel_detail::activity = []() { id(ui_presenter)->notify_user_activity(); };
+          onx_panel_detail::activity = []() { id(touch_input)->acknowledge_click(); id(ui_presenter)->notify_user_activity(); };
           onx_panel_detail::light_state = [](const std::string &entity) {
             const int config = onx_panel_pages::configured(entity);
             if (config < 0) return esphome::onx_storage::NormalLightState{};
@@ -761,6 +777,8 @@ script:
           };
           id(touch_input)->set_tap_fn([](int x,int y) { return onx_panel_pages::tap(x,y); });
           id(touch_input)->set_hold_fn([](int x,int y) { return onx_panel_pages::tap(x,y,true); });
+          // Touch-down feedback on main-page cards.
+          id(touch_input)->set_press_fn([](int x, int y, bool pressed) { onx_panel_detail::press_at(x, y, pressed); });
           // Runtime geometry (orientation chosen at boot).
           id(touch_input)->set_geometry(onx_panel_ui::width, onx_panel_ui::height - 44, ${strip_spacing},
                                         onx_geom::S(22));
@@ -802,5 +820,6 @@ script:
           });
           id(touch_input)->set_passthrough_fn([](int x, int y) {
             onx_notification_ui::hide_toast_unless(x, y);
-            return onx_panel_ui::hit(x, y) || onx_notification_ui::bell_hit(x, y) || onx_notification_ui::toast_hit(x,y);
+            return onx_panel_ui::hit(x, y) || onx_notification_ui::bell_hit(x, y) || onx_notification_ui::timer_chip_hit(x, y) || onx_notification_ui::toast_hit(x,y);
           });
+

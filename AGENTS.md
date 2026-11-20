@@ -2,6 +2,8 @@
 
 Read `/home/fixt/AGENTS.md`. Builds, installs, tests and services run on devserv
 under a task lease and isolated checkout. Do not flash a board unless requested.
+Use SchedulerSE completion callbacks for long-running builds and tests as
+described in the global policy; do not poll running jobs.
 
 Preserve the project's Git history, AGPL license, copyright and the upstream
 notice in `THIRD_PARTY_NOTICES.md`. This repository targets only the 3.5"
@@ -17,7 +19,7 @@ using `scripts/validate-room-companion.sh --compile` in the pinned container.
 Never commit secrets, keys, `.env`, firmware blobs or private HA state. Keep
 hardware-tested status separate from configuration/build validation.
 
-## Current working hardware (verified 2026-11-17)
+## Current working hardware (USB verified 2026-11-19; runtime baseline 2026-11-17)
 
 - The connected, hardware-tested panel is **ONX3248G035**, the **3.5-inch
   320×480 ST7796** model: ESP32-S3, 16 MB flash, 8 MB octal PSRAM.
@@ -30,19 +32,26 @@ hardware-tested status separate from configuration/build validation.
   default. Preserve this variant when updating this board unless told otherwise.
   Enabled/configured does not mean microphone, wake-word and speaker operation
   have all been hardware-tested.
-- Latest successful build/flash: ESPHome **2026.10.2**, production config hash
-  `0xfc7425ea`, build timestamp `2026-11-17 20:41:49 UTC`, factory image
-  SHA-256 prefix `f8c3d70b`, source `61bb877` plus the uncommitted internal-RAM
-  budget and Bluetooth start-guard changes. Version text remains
-  `2026.10.2.72-panel.1`. Neither that text nor the YAML config hash alone can
-  distinguish local builds after C++ header changes; record source hashes and
-  the build timestamp too.
-- USB flash hash verification, boot without panic and Wi-Fi/web/API checks
+- Latest successful build/flash: ESPHome **2026.11.0**, config hash
+  `0x0d365dc1`, build timestamp `2026-11-19 21:23:26 UTC`, factory image
+  SHA-256 `943144a86f6603014d3268df29963c1a158e3379d0d12ed244a651bd4f826308`.
+  Source: `90e6bc1` plus uncommitted timer, wake-word, SoundSense and web fixes;
+  source-manifest SHA-256
+  `7302d3dd486a38305acebe4b419cb40762f498b0f8084084aeebaae66be4c54e`
+  (341 files, before this deployment-record update). Version text is
+  `2026.11.0.99`; neither that text nor the YAML config hash alone distinguishes
+  builds after C++ header changes. Both 3.5-inch roots compiled on devserv;
+  only the wake-word factory image was USB-flashed at offset zero, without
+  erase. Chip MAC and esptool `Hash of data verified.` confirmed. No post-flash
+  boot/network, acoustic, wake-word, SoundSense or visual/gesture verification
+  was performed for this build. See `docs/room-companion/validation.md`.
+- Historical runtime baseline, **2026-11-17 firmware**: USB flash hash
+  verification, boot without panic and Wi-Fi/web/API checks
   passed, plus a preset save/delete NVS round trip. Internal RAM settled at
   77–90 KB free with a 37–49 KB largest block (previously 5–14 KB; the screen
   froze on failed SPI DMA allocations). Settled `sys` loop peaks were 82–90 ms.
   See `docs/room-companion/memory-budget.md` before adding features that use
-  internal RAM (task stacks, DMA, Bluetooth). Not hardware-tested in this build:
+  internal RAM (task stacks, DMA, Bluetooth). Not hardware-tested in that baseline build:
   opening the dashboard stream, Assist, wake word and audio, visual appearance
   and every gesture.
 

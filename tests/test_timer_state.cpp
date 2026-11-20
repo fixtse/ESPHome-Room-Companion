@@ -3,6 +3,12 @@
 
 int main() {
   using namespace onx_timer;
+  assert(std::string(conversation_agent) == "conversation.home_assistant");
+  assert(control_sentence("pasta",300,Action::STOP)=="cancel the pasta timer");
+  assert(control_sentence("",30,Action::STOP)=="cancel the 30 second timer");
+  assert(control_sentence("pasta", 300, false) == "pause the pasta timer");
+  assert(control_sentence("pasta", 300, true) == "resume the pasta timer");
+  assert(control_sentence("", 125, false) == "pause the 125 second timer");
   assert(!popup_due(9999,true,true));assert(popup_due(10000,true,true));
   assert(!popup_due(1500,false,true));assert(popup_due(1500,false,false));
   assert(attribute_json("[{'status': 'set', 'remaining': None}]")=="[{\"status\": \"set\", \"remaining\": null}]");

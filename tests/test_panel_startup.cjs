@@ -20,7 +20,7 @@ const raw=(file,tag)=>fs.readFileSync('my_components/onx_config_web/'+file,'utf8
   state:{wifi_connected:true,ha_connected:true,count:3,capacity:41,firmware:'test',uptime_ms:60000,ha_url:'http://homeassistant.local:8123',weather:'weather.home',slots},
   settings_state:{brightness:'73',standby:'30',date_format:'dd-mm',show_ampm:'1',hour_format:'24',media_color:'#F97316',orientation:'0',media_view:'material',clock_seconds_ring:'0',hold_cue:'1',clock_temperature:'',clock_humidity:'',notifications_cover_timers:'1',idle_view:'clock',standby_scope:'main',sensitivity:'2',sleep_enabled:'0',sleep_start:'00:00',sleep_end:'00:00',sleep_timeout:'60'},
   presets:{presets:[],active:'',applying:'',capacity:8,remaining:8,max_name:32},
-  preview:{panel_width:320,panel_height:480,slots:[]},
+  preview:{panel_width:320,panel_height:480,slots:[{entity:'weather.home',available:true,layout:'value',lines:Array.from({length:5},()=>({text:''})),panel:{state:'sunny',available:true,temperature:20,humidity:50,forecast:[]}}]},
   panel_state:{status:'ready',scale:1},panel_pages:{pages:[{name:'',icon:'',layout:'single',entities:['weather.home']},{name:'Bedroom',icon:'mdi:bed',layout:'control_sensors',entities:['media_player.bedroom','sensor.codex_remaining','','']}]},dashboard:{url:'',server:''}};
  const run=async(viewport,scheme,name)=>{
   const page=await browser.newPage({viewport,colorScheme:scheme});
@@ -42,7 +42,21 @@ const raw=(file,tag)=>fs.readFileSync('my_components/onx_config_web/'+file,'utf8
   await page.getByText('Panel: reachable',{exact:true}).waitFor({timeout:8000});
   assert.deepEqual(errors,[],'The page must start without script errors');
   await page.waitForFunction(()=>document.getElementById('ha-url').value==='http://homeassistant.local:8123');
+  await page.waitForFunction(()=>document.querySelector('#page-grid.live svg.page-live'));
+  assert.equal(await page.locator('#page-connection #panel-dashboard').count(),1,'Dashboard settings belong in Home Assistant');
+  assert.equal(await page.locator('#page-settings #panel-dashboard').count(),0);
   await page.locator('[data-page="settings"]').click();
+  await page.locator('[data-layout="7"]').click();
+  for(const accent of ['#F97316','#151515','#F8FAFC']){
+   await page.locator('#color-value').evaluate((el,value)=>el.textContent=value,accent);
+   await page.waitForFunction(value=>getComputedStyle(document.documentElement).getPropertyValue('--accent').trim().toUpperCase()===value,accent);
+   const contrast=await page.locator('[data-layout="7"]').evaluate(el=>{
+    const luminance=color=>{const c=color.match(/[\d.]+/g).slice(0,3).map(Number).map(v=>v/255).map(v=>v<=0.04045?v/12.92:((v+0.055)/1.055)**2.4);return c[0]*.2126+c[1]*.7152+c[2]*.0722};
+    const style=getComputedStyle(el),a=luminance(style.color),b=luminance(style.backgroundColor);return (Math.max(a,b)+.05)/(Math.min(a,b)+.05);
+   });
+   assert(contrast>=4.5,`Selected preset needs readable text on ${accent}: ${contrast}`);
+  }
+
   await page.locator('#background-color').evaluate(input=>{input.value='#f4f4f4';input.dispatchEvent(new Event('input',{bubbles:true}))});
   assert.equal(await page.locator('#device-preview > rect').first().getAttribute('fill'),'#F4F4F4','Background changes update the preview before saving');
   await page.click('#discard-settings');
@@ -64,6 +78,7 @@ const raw=(file,tag)=>fs.readFileSync('my_components/onx_config_web/'+file,'utf8
   assert.equal(await page.locator('#page-grid [data-member]').count(),4);assert.equal(await page.locator('#page-grid .page-cell.empty').count(),2);
   assert.equal(await page.evaluate(()=>getComputedStyle(document.documentElement).getPropertyValue('--accent').trim().toUpperCase()),'#F97316');
   await page.screenshot({path:`/config/tests/artifacts/config-${name}.png`,fullPage:true});
+  assert.deepEqual(errors,[],'Page editing and tab changes must not throw script errors');
   await page.close();
  };
  try{

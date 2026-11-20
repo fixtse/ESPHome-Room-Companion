@@ -1,0 +1,131 @@
+# Panel-native implementation of the SoundSense entity interface. No recording
+# or PCM transfer: the mic task computes one scalar, the main loop publishes it.
+esphome:
+  on_boot:
+    - priority: -100
+      then:
+        - lambda: |-
+            id(panel_microphone).add_data_callback([](const esphome::microphone::AudioCapture &audio) {
+              onx_sound_sense::meter.feed(audio.data.data(), audio.data.size(), millis());
+            });
+
+globals:
+  - id: sound_sense_listening
+    type: bool
+    initial_value: 'false'
+
+switch:
+  - id: !extend microphone_muted
+    turn_on_action:
+      - lambda: |-
+          onx_sound_sense::meter.capture.store(false);
+          onx_sound_sense::meter.reset();
+  - platform: template
+    id: sound_sense_enabled
+    name: Sound sensing
+    icon: mdi:waveform
+    entity_category: config
+    optimistic: true
+    restore_mode: RESTORE_DEFAULT_ON
+  - platform: template
+    id: dynamic_volume_switch
+    name: Dynamic Volume
+    icon: mdi:volume-vibrate
+    entity_category: config
+    optimistic: true
+    restore_mode: RESTORE_DEFAULT_OFF
+
+number:
+  - platform: template
+    id: dynamic_min_volume
+    name: Dyn Minimum Volume
+    min_value: 0
+    max_value: 100
+    step: 1
+    initial_value: 15
+    unit_of_measurement: '%'
+    restore_value: true
+    optimistic: true
+    entity_category: config
+  - platform: template
+    id: dynamic_volume_level
+    name: Dyn Volume Level
+    min_value: 0
+    max_value: 10
+    step: 1
+    initial_value: 5
+    restore_value: true
+    optimistic: true
+    entity_category: config
+  - platform: template
+    id: presence_threshold
+    name: Presence Threshold
+    min_value: 0
+    max_value: 90
+    step: 1
+    initial_value: 50
+    unit_of_measurement: dB
+    restore_value: true
+    optimistic: true
+    entity_category: config
+  - platform: template
+    id: sound_silence_threshold
+    name: Sound Silence Threshold
+    min_value: 0
+    max_value: 90
+    step: 1
+    initial_value: 30
+    unit_of_measurement: dB
+    restore_value: true
+    optimistic: true
+    entity_category: config
+
+sensor:
+  - platform: template
+    id: ambient_sound_level
+    name: Ambient Sound Level
+    icon: mdi:microphone-outline
+    unit_of_measurement: dB
+    accuracy_decimals: 1
+    state_class: measurement
+    update_interval: never
+
+text_sensor:
+  - platform: template
+    id: sound_detection_sensor
+    name: Sound Detection
+    icon: mdi:waveform
+    update_interval: never
+
+interval:
+  - interval: 250ms
+    then:
+      - lambda: |-
+          const bool listen = id(sound_sense_enabled).state && !id(microphone_muted).state;
+          const bool measure = listen && !id(assist).is_running() &&
+              id(panel_media_player).state == esphome::media_player::MEDIA_PLAYER_STATE_IDLE;
+          onx_sound_sense::meter.capture.store(measure);
+          if (!measure) onx_sound_sense::meter.reset();
+          // Each start owns one reference to the shared microphone. Balance
+          // only our own reference; VA and wake word own theirs independently.
+          if (listen != id(sound_sense_listening)) {
+            if (listen) id(panel_microphone).start();
+            else id(panel_microphone).stop();
+            id(sound_sense_listening) = listen;
+          }
+  - interval: 2s
+    then:
+      - lambda: |-
+          const float level = onx_sound_sense::meter.level(millis());
+          id(ambient_sound_level).publish_state(level);
+          id(sound_detection_sensor).publish_state(onx_sound_sense::detector.update(
+              level, id(sound_silence_threshold).state, id(presence_threshold).state, millis()));
+          if (!id(dynamic_volume_switch).state || !std::isfinite(level) ||
+              id(panel_media_player).state != esphome::media_player::MEDIA_PLAYER_STATE_IDLE) return;
+          const float target = onx_sound_sense::volume_target(level, id(dynamic_min_volume).state, id(dynamic_volume_level).state);
+          const float current = id(panel_media_player).volume;
+          if (std::isfinite(target) && std::isfinite(current) && std::abs(target - current) > 0.02f) {
+            // Bounded changes, with no updates during playback or mute.
+            const float next = current + std::clamp(target - current, -0.04f, 0.08f);
+            id(panel_media_player).make_call().set_volume(next).perform();
+          }

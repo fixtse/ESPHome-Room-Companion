@@ -706,6 +706,7 @@ inline bool tap(int x,int y,bool held=false) {
     const auto r=rects[i];if(x>=r.x && x<r.x+r.w && y>=r.y && y<r.y+r.h) {
       const auto &entity=entities[i];
       if(configured(entity)<0)return true;
+      onx_panel_ui::request_render();
       if(action_grid && !held) {
         if(run_grid_action){onx_panel_detail::animate_key(entity);run_grid_action(entity);}
         return true;

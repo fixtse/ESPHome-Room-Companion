@@ -26,6 +26,8 @@
 #include "esphome/core/preferences.h"
 #include "esphome/core/helpers.h"
 #include "onx_render.h"
+#include <new>
+#include "esp_heap_caps.h"
 #include "onx_panel_ui.h"
 #include "onx_display_settings.h"
 #include "onx_detail_view.h"
@@ -228,12 +230,52 @@ inline void on(lv_obj_t *obj, lv_event_code_t code, std::function<void(lv_event_
   actions.push_back(std::make_unique<Action>(Action{std::move(fn)}));
   lv_obj_add_event_cb(obj, on_event, code, actions.back().get());
 }
-inline void interactive(lv_obj_t *obj) {
+// Pressed look, shown on the frame after touch-down (before the action runs on
+// release): the surface blends toward the text colour; transparent targets
+// get a faint wash. Only the touched widget's area is redrawn.
+inline void pressed_look(lv_obj_t *obj, lv_style_selector_t selector) {
+  lv_style_value_t bg, opa;
+  const bool has_bg = lv_obj_get_local_style_prop(obj, LV_STYLE_BG_COLOR, &bg, 0) == LV_STYLE_RES_FOUND;
+  const bool opaque = lv_obj_get_local_style_prop(obj, LV_STYLE_BG_OPA, &opa, 0) == LV_STYLE_RES_FOUND && opa.num > LV_OPA_50;
+  const lv_color_t ink = lv_color_hex(TEXT());
+  if (has_bg && opaque) {
+    lv_obj_set_style_bg_color(obj, lv_color_mix(ink, bg.color, 56), selector);
+  } else {
+    lv_obj_set_style_bg_color(obj, ink, selector);
+    lv_obj_set_style_bg_opa(obj, 36, selector);
+  }
+}
+inline void interactive(lv_obj_t *obj, bool feedback = true) {
   lv_obj_add_flag(obj, LV_OBJ_FLAG_CLICKABLE);
+  if (feedback) pressed_look(obj, LV_STATE_PRESSED);
   targets.push_back(obj);
   onx_panel_ui::touch_targets.push_back(obj);
 }
+// Cards on the main page are driven by onx_touch_input, not LVGL clicks; it
+// reports touch-down/up here so the card under the finger reacts at once.
+inline lv_obj_t *pressed_card = nullptr;
+inline bool main_mode = false;
+inline void press_at(int x, int y, bool pressed) {
+  if (pressed_card != nullptr) {
+    lv_obj_remove_state(pressed_card, LV_STATE_USER_1);
+    pressed_card = nullptr;
+  }
+  if (!pressed || root == nullptr || !active || !main_mode || lv_obj_has_flag(root, LV_OBJ_FLAG_HIDDEN)) return;
+  const lv_point_t p{x, y};
+  for (int i = static_cast<int>(lv_obj_get_child_count(root)) - 1; i >= 0; --i) {
+    lv_obj_t *c = lv_obj_get_child(root, i);
+    if (lv_obj_has_flag(c, LV_OBJ_FLAG_HIDDEN)) continue;
+    lv_area_t a;
+    lv_obj_get_coords(c, &a);
+    if (p.x < a.x1 || p.x > a.x2 || p.y < a.y1 || p.y > a.y2 || lv_area_get_width(&a) < 40 || lv_area_get_height(&a) < 40) continue;
+    pressed_look(c, LV_STATE_USER_1);
+    lv_obj_add_state(c, LV_STATE_USER_1);
+    pressed_card = c;
+    return;
+  }
+}
 inline bool allowed() {
+  onx_panel_ui::request_render();
   if (blocked && blocked()) return false;
   if (activity) activity();
   return true;
@@ -371,7 +413,7 @@ inline lv_point_t point() {
 // scrolling it, the control lost the press and the value was never sent.
 // A lost press (finger slid off, a screen change) still commits the last value.
 inline void drag(lv_obj_t *obj, std::function<void(lv_point_t, bool commit)> fn) {
-  interactive(obj);
+  interactive(obj, false);
   lv_obj_remove_flag(obj, static_cast<lv_obj_flag_t>(LV_OBJ_FLAG_SCROLLABLE | LV_OBJ_FLAG_SCROLL_CHAIN));
   lv_obj_add_flag(obj, LV_OBJ_FLAG_PRESS_LOCK);
   auto last = std::make_shared<lv_point_t>(lv_point_t{0, 0});
@@ -389,6 +431,7 @@ inline void drag(lv_obj_t *obj, std::function<void(lv_point_t, bool commit)> fn)
   auto finish = [fn, last](lv_event_t *e) {
     if (!dragging) return;
     dragging = false;
+    onx_panel_ui::request_render();
     if (activity) activity();
     if (lv_event_get_code(e) == LV_EVENT_RELEASED) *last = point();
     fn(*last, true);
@@ -405,6 +448,11 @@ inline std::string fmt(float v, int decimals = -1) {
   snprintf(out, sizeof(out), "%.*f", decimals, v);
   return out;
 }
+// In-place updates. A builder may leave `patch`, which refreshes its widgets'
+// values without rebuilding the screen; it is used while the screen's
+// structure (`structure()`) is unchanged and returns false to force a rebuild.
+inline std::function<bool()> patch;
+inline std::string built_structure;
 inline std::string pct(float v) { return std::isfinite(v) ? std::to_string(int(std::lround(v))) + "%" : "—"; }
 inline float num(const std::string &s) { return custom_logic_entity_sub::detail_number(s); }
 inline std::string label(const std::string &s) { return onx_detail_view::label(s); }
@@ -425,7 +473,17 @@ inline std::string ago(time_t then, time_t now) {
 inline void request(const std::string &entity, const std::string &service, const std::string &parameter,
                     const std::string &value, const std::string &field = "") {
   custom_logic_entity_sub::select_control_entity(entity);
-  custom_logic_entity_sub::request_control(entity, service, {{field.empty() ? "panel_" + parameter : field, parameter, value}});
+  std::vector<onx_control::Value> values{{field.empty() ? "panel_" + parameter : field, parameter, value}};
+  // Setting brightness or colour also switches the light on: show it on at
+  // once instead of waiting for Home Assistant's state.
+  if (service == "light.turn_on" && field != "state") values.push_back({"state", "", "on"});
+  custom_logic_entity_sub::request_control(entity, service, std::move(values));
+}
+// The state just requested on the panel (shown at once, until Home Assistant
+// confirms or the request expires), else the reported one.
+inline std::string shown_state(const std::string &entity, const std::string &actual) {
+  if (custom_logic_entity_sub::control_entity != entity) return actual;
+  return custom_logic_entity_sub::requested_value("state", actual);
 }
 
 // ------------------------------------------------------------ domains
@@ -441,9 +499,31 @@ inline void light_send_hs(const std::string &e, float hue, float saturation) {
   // A list value: sent as a template so Home Assistant receives [hue, saturation].
   request(e, "light.turn_on", "hs_color", "[" + std::to_string(h) + ", " + std::to_string(sat) + "]", "panel_colour");
 }
+inline bool light_shown_on(const std::string &e) {
+  const auto *d = custom_logic_entity_sub::entity_detail(e);
+  if (d == nullptr || !d->available || !light_state) return false;
+  return shown_state(e, light_state(e).is_on ? "on" : "off") == "on";
+}
+inline void light_toggle(const std::string &e) {
+  const bool on = light_shown_on(e);
+  request(e, "light.toggle", "", on ? "off" : "on", "state");
+}
+// What a light screen's layout depends on; values (on, brightness, colour)
+// are patched in place while this stays the same.
+inline std::string light_structure(const std::string &e, const EntityDetailState &d, const std::string &title) {
+  if (!light_state) return "";
+  const auto s = light_state(e);
+  return "light|" + e + '|' + title + '|' + std::to_string(W) + 'x' + std::to_string(H) + '|' + std::to_string(accent()) + '|' +
+         std::to_string(BG()) + '|' + std::to_string(d.available) + std::to_string(d.received) + '|' +
+         std::to_string(s.supports_brightness()) + std::to_string(s.supports_color_temperature()) + std::to_string(s.supports_rgb()) + '|' +
+         std::to_string(s.min_color_temperature_kelvin) + '-' + std::to_string(s.max_color_temperature_kelvin) + '|' +
+         std::to_string(light_mode ? light_mode() : 0) + '|' + std::to_string(onx_playlist::browser.open);
+}
 __attribute__((noinline)) inline void build_light(const Layout &l, const std::string &e, const EntityDetailState &d, const std::string &title) {
   const auto s = light_state ? light_state(e) : esphome::onx_storage::NormalLightState{};
-  const bool on = s.is_on && d.available;
+  const bool on = d.available && (s.is_on ? shown_state(e, "on") : shown_state(e, "off")) == "on";
+  struct LightWidgets { lv_obj_t *value{}, *power{}, *power_icon{}, *big{}, *big_icon{}, *fill{}, *knob{}, *handle{}, *marker{}; int sh{}, sw{}, lo{}, hi{}, radius{}, ms{}; };
+  auto w = std::make_shared<LightWidgets>();
   const bool dimmable = s.supports_brightness();
   float level = on ? s.brightness_pct : 0;
   const float want = pending_value(e, "brightness");
@@ -475,9 +555,54 @@ __attribute__((noinline)) inline void build_light(const Layout &l, const std::st
   lv_obj_t *bar = box(root, bar_x, bar_y, bar_w, bar_h, CARD(), bar_h / 2);
   const int by = (bar_h - bs) / 2;
   lv_obj_t *power = button(bar, P(8), by, bs, bs, LV_RADIUS_CIRCLE, on ? strong() : CONTROL(), "", fonts.small, TEXT(),
-                           [e, on]() { request(e, "light.toggle", "", on ? "off" : "on", "panel_power"); });
-  lv_obj_center(text(power, LV_SYMBOL_POWER, fonts.symbol,
-                     on ? (onx_display_settings::light_color(strong()) ? 0x161B22 : 0xFFFFFF) : SOFT_TEXT(), 0, 0));
+                           [e]() { light_toggle(e); });
+  lv_obj_t *power_icon = text(power, LV_SYMBOL_POWER, fonts.symbol,
+                              on ? (onx_display_settings::light_color(strong()) ? 0x161B22 : 0xFFFFFF) : SOFT_TEXT(), 0, 0);
+  lv_obj_center(power_icon);
+  w->value = value; w->power = power; w->power_icon = power_icon;
+  // Values change in place: on/off, brightness, colour temperature and hue.
+  patch = [e, w]() {
+    const auto *dd = custom_logic_entity_sub::entity_detail(e);
+    if (dd == nullptr || !light_state) return false;
+    const auto st = light_state(e);
+    const bool now_on = light_shown_on(e);
+    float lv = now_on ? st.brightness_pct : 0;
+    const float want_level = pending_value(e, "brightness");
+    clear_pending_if(e, "brightness", lv);
+    if (std::isfinite(want_level)) lv = want_level;
+    const uint32_t on_ink = onx_display_settings::light_color(strong()) ? 0x161B22 : 0xFFFFFF;
+    onx_render::label(w->value, !dd->available ? "—" : st.supports_brightness() ? (now_on ? pct(lv).c_str() : "Off") : (now_on ? "On" : "Off"));
+    for (auto [btn, icon] : {std::pair{w->power, w->power_icon}, std::pair{w->big, w->big_icon}}) {
+      if (btn == nullptr) continue;
+      lv_obj_set_style_bg_color(btn, lv_color_hex(now_on ? strong() : CONTROL()), 0);
+      pressed_look(btn, LV_STATE_PRESSED);
+      if (icon) lv_obj_set_style_text_color(icon, lv_color_hex(now_on ? on_ink : SOFT_TEXT()), 0);
+    }
+    if (w->fill && !dragging) {
+      const int h = int(w->sh * std::clamp(lv, 0.0f, 100.0f) / 100);
+      lv_obj_set_pos(w->fill, 0, w->sh - h);
+      lv_obj_set_size(w->fill, w->sw, h);
+      if (w->knob) lv_obj_set_y(w->knob, std::clamp(w->sh - h + P(12), P(8), w->sh - P(5) - P(8)));
+    }
+    if (w->handle && !dragging) {
+      float k = st.color_temperature_kelvin ? st.color_temperature_kelvin : (w->lo + w->hi) / 2;
+      const float wanted = pending_value(e, "kelvin");
+      if (std::isfinite(wanted)) k = wanted;
+      const int hh = P(6);
+      lv_obj_set_y(w->handle, std::clamp(int(w->sh * (1 - (k - w->lo) / float(w->hi - w->lo))) - hh / 2, P(8), w->sh - hh - P(8)));
+    }
+    if (w->marker && !dragging) {
+      float hue = std::isfinite(dd->light_hue) ? dd->light_hue : st.hue_degrees();
+      float sat = std::isfinite(dd->light_saturation) ? dd->light_saturation : 100;
+      const float packed = pending_value(e, "hs");
+      if (std::isfinite(packed)) { hue = std::floor(packed / 1000); sat = packed - hue * 1000; }
+      if (!now_on) sat = 0;
+      const float a = hue * float(M_PI) / 180, r = std::clamp(sat, 0.0f, 100.0f) / 100 * (w->radius - w->ms / 4);
+      lv_obj_set_pos(w->marker, w->radius + int(std::cos(a) * r) - w->ms / 2, w->radius + int(std::sin(a) * r) - w->ms / 2);
+      lv_obj_set_style_bg_color(w->marker, lv_color_hex(onx_light::hsv(hue, sat)), 0);
+    }
+    return true;
+  };
   if (n) {
     int x = P(8) + bs + P(8);
     box(bar, x, (bar_h - P(28)) / 2, 1, P(28), TRACK(), 0);
@@ -549,8 +674,9 @@ __attribute__((noinline)) inline void build_light(const Layout &l, const std::st
   if (!d.available || vis.h < P(60)) return;
   if (mode < 0) {  // On/off only: one large power button.
     const int size = std::min({vis.w, vis.h, P(150)});
-    circle(root, vis.x + vis.w / 2, vis.y + vis.h / 2, size, on ? strong() : CONTROL(), LV_SYMBOL_POWER,
-           on ? TEXT() : SOFT_TEXT(), [e, on]() { request(e, "light.toggle", "", on ? "off" : "on", "panel_power"); });
+    w->big = circle(root, vis.x + vis.w / 2, vis.y + vis.h / 2, size, on ? strong() : CONTROL(), LV_SYMBOL_POWER,
+                    on ? TEXT() : SOFT_TEXT(), [e]() { light_toggle(e); });
+    w->big_icon = lv_obj_get_child(w->big, -1);
     return;
   }
   if (mode == 2) {
@@ -584,6 +710,7 @@ __attribute__((noinline)) inline void build_light(const Layout &l, const std::st
     lv_obj_set_style_shadow_width(marker, P(8), 0);
     lv_obj_set_style_shadow_opa(marker, LV_OPA_40, 0);
     marker_at(marker, hue, on ? sat : 0);
+    w->marker = marker; w->radius = radius; w->ms = ms;
     drag(wheel, [e, wheel, marker, marker_at, radius, ms](lv_point_t p, bool commit) {
       lv_area_t a;
       lv_obj_get_coords(wheel, &a);
@@ -614,6 +741,7 @@ __attribute__((noinline)) inline void build_light(const Layout &l, const std::st
     const int hh = P(6);
     auto handle_y = [sh, hh, lo, hi](float k) { return std::clamp(int(sh * (1 - (k - lo) / float(hi - lo))) - hh / 2, P(8), sh - hh - P(8)); };
     lv_obj_t *handle = box(track, sw / 4, handle_y(kelvin), sw / 2, hh, 0x161B22, hh / 2);
+    w->handle = handle; w->sh = sh; w->lo = lo; w->hi = hi;
     lv_obj_set_style_border_width(handle, P(2), 0);
     lv_obj_set_style_border_color(handle, lv_color_hex(0xFFFFFF), 0);
     drag(track, [e, track, handle, handle_y, sh, lo, hi](lv_point_t p, bool commit) {
@@ -634,6 +762,7 @@ __attribute__((noinline)) inline void build_light(const Layout &l, const std::st
   auto knob_y = [sh, kh](int h) { return std::clamp(sh - h + P(12), P(8), sh - kh - P(8)); };
   lv_obj_t *knob = box(track, (sw - kw) / 2, knob_y(fill_h), kw, kh, ink, kh / 2);
   lv_obj_set_style_bg_opa(knob, LV_OPA_70, 0);
+  w->fill = fill; w->knob = knob; w->sh = sh; w->sw = sw;
   drag(track, [e, track, fill, knob, knob_y, value, sh, sw](lv_point_t p, bool commit) {
     lv_area_t a;
     lv_obj_get_coords(track, &a);
@@ -698,7 +827,7 @@ __attribute__((noinline)) inline void build_climate(const Layout &l, const std::
     lv_obj_remove_flag(arc, LV_OBJ_FLAG_CLICKABLE);
     lv_obj_set_style_opa(arc, LV_OPA_TRANSP, LV_PART_KNOB);
   } else {
-    interactive(arc);
+    interactive(arc, false);
     on(arc, LV_EVENT_PRESSED, [](lv_event_t *) { dragging = true; });
     on(arc, LV_EVENT_VALUE_CHANGED, [arc, value, step](lv_event_t *) {
       const float v = std::round(lv_arc_get_value(arc) / 10.0f / step) * step;
@@ -978,13 +1107,13 @@ __attribute__((noinline)) inline void build_siren(const Layout &l, const std::st
 }
 
 __attribute__((noinline)) inline void build_toggle(const Layout &l, const std::string &e, const EntityDetailState &d, const std::string &title) {
-  const bool on = d.state == "on";
+  const bool on = shown_state(e, d.state) == "on";
   const auto domain = e.substr(0, e.find('.'));
   header(l.head, title, d.available ? (on ? "On" : "Off") : "Unavailable");
   const int size = std::min({P(150), l.vis.w, l.vis.h - line(fonts.big) - P(16)});
   const int cx = l.vis.x + l.vis.w / 2, cy = l.vis.y + (l.vis.h - line(fonts.big) - P(12)) / 2;
   circle(root, cx, cy, size, on ? strong() : CONTROL(), LV_SYMBOL_POWER, on ? TEXT() : SOFT_TEXT(),
-        [e, domain, on]() { request(e, domain + ".toggle", "", on ? "off" : "on", "panel_power"); });
+        [e, domain, on]() { request(e, domain + ".toggle", "", on ? "off" : "on", "state"); });
   text(root, on ? "On" : "Off", fonts.big, TEXT(), l.vis.x, cy + size / 2 + P(10), l.vis.w, LV_TEXT_ALIGN_CENTER);
   // Smart plugs: power reading and graph from the configured secondary sensor.
   const int i = onx_sensor_view::index(e);
@@ -1089,10 +1218,31 @@ struct TimerState {
   uint32_t ringing_total{0}, ringing_since{0};
   bool overlay{false};            // Local timer screen shown above everything.
   bool dismissed{false};
+  std::string message_key, message;
+  uint32_t message_until{0};
+  bool command_pending{false};
   std::string focus;              // Key of the focused timer ("" = default).
 };
 inline TimerState timers;
+inline void retire_local_timer(const std::string &id) {
+  timers.local.erase(std::remove_if(timers.local.begin(), timers.local.end(),
+      [&](const LocalTimer &t) { return t.id == id; }), timers.local.end());
+  if (timers.message_key == "local:" + id) { timers.message.clear(); timers.command_pending = false; }
+}
+inline bool timer_screen_active{false};
+struct TimerVisual {
+  std::string key;
+  lv_obj_t *value{nullptr}, *arc{nullptr}, *bar{nullptr};
+  int bar_width{0}, last_progress{-1};
+  std::string last_value;
+  lv_obj_t *context{nullptr};
+  std::string base_context, last_context;
+};
+inline std::vector<TimerVisual> timer_visuals;
+inline std::function<void(const std::string &)> stop_local_timer;
 inline std::function<void()> stop_ringing;  // Supplied by assist.yaml.
+inline std::function<bool()> timer_interaction_pending;
+inline std::function<void(const std::string &, bool)> set_local_timer_active;
 inline std::function<void()> close_timers;  // Closes the local timer screen.
 struct TimerItem {
   std::string key, entity, name, kind, state;  // state: active, paused, ringing, idle
@@ -1172,18 +1322,25 @@ inline void timer_button(lv_obj_t *parent, const Rect &r, const char *symbol, co
   }
 }
 // The one action a timer row offers: Stop for a sounding panel timer, pause /
-// resume for HA timer helpers. Voice and Google timers are controlled on
-// their own device. Returns false when there is none.
+// resume for local Assist timers and HA timer helpers. Remote voice and
+// Google timers are controlled on their own device. Returns false when there is none.
 inline bool timer_quick_action(const TimerItem &t, const char **symbol, std::function<void()> *fn) {
   const bool local = t.key.rfind("local:", 0) == 0;
   if (local && t.state == "ringing") {
     *symbol = LV_SYMBOL_STOP; *fn = []() { if (stop_ringing) stop_ringing(); }; return true;
   }
+  if (local && t.ready && set_local_timer_active && (t.state == "active" || t.state == "paused")) {
+    const auto key = t.key.substr(6);
+    const bool resume = t.state == "paused";
+    *symbol = resume ? LV_SYMBOL_PLAY : LV_SYMBOL_PAUSE;
+    *fn = [key, resume]() { if (set_local_timer_active) set_local_timer_active(key, resume); };
+    return true;
+  }
   if (!t.helper || !t.ready) return false;
   const std::string e = t.entity;
-  if (t.state == "active") { *symbol = LV_SYMBOL_PAUSE; *fn = [e]() { request(e, "timer.pause", "", "", "panel_timer"); }; return true; }
-  if (t.state == "paused") { *symbol = LV_SYMBOL_PLAY; *fn = [e]() { request(e, "timer.start", "", "", "panel_timer"); }; return true; }
-  if (t.state == "ringing") { *symbol = LV_SYMBOL_CLOSE; *fn = [e]() { request(e, "timer.cancel", "", "", "panel_timer"); }; return true; }
+  if (t.state == "active") { *symbol = LV_SYMBOL_PAUSE; *fn = [e]() { request(e, "timer.pause", "", "paused", "state"); }; return true; }
+  if (t.state == "paused") { *symbol = LV_SYMBOL_PLAY; *fn = [e]() { request(e, "timer.start", "", "active", "state"); }; return true; }
+  if (t.state == "ringing") { *symbol = LV_SYMBOL_CLOSE; *fn = [e]() { request(e, "timer.cancel", "", "idle", "state"); }; return true; }
   return false;
 }
 // Several running timers: one card each, finished first, then by time left.
@@ -1229,10 +1386,12 @@ __attribute__((noinline)) inline void build_timer_list(const std::vector<TimerIt
     std::function<void()> action;
     const bool has_action = timer_quick_action(t, &symbol, &action);
     const int bs = P(44), cp = P(14);
+    TimerVisual visual; visual.key = t.key;
     if (!landscape) {
       // Ring, countdown with name, action button.
       const int ring = P(46);
       lv_obj_t *arc = lv_arc_create(card);
+      visual.arc = arc;
       lv_obj_set_size(arc, ring, ring);
       lv_obj_set_pos(arc, cp, (card_h - ring) / 2);
       lv_arc_set_rotation(arc, 270);
@@ -1250,16 +1409,18 @@ __attribute__((noinline)) inline void build_timer_list(const std::vector<TimerIt
       lv_obj_remove_flag(arc, static_cast<lv_obj_flag_t>(LV_OBJ_FLAG_CLICKABLE | LV_OBJ_FLAG_SCROLLABLE));
       const int tx = cp + ring + P(14), tw = cw - tx - cp - (has_action ? bs + P(10) : 0);
       const int block = line(fonts.title) + line(fonts.small);
-      text(card, left, fonts.title, ringing ? accent() : TEXT(), tx, (card_h - block) / 2, tw);
+      visual.value = text(card, left, fonts.title, ringing ? accent() : TEXT(), tx, (card_h - block) / 2, tw);
       text(card, sub, fonts.small, MUTED(), tx, (card_h - block) / 2 + line(fonts.title), tw);
     } else {
       // Countdown and action on top, name below, progress bar along the bottom.
       const int tw = cw - 2 * cp - (has_action ? bs + P(8) : 0);
-      text(card, left, fonts.title, ringing ? accent() : TEXT(), cp, cp - P(2), tw);
+      visual.value = text(card, left, fonts.title, ringing ? accent() : TEXT(), cp, cp - P(2), tw);
       text(card, sub, fonts.small, MUTED(), cp, cp + line(fonts.title), cw - 2 * cp);
       lv_obj_t *track = box(card, cp, card_h - cp - P(4), cw - 2 * cp, P(4), TRACK(), P(2));
       const int fill = int((cw - 2 * cp) * fraction);
-      if (fill > 0) box(track, 0, 0, fill, P(4), tone, P(2));
+      visual.bar_width = cw - 2 * cp;
+      visual.bar = box(track, 0, 0, std::max(1, fill), P(4), tone, P(2));
+      if (!fill) lv_obj_add_flag(visual.bar, LV_OBJ_FLAG_HIDDEN);
     }
     if (has_action) {
       const int by = landscape ? cp - P(6) : (card_h - bs) / 2;
@@ -1267,6 +1428,8 @@ __attribute__((noinline)) inline void build_timer_list(const std::vector<TimerIt
                            TEXT(), action);
       (void) b;
     }
+    visual.last_value = left;
+    timer_visuals.push_back(std::move(visual));
     interactive(card);
     const std::string key = t.key;
     on(card, LV_EVENT_CLICKED, [key](lv_event_t *) { if (allowed()) { timers.focus = key; built_signature.clear(); } });
@@ -1281,6 +1444,7 @@ __attribute__((noinline)) inline void build_timer_list(const std::vector<TimerIt
 // The focused timer, controls and the other timers. `preferred` is the
 // detail's own entity (or "" on the local timer screen).
 __attribute__((noinline)) inline void build_timers(const std::string &preferred, const std::string &fallback_title) {
+  timer_screen_active = true;
   auto items = all_timers();
   std::stable_sort(items.begin(), items.end(), [](const TimerItem &a, const TimerItem &b) {
     return rank(a) != rank(b) ? rank(a) < rank(b) : a.left < b.left;
@@ -1311,6 +1475,13 @@ __attribute__((noinline)) inline void build_timers(const std::string &preferred,
   else if (t.state == "active") { const auto f = finish_text(t.left); if (!f.empty()) context += " · finishes " + f; }
   else if (t.state == "paused") context += " · paused";
   else context += " · idle";
+  const auto base_context = context;
+  if (timers.message_key == t.key && !timers.message.empty() && int32_t(timers.message_until - esphome::millis()) > 0)
+    context = timers.message;
+  else if (t.helper) {
+    const auto feedback = onx_controls::feedback_text(t.entity);
+    if (!feedback.empty()) context = feedback;
+  }
   const int pad = P(16);
   const bool landscape = wide();
   const Rect col = landscape ? Rect{W * 48 / 100 + P(8), pad, W - W * 48 / 100 - P(8) - pad, H - 2 * pad} : Rect{pad, pad, W - 2 * pad, H - 2 * pad};
@@ -1322,7 +1493,7 @@ __attribute__((noinline)) inline void build_timers(const std::string &preferred,
   const int name_w = col.w - (list_w ? list_w + P(8) : 0);
   const lv_font_t *nf = fit(t.name, name_w, {fonts.title, fonts.body});
   text(root, t.name, nf, TEXT(), col.x, col.y, name_w);
-  text(root, context, fonts.small, ringing ? accent() : MUTED(), col.x, col.y + line(nf), name_w);
+  auto *context_label = text(root, context, fonts.small, ringing ? accent() : MUTED(), col.x, col.y + line(nf), name_w);
   int y = col.y + line(nf) + line(fonts.small) + P(14);
   // Controls: only what the timer's own system supports.
   struct Control { const char *symbol; std::string caption; bool primary; std::function<void()> fn; };
@@ -1330,15 +1501,23 @@ __attribute__((noinline)) inline void build_timers(const std::string &preferred,
   const std::string e = t.entity;
   if (local && ringing) {
     controls.push_back({LV_SYMBOL_STOP, "Stop", true, []() { if (stop_ringing) stop_ringing(); }});
+  } else if (local) {
+    const auto key = t.key.substr(6);
+    if (stop_local_timer && (t.state == "active" || t.state == "paused"))
+      controls.push_back({LV_SYMBOL_STOP, "Stop", false, [key]() { if (stop_local_timer) stop_local_timer(key); }});
+    const char *symbol = nullptr;
+    std::function<void()> action;
+    if (timer_quick_action(t, &symbol, &action))
+      controls.push_back({symbol, t.state == "paused" ? "Resume" : "Pause", true, std::move(action)});
   } else if (t.helper && t.ready) {
     const bool active = t.state == "active", paused = t.state == "paused";
     if (active || paused) {
-      controls.push_back({LV_SYMBOL_CLOSE, "Cancel", false, [e]() { request(e, "timer.cancel", "", "", "panel_timer"); }});
+      controls.push_back({LV_SYMBOL_STOP, "Stop", false, [e]() { request(e, "timer.cancel", "", "idle", "state"); }});
       controls.push_back({active ? LV_SYMBOL_PAUSE : LV_SYMBOL_PLAY, active ? "Pause" : "Resume", true,
-                          [e, active]() { request(e, active ? "timer.pause" : "timer.start", "", "", "panel_timer"); }});
+                          [e, active]() { request(e, active ? "timer.pause" : "timer.start", "", active ? "paused" : "active", "state"); }});
       controls.push_back({LV_SYMBOL_PLUS, "1 min", false, [e]() { request(e, "timer.change", "duration", "00:01:00", "panel_timer"); }});
     } else {
-      controls.push_back({LV_SYMBOL_PLAY, ringing ? "Restart" : "Start", true, [e]() { request(e, "timer.start", "", "", "panel_timer"); }});
+      controls.push_back({LV_SYMBOL_PLAY, ringing ? "Restart" : "Start", true, [e]() { request(e, "timer.start", "", "active", "state"); }});
     }
   }
   // Other timers below (tap to focus).
@@ -1390,7 +1569,8 @@ __attribute__((noinline)) inline void build_timers(const std::string &preferred,
   const std::string sub = ringing ? "Time is up" : t.total > 0 ? "of " + onx_timer::countdown(t.total) : "";
   const int block = line(vf) + (sub.empty() ? 0 : line(fonts.small));
   const int vy = ay + (size - block) / 2;
-  text(root, value, vf, TEXT(), cx - size / 2, vy, size, LV_TEXT_ALIGN_CENTER);
+  auto *countdown_label = text(root, value, vf, TEXT(), cx - size / 2, vy, size, LV_TEXT_ALIGN_CENTER);
+  timer_visuals.push_back({t.key, countdown_label, arc, nullptr, 0, -1, value, context_label, base_context, context});
   if (!sub.empty()) text(root, sub, fonts.small, ringing ? accent() : MUTED(), cx - size / 2, vy + line(vf) - P(6), size, LV_TEXT_ALIGN_CENTER);
   // Buttons.
   if (!controls.empty()) {
@@ -1410,8 +1590,8 @@ __attribute__((noinline)) inline void build_timers(const std::string &preferred,
     lv_obj_set_pos(mini, rp, (rh - dot) / 2);
     lv_arc_set_rotation(mini, 270);
     lv_arc_set_bg_angles(mini, 0, 360);
-    lv_arc_set_range(mini, 0, 100);
-    lv_arc_set_value(mini, o.total > 0 ? int(std::clamp(o.left / o.total, 0.0, 1.0) * 100) : 100);
+    lv_arc_set_range(mini, 0, 1000);
+    lv_arc_set_value(mini, o.total > 0 ? int(std::clamp(o.left / o.total, 0.0, 1.0) * 1000) : 1000);
     lv_obj_set_style_arc_width(mini, P(3), LV_PART_MAIN);
     lv_obj_set_style_arc_width(mini, P(3), LV_PART_INDICATOR);
     lv_obj_set_style_arc_color(mini, lv_color_hex(TRACK()), LV_PART_MAIN);
@@ -1423,18 +1603,54 @@ __attribute__((noinline)) inline void build_timers(const std::string &preferred,
     const std::string left = o.state == "ringing" ? "0:00" : onx_timer::countdown(o.left);
     const int lw = text_width(left, fonts.body) + P(2);
     text(row, o.name, fonts.small, SOFT_TEXT(), rp + dot + P(12), (rh - line(fonts.small)) / 2, col.w - rp * 2 - dot - P(20) - lw);
-    text(row, left, fonts.body, o.state == "ringing" ? accent() : TEXT(), col.w - rp - lw, (rh - line(fonts.body)) / 2, lw);
+    auto *value_label = text(row, left, fonts.body, o.state == "ringing" ? accent() : TEXT(), col.w - rp - lw, (rh - line(fonts.body)) / 2, lw);
+    timer_visuals.push_back({o.key, value_label, mini, nullptr, 0, -1, left});
     interactive(row);
     const std::string key = o.key;
     on(row, LV_EVENT_CLICKED, [key](lv_event_t *) { if (allowed()) { timers.focus = key; built_signature.clear(); } });
   }
 }
-// Changes once a second while any timer runs.
+// Countdown updates preserve the object tree, especially the list and action
+// buttons. Only changes to timer identity/state/layout rebuild the screen.
+inline void tick_timers() {
+  if (!timer_screen_active) return;
+  const auto items = all_timers();
+  for (auto &visual : timer_visuals) {
+    const auto it = std::find_if(items.begin(), items.end(), [&](const TimerItem &t) { return t.key == visual.key; });
+    if (it == items.end()) continue;
+    const auto &t = *it;
+    if (visual.context) {
+      auto context = visual.base_context;
+      if (timers.message_key == t.key && !timers.message.empty() && int32_t(timers.message_until - esphome::millis()) > 0)
+        context = timers.message;
+      else if (t.helper) {
+        const auto feedback = onx_controls::feedback_text(t.entity);
+        if (!feedback.empty()) context = feedback;
+      }
+      if (context != visual.last_context) { lv_label_set_text(visual.context, context.c_str()); visual.last_context = context; }
+    }
+    const auto value = !t.ready ? "--:--" : t.state == "ringing" ? "0:00" : onx_timer::countdown(t.left);
+    if (visual.value && value != visual.last_value) {
+      lv_label_set_text(visual.value, value.c_str()); visual.last_value = value;
+    }
+    const double fraction = t.state == "ringing" ? 1.0 : t.total > 0 ? std::clamp(t.left / t.total, 0.0, 1.0) : 0.0;
+    const int progress = int(std::lround(fraction * 1000));
+    if (progress == visual.last_progress) continue;
+    visual.last_progress = progress;
+    if (visual.arc) lv_arc_set_value(visual.arc, progress);
+    if (visual.bar) {
+      const int width = int(visual.bar_width * fraction);
+      lv_obj_set_width(visual.bar, std::max(1, width));
+      if (width) lv_obj_remove_flag(visual.bar, LV_OBJ_FLAG_HIDDEN);
+      else lv_obj_add_flag(visual.bar, LV_OBJ_FLAG_HIDDEN);
+    }
+  }
+}
 inline std::string timer_signature() {
   std::string s = timers.focus + '|' + std::to_string(timers.ringing);
-  for (const auto &t : all_timers())
-    s += '|' + t.key + t.state + std::to_string(long(std::lround(t.left))) + ',' + std::to_string(long(t.total)) +
-         std::to_string(t.ready);
+  for (const auto &t : all_timers()) {
+    s += '|' + t.key + t.name + t.state + ',' + std::to_string(long(t.total)) + std::to_string(t.ready);
+  }
   return s;
 }
 
@@ -1807,7 +2023,7 @@ __attribute__((noinline)) inline void build_select(const Layout &l, const std::s
   lv_obj_add_flag(list, LV_OBJ_FLAG_SCROLLABLE);
   lv_obj_set_scroll_dir(list, LV_DIR_VER);
   lv_obj_set_scrollbar_mode(list, LV_SCROLLBAR_MODE_OFF);
-  interactive(list);  // Scroll gestures go to LVGL.
+  interactive(list, false);  // Scroll gestures go to LVGL.
   const int bh = P(52), gap = P(8);
   for (size_t i = 0; i < options.size(); ++i) {
     const auto option = options[i];
@@ -1986,7 +2202,74 @@ inline uint32_t INSET() {return CONTROL();}  // Surfaces inside a card (same as 
 // instead of creating new widgets.
 inline std::function<void(lv_obj_t *, const std::string &)> bind_icon;
 inline std::function<void(lv_obj_t *)> unbind_icon;
-struct IconUse { lv_obj_t *image; std::string entity; int cx, cy, size; const void *src; bool custom, on; };
+struct IconUse { lv_obj_t *image; std::string entity; int cx, cy, size; const void *src; bool custom, on; lv_obj_t *view{nullptr}; };
+// Icons arrive at about 107 px and are shown at 20-60 px. Drawing them with
+// lv_image_set_scale makes LVGL transform the bitmap on every redraw, so each
+// icon is downscaled once into its own small white+alpha bitmap (`view`); the
+// pooled image only receives the source from the icon downloader (hidden).
+struct ScaledIcon { lv_image_dsc_t dsc{}; uint8_t *pixels{nullptr}; int size{0}; };
+inline bool icon_alpha(const lv_image_dsc_t *d, int x, int y, uint8_t &a) {
+  const int w = d->header.w, h = d->header.h;
+  if (x < 0 || y < 0 || x >= w || y >= h || d->data == nullptr) return false;
+  const uint32_t stride = d->header.stride;
+  switch (d->header.cf) {
+    case LV_COLOR_FORMAT_ARGB8888: a = d->data[y * (stride ? stride : w * 4) + x * 4 + 3]; return true;
+    case LV_COLOR_FORMAT_RGB565A8: a = d->data[(stride ? stride : w * 2) * h + y * w + x]; return true;
+    case LV_COLOR_FORMAT_A8: a = d->data[y * (stride ? stride : w) + x]; return true;
+    default: return false;
+  }
+}
+inline bool scale_icon(lv_obj_t *view, const void *src, int size) {
+  if (view == nullptr || src == nullptr || size <= 0 || lv_image_src_get_type(src) != LV_IMAGE_SRC_VARIABLE) return false;
+  const auto *d = static_cast<const lv_image_dsc_t *>(src);
+  const int w = d->header.w, h = d->header.h;
+  uint8_t probe;
+  if (w <= 0 || h <= 0 || !icon_alpha(d, 0, 0, probe)) return false;
+  auto *s = static_cast<ScaledIcon *>(lv_obj_get_user_data(view));
+  if (s == nullptr) {
+    s = new (std::nothrow) ScaledIcon();
+    if (s == nullptr) return false;
+    lv_obj_set_user_data(view, s);
+    lv_obj_add_event_cb(view, [](lv_event_t *e) {
+      auto *si = static_cast<ScaledIcon *>(lv_obj_get_user_data(static_cast<lv_obj_t *>(lv_event_get_target(e))));
+      if (si) { heap_caps_free(si->pixels); delete si; }
+    }, LV_EVENT_DELETE, nullptr);
+  }
+  // Fit the longer side into `size`, keeping the aspect ratio.
+  const int ow = std::max(1, w >= h ? size : size * w / h), oh = std::max(1, h >= w ? size : size * h / w);
+  if (s->pixels == nullptr || s->size < ow * oh) {
+    heap_caps_free(s->pixels);
+    s->pixels = static_cast<uint8_t *>(heap_caps_malloc(size_t(ow) * oh * 4, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT));
+    s->size = s->pixels ? ow * oh : 0;
+    if (s->pixels == nullptr) return false;
+  }
+  // Area average of the source alpha; colour is white (recoloured by style).
+  for (int y = 0; y < oh; ++y) {
+    const int y0 = y * h / oh, y1 = std::max(y0 + 1, (y + 1) * h / oh);
+    for (int x = 0; x < ow; ++x) {
+      const int x0 = x * w / ow, x1 = std::max(x0 + 1, (x + 1) * w / ow);
+      uint32_t sum = 0, n = 0;
+      for (int yy = y0; yy < y1; ++yy)
+        for (int xx = x0; xx < x1; ++xx) { uint8_t a = 0; icon_alpha(d, xx, yy, a); sum += a; ++n; }
+      uint8_t *px = s->pixels + (size_t(y) * ow + x) * 4;
+      px[0] = px[1] = px[2] = 255;
+      px[3] = n ? sum / n : 0;
+    }
+  }
+  s->dsc.header.magic = LV_IMAGE_HEADER_MAGIC;
+  s->dsc.header.cf = LV_COLOR_FORMAT_ARGB8888;
+  s->dsc.header.w = ow;
+  s->dsc.header.h = oh;
+  s->dsc.header.stride = ow * 4;
+  s->dsc.data = s->pixels;
+  s->dsc.data_size = size_t(ow) * oh * 4;
+  lv_image_cache_drop(&s->dsc);
+  lv_image_set_src(view, &s->dsc);
+  lv_image_set_pivot(view, ow / 2, oh / 2);
+  lv_image_set_scale(view, LV_SCALE_NONE);
+  lv_obj_invalidate(view);
+  return true;
+}
 inline std::array<lv_obj_t *, 16> icon_pool{};
 inline onx_memory::StateArray<onx_panel_artwork::Image,16> artwork_cache;
 inline uint64_t card_artwork=0;
@@ -2001,7 +2284,6 @@ inline unsigned animation_elapsed(const std::string &entity) {
   return entity==animated_key?esphome::millis()-animated_at:600;
 }
 inline std::vector<IconUse> icon_uses;
-inline bool main_mode = false;
 inline lv_obj_t *main_artwork = nullptr;
 inline std::function<const void *(const std::string &)> artwork_source;
 inline void detach_artwork() {
@@ -2026,9 +2308,24 @@ inline void place_icon(IconUse &u) {
   u.src = src;
   lv_image_header_t h{};
   if (src == nullptr || lv_image_decoder_get_info(src, &h) != LV_RESULT_OK || h.w == 0 || h.h == 0) return;
+  if (u.view != nullptr) {
+    if (scale_icon(u.view, src, u.size)) {
+      lv_obj_add_flag(u.image, LV_OBJ_FLAG_HIDDEN);
+      lv_obj_remove_flag(u.view, LV_OBJ_FLAG_HIDDEN);
+      const auto *sd = &static_cast<ScaledIcon *>(lv_obj_get_user_data(u.view))->dsc;
+      lv_obj_set_pos(u.view, u.cx - int(sd->header.w) / 2, u.cy - int(sd->header.h) / 2);
+      return;
+    }
+    lv_obj_add_flag(u.view, LV_OBJ_FLAG_HIDDEN);  // Unsupported format: scale as before.
+    lv_obj_remove_flag(u.image, LV_OBJ_FLAG_HIDDEN);
+  }
   lv_image_set_pivot(u.image, h.w / 2, h.h / 2);
   lv_image_set_scale(u.image, std::max<int>(16, u.size * 256 / std::max<int>(h.w, h.h)));
   lv_obj_set_pos(u.image, u.cx - int(h.w) / 2, u.cy - int(h.h) / 2);
+}
+// The widget animations and effects act on: the scaled copy when there is one.
+inline lv_obj_t *shown_icon(const IconUse &u) {
+  return u.view != nullptr && !lv_obj_has_flag(u.view, LV_OBJ_FLAG_HIDDEN) ? u.view : u.image;
 }
 inline void icon(lv_obj_t *parent, const std::string &e, int cx, int cy, int size, uint32_t color) {
   if (!bind_icon || icon_uses.size() >= icon_pool.size()) return;
@@ -2051,7 +2348,15 @@ inline void icon(lv_obj_t *parent, const std::string &e, int cx, int cy, int siz
     lv_obj_set_style_image_recolor(img, lv_color_hex(color), 0);
   }
   lv_obj_set_style_image_recolor_opa(img, custom?LV_OPA_TRANSP:LV_OPA_COVER, 0);
-  icon_uses.push_back({img, e, cx, cy, size, nullptr, custom, card_on});
+  lv_obj_t *view = nullptr;
+  if (!custom) {
+    view = lv_image_create(parent);
+    lv_obj_remove_flag(view, static_cast<lv_obj_flag_t>(LV_OBJ_FLAG_CLICKABLE | LV_OBJ_FLAG_SCROLLABLE));
+    lv_obj_add_flag(view, LV_OBJ_FLAG_HIDDEN);
+    lv_obj_set_style_image_recolor(view, lv_color_hex(color), 0);
+    lv_obj_set_style_image_recolor_opa(view, LV_OPA_COVER, 0);
+  }
+  icon_uses.push_back({img, e, cx, cy, size, nullptr, custom, card_on, view});
   place_icon(icon_uses.back());
 }
 // Grid-key icon animations (onx_panel_pages::Effect), run by LVGL on the icon
@@ -2100,15 +2405,37 @@ inline void refresh_icons() {
   }
 }
 // Round icon chip, tinted while the entity is active.
-inline void chip_icon(lv_obj_t *parent, const std::string &e, int x, int y, int size, bool on) {
-  box(parent, x, y, size, size, on ? soft() : INSET(), size / 2);
+inline lv_obj_t *chip_icon(lv_obj_t *parent, const std::string &e, int x, int y, int size, bool on) {
+  lv_obj_t *chip = box(parent, x, y, size, size, on ? soft() : INSET(), size / 2);
   icon(parent, e, x + size / 2, y + size / 2, size * 56 / 100, on ? accent() : SOFT_TEXT());
+  return chip;
+}
+// In-place updates of a main-page card (see render_main). `card_patch` is set
+// by the card builder; it receives the new tile and returns false when the
+// card has to be rebuilt.
+using CardPatch = std::function<bool(const struct Tile &)>;
+inline CardPatch card_patch;
+inline std::vector<CardPatch> card_patches;
+inline void patch_chip(lv_obj_t *chip, lv_obj_t *icon_view, bool on) {
+  if (chip) lv_obj_set_style_bg_color(chip, lv_color_hex(on ? soft() : INSET()), 0);
+  if (icon_view) lv_obj_set_style_image_recolor(icon_view, lv_color_hex(on ? accent() : SOFT_TEXT()), 0);
+}
+inline void patch_toggle(lv_obj_t *b, bool on) {
+  if (b == nullptr) return;
+  const int w = P(54), h = P(30), k = h - P(8);
+  lv_obj_set_style_bg_color(b, lv_color_hex(on ? accent() : TRACK()), 0);
+  pressed_look(b, LV_STATE_PRESSED);
+  if (lv_obj_t *knob = lv_obj_get_child(b, 0)) {
+    lv_obj_set_x(knob, on ? w - k - P(4) : P(4));
+    lv_obj_set_style_bg_color(knob, lv_color_hex(on ? 0x101418 : SOFT_TEXT()), 0);
+  }
 }
 // Pill switch.
-inline void toggle(lv_obj_t *parent, int x, int y, bool on, std::function<void()> fn) {
+inline lv_obj_t *toggle(lv_obj_t *parent, int x, int y, bool on, std::function<void()> fn) {
   const int w = P(54), h = P(30), k = h - P(8);
   lv_obj_t *b = button(parent, x, y, w, h, h / 2, on ? accent() : TRACK(), "", fonts.small, TEXT(), std::move(fn));
   box(b, on ? w - k - P(4) : P(4), P(4), k, k, on ? 0x101418 : SOFT_TEXT(), k / 2);
+  return b;
 }
 inline std::string compass(const std::string &bearing) {
   const float b = num(bearing);
@@ -2181,7 +2508,7 @@ inline void card_weather(lv_obj_t *c, const Tile &t, const EntityDetailState &d)
 inline void card_light(lv_obj_t *c, const Tile &t, const EntityDetailState &d) {
   const Rect r = t.r;
   const auto s = light_state ? light_state(t.entity) : esphome::onx_storage::NormalLightState{};
-  const bool on = s.is_on && d.available, dimmable = s.supports_brightness();
+  const bool on = d.available && shown_state(t.entity, s.is_on ? "on" : "off") == "on", dimmable = s.supports_brightness();
   float level = on ? s.brightness_pct : 0;
   const float want = pending_value(t.entity, "brightness");
   clear_pending_if(t.entity, "brightness", level);
@@ -2191,25 +2518,61 @@ inline void card_light(lv_obj_t *c, const Tile &t, const EntityDetailState &d) {
   if (on && s.color_temperature_kelvin > 0 && s.supports_color_temperature())
     head.context += " · " + std::to_string(s.color_temperature_kelvin) + " K";
   const int pad = P(14), cs = P(44), tx = pad + cs + P(12);
-  chip_icon(c, t.entity, pad, pad, cs, on);
+  lv_obj_t *chip = chip_icon(c, t.entity, pad, pad, cs, on);
+  lv_obj_t *chip_view = !icon_uses.empty() ? icon_uses.back().view : nullptr;
+  const int before = lv_obj_get_child_count(c);
   titled(c, head, tx, pad + P(2), r.w - tx - pad - P(62));
+  lv_obj_t *context = !head.context.empty() && int(lv_obj_get_child_count(c)) > before ? lv_obj_get_child(c, -1) : nullptr;
   const std::string e = t.entity;
-  if (d.available)
-    toggle(c, r.w - pad - P(54), pad + P(7), on, [e, on]() { request(e, "light.toggle", "", on ? "off" : "on", "panel_power"); });
+  lv_obj_t *sw_toggle = nullptr;
+  if (d.available) sw_toggle = toggle(c, r.w - pad - P(54), pad + P(7), on, [e]() { light_toggle(e); });
   const int sh = P(40), sy = r.h - pad - sh;
   const int vy = pad + cs + P(8);
+  lv_obj_t *value = nullptr, *fill = nullptr, *knob = nullptr;
+  const int sw = r.w - 2 * pad;
   if (!dimmable) {
-    if (sy - vy >= line(fonts.big)) text(c, on ? "On" : "Off", fonts.big, TEXT(), pad, vy, r.w - 2 * pad);
+    if (sy - vy >= line(fonts.big)) value = text(c, on ? "On" : "Off", fonts.big, TEXT(), pad, vy, r.w - 2 * pad);
+  } else {
+    if (sy - vy >= line(fonts.big)) value = text(c, pct(level), fonts.big, TEXT(), pad, vy, r.w - 2 * pad);
+  }
+  if (!dimmable) {
+    card_patch = [e, chip, chip_view, context, sw_toggle, value](const Tile &) {
+      const bool now_on = light_shown_on(e);
+      patch_chip(chip, chip_view, now_on);
+      patch_toggle(sw_toggle, now_on);
+      if (context) onx_render::label(context, now_on ? "On" : "Off");
+      if (value) onx_render::label(value, now_on ? "On" : "Off");
+      return true;
+    };
     return;
   }
-  lv_obj_t *value = nullptr;
-  if (sy - vy >= line(fonts.big)) value = text(c, pct(level), fonts.big, TEXT(), pad, vy, r.w - 2 * pad);
-  const int sw = r.w - 2 * pad;
   lv_obj_t *track = box(c, pad, sy, sw, sh, INSET(), P(12));
   lv_obj_set_style_clip_corner(track, true, 0);
   const int fw = int(sw * std::clamp(level, 0.0f, 100.0f) / 100);
-  lv_obj_t *fill = box(track, 0, 0, fw, sh, accent(), 0);
-  lv_obj_t *knob = box(track, std::clamp(fw - P(9), P(4), sw - P(8)), P(9), P(4), sh - P(18), 0x101418, P(2));
+  fill = box(track, 0, 0, fw, sh, accent(), 0);
+  knob = box(track, std::clamp(fw - P(9), P(4), sw - P(8)), P(9), P(4), sh - P(18), 0x101418, P(2));
+  card_patch = [e, chip, chip_view, context, sw_toggle, value, fill, knob, sw, sh](const Tile &) {
+    if (dragging || !light_state) return true;  // The finger owns the slider.
+    const auto st = light_state(e);
+    const bool now_on = light_shown_on(e);
+    float lv = now_on ? st.brightness_pct : 0;
+    const float want = pending_value(e, "brightness");
+    clear_pending_if(e, "brightness", lv);
+    if (std::isfinite(want)) lv = want;
+    patch_chip(chip, chip_view, now_on);
+    patch_toggle(sw_toggle, now_on);
+    if (context) {
+      std::string ctx = now_on ? "On" : "Off";
+      if (now_on && st.color_temperature_kelvin > 0 && st.supports_color_temperature())
+        ctx += " · " + std::to_string(st.color_temperature_kelvin) + " K";
+      onx_render::label(context, ctx.c_str());
+    }
+    if (value) onx_render::label(value, pct(lv).c_str());
+    const int w = int(sw * std::clamp(lv, 0.0f, 100.0f) / 100);
+    lv_obj_set_size(fill, w, sh);
+    lv_obj_set_x(knob, std::clamp(w - P(9), P(4), sw - P(8)));
+    return true;
+  };
   if (!d.available) return;
   drag(track, [e, track, fill, knob, value, sw, sh](lv_point_t p, bool commit) {
     lv_area_t a;
@@ -2286,7 +2649,7 @@ inline void transport(lv_obj_t *parent, int cx, int cy, int side, int main, int 
   circle(parent, cx - main / 2 - gap - side / 2, cy, side, INSET(), LV_SYMBOL_PREV, TEXT(),
          [e]() { request(e, "media_player.media_previous_track", "", "", "panel_media"); });
   circle(parent, cx, cy, main, accent(), playing ? LV_SYMBOL_PAUSE : LV_SYMBOL_PLAY, TEXT(),
-         [e, playing]() { request(e, playing ? "media_player.media_pause" : "media_player.media_play", "", "", "panel_media"); });
+         [e, playing]() { request(e, playing ? "media_player.media_pause" : "media_player.media_play", "", playing ? "paused" : "playing", "state"); });
   circle(parent, cx + main / 2 + gap + side / 2, cy, side, INSET(), LV_SYMBOL_NEXT, TEXT(),
          [e]() { request(e, "media_player.media_next_track", "", "", "panel_media"); });
 }
@@ -2295,7 +2658,7 @@ inline void transport(lv_obj_t *parent, int cx, int cy, int side, int main, int 
 inline void card_media(lv_obj_t *c, const Tile &t, const EntityDetailState &d) {
   const Rect r = t.r;
   const int pad = P(14), bh = P(48);
-  const bool playing = d.state == "playing";
+  const bool playing = shown_state(t.entity, d.state) == "playing";
   const int by = r.h - pad - bh;
   const int bar = P(6), prog_h = bar + P(4) + line(fonts.small);
   const int prog_y = by - P(10) - prog_h;
@@ -2355,7 +2718,7 @@ __attribute__((noinline)) inline void build_media(const Layout &l, const std::st
   // Landscape: the artwork on the left, everything else in a column beside it.
   const int pad = P(16), side_art = wide() ? std::min(H - 2 * pad, W * 42 / 100) : 0;
   const int x = wide() ? pad + side_art + P(16) : pad, w = wide() ? W - x - pad : W - 2 * pad;
-  const bool playing = d.state == "playing", playback = onx_media::has_playback(d.state);
+  const bool playing = shown_state(e, d.state) == "playing", playback = onx_media::has_playback(d.state);
   int bottom = l.ctl.bottom();
   // Volume row.
   const bool volume = (d.features & 4) != 0;
@@ -2497,11 +2860,29 @@ inline void card_generic(lv_obj_t *c, const Tile &t, const EntityDetailState *d)
     if (avail >= P(24) && nw >= P(48)) chart(c, nx, top, nw, avail, e, card_history(e), accent(), false);
     return;
   }
-  chip_icon(c, e, pad, pad, cs, t.on);
+  lv_obj_t *chip = chip_icon(c, e, pad, pad, cs, t.on);
+  lv_obj_t *chip_view = !icon_uses.empty() ? icon_uses.back().view : nullptr;
+  const int before = lv_obj_get_child_count(c);
   titled(c, t, tx, pad + P(2), r.w - tx - pad - (switchable ? P(62) : 0));
+  lv_obj_t *context = !t.context.empty() && int(lv_obj_get_child_count(c)) > before ? lv_obj_get_child(c, -1) : nullptr;
   if (switchable) {
-    const bool on = d->state == "on";
-    toggle(c, r.w - pad - P(54), pad + P(7), on, [e, domain, on]() { request(e, domain + ".toggle", "", on ? "off" : "on", "panel_power"); });
+    const bool on = shown_state(e, d->state) == "on";
+    lv_obj_t *sw_toggle = toggle(c, r.w - pad - P(54), pad + P(7), on, [e, domain]() {
+      const auto *dd = custom_logic_entity_sub::entity_detail(e);
+      const bool now_on = dd != nullptr && shown_state(e, dd->state) == "on";
+      request(e, domain + ".toggle", "", now_on ? "off" : "on", "state");
+    });
+    // On/off and the context line change in place; anything else rebuilds.
+    card_patch = [e, chip, chip_view, context, sw_toggle](const Tile &next) {
+      const auto *dd = custom_logic_entity_sub::entity_detail(e);
+      if (dd == nullptr) return false;
+      const bool now_on = shown_state(e, dd->state) == "on";
+      patch_chip(chip, chip_view, now_on);
+      patch_toggle(sw_toggle, now_on);
+      if (context) onx_render::label(context, next.context.c_str());
+      else if (!next.context.empty()) return false;
+      return true;
+    };
   }
   int bottom = r.h - pad;
   auto run = [e, domain]() {
@@ -2733,7 +3114,7 @@ __attribute__((noinline)) inline void build_card(const Tile &t) {
     if(t.icon_only) {
       if(t.artwork)lv_obj_set_style_clip_corner(c,true,0);
       icon(c,t.entity,t.r.w/2,t.r.h/2,t.artwork?std::max(t.r.w,t.r.h):std::min(t.r.w,t.r.h)*86/100,color);
-      if(t.on && t.effect && !icon_uses.empty())animate_icon(icon_uses.back().image,t.effect);
+      if(t.on && t.effect && !icon_uses.empty())animate_icon(shown_icon(icon_uses.back()),t.effect);
       if(t.artwork && t.on) {
         auto *frame=box(c,0,0,t.r.w,t.r.h,CARD(),P(9),LV_OPA_TRANSP);
         lv_obj_set_style_border_width(frame,P(2),0);
@@ -2743,7 +3124,7 @@ __attribute__((noinline)) inline void build_card(const Tile &t) {
     }
     icon(c, t.entity, t.r.w / 2, (t.r.h - name_height - pad) / 2,
          std::min(P(44), std::min(t.r.w,t.r.h) * 40 / 100), color);
-    if (t.on && t.effect && !icon_uses.empty()) animate_icon(icon_uses.back().image, t.effect);
+    if (t.on && t.effect && !icon_uses.empty()) animate_icon(shown_icon(icon_uses.back()), t.effect);
     text(c, t.name, fonts.small, color, pad, t.r.h - name_height - pad,
          t.r.w - 2 * pad, LV_TEXT_ALIGN_CENTER);
     return;
@@ -2773,11 +3154,15 @@ inline void clear(bool invalidate_root = true);
 inline std::string signature(const std::string &e, const EntityDetailState *d, const onx_detail_view::View &v,
                              const std::string &title);
 inline void build_main_cards(const std::vector<Tile> &tiles) {
+  card_patches.clear();
   for (const auto &t : tiles) {
     card_artwork = t.artwork;
     card_on = t.on;
+    card_patch = nullptr;
     build_card(t);
+    card_patches.push_back(std::move(card_patch));
   }
+  card_patch = nullptr;
   card_artwork = 0;
 }
 
@@ -2790,21 +3175,60 @@ inline void render_main(lv_obj_t *parent, const std::vector<Tile> &tiles, int wi
   lv_obj_remove_flag(root, LV_OBJ_FLAG_HIDDEN);
   active = true;
   if (dragging) return;
-  std::string sig = "main|" + std::to_string(W) + 'x' + std::to_string(H) + '|' + std::to_string(accent()) + '|' + std::to_string(BG());
+  std::string head = "main|" + std::to_string(W) + 'x' + std::to_string(H) + '|' + std::to_string(accent()) + '|' + std::to_string(BG());
+  std::string sig = head, structure = head;
+  std::vector<std::string> tile_sigs;
   const time_t now = std::time(nullptr);
   for (const auto &t : tiles) {
+    const auto *d = custom_logic_entity_sub::entity_detail(t.entity);
     onx_detail_view::View v;
     v.value.text = t.value; v.context.text = t.context; v.name.text = t.name; v.value_ring = t.ring;
-    sig += "#" + std::to_string(t.r.x) + ',' + std::to_string(t.r.y) + ',' + std::to_string(t.r.w) + ',' +
-           std::to_string(t.r.h) + ',' + std::to_string(t.compact) + ',' + std::to_string(t.key) + ',' + std::to_string(t.icon_only) + ',' + std::to_string(t.on) + ',' + std::to_string(t.effect) + ',' +
-           std::to_string(t.artwork) + ',' + signature(t.entity, custom_logic_entity_sub::entity_detail(t.entity), v, t.name);
+    const std::string place = std::to_string(t.r.x) + ',' + std::to_string(t.r.y) + ',' + std::to_string(t.r.w) + ',' +
+                              std::to_string(t.r.h) + ',' + std::to_string(t.compact) + ',' + std::to_string(t.key) + ',' +
+                              std::to_string(t.icon_only) + ',' + std::to_string(t.effect) + ',' + std::to_string(t.artwork);
+    std::string full = "#" + place + ',' + std::to_string(t.on) + ',' + signature(t.entity, d, v, t.name);
     // These cards show relative event times independently of the header clock.
     if (runnable_entity(t.entity) || has_prefix(t.entity, "binary_sensor."))
-      sig += '|' + std::to_string(now > 1600000000 ? now / 60 : 0);
+      full += '|' + std::to_string(now > 1600000000 ? now / 60 : 0);
+    // Light and switch cards change on/off, brightness and their context line
+    // in place (card patches); everything else in the signature rebuilds.
+    std::string shape = full;
+    const bool ready = d != nullptr && d->received && d->available;
+    if (ready && !t.key && !t.compact && !t.artwork) {
+      const auto domain = t.entity.substr(0, t.entity.find('.'));
+      if (domain == "light" && light_state) {
+        const auto st = light_state(t.entity);
+        shape = "#L" + place + '|' + t.entity + '|' + t.name + '|' + std::to_string(st.supports_brightness()) +
+                std::to_string(st.supports_color_temperature());
+      } else if (domain == "switch" || domain == "input_boolean" || domain == "automation" || domain == "fan" || domain == "siren") {
+        shape = "#S" + place + '|' + t.entity + '|' + t.name + '|' + t.value + '|' + d->unit + '|' + std::to_string(t.ring) + '|' +
+                std::to_string(t.context.empty());
+      }
+    }
+    sig += full;
+    structure += shape;
+    tile_sigs.push_back(std::move(full));
   }
   if (sig == built_signature && main_mode) { refresh_icons(); tick_media_progress(); return; }
+  static std::string built_main_structure;
+  static std::vector<std::string> built_tile_sigs;
+  if (main_mode && structure == built_main_structure && card_patches.size() == tiles.size() &&
+      built_tile_sigs.size() == tiles.size()) {
+    bool patched = true;
+    for (size_t i = 0; i < tiles.size() && patched; ++i)
+      if (tile_sigs[i] != built_tile_sigs[i]) patched = card_patches[i] && card_patches[i](tiles[i]);
+    if (patched) {
+      built_signature = sig;
+      built_tile_sigs = std::move(tile_sigs);
+      refresh_icons();
+      tick_media_progress();
+      return;
+    }
+  }
   clear(!main_mode);
   built_signature = sig;
+  built_main_structure = structure;
+  built_tile_sigs = std::move(tile_sigs);
   main_mode = true;
   build_main_cards(tiles);
   tick_media_progress();
@@ -2866,6 +3290,12 @@ inline void detach_graph() {
   }
 }
 inline void clear(bool invalidate_root) {
+  pressed_card = nullptr;
+  patch = nullptr;
+  card_patches.clear();
+  built_structure.clear();
+  timer_visuals.clear();
+  timer_screen_active = false;
   detach_graph();
   detach_icons();
   detach_artwork();
@@ -3005,12 +3435,18 @@ inline void render(lv_obj_t *parent, const std::string &e, const std::string &ti
   lv_obj_set_size(root, W, H);
   lv_obj_remove_flag(root, LV_OBJ_FLAG_HIDDEN);
   active = true;
-  if (dragging) return;  // Never rebuild under a finger.
+  if (dragging || (custom_logic_entity_sub::is_timer_detail(e) && timer_interaction_pending && timer_interaction_pending())) return;
   const auto *d = custom_logic_entity_sub::entity_detail(e);
   const auto sig = signature(e, d, v, title);
-  if (sig == built_signature && !main_mode) { refresh_icons(); tick_media_progress(); return; }
+  if (sig == built_signature && !main_mode) { refresh_icons(); tick_media_progress(); tick_timers(); return; }
+  if (!main_mode && patch && d != nullptr && has_prefix(e, "light.") && !built_structure.empty() &&
+      light_structure(e, *d, title) == built_structure && patch()) {
+    built_signature = sig;
+    return;
+  }
   clear();
   built_signature = sig;
+  if (d != nullptr && has_prefix(e, "light.")) built_structure = light_structure(e, *d, title);
   auto l = layout();
   // Shortcut button along the bottom of the control column.
   const std::string action = shortcut ? shortcut(e) : "";
@@ -3071,10 +3507,11 @@ inline void render_timers(lv_obj_t *parent, int width, int height) {
   lv_obj_set_size(root, W, H);
   lv_obj_remove_flag(root, LV_OBJ_FLAG_HIDDEN);
   active = true;
-  if (dragging) return;
+  // Countdown refresh must preserve the pressed widget through LVGL click dispatch.
+  if (dragging || (timer_interaction_pending && timer_interaction_pending())) return;
   const std::string sig = "timers|" + std::to_string(W) + 'x' + std::to_string(H) + '|' + std::to_string(accent()) + '|' + std::to_string(BG()) + '|' +
                           timer_signature();
-  if (sig == built_signature && !main_mode) return;
+  if (sig == built_signature && !main_mode) { tick_timers(); return; }
   clear();
   built_signature = sig;
   build_timers("", "Timers");

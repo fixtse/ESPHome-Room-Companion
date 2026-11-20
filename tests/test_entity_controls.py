@@ -35,10 +35,11 @@ namespace custom_logic { constexpr size_t CONFIGURABLE_DEVICE_SLOT_COUNT = 10; }
 #define USE_API_HOMEASSISTANT_SERVICES
 namespace esphome::onx_storage { constexpr int RGB_TICK_DEGREES = 5; constexpr int RGB_TICKS = 72; }
 namespace esphome {
-// Mirror ESPHome 2026.10's explicit construction so implicit assignments fail here too.
+// Mirror ESPHome 2026.11: string construction stays explicit; byte spans are supported.
 struct StringRef {
   std::string value;
   StringRef() = default;
+  StringRef(const char *s, size_t n) : value(s,n) {}
   explicit StringRef(const std::string &s) : value(s) {}
   explicit StringRef(const char *s) : value(s) {}
   bool operator==(const char *s) const { return value == s; }
@@ -55,6 +56,8 @@ struct APIServer {
 }
 }
 namespace custom_logic_entity_sub {
+// Date rendering is outside this control-dispatch fixture.
+inline bool parse_ha_datetime_epoch(const std::string &, time_t *) { return false; }
 inline bool has_prefix(const std::string &s, const std::string &prefix) { return s.rfind(prefix, 0) == 0; }
 CACHE
 }
@@ -259,6 +262,22 @@ int main() {
   }
   assert(dispatch_target(true,true,"detail.entity")=="detail.entity");
   main_control_visible={};assert(dispatch_target(true,false,"").empty());
+  // Timer overlay commands target the timer, not the unrelated carousel entity.
+  bool timer_visible=true;
+  overlay_control_visible=[&](const std::string &entity){return timer_visible&&entity=="timer.tea";};
+  for (const auto &action:std::vector<std::pair<std::string,std::string>>{{"timer.pause","paused"},{"timer.start","active"},{"timer.cancel","idle"}}) {
+    cancel_controls();d={};d.entity_id="timer.tea";d.received=d.available=true;d.state="active";
+    select_control_entity(d.entity_id);request_control(d.entity_id,action.first,{{"state","",action.second}});
+    clock_ms+=100;const auto before=api.sent.size();
+    tick(&api,dispatch_target(true,true,"unrelated.entity"),true);
+    assert(api.sent.size()==before+1&&api.sent.back().service.value==action.first);
+    assert(api.sent.back().data.size()==1&&api.sent.back().data[0].value=="timer.tea");
+    for(auto &c:control_commands)c.feedback("state",action.second);
+    assert(!control_commands.back().active);
+  }
+  timer_visible=false;assert(dispatch_target(true,true,"unrelated.entity")=="unrelated.entity");
+  timer_visible=true;assert(dispatch_target(false,true,"unrelated.entity").empty());
+  overlay_control_visible={};
 
 }
 '''.replace('CACHE', cache).replace('HANDLERS', handlers).replace('PRESENTATION', presentation)

@@ -60,7 +60,7 @@ Each type has a direct touch control next to the usual swipe/knob step:
 | Cover | Window with the blind drawn to the position (drag when position is supported), Open / Stop / Close |
 | Switch, input boolean, automation | Large toggle; plugs with a power sensor show its reading and graph |
 | Scene, script, button | Large run button with a confirmation ring |
-| Timer | Progress ring and countdown; HA timers add +1 min, Pause/Resume and Cancel. With two or more running timers it opens as a list (rows in portrait, a 2-column grid in landscape) with each timer's progress, time left and a Pause/Resume (or Stop) button; finished timers come first. Tap a timer for its full screen, and the list button to return |
+| Timer | Progress ring and countdown; Local Assist timers support Pause/Resume and Stop; HA timer helpers add Pause/Resume, +1 min and Stop. With two or more running timers it opens as a list (rows in portrait, a 2-column grid in landscape) with each timer's progress, time left and a Pause/Resume (or Stop) button; finished timers come first. Tap a timer for its full screen, and the list button to return |
 | Sensor | Name (two lines when long), large value with its unit, a level bar for percentages, 12 h trend, graph (when enabled) and min / avg / max of the same history |
 | Binary sensor | State disc (Home Assistant device-class wording) and the last changes the panel has seen; kept in flash across reboots (saved at most every 10 minutes), not fetched from Home Assistant |
 | Event | Latest event type and how long ago it fired, plus recent events (kept across reboots like binary sensors). Icon follows the device class (doorbell, button, motion). Events are read-only |
@@ -68,6 +68,28 @@ Each type has a direct touch control next to the usual swipe/knob step:
 | Number | Large value, horizontal slider (sent on release) and − / + steps |
 | Select | Scrollable option list; tap selects immediately |
 | Weather | Place name with the condition icon in the top-right corner, large temperature with conditions, feels-like and today's range beside it, humidity / wind / rain tiles and a five-day list (day, conditions, low, range bar, high) |
+
+Local Assist timers offer Pause/Resume in the list and focused view, with Stop in the focused view.
+These buttons call `conversation.process` with the built-in Home Assistant
+agent (`conversation.home_assistant`) in English, selecting the timer by name (or original duration when
+unnamed). Allow this device to perform Home Assistant actions in its ESPHome
+integration options. Home Assistant resolves matching timers and sends the
+updated state back; duplicate names/durations may require a voice command to
+disambiguate. Remote voice/Google timers remain controlled on their source
+device. Countdown refresh waits through touch release so list navigation and
+buttons keep their pressed widget until LVGL dispatches the click. Countdown
+labels and rings update in place; ticks and command feedback do not recreate
+the buttons. Cancelled/finished Assist timers are removed from the mirror inside
+the event callback, so a finished timer appears only as its ringing alert. Stop
+cancels running/paused timers in Home Assistant and waits for the authoritative
+cancellation; closing the overlay with Back only dismisses the view. Command
+errors or missing confirmation are shown in the timer's status line.
+
+The main-screen timer chip is an LVGL passthrough target, so it cannot also press
+the entity underneath it. Timer and media auto-popups are suspended while the
+shared timer overlay owns the screen; closing the chip-opened view returns to
+the main screen. External timer helper commands keep the visible timer as their
+dispatch target even when the underlying carousel has another entity selected.
 
 Media keeps its artwork/transport view, with the elapsed and total time at the
 ends of the progress bar; without artwork the placeholder icon is centred in the
@@ -164,7 +186,37 @@ With the wake-word firmware, choose **Okay Nabu**, **Hey Jarvis**, **Hey
 Mycroft** or **Kenobi** in the device's **Wake word** setting in Home
 Assistant. ESPHome listens for one selected phrase at a time.
 Turn on **Wake word enabled** and leave the microphone unmuted for local
-detection. Okay Nabu is the default on a fresh setup.
+detection. Okay Nabu is the default on a fresh setup. **Wake word sensitivity**
+adjusts the Okay Nabu/Jarvis/Mycroft thresholds; Kenobi retains its model default.
+
+**Stop** is an internal contextual model: it silences a ringing timer or stops
+an announcement after its first second. Activation phrases also stop a ringing
+timer or interrupt a reply. **Snooze** is enabled only while a local timer rings
+and **Timer snooze enabled** is on. It silences the alert and rings again after
+**Timer snooze duration** (1–30 minutes, default 5); it does not restart HA's
+completed timer. A newer timer alert supersedes a pending snooze. Microphone
+mute and **Wake word enabled** gate all local word detection.
+
+### Sound sensing and dynamic volume
+
+The shared application exposes the SoundSense-compatible **Ambient Sound Level**,
+**Sound Detection**, **Dynamic Volume**, **Dyn Minimum Volume**, **Dyn Volume
+Level** and **Presence Threshold** entities. **Sound sensing** is on by default;
+**Dynamic Volume** is off by default. Turning off microphone capture via
+**Microphone muted** also stops this feature's microphone listener. Sound sensing
+can operate while the wake-word switch is off. It does not upload or retain PCM.
+
+This panel-native implementation uses the PDM microphone's 16-bit PCM, rather
+than the upstream package's 32-bit sample assumption. Audio callbacks only
+compute a scalar RMS value; the main loop publishes sensors and applies bounded
+volume changes. Measurements pause during Assist and playback to avoid feedback;
+stale or paused measurements report unknown, not silence. The relative dB scale
+has full scale at 90 dB and is not calibrated sound-pressure level. Tune
+**Sound Silence Threshold** (default 30) and **Presence Threshold** (default 50)
+to the room. States are quieting, silence after 15 seconds, active, noise after
+a sudden rise, and presence after 12 seconds above its threshold. Dynamic volume
+adjusts idle volume within 0–100%, with a floor set by **Dyn Minimum Volume**;
+it never changes volume during playback or while muted.
 
 ## Not yet done
 

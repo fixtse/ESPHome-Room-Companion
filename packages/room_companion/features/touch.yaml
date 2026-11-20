@@ -17,6 +17,8 @@ binary_sensor:
         - script.execute: onx_input_press
     on_release:
       then:
+        - lambda: |-
+            onx_panel_ui::request_render();
         - script.execute: onx_input_release
 
 onx_touch_input:
@@ -66,6 +68,7 @@ onx_touch_input:
     - script.execute: panel_back
   on_turn:
     - lambda: |-
+        onx_panel_ui::request_render();
         if(onx_navigation::dock_offset && onx_navigation::visible) {
           onx_navigation::dock_offset=0;
           id(refresh_normal_device_page).execute();

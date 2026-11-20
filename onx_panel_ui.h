@@ -35,6 +35,10 @@ inline void configure_screen(int w, int h, uint8_t quarter_turns) {
   height = turns & 1 ? w : h;
 }
 inline bool landscape() { return width > height; }
+// Ask the panel render pass (panel.yaml) to run on its next 16 ms check instead
+// of waiting for its 100 ms period, so a tap's result is drawn promptly.
+inline bool render_requested = false;
+inline void request_render() { render_requested = true; }
 
 // ------------------------------------------------------------ hit testing
 inline std::vector<lv_obj_t *> touch_targets;  // Visible buttons owned by LVGL.

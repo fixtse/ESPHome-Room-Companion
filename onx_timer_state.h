@@ -9,6 +9,18 @@
 
 namespace onx_timer {
 
+// Use the original duration for unnamed Assist timers, never the countdown.
+// HA resolves duplicate names/durations and sends the authoritative update.
+enum class Action { PAUSE, RESUME, STOP };
+inline constexpr const char *conversation_agent = "conversation.home_assistant";
+inline std::string control_sentence(const std::string &name, uint32_t total, Action action) {
+  return std::string(action == Action::STOP ? "cancel the " : action == Action::RESUME ? "resume the " : "pause the ") +
+         (name.empty() ? std::to_string(total) + " second" : name) + " timer";
+}
+
+inline std::string control_sentence(const std::string &name, uint32_t total, bool resume) {
+  return control_sentence(name, total, resume ? Action::RESUME : Action::PAUSE);
+}
 struct Popup { bool visible{false}, dismissed{false}; int previous_index{0}; std::string entity; };
 inline Popup popup;
 inline bool popup_due(uint32_t idle_ms, bool detail_active, bool dismissed=false) {

@@ -245,29 +245,154 @@ inline bool swipe_closes() {
 inline bool close_zone(int, int y) {
   return panel_open && detail_id == 0 && rotate_dialog == nullptr && y >= height - S(84);
 }
-// Swipe up: the centre follows the finger and only closes on release, once
-// lifted past a third of the screen (or flicked). A shorter drag springs back,
-// so a swipe that changes its mind never closes it mid-drag.
-inline void drag_panel(int dy) {
-  if (!panel_open || panel == nullptr) return;
-  lv_anim_delete(panel, nullptr);
-  // Downward drags barely move it, to show that direction does nothing.
-  set_drag_offset(dy < 0 ? dy : dy / 6);
+// Drag sheet. Moving the real centre redraws the whole screen for every move
+// (80-200 ms a frame on this SPI panel), so while a finger drags it open or
+// closed a plain sheet in the centre's colour follows the finger instead. The
+// sheet never moves or resizes: it draws itself down to `sheet_edge`, and each
+// move only invalidates the strip between the old and new edge plus the grip
+// band, so a frame costs a few milliseconds and keeps up with the finger.
+enum class SheetMode { NONE, OPENING, CLOSING };
+inline lv_obj_t *sheet = nullptr;
+inline int sheet_edge = 0;
+inline SheetMode sheet_mode = SheetMode::NONE;
+inline uint32_t sheet_color = 0;
+inline int sheet_band() { return S(48); }
+inline bool sheet_releases(int travel) { return travel >= height / 5; }
+inline void sheet_invalidate(int a, int b) {
+  if (sheet == nullptr) return;
+  lv_area_t area{0, std::max(0, std::min(a, b) - sheet_band()), width - 1, std::min(height - 1, std::max(a, b) + 2)};
+  if (area.y2 >= area.y1) lv_obj_invalidate_area(sheet, &area);
 }
-inline bool release_panel_drag(int dy, uint32_t ms) {
-  if (!panel_open || panel == nullptr) return false;
-  const bool flick = ms > 0 && ms < 350 && -dy >= S(36);
-  if (drag_closes(dy) || flick) return true;
-  if (drag_offset == 0) return false;
+inline void set_sheet_edge(int edge) {
+  edge = std::clamp(edge, 0, height);
+  if (edge == sheet_edge) return;
+  const int old = sheet_edge;
+  sheet_edge = edge;
+  sheet_invalidate(old, edge);
+}
+inline void draw_sheet(lv_event_t *e) {
+  if (sheet_edge <= 0) return;
+  lv_layer_t *layer = lv_event_get_layer(e);
+  lv_draw_rect_dsc_t rect;
+  lv_draw_rect_dsc_init(&rect);
+  rect.bg_color = lv_color_hex(sheet_color);
+  rect.bg_opa = LV_OPA_COVER;
+  rect.radius = 0;
+  const lv_area_t body{0, 0, width - 1, sheet_edge - 1};
+  lv_draw_rect(layer, &rect, &body);
+  // Grip at the moving edge, like the centre's own handle.
+  const int gw = S(36), gh = std::max(2, S(4)), gy = sheet_edge - S(12);
+  if (gy > 0) {
+    lv_draw_rect_dsc_t grip;
+    lv_draw_rect_dsc_init(&grip);
+    grip.bg_color = lv_color_hex(muted());
+    grip.bg_opa = LV_OPA_COVER;
+    grip.radius = LV_RADIUS_CIRCLE;
+    const lv_area_t g{width / 2 - gw / 2, gy, width / 2 + gw / 2 - 1, gy + gh - 1};
+    lv_draw_rect(layer, &grip, &g);
+  }
+  const lv_font_t *font = fonts.small;
+  if (font == nullptr) return;
+  const int ty = sheet_edge - S(16) - lv_font_get_line_height(font);
+  if (ty <= 0) return;
+  const bool armed = sheet_mode == SheetMode::CLOSING ? sheet_releases(height - sheet_edge) : sheet_releases(sheet_edge);
+  lv_draw_label_dsc_t label;
+  lv_draw_label_dsc_init(&label);
+  label.font = font;
+  label.color = lv_color_hex(armed ? accent() : muted());
+  label.align = LV_TEXT_ALIGN_CENTER;
+  label.text = sheet_mode == SheetMode::CLOSING ? (armed ? "Release to close" : "Swipe up to close")
+                                                : (armed ? "Release to open" : "Notifications");
+  const lv_area_t t{0, ty, width - 1, ty + lv_font_get_line_height(font)};
+  lv_draw_label(layer, &label, &t);
+}
+inline void ensure_sheet() {
+  if (sheet != nullptr) return;
+  // Always present and transparent at edge 0, so showing it never triggers a
+  // full-screen redraw; it sits above the centre and the toast.
+  sheet = lv_obj_create(lv_layer_sys());
+  lv_obj_remove_style_all(sheet);
+  lv_obj_set_pos(sheet, 0, 0);
+  lv_obj_set_size(sheet, width, height);
+  lv_obj_remove_flag(sheet, static_cast<lv_obj_flag_t>(LV_OBJ_FLAG_CLICKABLE | LV_OBJ_FLAG_SCROLLABLE));
+  lv_obj_add_event_cb(sheet, draw_sheet, LV_EVENT_DRAW_MAIN, nullptr);
+}
+inline void animate_sheet(int to, lv_anim_completed_cb_t done) {
+  ensure_sheet();
+  lv_anim_delete(sheet, nullptr);
   lv_anim_t a;
   lv_anim_init(&a);
-  lv_anim_set_var(&a, panel);
-  lv_anim_set_values(&a, drag_offset, 0);
-  lv_anim_set_duration(&a, 160);
+  lv_anim_set_var(&a, sheet);
+  lv_anim_set_values(&a, sheet_edge, to);
+  lv_anim_set_duration(&a, std::clamp(std::abs(to - sheet_edge) / 3, 60, 180));
   lv_anim_set_path_cb(&a, lv_anim_path_ease_out);
-  lv_anim_set_exec_cb(&a, [](void *, int32_t v) { set_drag_offset(v); });
+  lv_anim_set_exec_cb(&a, [](void *, int32_t v) { set_sheet_edge(v); });
+  if (done) lv_anim_set_completed_cb(&a, done);
   lv_anim_start(&a);
-  return false;
+}
+inline uint32_t panel_color() {
+  return panel != nullptr ? (lv_color_to_u32(lv_obj_get_style_bg_color(panel, LV_PART_MAIN)) & 0xFFFFFF) : bg();
+}
+
+// Pull down from the top edge: the sheet follows the finger and the centre
+// opens on release once pulled a fifth of the way (or flicked).
+inline void drag_open(int dy) {
+  if (panel_open || panel == nullptr) return;
+  ensure_sheet();
+  if (sheet_mode != SheetMode::OPENING) {
+    lv_anim_delete(sheet, nullptr);
+    sheet_mode = SheetMode::OPENING;
+    sheet_color = panel_color();
+  }
+  set_sheet_edge(std::max(0, dy));
+}
+inline bool release_open(int dy, uint32_t ms) {
+  if (sheet_mode != SheetMode::OPENING) return !panel_open && dy >= S(50);
+  const bool open = sheet_releases(dy) || (ms > 0 && ms < 350 && dy >= S(36));
+  if (open) {
+    animate_sheet(height, [](lv_anim_t *) {
+      open_panel();
+      // The centre now covers the screen; drop the sheet without a redraw of its own.
+      sheet_edge = 0;
+      sheet_mode = SheetMode::NONE;
+    });
+  } else {
+    animate_sheet(0, [](lv_anim_t *) { sheet_mode = SheetMode::NONE; });
+  }
+  return false;  // Opening is handled here.
+}
+
+// Swipe up: the centre is replaced by the sheet, which follows the finger and
+// closes on release past a fifth of the screen (or a flick). A shorter drag
+// springs back and shows the centre again.
+inline void drag_panel(int dy) {
+  if (!panel_open || panel == nullptr) return;
+  ensure_sheet();
+  if (sheet_mode != SheetMode::CLOSING) {
+    lv_anim_delete(sheet, nullptr);
+    sheet_mode = SheetMode::CLOSING;
+    sheet_color = panel_color();
+    sheet_edge = height;           // One full redraw: centre -> sheet over the page.
+    lv_obj_invalidate(sheet);
+    hide(panel, true);
+  }
+  // Downward drags barely move it, to show that direction does nothing.
+  set_sheet_edge(height + (dy < 0 ? dy : 0));
+}
+inline bool release_panel_drag(int dy, uint32_t ms) {
+  if (sheet_mode != SheetMode::CLOSING) return false;
+  const bool flick = ms > 0 && ms < 350 && -dy >= S(36);
+  if (sheet_releases(-dy) || flick) {
+    close_panel();
+    animate_sheet(0, [](lv_anim_t *) { sheet_mode = SheetMode::NONE; });
+  } else {
+    animate_sheet(height, [](lv_anim_t *) {
+      sheet_mode = SheetMode::NONE;
+      if (panel_open) hide(panel, false);
+      sheet_edge = 0;
+    });
+  }
+  return false;  // Closing is handled here.
 }
 inline void on_clear(lv_event_t *) {
   if (controls_blocked && controls_blocked()) return;
@@ -798,16 +923,36 @@ inline void refresh() {
         auto found = thumbnails.find(item->id);
         lv_image_set_src(toast_icon, found == thumbnails.end() || !found->second.pixels ? bell_image : &found->second.image);
       }
-      const uint32_t total = std::max<uint32_t>(1, center.toast_until - item->received_ms);
-      const uint32_t left = center.toast_until - now;
-      lv_obj_set_height(toast_bar, lv_pct(std::max<uint32_t>(1, uint64_t(left) * 100 / total)));
+      // Timeout bar: one LVGL animation shrinks it smoothly every frame (a
+      // 3 px strip, so each step redraws almost nothing). Restarted only when
+      // the banner or its deadline changes.
+      static uint32_t animated_id = 0, animated_until = 0;
+      if (animated_id != item->id || animated_until != center.toast_until) {
+        animated_id = item->id;
+        animated_until = center.toast_until;
+        lv_obj_update_layout(toast);
+        const int full = std::max<int>(1, lv_obj_get_content_height(toast) + lv_obj_get_style_pad_top(toast, LV_PART_MAIN) +
+                                              lv_obj_get_style_pad_bottom(toast, LV_PART_MAIN));
+        const uint32_t total = std::max<uint32_t>(1, center.toast_until - item->received_ms);
+        const uint32_t left = center.toast_until > now ? center.toast_until - now : 0;
+        lv_anim_delete(toast_bar, nullptr);
+        lv_obj_set_height(toast_bar, int(uint64_t(full) * left / total));
+        lv_anim_t a;
+        lv_anim_init(&a);
+        lv_anim_set_var(&a, toast_bar);
+        lv_anim_set_values(&a, int(uint64_t(full) * left / total), 0);
+        lv_anim_set_duration(&a, std::max<uint32_t>(1, left));
+        lv_anim_set_path_cb(&a, lv_anim_path_linear);
+        lv_anim_set_exec_cb(&a, [](void *bar, int32_t h) { lv_obj_set_height(static_cast<lv_obj_t *>(bar), std::max<int32_t>(1, h)); });
+        lv_anim_start(&a);
+      }
       lv_obj_set_style_bg_color(toast_bar, lv_color_hex(accent()), 0);
       onx_emoji::set_label(toast_body, item->body.c_str());
     }
   }
   hide(toast, !show_toast);
 
-  hide(panel, !panel_open);
+  if (sheet_mode != SheetMode::CLOSING) hide(panel, !panel_open);
   // Rebuilt on changes, and once a minute while open so the times stay current.
   static uint32_t built_minute = 0;
   const uint32_t minute = now / 60000;
@@ -838,10 +983,22 @@ inline void hide_toast_unless(int x,int y) {
 }
 // Touches on the visible bell go to LVGL rather than the gesture router.
 inline bool bell_hit(int x, int y) {
-  if (bell == nullptr || lv_obj_has_flag(bell, LV_OBJ_FLAG_HIDDEN)) return false;
+  if (bell == nullptr || !lv_obj_is_visible(bell)) return false;
   lv_area_t a;
   lv_obj_get_coords(bell, &a);
-  return x >= a.x1 - 8 && x <= a.x2 + 8 && y >= a.y1 && y <= a.y2 + 8;
+  // Match lv_obj_set_ext_click_area(bell, S(8)) on every side. A smaller
+  // passthrough area lets an edge tap also press the carousel entity below.
+  const int pad = S(8);
+  return x >= a.x1 - pad && x <= a.x2 + pad && y >= a.y1 - pad && y <= a.y2 + pad;
+}
+// The timer chip is also an LVGL target. Otherwise its tap first enters the
+// underlying entity through the virtual button before opening the timer overlay.
+inline bool timer_chip_hit(int x, int y) {
+  if (timer_chip == nullptr || !lv_obj_is_visible(timer_chip)) return false;
+  lv_area_t a;
+  lv_obj_get_coords(timer_chip, &a);
+  const int pad = S(6);
+  return x >= a.x1 - pad && x <= a.x2 + pad && y >= a.y1 - pad && y <= a.y2 + pad;
 }
 // Called by the panel's UI tick: the bell belongs to the main carousel only.
 inline void set_bell_visible(bool visible) {

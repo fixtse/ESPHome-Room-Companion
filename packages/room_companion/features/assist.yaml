@@ -9,9 +9,9 @@
 # Voice timers set on this panel ("set a 10 minute pasta timer") are tracked by
 # the voice assistant. A timer screen opens when one starts (closing itself
 # after a few seconds) and when one finishes, sounding until Stop is tapped
-# or five minutes pass. Home Assistant offers no service to pause or cancel
-# Assist timers, so those are done by voice; HA timer helpers on the panel get
-# Cancel / Pause / +1 min buttons.
+# or five minutes pass. Pause/Resume sends an English timer command to HA
+# conversation.process; HA remains the timer authority and returns its updated
+# timer state over the API. HA helpers also offer Cancel / +1 min.
 globals:
   - id: assist_mic_percent
     type: int
@@ -41,6 +41,19 @@ button:
     icon: mdi:account-voice
     on_press:
       - script.execute: toggle_assist
+
+number:
+  - platform: template
+    id: timer_snooze_minutes
+    name: Timer snooze duration
+    min_value: 1
+    max_value: 30
+    step: 1
+    initial_value: 5
+    unit_of_measurement: min
+    restore_value: true
+    optimistic: true
+    entity_category: config
 
 binary_sensor:
   - id: !extend boot_btn
@@ -148,12 +161,19 @@ voice_assistant:
     - script.execute: timer_autoclose
   on_timer_updated:
     - script.execute: timer_sync
+    - lambda: |-
+        auto &state = onx_panel_detail::timers;
+        if (state.message_key == "local:" + timer.id) { state.message.clear(); state.command_pending = false; }
   on_timer_tick:
     - script.execute: timer_sync
   on_timer_cancelled:
-    - script.execute: timer_sync
+    # ESPHome erases its timer after this callback; syncing get_timers() here
+    # would reinsert the cancelled timer and might never get another tick.
+    - lambda: |-
+        onx_panel_detail::retire_local_timer(timer.id);
     - script.execute: timer_close_if_idle
   on_timer_finished:
+    - script.stop: timer_snooze
     - lambda: |-
         auto &state = onx_panel_detail::timers;
         state.ringing = true;
@@ -162,6 +182,8 @@ voice_assistant:
         state.ringing_since = millis();
         state.focus.clear();
     - script.execute: timer_sync
+    - lambda: |-
+        onx_panel_detail::retire_local_timer(timer.id);
     - script.stop: timer_autoclose
     - script.execute: timer_show
     - script.execute: timer_ring
@@ -171,10 +193,72 @@ esphome:
     - priority: -100
       then:
         - lambda: |-
+            onx_panel_detail::set_local_timer_active = [](const std::string &key, bool active) {
+              id(timer_command).execute(key, active ? "resume" : "pause");
+            };
+            onx_panel_detail::stop_local_timer = [](const std::string &key) {
+              id(timer_command).execute(key, "stop");
+            };
             onx_panel_detail::stop_ringing = []() { id(timer_stop).execute(); };
             onx_panel_detail::close_timers = []() { id(timer_close).execute(); };
 
 script:
+  # Assist timers are owned by HA. Never pause only the ESPHome mirror: HA
+  # would still finish the original timer. Use the built-in conversation agent
+  # and wait for on_timer_updated rather than showing optimistic local state.
+  - id: timer_command
+    mode: queued
+    max_runs: 4
+    parameters:
+      timer_id: string
+      command: string
+    then:
+      - if:
+          condition:
+            lambda: |-
+              for (const auto &t : id(assist).get_timers())
+                if (t.id == timer_id) return command == "stop" ||
+                    (t.seconds_left > 0 && t.is_active == (command == "pause"));
+              return false;
+          then:
+            - script.stop: timer_autoclose
+            - lambda: |-
+                auto &state = onx_panel_detail::timers;
+                state.message_key = "local:" + timer_id;
+                state.message = command == "stop" ? "Stopping..." : command == "resume" ? "Resuming..." : "Pausing...";
+                state.message_until = millis() + 8000;
+                state.command_pending = true;
+            - homeassistant.action:
+                action: conversation.process
+                data:
+                  agent_id: !lambda 'return std::string(onx_timer::conversation_agent);'
+                  language: en
+                  text: !lambda |-
+                    const auto action = command == "stop" ? onx_timer::Action::STOP :
+                        command == "resume" ? onx_timer::Action::RESUME : onx_timer::Action::PAUSE;
+                    for (const auto &t : id(assist).get_timers())
+                      if (t.id == timer_id) return onx_timer::control_sentence(t.name, t.total_seconds, action);
+                    return std::string();
+                capture_response: true
+                response_template: "{{ dict(type=response.get('response', {}).get('response_type', ''), code=response.get('response', {}).get('data', {}).get('code', '')) }}"
+                on_success:
+                  - lambda: |-
+                      if (std::string(response["response"]["type"] | "") != "error") return;
+                      auto &state = onx_panel_detail::timers;
+                      state.message_key = "local:" + timer_id;
+                      state.message = "Timer command rejected by HA";
+                      state.message_until = millis() + 5000;
+                      state.command_pending = false;
+                      ESP_LOGW("panel_timer", "HA rejected timer command: %s", response["response"]["code"] | "unknown");
+                on_error:
+                  - lambda: |-
+                      auto &state = onx_panel_detail::timers;
+                      state.message_key = "local:" + timer_id;
+                      state.message = "HA timer action failed";
+                      state.message_until = millis() + 5000;
+                      state.command_pending = false;
+                      ESP_LOGW("panel_timer", "Timer action failed: %s", error.c_str());
+
   # Copies the voice assistant's timers for the timer screen.
   - id: timer_sync
     then:
@@ -184,6 +268,11 @@ script:
           for (const auto &t : id(assist).get_timers())
             state.local.push_back({t.id, t.name, t.total_seconds, t.seconds_left, t.is_active});
           state.synced_ms = millis();
+          if (state.command_pending && int32_t(millis() - state.message_until) >= 0) {
+            state.message = "No timer confirmation";
+            state.message_until = millis() + 5000;
+            state.command_pending = false;
+          }
 
   # Opens the timer screen above everything, waking the panel.
   - id: timer_show
@@ -204,6 +293,7 @@ script:
 
   - id: timer_close
     then:
+      - script.stop: timer_snooze
       - script.stop: timer_autoclose
       - script.stop: timer_ring
       - lambda: |-
@@ -222,11 +312,14 @@ script:
     then:
       - lambda: |-
           const auto &state = onx_panel_detail::timers;
-          if (state.overlay && !state.ringing && state.local.empty()) id(timer_close).execute();
+          const auto items = onx_panel_detail::all_timers();
+          if (state.overlay && !state.ringing &&
+              std::none_of(items.begin(), items.end(), onx_panel_detail::running)) id(timer_close).execute();
 
   # Stops the finished-timer sound (the screen stays while other timers run).
   - id: timer_stop
     then:
+      - script.stop: timer_snooze
       - lambda: |-
           const bool was = onx_panel_detail::timers.ringing;
           onx_panel_detail::timers.ringing = false;
@@ -235,6 +328,29 @@ script:
           auto call = id(panel_media_player).make_call();
           call.set_command(esphome::media_player::MEDIA_PLAYER_COMMAND_STOP).set_announcement(true).perform();
       - script.execute: timer_close_if_idle
+
+  # Snooze the local ringing alert; HA's completed timer stays completed.
+  # Keep its label/total for the next alert. Stop/back cancels a pending snooze.
+  - id: timer_snooze
+    mode: restart
+    then:
+      - script.stop: timer_ring
+      - lambda: |-
+          onx_panel_detail::timers.ringing = false;
+          onx_panel_detail::timers.overlay = false;
+          onx_panel_detail::timers.dismissed = true;
+          id(room_panel)->set_overlay(esphome::room_companion::OVERLAY_TIMER, false);
+          id(panel_media_player).make_call()
+              .set_command(esphome::media_player::MEDIA_PLAYER_COMMAND_STOP).set_announcement(true).perform();
+      - delay: !lambda 'return uint32_t(id(timer_snooze_minutes).state * 60000);'
+      - lambda: |-
+          auto &state = onx_panel_detail::timers;
+          state.ringing = true;
+          state.ringing_since = millis();
+          state.dismissed = false;
+          state.focus.clear();
+      - script.execute: timer_show
+      - script.execute: timer_ring
 
   # Repeats the finished sound until stopped, for at most five minutes.
   - id: timer_ring

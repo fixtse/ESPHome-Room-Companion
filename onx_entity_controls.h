@@ -184,8 +184,10 @@ inline void press(const std::string &id) {
 // Rectangular cards can control a visible member without opening its detail.
 // Other UIs leave this hook empty and retain detail-only dispatch.
 inline std::function<bool(const std::string &)> main_control_visible;
+inline std::function<bool(const std::string &)> overlay_control_visible;
 inline std::string dispatch_target(bool active, bool detail, const std::string &selected) {
   if (!active) return {};
+  if (!control_entity.empty() && overlay_control_visible && overlay_control_visible(control_entity)) return control_entity;
   if (detail) return selected;
   return !control_entity.empty() && main_control_visible && main_control_visible(control_entity) ? control_entity : std::string();
 }

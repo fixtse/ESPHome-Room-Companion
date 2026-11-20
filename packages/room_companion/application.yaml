@@ -14,6 +14,7 @@ packages:
   panel: !include panel.yaml
   touch: !include features/touch.yaml
   assist: !include features/assist.yaml
+  sound_sense: !include features/sound_sense.yaml
   dashboard: !include features/dashboard.yaml
   notifications: !include features/notifications.yaml
 
@@ -44,6 +45,7 @@ esphome:
     - ../../onx_crash_capture.h
     - ../../onx_config_rules.h
     - ../../onx_timer_state.h
+    - ../../onx_sound_sense.h
     - ../../onx_control_state.h
     - ../../onx_icon_state.h
     - ../../onx_recovery_state.h

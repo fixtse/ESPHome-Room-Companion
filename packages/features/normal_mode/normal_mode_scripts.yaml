@@ -282,6 +282,9 @@ script:
             return;
           }
 
+          #ifdef USE_ROOM_COMPANION
+          if (onx_panel_detail::timers.overlay) { onx_navigation::hide(); return; }
+          #endif
           int total = id(normal_device_count);
           if (total < 0) total = 0;
           if (total > (int)custom_logic::CONFIGURABLE_DEVICE_SLOT_COUNT) total = 20;
@@ -2689,6 +2692,9 @@ script:
   - id: check_normal_idle_media_popup
     then:
       - lambda: |-
+          #ifdef USE_ROOM_COMPANION
+          if (onx_panel_detail::timers.overlay) return;
+          #endif
           if(onx_notification::current.visible)return;
           auto &popup=onx_media::idle_popup;
           const auto now=id(ha_time).now();
@@ -2740,6 +2746,11 @@ script:
   - id: check_normal_timer_popup
     then:
       - lambda: |-
+          #ifdef USE_ROOM_COMPANION
+          // A shared timer overlay owns navigation; never open another timer
+          // entity underneath it or change the page it will return to.
+          if (onx_panel_detail::timers.overlay) return;
+          #endif
           if (onx_timer::popup.visible && !id(normal_ha_api_connected)) {
             onx_timer::popup.visible=false;
             id(normal_device_selected_index)=onx_timer::popup.previous_index;

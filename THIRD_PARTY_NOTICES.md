@@ -77,3 +77,20 @@ required build/install information under the applicable GPL/AGPL terms. Modified
 versions supporting remote network interaction must meet AGPL section 13.
 
 The emoji sequence table in `onx_emoji_table.h` is derived from Noto Color Emoji (Google), licensed under SIL Open Font License 1.1; see `fonts/OFL-NotoEmoji.txt`. Color emoji images are downloaded at runtime from Google's Noto Emoji service (fonts.gstatic.com; Noto Emoji images are licensed under Apache License 2.0, flags are public domain).
+
+## Wake-word models and SoundSense compatibility
+
+The optional wake-word configuration downloads the OHF-Voice Stop model (Kevin
+Ahrendt) from its `stop` release and the Snooze model (darren / dlarkinsPonderosa)
+from the pinned Respeaker-Lite integration revision used for Kenobi. Model
+manifests identify their authors and upstream locations; these model assets are
+embedded at build time and are not relicensed by this project's AGPL notice.
+The contextual Stop/Snooze behavior and sensitivity values follow the
+[voice satellite configuration](https://github.com/fixtse/esp-ota/blob/main/configs/common/respeaker-lite/packages/core/voice-assistant.yaml).
+
+[Home Assistant Voice SoundSense](https://github.com/fixtse/ha-voice-sound-sense)
+provides the feature/entity interface reference (revision
+`3a6da888cabe9ebd094489fda3c8c9d2958a4c4c`). Its package is licensed
+CC BY-NC-SA 4.0. It is not vendored or imported here: `onx_sound_sense.h` and the
+panel package are independently implemented under this project's license for
+16-bit PDM capture, allocation-free metering and main-loop state publication.
