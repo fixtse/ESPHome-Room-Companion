@@ -165,6 +165,14 @@ const {chromium}=require('playwright');
   // Media matches the device: three transport buttons, no close button, no header icons.
   assert.equal(await page.locator('[data-media-button]').count(),3);
   assert.doesNotMatch(await page.locator('#device-preview').innerHTML(),/close|monitor-dashboard|bell/);
+  // As build_media: a volume row (card and speaker icon) whenever the player supports volume.
+  await page.evaluate(()=>{
+   const media={entity:'media_player.room',name:'Room speaker'},view={layout:'media',playing:false,progress:-1,lines:[],panel:{state:'idle',features:4,volume:''}};
+   ONX_PANEL_PREVIEW(document.getElementById('device-preview'),media,view,[view],'detail',{});
+  });
+  assert.equal(await page.locator('#device-preview [data-media-volume]').count(),1,'Volume row with its card');
+  assert.match(await page.locator('#device-preview').innerHTML(),/volume-high/,'Volume row speaker icon');
+  assert.equal(await page.locator('#device-preview [data-media-bar]').count(),0,'No position bar without a position');
   // Landscape: the selected orientation turns the preview and the layout.
   await page.evaluate(()=>{
    const media={entity:'media_player.room',name:'Room speaker'},view={layout:'media',playing:true,progress:500,lines:[{text:''},{text:'Volume: 50%'},{text:'Track title'},{text:'Artist'},{text:'Room speaker'}]};

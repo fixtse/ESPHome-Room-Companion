@@ -45,7 +45,8 @@ const raw=(file,tag)=>fs.readFileSync('my_components/onx_config_web/'+file,'utf8
   await page.waitForFunction(()=>document.querySelector('#page-grid.live svg.page-live'));
   assert.equal(await page.locator('#page-connection #panel-dashboard').count(),1,'Dashboard settings belong in Home Assistant');
   assert.equal(await page.locator('#page-settings #panel-dashboard').count(),0);
-  await page.locator('[data-page="settings"]').click();
+  // The idle clock layouts live on the Idle screen tab; colours stay in Settings.
+  await page.locator('[data-page="photos"]').click();
   await page.locator('[data-layout="7"]').click();
   for(const accent of ['#F97316','#151515','#F8FAFC']){
    await page.locator('#color-value').evaluate((el,value)=>el.textContent=value,accent);
@@ -57,6 +58,7 @@ const raw=(file,tag)=>fs.readFileSync('my_components/onx_config_web/'+file,'utf8
    assert(contrast>=4.5,`Selected preset needs readable text on ${accent}: ${contrast}`);
   }
 
+  await page.locator('[data-page="settings"]').click();
   await page.locator('#background-color').evaluate(input=>{input.value='#f4f4f4';input.dispatchEvent(new Event('input',{bubbles:true}))});
   assert.equal(await page.locator('#device-preview > rect').first().getAttribute('fill'),'#F4F4F4','Background changes update the preview before saving');
   await page.click('#discard-settings');

@@ -15,7 +15,6 @@ substitutions:
   strip_marker: "32"
   strip_label_y: "-1"
   strip_label_font: fonts_MiSans_Medium_16
-  symbol_font: montserrat_20
   notice_image_width: "200"
   notice_image_height: "112"
   # Full-screen JPEG decode + SPI transfer, ms (tune with the stream self-test).

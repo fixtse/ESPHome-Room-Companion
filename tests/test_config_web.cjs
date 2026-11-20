@@ -188,10 +188,14 @@ const { chromium } = require('playwright');
   await page.getByRole('button',{name:'Soft violet',exact:true}).click();
   assert.equal(await page.locator('#media-color').inputValue(),'#a78bfa');
   await page.screenshot({path:path.join(screenshots,'onx-color-settings.png'),fullPage:true});
+  // Idle scope, date and hour format are on the Idle screen tab; Device
+  // settings' save sends every setting.
+  await page.locator('[data-page="photos"]').click();
   await page.locator('#standby-scope').selectOption('all');
   assert.equal(await page.locator('#date-format').inputValue(),'dd-mm');
   await page.locator('#date-format').selectOption('yyyy-mmm-dd');
   await page.locator('#hour-format').selectOption('12');
+  await page.getByRole('button',{name:'Device settings',exact:true}).click();
   await page.locator('#save-settings').click();
   await page.getByRole('status').filter({hasText:'Device settings saved.'}).waitFor();
   assert.equal(savedSettings.at(-1).media_color,'#A78BFA');assert.equal(savedSettings.at(-1).standby_scope,'all');

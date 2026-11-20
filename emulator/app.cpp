@@ -45,8 +45,12 @@ Board load_board(const std::string &model) {
   const std::string name = model == "28" ? "ONX2432G028" : "ONX3248G035";
   std::string lower = name;
   for (auto &c : lower) c = std::tolower(c);
-  auto s = lvgl_emu::substitutions(root + "/packages/base/fonts.yaml");
-  s = lvgl_emu::substitutions(root + "/packages/room_companion/boards/" + lower + ".yaml", s);
+  // ESPHome's merge order: the board profile, then the shared packages' defaults
+  // (which override it), then the root YAML. A board value that a shared
+  // package also defines is lost, as on the device.
+  auto s = lvgl_emu::substitutions(root + "/packages/room_companion/boards/" + lower + ".yaml");
+  s = lvgl_emu::substitutions(root + "/packages/base/fonts.yaml", s);
+  s = lvgl_emu::substitutions(root + "/packages/features/normal_mode/normal_mode_pages.yaml", s);
   s = lvgl_emu::substitutions(root + "/" + name + ".yaml", s);
   Board b;
   b.model = name;

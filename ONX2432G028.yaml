@@ -1,6 +1,10 @@
 # Room Companion for the ONX2432G028: shared application on a
 # rectangular touch panel, with Assist and an optional dashboard stream.
 substitutions:
+  # Root values override the shared defaults during package merging (a board
+  # profile value would lose to packages/base/fonts.yaml): media and stepper
+  # symbols in proportion with the 3/4-size layout.
+  symbol_font: montserrat_20
   project_name: onx2432g028
   project_friendly_name: ONX2432G028
   # Leave empty to provision Wi-Fi with Improv (USB or Bluetooth) or the setup AP.

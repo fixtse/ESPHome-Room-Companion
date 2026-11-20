@@ -1091,7 +1091,9 @@ static const char PANEL_JS[] = R"ONXPANEL(
    const pad=P(16),sideArt=wide?Math.min(H-2*pad,Math.trunc(W*42/100)):0,x=wide?pad+sideArt+P(16):pad,w=wide?W-x-pad:W-2*pad,reserve=quick?P(44)+P(8):0;
    const playing=v?.playing||d.state==='playing',playback=['playing','paused','buffering','on'].includes(d.state)||v?.playing;let bottom=bottomOf(l.ctl);
    if(quick&&!wide)bottom=H-pad;
-   if(d.features&4){const vh=P(48),vy=bottom-vh,p=Math.max(0,Math.min(100,Math.round(num(d.volume)*100)||0));  // As build_media: whenever volume is supported.box(x,vy,w,vh,CARD,P(14),{'data-media-volume':''});symbol('volume',x+P(12)+P(13),vy+vh/2,SOFT);
+   if(d.features&4){const vh=P(48),vy=bottom-vh,p=Math.max(0,Math.min(100,Math.round(num(d.volume)*100)||0));
+    // As build_media: whenever volume is supported.
+    box(x,vy,w,vh,CARD,P(14),{'data-media-volume':''});symbol('volume',x+P(12)+P(13),vy+vh/2,SOFT);
     const nw=width('100',F.body)+P(4),sx=x+P(12)+P(30),sw=w-(sx-x)-nw-P(24),th=P(6),ks=P(22);text(String(p),F.body,TEXT,x+w-P(12)-nw,vy+(vh-F.body.lh)/2,nw,'right');
     box(sx,vy+(vh-th)/2,sw,th,TRACK,th/2);box(sx,vy+(vh-th)/2,Math.max(th,sw*p/100),th,ACCENT,th/2);add(node('circle',{cx:sx+Math.max(ks/2,Math.min(sw-ks/2,sw*p/100)),cy:vy+vh/2,r:ks/2,fill:TEXT}));bottom=vy-P(14)}
    const bh=P(64),by=bottom-bh;transport(x+w/2,by+bh/2,P(52),bh,P(28),playing);

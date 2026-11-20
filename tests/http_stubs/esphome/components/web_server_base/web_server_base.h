@@ -25,7 +25,8 @@ class AsyncWebServerRequest {
   std::map<std::string,std::string> args, headers;
   unsigned length{0};
   size_t copied_response_bytes=0, flash_response_bytes=0, chunks=0;
-  std::string_view url_to(std::span<char,URL_BUF_SIZE>) { return url; }
+  // ESPHome returns a view with c_str() and size() into the caller's buffer.
+  const std::string &url_to(std::span<char,URL_BUF_SIZE>) const { return url; }
   int method() const { return method_; }
   unsigned contentLength() const { return length; }
   std::string arg(const char *key) const { auto it=args.find(key); return it==args.end()?"":it->second; }
