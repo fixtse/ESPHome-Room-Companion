@@ -134,7 +134,7 @@ function hasChanges(){return slots.some((_,i)=>dirtySlot(i))||dirtySettings()}
 // Pages (panel_web.h) are saved together with the entries they use.
 const pagesDirty=()=>!!globalThis.ONX_PAGES?.dirty?.();
 function unsavedLabel(){const n=slots.filter((_,i)=>dirtySlot(i)).length,p=pagesDirty();return n||p?'Unsaved changes'+(n?' · '+n+' entit'+(n===1?'y':'ies'):'')+(p?' · pages':''):''}
-function saveStates(){const any=slots.some((_,i)=>dirtySlot(i))||pagesDirty();$('save').disabled=busy||!initialized||!dirtySlot(active);$('save-all').disabled=busy||!initialized||!(any||editTarget?.isNew);$('discard').disabled=busy||!any;$('unsaved-count').textContent=unsavedLabel()}
+function saveStates(){trackUndo();const any=slots.some((_,i)=>dirtySlot(i))||pagesDirty();$('save').disabled=busy||!initialized||!dirtySlot(active);$('save-all').disabled=busy||!initialized||!(any||editTarget?.isNew);$('discard').disabled=busy||!any;$('undo').disabled=busy||!undoStack.length;$('unsaved-count').textContent=unsavedLabel()}
 function persistDraft(){if(!initialized||editTarget)return;if(recovery&&hasChanges()){recovery=null;$('draft-notice').hidden=true}if(recovery)return;try{if(hasChanges())sessionStorage.setItem(DRAFT,JSON.stringify({schema:2,slots,settings}));else sessionStorage.removeItem(DRAFT)}catch{message('This browser could not store a recovery draft. Save your changes before closing.',true)}}
 // In-page alert dialog in the style of shadcn/ui AlertDialog. Resolves to true/false,
 // or to the entered text (null when cancelled) when `input` is given.
@@ -325,7 +325,13 @@ function slotIcon(slot){
  }
  return holder;
 }
-function render(){
+// Undo: snapshots of the unsaved slots and pages, taken whenever a render
+// finds them changed. Rapid edits (typing) collapse into one step.
+let undoStack=[],undoKey=null,undoAt=0,undoTarget;
+const undoState=()=>JSON.stringify({s:slots,p:globalThis.ONX_PAGES?.get?.()??null});
+function trackUndo(){if(!initialized)return;const key=undoState();if(undoTarget!==editTarget||undoKey===null){undoTarget=editTarget;undoStack=[];undoKey=key;return}if(key===undoKey)return;const now=Date.now();if(!(now-undoAt<700&&undoStack.length))undoStack.push(undoKey);if(undoStack.length>50)undoStack.shift();undoAt=now;undoKey=key}
+function undo(){if(busy)return;const prev=undoStack.pop();if(!prev)return;const v=JSON.parse(prev);slots=v.s;if(v.p)globalThis.ONX_PAGES?.restore?.(v.p);undoKey=prev;undoAt=0;changed();search();message(undoStack.length?'Undone. Undo again to go further back.':'Undone.')}
+function render(){trackUndo();
  const icon=slots[active].icon;$('icon-hint').textContent=!slots[active].entity?'':icon?'Home Assistant icon: '+icon:'Using the entity default. Sign in and refresh the entity list to sync Home Assistant icons.';
  visibleSlots=Math.max(visibleSlots,active+1,slots.reduce((last,s,i)=>s.entity?i+1:last,1));
  $('add-slot').disabled=busy||!initialized||visibleSlots>=MAX_SLOTS;
@@ -469,6 +475,7 @@ function validateDocument(value){if(![1,2].includes(value?.schema))throw Error('
 async function saveSlots(indices){if(busy||!initialized)return;busy=true;render();search();let completed=0;const pendingPreset=new Map();try{for(const i of indices){const snapshot=copy(slots[i]),item=ha.items.find(item=>item.entity===snapshot.entity);if(item&&Object.hasOwn(item,'icon')){snapshot.icon=item.icon||'';snapshot.iconOverride=item.iconOverride||'0';slots[i].icon=snapshot.icon;slots[i].iconOverride=snapshot.iconOverride;}validateSlots([snapshot,...Array.from({length:MAX_SLOTS-1},empty)]);if(nativePress(snapshot.entity)&&snapshot.action)throw Error('Choose Default for the press action of '+(snapshot.name||snapshot.entity)+'.');if(item?.types&&snapshot.typeOption&&!item.types.includes(snapshot.typeOption))throw Error((snapshot.name||snapshot.entity||'An entity')+' uses an unsupported control type. Choose a type detected by Home Assistant.');if(editTarget){pendingPreset.set(i,snapshot);continue}message('Saving '+(snapshot.name||snapshot.entity||'entity '+(i+1))+'…');await rpc(slotPayload(i,snapshot));saved[i]=snapshot;completed++;persistDraft()}if(editTarget){message('Saving preset “'+editTarget.name+'”…');await putPreset(editTarget.name,saved.map((s,i)=>pendingPreset.get(i)||s),editTarget.pages);for(const [i,snapshot] of pendingPreset)saved[i]=snapshot;completed=pendingPreset.size;const created=editTarget.isNew;editTarget.isNew=false;await loadPresets();message(created?'Preset “'+editTarget.name+'” created. The panel is unchanged.':'Preset “'+editTarget.name+'” saved. The panel is unchanged.');return true}message(completed+' entit'+(completed===1?'y':'ies')+' saved.');return true}catch(error){message(error.message+' '+completed+' saved; remaining changes are still marked unsaved.',true);return false}finally{busy=false;persistDraft();render();search()}}
 const dirtyIndices=()=>slots.map((_,i)=>i).filter(i=>dirtySlot(i)||editTarget?.isNew&&slots[i].entity);
 $('save').onclick=()=>saveSlots([active]);$('save-all').onclick=()=>globalThis.ONX_PAGES?.save?globalThis.ONX_PAGES.save():saveSlots(dirtyIndices());
+$('undo').onclick=undo;document.addEventListener('keydown',e=>{if((e.ctrlKey||e.metaKey)&&!e.shiftKey&&e.key.toLowerCase()==='z'&&!$('page-entities').hidden&&!e.target.closest('input,textarea,select,[contenteditable]')){e.preventDefault();undo()}});
 $('discard').onclick=async()=>{if(!await ask({title:'Discard unsaved changes?',text:'Unsaved page and entity changes will be lost.',ok:'Discard changes',danger:true}))return;slots=copy(saved);globalThis.ONX_PAGES?.discard?.();changed();search();message('Unsaved changes discarded.')};
 $('choose-secondary').onclick=()=>selectMode('secondary');
 $('choose-entity').onclick=()=>selectMode('entity');$('choose-action').onclick=()=>selectMode('action');$('open-playlists').onclick=()=>{if(!slots[active].entity)return;slots[active].action='open_playlists';slots[active].actionName='';changed()};$('default').onclick=()=>{slots[active].action='';slots[active].actionName='';changed()};$('none').onclick=()=>{slots[active].action='none';slots[active].actionName='';changed()};$('clear').onclick=()=>{slots[active]=empty();changed();search()};

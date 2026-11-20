@@ -1836,7 +1836,9 @@ inline std::vector<onx_sensor_view::Point> card_history(const std::string &e) {
   if (i < 0 || !onx_sensor_view::configs[i].graph) return {};
   auto &st = onx_sensor_view::states[i];
   auto h = st.history(std::time(nullptr));
-  if (h.size() < 2 && !st.pending && request_history) request_history(e);
+  // Live samples alone (collected before Home Assistant was reachable) are
+  // not history: ask until a request has gone out for this range.
+  if ((h.size() < 2 || !st.requested) && !st.pending && request_history) request_history(e);
   return h;
 }
 inline const Chart *chart(lv_obj_t *parent, int x, int y, int w, int h, const std::string &e,
@@ -1887,6 +1889,7 @@ __attribute__((noinline)) inline void build_sensor(const Layout &l, const std::s
   const bool graph = i >= 0 && onx_sensor_view::configs[i].graph;
   std::vector<onx_sensor_view::Point> history;
   if (i >= 0) history = onx_sensor_view::states[i].history(std::time(nullptr));
+  if (graph && !onx_sensor_view::states[i].requested && !onx_sensor_view::states[i].pending && request_history) request_history(e);
   if (history.size() < 2 && graph) {
     const auto &state = onx_sensor_view::states[i];
     text(root, state.pending ? "Loading history…" : state.requested ? "No recorded history" : "Collecting history…", fonts.small, MUTED(), area.x, y, area.w);
@@ -2748,9 +2751,12 @@ inline void card_media(lv_obj_t *c, const Tile &t, const EntityDetailState &d) {
   y += line(fonts.small);
   const std::string title = track ? onx_media::display_text(d.media_title) : label(d.state.empty() ? "idle" : d.state);
   const lv_font_t *f = fit(title, tw, {fonts.title, fonts.body});
+  // Keep the artist line clear of the progress bar below it.
+  const bool artist = track && !d.media_artist.empty();
+  if (artist && f == fonts.title && y + line(f) + line(fonts.small) + P(12) > prog_y) f = fonts.body;
   text(c, title, f, TEXT(), tx, y, tw);
   y += line(f);
-  if (track && !d.media_artist.empty()) text(c, onx_media::display_text(d.media_artist), fonts.small, SOFT_TEXT(), tx, y, tw);
+  if (artist) text(c, onx_media::display_text(d.media_artist), fonts.small, SOFT_TEXT(), tx, y, tw);
   if (!tall && t.ring >= 0 && pad + art - P(4) > y + line(fonts.small)) level(c, tx, pad + art - P(4), tw, P(4), t.ring / 1000.0f);
   if (by < pad + art || !d.available) return;
   if (prog_y >= (tall ? y : pad + art)) {
