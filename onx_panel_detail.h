@@ -2670,7 +2670,10 @@ inline void card_climate(lv_obj_t *c, const Tile &t, const EntityDetailState &d)
   const bool big = r.h >= P(260) && hero_text(value);
   const lv_font_t *vf = big ? fonts.hero : fonts.big;
   const int cy = big ? (pad + cs + by + bs) / 2 : by + bs / 2;
-  text(c, "Target", fonts.small, MUTED(), 0, cy - line(vf) / 2 - line(fonts.small) + P(6), r.w, LV_TEXT_ALIGN_CENTER);
+  // Short cards (two controls on the 2.8-inch panel) leave no room for the
+  // label between the header and the value; skip it rather than overlap.
+  const int label_y = cy - line(vf) / 2 - line(fonts.small) + P(6);
+  if (label_y >= pad + cs) text(c, "Target", fonts.small, MUTED(), 0, label_y, r.w, LV_TEXT_ALIGN_CENTER);
   text(c, value, vf, TEXT(), 0, cy - line(vf) / 2 + P(4), r.w, LV_TEXT_ALIGN_CENTER);
   if (!d.available || !(d.features & 1)) return;
   const std::string e = t.entity;

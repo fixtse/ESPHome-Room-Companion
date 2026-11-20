@@ -1,0 +1,175 @@
+{
+ "_comment": "Sample states for the panel emulator: one entity of each common type, laid out like the photographed panel.",
+ "entities": [
+  {
+   "entity_id": "sensor.codex_5_hour",
+   "name": "Codex 5 hour",
+   "state": "87",
+   "unit": "%"
+  },
+  {
+   "entity_id": "media_player.bedroom",
+   "name": "Bedroom",
+   "state": "idle",
+   "features": 152461
+  },
+  {
+   "entity_id": "light.led_ring",
+   "name": "LED Ring",
+   "state": "on",
+   "brightness": "153",
+   "features": 0
+  },
+  {
+   "entity_id": "climate.calentador",
+   "name": "Calentador",
+   "state": "off",
+   "current": "21",
+   "target": "21.5",
+   "unit": "°C",
+   "modes": [
+    "off",
+    "heat"
+   ],
+   "features": 1,
+   "minimum": 7,
+   "maximum": 30,
+   "step": 0.5
+  },
+  {
+   "entity_id": "weather.home",
+   "name": "Home",
+   "state": "partlycloudy",
+   "unit": "°C",
+   "humidity": "62",
+   "forecast": [
+    {
+     "date": "2026-11-21",
+     "condition": "rainy",
+     "high": 15,
+     "low": 9,
+     "rain": 70
+    },
+    {
+     "date": "2026-11-22",
+     "condition": "cloudy",
+     "high": 13,
+     "low": 8,
+     "rain": 20
+    },
+    {
+     "date": "2026-11-23",
+     "condition": "sunny",
+     "high": 16,
+     "low": 7,
+     "rain": 0
+    }
+   ],
+   "target": "14"
+  },
+  {
+   "entity_id": "switch.desk_lamp",
+   "name": "Desk lamp",
+   "state": "on"
+  },
+  {
+   "entity_id": "sensor.living_temperature",
+   "name": "Living temperature",
+   "state": "21.4",
+   "unit": "°C"
+  },
+  {
+   "entity_id": "sensor.living_humidity",
+   "name": "Living humidity",
+   "state": "48",
+   "unit": "%"
+  },
+  {
+   "entity_id": "binary_sensor.front_door",
+   "name": "Front door",
+   "state": "off"
+  },
+  {
+   "entity_id": "cover.office_blind",
+   "name": "Office blind",
+   "state": "open",
+   "position": "60",
+   "features": 15
+  },
+  {
+   "entity_id": "scene.movie_night",
+   "name": "Movie night",
+   "state": "2026-11-20T12:00:00+00:00"
+  },
+  {
+   "entity_id": "script.good_night",
+   "name": "Good night",
+   "state": "off"
+  },
+  {
+   "entity_id": "light.kitchen",
+   "name": "Kitchen",
+   "state": "off"
+  },
+  {
+   "entity_id": "fan.bedroom",
+   "name": "Bedroom fan",
+   "state": "on",
+   "percentage": "40"
+  }
+ ],
+ "pages": [
+  {
+   "name": "usage",
+   "kind": "two",
+   "entities": [
+    "sensor.codex_5_hour",
+    "media_player.bedroom"
+   ]
+  },
+  {
+   "name": "weather",
+   "kind": "single",
+   "entities": [
+    "weather.home"
+   ]
+  },
+  {
+   "name": "heating",
+   "kind": "two",
+   "entities": [
+    "light.led_ring",
+    "climate.calentador"
+   ]
+  },
+  {
+   "name": "living",
+   "kind": "sensors",
+   "entities": [
+    "switch.desk_lamp",
+    "sensor.living_temperature",
+    "sensor.living_humidity",
+    "binary_sensor.front_door"
+   ]
+  },
+  {
+   "name": "blind",
+   "kind": "single",
+   "entities": [
+    "cover.office_blind"
+   ]
+  },
+  {
+   "name": "keys",
+   "kind": "grid",
+   "rows": 2,
+   "cols": 2,
+   "entities": [
+    "scene.movie_night",
+    "script.good_night",
+    "light.kitchen",
+    "fan.bedroom"
+   ]
+  }
+ ]
+}

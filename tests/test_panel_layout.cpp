@@ -13,7 +13,7 @@ int main() {
   assert(onx_config::step_carousel(pages,0,6,-1)==4);
   assert(onx_config::step_carousel(pages,4,6,-1)==4);
   for(auto [w,h]:{std::pair{240,320},std::pair{320,480}}) {
-    const int dock=w==240?78:52;
+    const int dock=52;
     for(auto kind:{Kind::SINGLE,Kind::TWO_CONTROLS,Kind::CONTROL_SENSORS}) {
       auto boxes=geometry(kind,w,h);
       const int count=kind==Kind::SINGLE?1:kind==Kind::TWO_CONTROLS?2:4;

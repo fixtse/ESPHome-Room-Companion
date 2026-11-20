@@ -688,7 +688,7 @@ static const char PANEL_JS[] = R"ONXPANEL(
  rpc({op:'panel_pages'}).then(result=>{panelPages=JSON.stringify(normalize(result.pages));pagesLoaded=true;if(!editorTarget){pageConfigs=JSON.parse(panelPages);savedPages=panelPages;selectedPage=0;selectedPos=Math.max(0,pageConfigs[0]?.entities.findIndex(Boolean)??0)}if(!focusMember())touch()}).catch(error=>{pageError='Could not load pages: '+error.message;renderPageEditor()});
  // Mirrors onx_panel_layout::geometry (portrait and landscape).
  globalThis.ONX_PANEL_GEOMETRY=(kind,w,h,detail=false,rows=2,columns=2)=>{
-  const top=detail?12:40,bottom=detail?12:Math.min(w,h)===240?78:52,gap=8,pad=12,body=h-top-bottom,inner=w-pad*2;
+  const top=detail?12:40,bottom=detail?12:52,gap=8,pad=12,body=h-top-bottom,inner=w-pad*2;
   if(kind===gridLayout){
    const usableW=w-16-gap*(columns-1),usableH=body-6-4-gap*(rows-1);  // As onx_panel_layout.h (GRID_TOP 6, GRID_BOTTOM 4).
    return Array.from({length:rows*columns},(_,i)=>{
@@ -735,10 +735,14 @@ static const char PANEL_JS[] = R"ONXPANEL(
   const ACCENT=settings?.media_color||'#62b0ff',STRONG=mix(ACCENT,'#000000',80),TINT=mix(ACCENT,BG,28),INSET=CONTROL;
   const ink=bg=>lum(bg)>150000?'#161b22':'#ffffff';
   svg.replaceChildren(node('rect',{width:W,height:H,fill:BG}));
-  // Pixel and font metrics (MiSans as built for the 3.5" panel; the 2.8" scales them).
-  const scale=Math.min(W,H)/320,P=v=>Math.trunc(v*Math.min(W,H)/320);
-  const font=(size,lh,base,weight=500)=>({size:size*scale,lh:Math.round(lh*scale),base:Math.round(base*scale),weight});
-  const F={small:font(12,21,17),label:font(12,21,17),body:font(15,27,21),title:font(18,32,26,700),big:font(32,57,45),hero:font(64,113,89),clock:font(14,25,20,700),symbol:font(28,31,24,400)};
+  // Pixel and font metrics. Fonts are the firmware's ESPHome fonts: the base
+  // size times font_scale (1.3333 on the 3.5", 1 on the 2.8"), so 16/20/24 px
+  // on the 3.5" and 12/15/18 px on the 2.8". Line metrics are MiSans' at the
+  // 3.5" sizes, scaled with the layout like P().
+  const scale=Math.min(W,H)/320,fontScale=Math.min(W,H)/240,P=v=>Math.trunc(v*Math.min(W,H)/320);
+  const font=(size,lh,base,weight=500)=>({size:Math.round(size*fontScale),lh:Math.round(lh*scale),base:Math.round(base*scale),weight});
+  const F={small:font(12,21,17),label:font(12,21,17),body:font(15,27,21),title:font(18,32,26,700),big:font(32,57,45),hero:font(64,113,89),clock:font(14,25,20,700),
+    symbol:Math.min(W,H)>=320?{size:28,lh:31,base:24,weight:400}:{size:20,lh:22,base:17,weight:400}};  // symbol_font: Montserrat 28 (3.5"), 20 (2.8").
   const line=f=>f.lh,family='MiSans, "Inter", "Segoe UI", Arial, sans-serif';
   const ruler=document.createElement('canvas').getContext('2d');
   const width=(s,f)=>{ruler.font=`${f.weight} ${f.size}px ${family}`;return Math.ceil(ruler.measureText(String(s)).width)};
@@ -767,7 +771,7 @@ static const char PANEL_JS[] = R"ONXPANEL(
    rows.forEach((row,i)=>{const t=add(node('text',{x:ax,y:y+i*f.lh+f.base,'font-size':f.size,'font-weight':f.weight,fill:color,'font-family':family,'text-anchor':anchor}));t.textContent=row});
   };
   // Icons: the entity's icon, or LVGL symbols drawn with their MDI equivalents.
-  const SYMBOL={power:'mdi:power',play:'mdi:play',pause:'mdi:pause',prev:'mdi:skip-previous',next:'mdi:skip-next',minus:'mdi:minus',plus:'mdi:plus',list:'mdi:format-list-bulleted',close:'mdi:close',ok:'mdi:check',volume:'mdi:volume-high'};
+  const SYMBOL={power:'mdi:power',play:'mdi:play',pause:'mdi:pause',prev:'mdi:skip-previous',next:'mdi:skip-next',minus:'mdi:minus',plus:'mdi:plus',list:'mdi:format-list-bulleted',close:'mdi:close',stop:'mdi:stop',ok:'mdi:check',volume:'mdi:volume-high'};
   let currentArt='';
   const glyph=(name,cx,cy,size,color)=>{
    if(currentArt){add(node('image',{href:currentArt,x:cx-size/2,y:cy-size/2,width:size,height:size}));return}
@@ -776,7 +780,11 @@ static const char PANEL_JS[] = R"ONXPANEL(
   const viewOf=e=>views.find(v=>v.entity===e);
   const iconFor=e=>viewOf(e)?.icon||iconOf(e)||'mdi:help-circle-outline';
   const icon=(e,cx,cy,size,color)=>glyph(iconFor(e),cx,cy,size,color);
-  const symbol=(name,cx,cy,color)=>glyph(SYMBOL[name],cx,cy,P(26),color);
+  // LVGL symbols fill more of their font size than an MDI glyph fills its box.
+  // Per glyph: how much larger the MDI box must be than the font size to match
+  // the LVGL (FontAwesome) symbol's drawn size.
+  const SYMBOL_SCALE={stop:1.3,play:1.75,pause:1.6,prev:1.4,next:1.4,power:1.25,minus:1.3,plus:1.3,volume:1.2,list:1.2,close:1.3,ok:1.3};
+  const symbol=(name,cx,cy,color)=>glyph(SYMBOL[name],cx,cy,Math.round(F.symbol.size*(SYMBOL_SCALE[name]||1.2)),color);
   const button=(x,y,w,h,r,bg,caption,f,fg,attrs={})=>{if(bg===ACCENT||bg===STRONG)fg=ink(bg);box(x,y,w,h,bg,r,attrs);if(caption)text(caption,f,fg,x+P(4),y+(h-f.lh)/2,w-P(8),'center')};
   const circle=(cx,cy,size,bg,sym,fg,attrs={})=>{add(node('circle',{cx,cy,r:size/2,fill:bg,...attrs}));if(bg===ACCENT||bg===STRONG)fg=ink(bg);symbol(sym,cx,cy,fg)};
   const chips=(r,labels,sel)=>{if(!labels.length)return;const gap=P(8),n=labels.length,w=Math.trunc((r.w-gap*(n-1))/n);labels.forEach((l,i)=>{const on=i===sel;button(r.x+i*(w+gap),r.y,w,r.h,r.h/2,on?TINT:CONTROL,l,F.small,on?ACCENT:SOFT,on?{stroke:ACCENT,'stroke-width':P(2)}:{})})};
@@ -802,6 +810,10 @@ static const char PANEL_JS[] = R"ONXPANEL(
   const present=(v,unit)=>v===undefined||v===null||v===''||['None','unknown','unavailable'].includes(String(v))?'':compact(v)+(unit?(unit==='%'||unit==='°'?unit:' '+unit):'');
   const readingOf=(v,unit)=>v===undefined||v===null||v===''||['None','unknown','unavailable'].includes(String(v))?'—':compact(v)+unit;
   const hvacLabel=m=>m==='heat_cool'?'Auto':m==='fan_only'?'Fan':label(m);
+  // As onx_sensor_view::relative.
+  const relative=(t,now)=>{if(!t||now<1577836800)return '—';const delta=t-now,sec=Math.abs(delta);if(sec<60)return delta<0?'just now':'in less than a minute';
+   const c=sec>=86400?Math.floor((sec+1800)/86400):sec>=3600?Math.floor((sec+120)/3600):Math.floor((sec+30)/60),u=(sec>=86400?'day':sec>=3600?'hour':'minute')+(c!==1?'s':'');
+   const a=Math.max(1,c)+' '+u;return delta<0?a+' ago':'in '+a};
   const ago=(then,now)=>{const m=Math.max(0,Math.round((now-then)/60));return m<1?'just now':m<60?m+' min ago':m<1440?Math.round(m/60)+' h ago':Math.round(m/1440)+' d ago'};
   // The panel's time pattern: %H:%M, or %I:%M with an optional AM/PM (onx_display_settings::time_pattern).
   const clock=t=>{const d=new Date(t*1000),twelve=String(settings?.hour_format)==='12',h=twelve?(d.getHours()%12||12):d.getHours(),m=String(d.getMinutes()).padStart(2,'0');
@@ -848,7 +860,8 @@ static const char PANEL_JS[] = R"ONXPANEL(
   };
   const transport=(cx,cy,side,main,gap,playing)=>{circle(cx-main/2-gap-side/2,cy,side,INSET,'prev',TEXT,{'data-media-button':'previous'});circle(cx,cy,main,ACCENT,playing?'pause':'play',TEXT,{'data-media-button':'play'});circle(cx+main/2+gap+side/2,cy,side,INSET,'next',TEXT,{'data-media-button':'next'})};
   const progressBar=(v,x,y,w,remaining)=>{
-   const bar=P(6),pr=v?.progress;box(x,y,w,bar,remaining?CONTROL:TRACK,bar/2,{'data-media-bar':''});
+   const bar=P(6),pr=v?.progress;if(!(pr>=0))return;  // The panel hides the bar until there is a position.
+   box(x,y,w,bar,remaining?CONTROL:TRACK,bar/2,{'data-media-bar':''});
    if(pr>=0){box(x,y,Math.max(bar,w*pr/1000),bar,ACCENT,bar/2);const d=num(v?.panel?.duration),s=isFinite(d)?d*pr/1000:NaN,dur=t=>isFinite(t)?Math.floor(t/60)+':'+String(Math.floor(t%60)).padStart(2,'0'):'';
     if(isFinite(d)){text(dur(s),F.small,MUTED,x,y+bar+P(remaining?4:6),w/2);text(remaining?'-'+dur(d-s):dur(d),F.small,MUTED,x+w/2,y+bar+P(remaining?4:6),w/2,'right')}}
   };
@@ -898,7 +911,7 @@ static const char PANEL_JS[] = R"ONXPANEL(
    box(sx,sy+sh-fh,sw2,fh,ACCENT,0,{'clip-path':`url(#${id})`});const kh=P(5),kw=Math.trunc(sw2*30/100);box(sx+(sw2-kw)/2,sy+Math.min(sh-kh-P(8),Math.max(P(8),sh-fh+P(12))),kw,kh,ink(ACCENT),kh/2,{'fill-opacity':.7});
   };
   const buildClimate=(l,e,d,title)=>{
-   const mode=d.hvac||d.state;let tgt=num(d.temperature);const range=!isFinite(tgt)&&isFinite(num(d.low))&&isFinite(num(d.high)),unit='°';
+   const mode=d.hvac||d.state;let tgt=num(d.temperature);const range=!isFinite(tgt)&&isFinite(num(d.low))&&isFinite(num(d.high)),unit=d.unit||'°';  // As build_climate.
    const lo=isFinite(d.minimum)?d.minimum:7,hi=isFinite(d.maximum)&&d.maximum>lo?d.maximum:35;
    let context=hvacLabel(mode);if(d.preset&&!['None','none'].includes(d.preset))context+=' · '+label(d.preset);header(l.head,title,context);
    const size=Math.min(l.vis.w,l.vis.h,P(260)),cx=l.vis.x+l.vis.w/2,ay=l.vis.y+(l.vis.h-size)/2,cy=ay+size/2,aw=P(16);
@@ -948,8 +961,65 @@ static const char PANEL_JS[] = R"ONXPANEL(
    circle(cx,cy,size,STRONG,'play',TEXT,running?{stroke:ACCENT,'stroke-width':P(6)}:{});text(running?'Running…':'Tap to run',F.body,SOFT,l.vis.x,cy+size/2+P(12),l.vis.w,'center');
    if(automation){const en=d.state==='on';button(l.ctl.x,l.ctl.y,l.ctl.w,P(48),P(16),CONTROL,en?'Enabled · Tap to disable':'Disabled · Tap to enable',F.body,TEXT)}
    else if(running)button(l.ctl.x,l.ctl.y,l.ctl.w,P(48),P(16),CONTROL,'Stop script',F.body,TEXT);
+   // Run history, as build_action: last run, a 24 h strip and the recent runs.
+   if(automation)return;
+   const log=Array.isArray(d.changes)?d.changes:[];let last=log.length?log[0].at:0;
+   if(!last&&!script){const t=Date.parse(d.state);if(isFinite(t))last=Math.floor(t/1000)}
+   const x=l.ctl.x,w=l.ctl.w,bottom=bottomOf(l.ctl);let y=l.ctl.y+(running?P(48)+P(14):0);
+   if(y+F.body.lh>bottom)return;
+   text(last?'Last run '+relative(last,now):'No runs recorded yet',F.body,TEXT,x,y,w);y+=F.body.lh+P(12);
+   const sh=P(16);
+   if(now>1577836800&&y+F.small.lh*2+sh+P(8)<=bottom){
+    text('Runs, last 24 h',F.small,MUTED,x,y,w);y+=F.small.lh+P(2);box(x,y,w,sh,CARD,P(4));
+    for(const run of log)if(run.at<=now&&now-run.at<86400)box(x+Math.trunc((86400-(now-run.at))*(w-P(4))/86400),y,P(4),sh,ACCENT,P(2));
+    y+=sh+P(4);text('-24 h',F.small,MUTED,x,y,w/2);text('now',F.small,MUTED,x+w/2,y,w/2,'right');y+=F.small.lh+P(14);
+   }
+   const rh=F.body.lh+P(6);if(!log.length||y+F.small.lh+rh>bottom)return;
+   text('Recent runs',F.small,MUTED,x,y,w);y+=F.small.lh+P(4);
+   for(const run of log){if(y+rh>bottom)break;text(clock(run.at),F.body,TEXT,x,y,w/2);text(relative(run.at,now),F.body,SOFT,x+w/2,y,w/2,'right');y+=rh}
   };
   const binaryText=(kind,s)=>{const on=s==='on';if(!['on','off'].includes(s))return label(s);if(['door','window','opening','garage_door'].includes(kind))return on?'Open':'Closed';if(['motion','occupancy','presence'].includes(kind))return on?'Detected':'Clear';if(kind==='moisture')return on?'Wet':'Dry';if(kind==='lock')return on?'Unlocked':'Locked';if(kind==='connectivity')return on?'Connected':'Disconnected';return on?'On':'Off'};
+  // As build_event: the last event type in a ring, how long ago, and the log.
+  const eventAgo=stamp=>{const t=Date.parse(stamp);if(!isFinite(t)||now<1577836800)return '';const sec=Math.max(0,Math.floor(now-t/1000));
+   return sec<45?'now':sec<3600?Math.max(1,Math.floor(sec/60))+' min ago':sec<86400?Math.floor(sec/3600)+' h ago':sec<172800?'yesterday':Math.floor(sec/86400)+' days ago'};
+  const buildEvent=(l,e,d,title)=>{
+   const kind=d.sensor_class||'',never=!d.state||d.state==='unknown';
+   header(l.head,title,kind==='doorbell'?'Doorbell':kind==='motion'?'Motion events':kind==='button'?'Remote button':'Events');
+   const size=Math.min(P(170),l.vis.w,l.vis.h-P(40)),cx=l.vis.x+l.vis.w/2,cy=l.vis.y+(l.vis.h-P(30))/2;
+   add(node('circle',{cx,cy,r:size/2-P(1.5),fill:never?CARD:TINT,stroke:never?CONTROL:ACCENT,'stroke-width':P(3)}));
+   text(never?'No events':label(d.event_type||'event'),F.body,never?TEXT:ACCENT,cx-size/2+P(8),cy-F.body.lh/2,size-P(16),'center');
+   if(!never)text(eventAgo(d.state),F.small,MUTED,l.vis.x,cy+size/2+P(10),l.vis.w,'center');
+   const c=Array.isArray(d.changes)?d.changes:[];
+   if(!c.length){text('New events appear here while the panel is running',F.small,MUTED,l.ctl.x,l.ctl.y,l.ctl.w);return}
+   const rh=P(36),gap=P(6);let y=l.ctl.y;for(const item of c){if(y+rh>bottomOf(l.ctl)+P(4))break;row({x:l.ctl.x,y,w:l.ctl.w,h:rh},label(item.state),clock(item.at),'transparent');y+=rh+gap}
+  };
+  // As build_timers for one Home Assistant timer helper (portrait): name and
+  // state, a countdown ring, then Stop / Pause / +1 min or Start.
+  const countdown=s=>{if(!isFinite(s)||s<0)return '--:--';const t=Math.ceil(s),two=n=>String(n).padStart(2,'0');return t>=3600?Math.floor(t/3600)+':'+two(Math.floor(t/60)%60)+':'+two(t%60):two(Math.floor(t/60))+':'+two(t%60)};
+  const seconds=v=>{const p=String(v||'').split(':').map(Number);return p.length&&p.every(isFinite)?p.reduce((a,b)=>a*60+b,0):NaN};
+  const buildTimer=(e,d,title,v)=>{
+   const t=v.timer||{},state=t.state||d.state||'idle',total=seconds(t.duration);
+   const left=state==='paused'?seconds(t.remaining):state==='active'?num(t.deadline_seconds_left):total;
+   const ready=isFinite(left),ringing=ready&&state==='active'&&left<=0;
+   let context='Timer';if(!ready)context+=' · syncing';else if(ringing)context='Time is up';
+   else if(state==='active'){const f=clock(now+Math.round(left));if(f)context+=' · finishes '+f}else context+=state==='paused'?' · paused':' · idle';
+   const pad=P(16),col={x:pad,y:pad,w:W-2*pad,h:H-2*pad},nf=fit(title,col.w,[F.title,F.body]);
+   text(title,nf,TEXT,col.x,col.y,col.w);text(context,F.small,ringing?ACCENT:MUTED,col.x,col.y+nf.lh,col.w);
+   const y=col.y+nf.lh+F.small.lh+P(14),controls=[];
+   if(ready&&(state==='active'||state==='paused'))controls.push(['stop','Stop',false],[state==='active'?'pause':'play',state==='active'?'Pause':'Resume',true],['plus','1 min',false]);
+   else if(ready)controls.push(['play',ringing?'Restart':'Start',true]);
+   const bh=P(64),gap=P(8),controlsY=bottomOf(col)-(controls.length?bh:0);
+   const ring={x:pad,y,w:W-2*pad,h:(controls.length?controlsY-P(14):controlsY)-y},size=Math.max(P(100),Math.min(ring.w,ring.h,P(250)));
+   const cx=ring.x+ring.w/2,ay=ring.y+(ring.h-size)/2,cy=ay+size/2,fr=ringing?1:total>0&&ready?Math.max(0,Math.min(1,left/total)):0;
+   arc(cx,cy,size,P(14),0,359.9,CONTROL,false);if(fr>0)arc(cx,cy,size,P(14),270,270+359.9*fr,state==='paused'?SOFT:ACCENT);
+   const value=!ready?'--:--':ringing?'0:00':countdown(left),vf=fit(value,size-2*P(14)-P(16),[F.big,F.title]);
+   const sub=ringing?'Time is up':total>0?'of '+countdown(total):'',block=vf.lh+(sub?F.small.lh:0),vy=ay+(size-block)/2;
+   text(value,vf,TEXT,cx-size/2,vy,size,'center');if(sub)text(sub,F.small,ringing?ACCENT:MUTED,cx-size/2,vy+vf.lh-P(6),size,'center');
+   const n=controls.length,bw=n?Math.trunc((col.w-gap*(n-1))/n):0;
+   controls.forEach(([sym,caption,primary],i)=>{const x=col.x+i*(bw+gap),w=i===n-1?col.w-(n-1)*(bw+gap):bw,fg=primary?'#101418':TEXT;
+    box(x,controlsY,w,bh,primary?ACCENT:CONTROL,P(14));const total=Math.trunc(F.symbol.lh*3/4)+P(2)+F.small.lh,top=controlsY+(bh-total)/2;
+    symbol(sym,x+w/2,top-P(4)+F.symbol.lh/2,fg);text(caption,F.small,fg,x,top+Math.trunc(F.symbol.lh*3/4)+P(2),w,'center')});
+  };
   const buildBinary=(l,e,d,title)=>{
    const kind=d.sensor_class||'',on=d.state==='on';header(l.head,title,kind?label(kind)+' sensor':'Binary sensor');
    const size=Math.min(P(170),l.vis.w,l.vis.h-P(40)),cx=l.vis.x+l.vis.w/2,cy=l.vis.y+(l.vis.h-P(30))/2;
@@ -1021,7 +1091,7 @@ static const char PANEL_JS[] = R"ONXPANEL(
    const pad=P(16),sideArt=wide?Math.min(H-2*pad,Math.trunc(W*42/100)):0,x=wide?pad+sideArt+P(16):pad,w=wide?W-x-pad:W-2*pad,reserve=quick?P(44)+P(8):0;
    const playing=v?.playing||d.state==='playing',playback=['playing','paused','buffering','on'].includes(d.state)||v?.playing;let bottom=bottomOf(l.ctl);
    if(quick&&!wide)bottom=H-pad;
-   if(d.volume!==undefined&&d.volume!==''){const vh=P(48),vy=bottom-vh,p=Math.max(0,Math.min(100,Math.round(num(d.volume)*100)||0));box(x,vy,w,vh,CARD,P(14),{'data-media-volume':''});symbol('volume',x+P(12)+P(13),vy+vh/2,SOFT);
+   if(d.features&4){const vh=P(48),vy=bottom-vh,p=Math.max(0,Math.min(100,Math.round(num(d.volume)*100)||0));  // As build_media: whenever volume is supported.box(x,vy,w,vh,CARD,P(14),{'data-media-volume':''});symbol('volume',x+P(12)+P(13),vy+vh/2,SOFT);
     const nw=width('100',F.body)+P(4),sx=x+P(12)+P(30),sw=w-(sx-x)-nw-P(24),th=P(6),ks=P(22);text(String(p),F.body,TEXT,x+w-P(12)-nw,vy+(vh-F.body.lh)/2,nw,'right');
     box(sx,vy+(vh-th)/2,sw,th,TRACK,th/2);box(sx,vy+(vh-th)/2,Math.max(th,sw*p/100),th,ACCENT,th/2);add(node('circle',{cx:sx+Math.max(ks/2,Math.min(sw-ks/2,sw*p/100)),cy:vy+vh/2,r:ks/2,fill:TEXT}));bottom=vy-P(14)}
    const bh=P(64),by=bottom-bh;transport(x+w/2,by+bh/2,P(52),bh,P(28),playing);
@@ -1036,7 +1106,8 @@ static const char PANEL_JS[] = R"ONXPANEL(
    const e=slot.entity,v=view,d={...(v?.panel||{})},title=slot.name||v?.lines?.[4]?.text||e,l=layout(),quick=(d.actions||[]).length;
    if(v?.playing!==undefined&&e.startsWith('media_player.')&&!d.state)d.state=v.playing?'playing':'idle';
    if(!v){header(l.head,title,'Waiting for initial data');text('…',F.big,MUTED,l.vis.x,l.vis.y+l.vis.h/3,l.vis.w,'center');return}
-   if(d.available===false){header(l.head,title,'Unavailable');text('—',F.big,MUTED,l.vis.x,l.vis.y+l.vis.h/3,l.vis.w,'center');return}
+   if(d.received===false||d.available===false){const wait=d.received===false;header(l.head,title,wait?'Waiting for initial data':'Unavailable');text(wait?'…':'—',F.big,MUTED,l.vis.x,l.vis.y+l.vis.h/3,l.vis.w,'center');return}
+   if(v.timer||e.startsWith('timer.')){buildTimer(e,d,title,v);return}
    if(quick){const bs=P(44);circle(W-P(16)-bs/2,P(16)+bs/2,bs,CONTROL,'list',TEXT,{'data-quick-actions':''});l.head.w-=bs+P(8)}
    if(e.startsWith('light.'))buildLight(l,e,d,title);
    else if(e.startsWith('climate.'))buildClimate(l,e,d,title);
@@ -1044,6 +1115,7 @@ static const char PANEL_JS[] = R"ONXPANEL(
    else if(e.startsWith('cover.'))buildCover(l,e,d,title);
    else if(/^(automation|scene|script|button|input_button)\./.test(e))buildAction(l,e,d,title);
    else if(e.startsWith('binary_sensor.'))buildBinary(l,e,d,title);
+   else if(e.startsWith('event.'))buildEvent(l,e,d,title);
    else if(e.startsWith('sensor.'))buildSensor(l,e,d,title,v);
    else if(/^(number|input_number)\./.test(e))buildNumber(l,e,d,title);
    else if(/^(select|input_select)\./.test(e))buildSelect(l,e,d,title);
@@ -1083,7 +1155,8 @@ static const char PANEL_JS[] = R"ONXPANEL(
    chipIcon(t.entity,r.x+pad,r.y+pad,cs,!off);titled(head,r.x+tx,r.y+pad+P(2),r.w-tx-pad,off?MUTED:ACCENT);
    const value=range?fmt(num(d.target_low))+'–'+fmt(num(d.target_high))+'°':isFinite(tgt)?fmt(tgt)+'°':'—',bs=P(52),by=r.h-pad-bs;if(by<pad+cs)return;
    const big=r.h>=P(260)&&heroText(value),vf=big?F.hero:F.big,cy=big?Math.trunc((pad+cs+by+bs)/2):by+bs/2;
-   text('Target',F.small,MUTED,r.x,r.y+cy-vf.lh/2-F.small.lh+P(6),r.w,'center');text(value,vf,TEXT,r.x,r.y+cy-vf.lh/2+P(4),r.w,'center');
+   const labelY=cy-vf.lh/2-F.small.lh+P(6);if(labelY>=pad+cs)text('Target',F.small,MUTED,r.x,r.y+labelY,r.w,'center');  // As card_climate: no overlap with the header.
+   text(value,vf,TEXT,r.x,r.y+cy-vf.lh/2+P(4),r.w,'center');
    if(d.available===false||!(d.features&1))return;circle(r.x+pad+bs/2,r.y+by+bs/2,bs,INSET,'minus',TEXT);circle(r.x+r.w-pad-bs/2,r.y+by+bs/2,bs,INSET,'plus',TEXT);
   };
   const cardMedia=(t,d,v)=>{
@@ -1157,7 +1230,8 @@ static const char PANEL_JS[] = R"ONXPANEL(
     let context=lines[2]?.text||'';if(/^(sensor|binary_sensor)\./.test(e)&&lines[4]?.text&&lines[4].text!==name)context=lines[4].text;
     const st=d.state,on=d.available!==false&&(['on','playing','open','opening','active'].includes(st)||(e.startsWith('climate.')&&st&&st!=='off'));
     return {entity:e,name,value:lines[1]?.text||'',context,ring:c?.value_ring??-1,on,r,compact:p.layout==='control_sensors'&&i>0,key:grid,v,d,art:artUrl(positionArt(p,i))}});
-   if(tiles.length&&!tiles[0].key){const cb=tiles[0].r.y;if(cb>=F.clock.lh)text(clock(now),F.clock,TEXT,P(16),(cb-F.clock.lh)/2,W/4)}
+   if(tiles.length){const cb=tiles[0].r.y;  // As refresh_carousel_clock: every main page, grids included.
+   if(cb>=F.clock.lh)text(clock(now),F.clock,TEXT,P(16),(cb-F.clock.lh)/2,W/4)}
    // Status icons (Wi-Fi, Home Assistant) and the bell.
    const ui=Math.min(W,H)>=320?1.3333:1,si=Math.round(20*ui),hdr=tiles[0]?.r.y||Math.round(40*ui),sy=Math.max(Math.round(8*ui),hdr/2-Math.round(2*ui));const shape=(d,vw,vh,cx,cy,sc)=>add(node('path',{d,fill:TEXT,transform:'translate('+(cx-vw*sc/2)+' '+(cy-vh*sc/2)+') scale('+sc+')'}));shape('M8.09 12.44C7.71 12.07 7.52 11.62 7.52 11.08C7.52 10.55 7.71 10.10 8.09 9.73C8.47 9.36 8.94 9.17 9.5 9.17C10.05 9.17 10.52 9.36 10.90 9.73C11.28 10.10 11.47 10.55 11.47 11.08C11.47 11.62 11.28 12.07 10.90 12.44C10.52 12.81 10.05 13 9.5 13C8.94 13 8.47 12.81 8.09 12.44ZM5.02 8.67L3.36 7.03C4.14 6.28 5.05 5.68 6.10 5.24C7.15 4.80 8.28 4.58 9.5 4.58C10.71 4.58 11.84 4.81 12.89 5.25C13.94 5.70 14.85 6.30 15.63 7.07L13.97 8.67C13.39 8.11 12.71 7.67 11.95 7.36C11.18 7.04 10.37 6.88 9.5 6.88C8.62 6.88 7.81 7.04 7.04 7.36C6.28 7.67 5.60 8.11 5.02 8.67ZM1.66 5.42L0 3.82C1.21 2.62 2.63 1.68 4.25 1.01C5.87 0.33 7.62 0 9.5 0C11.37 0 13.12 0.33 14.74 1.01C16.36 1.68 17.78 2.62 19 3.82L17.33 5.42C16.32 4.44 15.14 3.68 13.80 3.12C12.46 2.57 11.03 2.29 9.5 2.29C7.96 2.29 6.53 2.57 5.19 3.12C3.85 3.68 2.67 4.44 1.66 5.42Z',19,13,W/2-Math.round(13*ui),sy,ui);shape('M14.33 6.74L8.16 0.57C7.98 0.39 7.74 0.29 7.50 0.29C7.25 0.29 7.01 0.39 6.83 0.57L0.66 6.74C0.29 7.11 0 7.83 0 8.34V13.97C0 14.48 0.42 14.90 0.93 14.90H6.70L4.16 12.37C4.03 12.41 3.89 12.44 3.75 12.44C3.04 12.44 2.46 11.86 2.46 11.15C2.46 10.45 3.04 9.87 3.75 9.87C4.45 9.87 5.03 10.45 5.03 11.15C5.03 11.30 5.00 11.44 4.96 11.57L6.93 13.55V6.30C6.72 6.20 6.54 6.04 6.41 5.83C6.28 5.63 6.21 5.39 6.21 5.15C6.21 4.45 6.79 3.87 7.5 3.87C8.20 3.87 8.78 4.45 8.78 5.15C8.78 5.39 8.71 5.63 8.58 5.83C8.45 6.04 8.27 6.20 8.06 6.30V11.38L10.02 9.42C9.96 9.23 9.95 9.02 9.98 8.82C10.01 8.62 10.09 8.44 10.21 8.27C10.33 8.11 10.49 7.98 10.67 7.89C10.84 7.80 11.04 7.75 11.25 7.75C11.95 7.75 12.53 8.32 12.53 9.03C12.53 9.74 11.95 10.31 11.25 10.31C11.09 10.31 10.94 10.28 10.80 10.23L8.06 12.98V14.91H14.06C14.57 14.91 15 14.48 15 13.97V8.34C15 7.83 14.70 7.11 14.33 6.74V6.74Z',15,15,W/2+Math.round(13*ui),sy,ui);
    glyph('mdi:bell-outline',W-4-22,sy,P(26),TEXT);
@@ -1173,9 +1247,10 @@ static const char PANEL_JS[] = R"ONXPANEL(
     else if(ready&&t.entity.startsWith('media_player.'))cardMedia({...t,artwork:t.art},t.d,t.v);
     else cardGeneric(t,t.d,t.v);
     currentArt='';});
-   // The dock: the selected page on an accent-tinted marker.
-   // Strip constants per board (boards/onx3248g035.yaml, onx2432g028.yaml).
-   const big35=Math.min(W,H)>=320,cy=H-(big35?22:52),is=big35?Math.round(20*ui):26,marker=big35?32:40;
+   // The dock: the selected page on an accent-tinted marker. Strip constants
+   // from boards/onx3248g035.yaml and onx2432g028.yaml (the same on both:
+   // centre 22 px above the bottom, 32 px marker, 20 px icons at ui_scale).
+   const cy=H-22,is=Math.round(20*ui),marker=32;
    const dock=view?.carousel?.navigator||[];
    dock.forEach((item,i)=>{
     const x=Math.floor(W*(2*i+1)/(2*dock.length)),selected=item.selected??item.offset===0;
@@ -1183,7 +1258,6 @@ static const char PANEL_JS[] = R"ONXPANEL(
     if(selected)add(node('circle',{cx:x,cy,r:marker/2,fill:TINT,'data-nav-marker':''}));
     currentArt=artUrl(page?.carousel_artwork);glyph(page?pageIcon(page):item.icon,x,cy,is,selected?ACCENT:TEXT);currentArt='';
    });
-   if(!big35)text(slot.name||tiles[0]?.name||'',F.small,TEXT,0,H-18-F.small.lh/2,W,'center');
   };
   if(detail)renderDetail();else renderMain();
   status(view?'Live rectangular panel view':'Save configured entities to load live readings.');

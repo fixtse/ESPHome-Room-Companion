@@ -1,0 +1,341 @@
+{
+ "_comment": "Every entity type the panel draws, for emulator/render.sh. Entities without a page get their own single page, as on the panel.",
+ "entities": [
+  {
+   "entity_id": "light.living_room",
+   "name": "Living room",
+   "state": "on",
+   "features": 0,
+   "light": {
+    "on": true,
+    "brightness": 60,
+    "kelvin": 3000
+   }
+  },
+  {
+   "entity_id": "climate.calentador",
+   "name": "Calentador",
+   "state": "heat",
+   "current": "19.5",
+   "target": "21.5",
+   "unit": "°C",
+   "modes": [
+    "off",
+    "heat"
+   ],
+   "features": 17,
+   "presets": [
+    "eco",
+    "comfort",
+    "away"
+   ],
+   "preset": "comfort",
+   "minimum": 7,
+   "maximum": 30,
+   "step": 0.5
+  },
+  {
+   "entity_id": "switch.desk_lamp",
+   "name": "Desk lamp",
+   "state": "on"
+  },
+  {
+   "entity_id": "sensor.living_temperature",
+   "name": "Living temperature",
+   "state": "21.4",
+   "unit": "°C"
+  },
+  {
+   "entity_id": "sensor.living_humidity",
+   "name": "Living humidity",
+   "state": "48",
+   "unit": "%"
+  },
+  {
+   "entity_id": "binary_sensor.front_door",
+   "name": "Front door",
+   "state": "off"
+  },
+  {
+   "entity_id": "scene.movie_night",
+   "name": "Movie night",
+   "state": "2026-11-20T12:00:00+00:00"
+  },
+  {
+   "entity_id": "script.good_night",
+   "name": "Good night",
+   "state": "off"
+  },
+  {
+   "entity_id": "automation.porch_lights",
+   "name": "Porch lights at sunset",
+   "state": "on"
+  },
+  {
+   "entity_id": "button.restart_router",
+   "name": "Restart router",
+   "state": "unknown"
+  },
+  {
+   "entity_id": "input_button.doorbell_test",
+   "name": "Doorbell test",
+   "state": "unknown"
+  },
+  {
+   "entity_id": "light.kitchen",
+   "name": "Kitchen",
+   "state": "off",
+   "light": {
+    "on": false,
+    "brightness": 0
+   }
+  },
+  {
+   "entity_id": "light.bedroom_strip",
+   "name": "Bedroom strip with a long name",
+   "state": "on",
+   "light": {
+    "on": true,
+    "brightness": 35,
+    "color": true,
+    "hue": 280
+   }
+  },
+  {
+   "entity_id": "weather.home",
+   "name": "Home",
+   "state": "partlycloudy",
+   "unit": "°C",
+   "humidity": "62",
+   "apparent_temperature": "12",
+   "wind_speed": "18",
+   "wind_unit": "km/h",
+   "pressure": "1016",
+   "pressure_unit": "hPa",
+   "forecast": [
+    {
+     "date": "2026-11-21",
+     "condition": "rainy",
+     "high": 15,
+     "low": 9,
+     "rain": 70
+    },
+    {
+     "date": "2026-11-22",
+     "condition": "cloudy",
+     "high": 13,
+     "low": 8,
+     "rain": 20
+    },
+    {
+     "date": "2026-11-23",
+     "condition": "sunny",
+     "high": 16,
+     "low": 7,
+     "rain": 0
+    },
+    {
+     "date": "2026-11-24",
+     "condition": "snowy",
+     "high": 4,
+     "low": -2,
+     "rain": 60
+    },
+    {
+     "date": "2026-11-25",
+     "condition": "windy",
+     "high": 11,
+     "low": 6,
+     "rain": 10
+    }
+   ],
+   "target": "14"
+  },
+  {
+   "entity_id": "media_player.living_room_speaker",
+   "name": "Living room speaker",
+   "state": "playing",
+   "media_title": "Bohemian Rhapsody (Remastered 2011)",
+   "media_artist": "Queen",
+   "volume": "0.45",
+   "features": 16829
+  },
+  {
+   "entity_id": "media_player.bedroom",
+   "name": "Bedroom",
+   "state": "idle",
+   "features": 16829
+  },
+  {
+   "entity_id": "cover.office_blind",
+   "name": "Office blind",
+   "state": "open",
+   "position": "60",
+   "features": 15
+  },
+  {
+   "entity_id": "fan.ceiling_fan",
+   "name": "Ceiling fan",
+   "state": "on",
+   "percentage": "66",
+   "oscillating": "true",
+   "features": 3,
+   "step": 33.33
+  },
+  {
+   "entity_id": "number.speaker_volume",
+   "name": "Speaker volume",
+   "state": "35",
+   "minimum": 0,
+   "maximum": 100,
+   "step": 1,
+   "unit": "%"
+  },
+  {
+   "entity_id": "input_number.target_humidity",
+   "name": "Target humidity",
+   "state": "45",
+   "minimum": 30,
+   "maximum": 70,
+   "step": 5,
+   "unit": "%"
+  },
+  {
+   "entity_id": "select.washer_program",
+   "name": "Washer program",
+   "state": "Cotton 40",
+   "options": [
+    "Cotton 40",
+    "Synthetics",
+    "Wool",
+    "Quick 15"
+   ]
+  },
+  {
+   "entity_id": "input_select.house_mode",
+   "name": "House mode",
+   "state": "Home",
+   "options": [
+    "Home",
+    "Away",
+    "Night",
+    "Vacation"
+   ]
+  },
+  {
+   "entity_id": "sensor.phone_battery",
+   "name": "Phone battery",
+   "state": "18",
+   "unit": "%"
+  },
+  {
+   "entity_id": "sensor.washer_status",
+   "name": "Washer status",
+   "state": "Rinsing"
+  },
+  {
+   "entity_id": "sensor.power_usage",
+   "name": "Power usage",
+   "state": "1243.5",
+   "unit": "W"
+  },
+  {
+   "entity_id": "binary_sensor.hall_motion",
+   "name": "Hall motion",
+   "state": "on"
+  },
+  {
+   "entity_id": "event.doorbell",
+   "name": "Doorbell",
+   "state": "2026-11-20T13:40:00+00:00",
+   "event_type": "pressed"
+  },
+  {
+   "entity_id": "siren.alarm",
+   "name": "Alarm siren",
+   "state": "off",
+   "tones": [
+    "alarm",
+    "chime"
+   ]
+  },
+  {
+   "entity_id": "timer.pasta",
+   "name": "Pasta",
+   "state": "paused",
+   "timer_duration": "0:10:00",
+   "timer_remaining": "0:06:12"
+  },
+  {
+   "entity_id": "input_boolean.guest_mode",
+   "name": "Guest mode",
+   "state": "off"
+  },
+  {
+   "entity_id": "climate.office",
+   "name": "Office heat pump",
+   "state": "heat_cool",
+   "current": "22",
+   "low": "19",
+   "high": "24",
+   "unit": "°C",
+   "modes": [
+    "off",
+    "heat",
+    "cool",
+    "heat_cool"
+   ],
+   "features": 2
+  },
+  {
+   "entity_id": "sensor.codex_5_hour",
+   "name": "Codex 5 hour",
+   "state": "87",
+   "unit": "%"
+  },
+  {
+   "entity_id": "light.porch",
+   "name": "Porch",
+   "state": "unavailable",
+   "unavailable": true
+  }
+ ],
+ "pages": [
+  {
+   "kind": "two",
+   "entities": [
+    "light.living_room",
+    "climate.calentador"
+   ]
+  },
+  {
+   "kind": "sensors",
+   "entities": [
+    "switch.desk_lamp",
+    "sensor.living_temperature",
+    "sensor.living_humidity",
+    "binary_sensor.front_door"
+   ]
+  },
+  {
+   "kind": "grid",
+   "rows": 2,
+   "cols": 3,
+   "entities": [
+    "scene.movie_night",
+    "script.good_night",
+    "automation.porch_lights",
+    "button.restart_router",
+    "input_button.doorbell_test",
+    "light.kitchen"
+   ]
+  },
+  {
+   "kind": "two",
+   "entities": [
+    "sensor.codex_5_hour",
+    "media_player.bedroom"
+   ]
+  }
+ ]
+}

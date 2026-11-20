@@ -3078,7 +3078,7 @@ script:
             onx_panel_ui::sync_media({id(normal_automation_detail_shell),id(normal_media_cover),id(normal_media_title),
                 id(normal_media_artist),id(normal_media_progress_arc),id(normal_media_transport_overlay),
                 id(normal_automation_detail_icon),id(normal_playlist_overlay),id(normal_automation_detail_action),
-                id(normal_automation_detail_title)}, &lv_font_montserrat_28);
+                id(normal_automation_detail_title)}, &lv_font_${symbol_font});
             return;
           }
           #endif

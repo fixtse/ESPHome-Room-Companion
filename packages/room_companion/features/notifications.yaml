@@ -15,7 +15,7 @@ esphome:
             fonts.body = id(fonts_MiSans_Medium_14)->get_lv_font();
             fonts.small = id(fonts_MiSans_Medium_12)->get_lv_font();
             fonts.icon = id(fonts_MiSans_Medium_20)->get_lv_font();
-            fonts.symbol = &lv_font_montserrat_28;
+            fonts.symbol = &lv_font_${symbol_font};
             onx_notification_ui::bell_image = id(panel_bell_icon)->get_lv_image_dsc();
             onx_notification_ui::clock_tile_image = id(panel_standby_clock_icon)->get_lv_image_dsc();
             onx_notification_ui::preset_tile_image = id(panel_preset_layers_icon)->get_lv_image_dsc();

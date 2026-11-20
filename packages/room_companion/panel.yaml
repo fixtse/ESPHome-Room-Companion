@@ -23,13 +23,13 @@ api:
 
 lvgl:
   id: lvgl_ui
-  # Referencing Montserrat 28 compiles it in for the media control symbols.
+  # Referencing the symbol font compiles it in for the media control symbols.
   top_layer:
     widgets:
       - label:
           id: panel_symbol_font_ref
           hidden: true
-          text_font: montserrat_28
+          text_font: ${symbol_font}
           text: ""
   displays:
     - lcd_display
@@ -302,7 +302,7 @@ interval:
             onx_panel_ui::sync_media({id(normal_automation_detail_shell), id(normal_media_cover), id(normal_media_title),
                                       id(normal_media_artist), id(normal_media_progress_arc),
                                       id(normal_media_transport_overlay), id(normal_automation_detail_icon),
-                                      id(normal_playlist_overlay), id(normal_automation_detail_action), id(normal_automation_detail_title)}, &lv_font_montserrat_28);
+                                      id(normal_playlist_overlay), id(normal_automation_detail_action), id(normal_automation_detail_title)}, &lv_font_${symbol_font});
           }
           // Idle screen.
           const auto mode = id(panel_idle_screen).active_index().value_or(0);
@@ -722,7 +722,7 @@ script:
           for(auto *screen:{id(device_empty)->obj,id(normal_panel_page)->obj,id(normal_switch_page)->obj,id(normal_automation_page)->obj,id(normal_light_page)->obj,id(normal_curtain_page)->obj,id(normal_settings_page)->obj,id(normal_settings_wifi_page)->obj,id(normal_settings_brightness_page)->obj,id(normal_settings_input_page)->obj,id(normal_settings_connection_page)->obj,id(normal_halight_conf_page)->obj,id(normal_halight_page)->obj,id(standby_page)->obj,id(normal_provisioning_page)->obj,id(normal_add_hmi_page)->obj,id(normal_setup_help_page)->obj})
             onx_render::register_panel_screen(screen);
           onx_panel_detail::fonts = {id(fonts_MiSans_Medium_12)->get_lv_font(), id(fonts_MiSans_Medium_15)->get_lv_font(),
-              id(fonts_MiSans_Bold_18)->get_lv_font(), id(fonts_MiSans_Medium_32)->get_lv_font(), &lv_font_montserrat_28,
+              id(fonts_MiSans_Bold_18)->get_lv_font(), id(fonts_MiSans_Medium_32)->get_lv_font(), &lv_font_${symbol_font},
               id(fonts_MiSans_Medium_64)->get_lv_font(), id(fonts_MiSans_Medium_12)->get_lv_font(),
               id(fonts_MiSans_Bold_14)->get_lv_font()};
           onx_controls::main_control_visible = [](const std::string &entity) {

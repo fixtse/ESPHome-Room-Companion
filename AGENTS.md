@@ -55,6 +55,53 @@ hardware-tested status separate from configuration/build validation.
   opening the dashboard stream, Assist, wake word and audio, visual appearance
   and every gesture.
 
+## Validating screen changes (emulator)
+
+Any change that affects what the panel draws must be checked on both panels
+with the emulator before building firmware or flashing. This covers
+`onx_panel_*.h`, `onx_navigation.h`, `onx_notification_ui.h`, fonts, board
+geometry, `panel.yaml` and the web preview in `panel_web.h`. The emulator
+compiles the firmware's own UI headers against LVGL 9.6.0 with the firmware's
+`lv_conf.h` ([esphome-lvgl-emulator](https://github.com/fixtse/esphome-lvgl-emulator)).
+It reads screen sizes, scales, dock geometry and the symbol font from the same
+board YAML.
+
+```sh
+emulator/render.sh                                  # all entity types, both panels
+emulator/render.sh --model 28 --only climate        # one panel, matching screens
+emulator/render.sh --scenario emulator/scenarios/demo.json
+```
+
+Run it on devserv under the task lease, from the task's isolated checkout. Output goes to `emulator/out/`:
+- `28-NN-*.png` and `35-NN-*.png`: device renders of every page (with the dock) and every detail screen.
+- `web/`: the configuration page's preview of the same screens, drawn by `panel_web.h` from the same data (`onx_preview.h`).
+- `compare/`: emulator and web-preview pairs side by side, plus `28-all.png` and `35-all.png` contact sheets.
+
+Rules:
+- Review the 2.8" and the 3.5" renders. Both panels show the same UI. The 2.8"
+  may differ only to save space (3/4 layout and fonts, `symbol_font`, no
+  page-name label).
+- The web preview must match the device render. When a device screen changes,
+  update `panel_web.h` (the preview is a port of `onx_panel_detail.h`) and
+  check `compare/`. When the preview's data changes, change `onx_preview.h`,
+  which the firmware's preview API and the emulator share.
+- `emulator/scenarios/all-entities.json` has one entity of every type the
+  panel draws, in single, split, large + 3 and grid pages. When you add an entity
+  type, layout or visible state, add it there. Scenario lists use Home
+  Assistant's form (JSON arrays become `['a', 'b']`). Entities without a page
+  get their own, as on the panel.
+- Emulator-only gaps:
+  - live Home Assistant data
+  - downloaded MDI icons (the bundled fallback icons are used)
+  - the Wi-Fi and Home Assistant status icons drawn by YAML widgets
+  - emoji glyphs
+  - touch input in PNG mode
+- The web preview measures text with browser fonts, not MiSans, so where
+  text is truncated can differ slightly.
+- A render is layout validation, not hardware verification. Report it separately from compile, flash and on-panel checks.
+- Never add on-device screen capture: an LVGL snapshot/flush hook made the 2.8"
+  boot-loop (2026-11-20).
+
 ## Building and flashing this panel
 
 A request to build is not permission to flash. Once flashing is requested,

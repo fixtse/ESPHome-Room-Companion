@@ -1,6 +1,6 @@
 # ONX2432G028: 2.8-inch ST7789V, 240x320 portrait.
-# The base layout (240x240) is drawn 1:1 at the top; the icon strip fills the
-# remaining 80 px.
+# The base layout (240x240) is drawn 1:1 at the top; the cards extend down to a
+# compact icon dock at the bottom (no page-name label, as on the 3.5-inch panel).
 substitutions:
   device_model: ONX2432G028
   display_model: ST7789V
@@ -9,12 +9,13 @@ substitutions:
   display_height: "320"
   ui_scale: 1
   font_scale: 1
-  strip_center_y: "268"
-  strip_spacing: "48"
-  strip_icon: "26"
-  strip_marker: "40"
-  strip_label_y: "302"
-  strip_label_font: fonts_MiSans_Medium_12
+  strip_center_y: "298"
+  strip_spacing: "46"
+  strip_icon: "20"
+  strip_marker: "32"
+  strip_label_y: "-1"
+  strip_label_font: fonts_MiSans_Medium_16
+  symbol_font: montserrat_20
   notice_image_width: "200"
   notice_image_height: "112"
   # Full-screen JPEG decode + SPI transfer, ms (tune with the stream self-test).

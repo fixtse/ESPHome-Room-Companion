@@ -63,3 +63,4 @@ esphome:
     - ../../onx_entity_config.h
     - ../../onx_clock_sensors.h
     - ../../onx_presets.h
+    - ../../onx_preview.h

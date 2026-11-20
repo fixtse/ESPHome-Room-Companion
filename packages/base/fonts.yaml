@@ -2,6 +2,9 @@
 # profile sets font_scale.
 substitutions:
   font_scale: 1
+  # LVGL's built-in font for media/stepper symbols (montserrat_<size>); the
+  # 2.8" board uses a smaller one in proportion with its 3/4-size layout.
+  symbol_font: montserrat_28
   font_bpp: 8
 
 # Font paths are relative to this package. Include Latin accents explicitly;
