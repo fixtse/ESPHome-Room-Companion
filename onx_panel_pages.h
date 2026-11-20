@@ -693,7 +693,8 @@ inline void show_timers(int width,int height) {
   onx_render::style_bg_color(layer,lv_color_hex(onx_display_settings::background()),0);
   for(auto &c:cards){lv_obj_add_flag(c.box,LV_OBJ_FLAG_HIDDEN);c.initialized=false;}
   lv_obj_set_size(layer,width,height);lv_obj_set_pos(layer,0,0);
-  lv_obj_move_foreground(layer);lv_obj_remove_flag(layer,LV_OBJ_FLAG_HIDDEN);showing=true;detail_view=true;
+  if(lv_obj_get_index(layer)!=int32_t(lv_obj_get_child_count(lv_obj_get_parent(layer)))-1)lv_obj_move_foreground(layer);
+  lv_obj_remove_flag(layer,LV_OBJ_FLAG_HIDDEN);showing=true;detail_view=true;
   onx_panel_detail::render_timers(layer,width,height);
 }
 inline bool tap(int x,int y,bool held=false) {

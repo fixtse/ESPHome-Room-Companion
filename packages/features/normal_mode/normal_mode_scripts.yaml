@@ -2765,7 +2765,6 @@ script:
             const auto entity=id(ui_presenter)->get_normal_device_entity_id(i);
             auto *d=custom_logic_entity_sub::entity_detail(entity);
             if (!d || !d->received || !d->available || !custom_logic_entity_sub::is_timer_detail(entity)) continue;
-            if (d->voice_timer && d->state=="active" && millis()-d->timer_received_ms>=5000) continue;
             time_t finish=0;
             const bool has_finish=custom_logic_entity_sub::parse_ha_datetime_epoch(d->timer_finishes_at, &finish) ||
                 (d->state=="idle" && custom_logic_entity_sub::parse_ha_datetime_epoch(d->timer_last_finish, &finish));
@@ -2778,7 +2777,12 @@ script:
             if (left<soonest) {soonest=left;candidate=i;}
           }
           if (onx_timer::popup.visible) {
-            if (!popup_still_active) {
+            // A cancelled/finished timer hands the popup to the next running one.
+            if (!popup_still_active && candidate>=0) {
+              onx_timer::popup.entity=id(ui_presenter)->get_normal_device_entity_id(candidate);
+              id(normal_device_selected_index)=candidate;
+              id(enter_normal_switch_detail).execute();
+            } else if (!popup_still_active) {
               onx_timer::popup.visible=false;
               id(normal_device_selected_index)=onx_timer::popup.previous_index;
               id(exit_normal_switch_detail).execute();

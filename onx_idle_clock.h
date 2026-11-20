@@ -221,8 +221,9 @@ inline void update(lv_obj_t *page, int W, int H, const std::string &weather_stat
 
   // ---- status row
   const int icon_y = S(10);
-  for (auto *o : {base.wifi_on, base.wifi_off}) at(o, m, icon_y);
-  for (auto *o : {base.ha_on, base.ha_off}) at(o, m + S(28), icon_y);
+  // Centered like the main screen's status icons (normal_mode_pages.yaml).
+  for (auto *o : {base.wifi_on, base.wifi_off}) onx_panel_ui::place(o, LV_ALIGN_TOP_MID, -S(13), icon_y);
+  for (auto *o : {base.ha_on, base.ha_off}) onx_panel_ui::place(o, LV_ALIGN_TOP_MID, S(13), icon_y);
 
   // ---- what to show (Device settings → Clock & idle screen)
   const uint8_t parts = onx_clock_sensors::parts();

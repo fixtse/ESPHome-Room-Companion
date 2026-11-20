@@ -1258,8 +1258,9 @@ inline TimerItem entity_timer(const std::string &e, const EntityDetailState &d, 
   onx_timer::View view;
   if (d.voice_timer) {
     const uint32_t age = esphome::millis() - d.timer_received_ms;
-    if (d.state != "active" || age < 5000)
-      view = onx_timer::view(d.state, d.voice_duration, d.voice_remaining, d.voice_remaining + 1, 1.0 + age / 1000.0);
+    // Extrapolate between HA updates; marking stale data "not ready" toggled
+    // the screen signature and rebuilt (flickered) the timer screen.
+    view = onx_timer::view(d.state, d.voice_duration, d.voice_remaining, d.voice_remaining + 1, 1.0 + age / 1000.0);
     t.total = d.voice_duration;
   } else {
     time_t finish = 0;
