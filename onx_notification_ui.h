@@ -240,10 +240,15 @@ inline bool swipe_closes() {
     if (l != nullptr && !lv_obj_has_flag(l, LV_OBJ_FLAG_HIDDEN) && lv_obj_get_scroll_bottom(l) > 0) return false;
   return true;
 }
-// Bottom of the open centre (handle and the strip above it): a swipe up from
-// here always closes it, even while the list could still scroll.
+// The handle at the bottom of the open centre (grip line and "Swipe up to
+// close"): the only place a swipe up closes it. It used to be a fixed 84 px
+// band, which also covered the end of the list, so scrolling the list closed
+// the centre.
 inline bool close_zone(int, int y) {
-  return panel_open && detail_id == 0 && rotate_dialog == nullptr && y >= height - S(84);
+  if (!panel_open || detail_id != 0 || rotate_dialog != nullptr || handle == nullptr) return false;
+  lv_area_t a;
+  lv_obj_get_coords(handle, &a);
+  return y >= a.y1 - S(6);
 }
 // Drag sheet. Moving the real centre redraws the whole screen for every move
 // (80-200 ms a frame on this SPI panel), so while a finger drags it open or
