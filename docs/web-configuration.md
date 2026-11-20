@@ -256,8 +256,10 @@ Restoring presets does not change the current controls.
 **Download diagnostics** provides firmware, uptime and connection information
 for troubleshooting, without entity names, addresses or credentials. After a
 crash, its `last_event_before_boot` entry is named `panic` and lists the crash
-address and backtrace, even if the panel returned to its previous firmware. Wireless
-updates are available through the **Firmware Update** entity in Home Assistant.
+address and backtrace. When available, `panic_message` includes the abort detail,
+such as the task name in a FreeRTOS stack overflow. The panel also logs the
+retained panic at startup. Wireless updates are available through the
+**Firmware Update** entity in Home Assistant.
 
 ## Display orientation
 

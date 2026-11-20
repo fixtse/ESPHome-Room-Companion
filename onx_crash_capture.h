@@ -14,9 +14,12 @@
 #if defined(USE_ESP32) && defined(__XTENSA__)
 #include "esp_attr.h"
 #include "esp_debug_helpers.h"
+#include "esp_memory_utils.h"
 #include "esp_private/panic_internal.h"
 #include "esp_cpu_utils.h"
 #include "xtensa_context.h"
+
+extern "C" char *g_panic_abort_details;
 
 namespace onx_crash {
 // "panic" and the hex digits live in DRAM, not flash rodata.
@@ -33,6 +36,22 @@ static IRAM_ATTR size_t put_hex(char *out, size_t at, size_t size, uint32_t valu
 }
 
 static IRAM_ATTR void capture(const void *raw_frame) {
+  auto &details = onx_runtime::retained_panic_details;
+  details.magic = 0;
+  const char *message = g_panic_abort_details;
+  size_t length = 0;
+  // FreeRTOS builds the overflow message, including the task name, on the
+  // internal ISR stack. Only read internal DRAM while the cache may be off.
+  if (message != nullptr) {
+    while (length < sizeof(details.message) - 1 && esp_ptr_in_dram(message + length)) {
+      const char byte = static_cast<const volatile char *>(message)[length];
+      if (byte == '\0') break;
+      details.message[length++] = byte;
+    }
+  }
+  details.message[length] = '\0';
+  if (length != 0) details.magic = onx_runtime::PANIC_DETAILS_MAGIC;
+
   auto &event = onx_runtime::retained;
   event.magic = 0;
   for (size_t i = 0; i < sizeof(event.name); ++i) {

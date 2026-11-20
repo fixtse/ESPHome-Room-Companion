@@ -570,6 +570,9 @@ inline std::string state(const std::string &host = "", bool wifi_connected = fal
     previous["available"]=onx_runtime::previous.magic==0x4F4E5852;
     previous["name"]=onx_runtime::previous.name;
     previous["entity"]=onx_runtime::previous.entity;
+    if (onx_runtime::previous_panic_details.message[0]) {
+      previous["panic_message"] = onx_runtime::previous_panic_details.message;
+    }
     previous["uptime_ms"]=onx_runtime::previous.at_ms;
     previous["internal_heap_free"]=onx_runtime::previous.free_heap;
     auto art=root["artwork_stats"].to<JsonObject>();

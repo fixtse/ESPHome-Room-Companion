@@ -2,7 +2,9 @@
 #include <cstdint>
 #include <cstdio>
 #include <string>
+#include <string_view>
 #include "esphome/core/hal.h"
+#include "esphome/core/log.h"
 #ifdef USE_ESP32
 #include "esp_attr.h"
 #include "esp_heap_caps.h"
@@ -17,14 +19,21 @@ struct Event {
   char name[32];
   char entity[129];
 };
+struct PanicDetails {
+  uint32_t magic;
+  char message[160];
+};
+constexpr uint32_t PANIC_DETAILS_MAGIC = 0x4F4E5850;
 #ifdef USE_ESP32
 // RTC RAM survives many software/watchdog resets without writing flash. This is
 // a last-event breadcrumb, not proof that the recorded operation caused a crash.
 RTC_NOINIT_ATTR inline Event retained;
+RTC_NOINIT_ATTR inline PanicDetails retained_panic_details;
 #else
 inline Event retained{};
 #endif
 inline Event previous{};
+inline PanicDetails previous_panic_details{};
 inline uint32_t wifi_disconnects{0}, last_wifi_disconnect_ms{0};
 inline void start() {
 #ifdef USE_ESP32
@@ -32,8 +41,18 @@ inline void start() {
   if(reason!=ESP_RST_POWERON && reason!=ESP_RST_BROWNOUT && retained.magic==0x4F4E5852) {
     previous=retained;previous.name[31]=0;previous.entity[128]=0;
   }
+  if (reason == ESP_RST_PANIC && retained_panic_details.magic == PANIC_DETAILS_MAGIC) {
+    previous_panic_details = retained_panic_details;
+    previous_panic_details.message[sizeof(previous_panic_details.message) - 1] = '\0';
+  }
+  retained_panic_details.magic = 0;
 #endif
   retained={};
+  if (std::string_view(previous.name) == "panic") {
+    ESP_LOGE("onx.crash", "Previous panic: %s. Exception and backtrace: %s",
+             previous_panic_details.message[0] ? previous_panic_details.message : "detail unavailable",
+             previous.entity);
+  }
 }
 inline void record(const char *name,const std::string &entity="") {
   retained.magic=0;
