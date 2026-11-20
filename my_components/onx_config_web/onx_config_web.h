@@ -5,6 +5,7 @@
 #include "esphome/components/web_server_base/web_server_base.h"
 #include <deque>
 #include <functional>
+#include <memory>
 #include <string>
 
 namespace esphome::onx_config_web {
@@ -19,7 +20,7 @@ inline Body &large_body() {
 }
 inline const char *const LARGE_BODY_MARKER = "\x01onx-large-body";
 struct Query {
-  std::string playlists;
+  std::string playlists, cover_presets, cover_presets_enabled;
   std::string op, entity, action, search, domain, name, area, action_name, type, icon, icon_override;
   std::string background_color;
   std::string brightness, standby, sensitivity, sleep_enabled, sleep_start, sleep_end, sleep_timeout;
@@ -61,7 +62,7 @@ class ConfigWeb : public Component, public AsyncWebHandler {
   std::function<std::string(const Query &)> handler_;
   std::string nonce_;
   Mutex mutex_;
-  std::deque<Query> pending_;
+  std::deque<std::unique_ptr<Query>> pending_;
   std::deque<Query> internal_;
   InternalResult internal_result_;
   std::deque<std::pair<uint32_t, Body>> results_;

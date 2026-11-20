@@ -3,6 +3,10 @@
 
 int main() {
   using namespace onx_timer;
+  assert(duration_argument(432)=="0:07:12");
+  assert(duration_argument(3661)=="1:01:01");
+  assert(control_sentence("pasta",300,Action::ADD_MINUTE)=="add 1 minute to the pasta timer");
+  assert(control_sentence("",300,Action::ADD_MINUTE)=="add 1 minute to the 5 minute timer");
   assert(stop_alarm_button("sensor.kitchen_pe_voice_timer")=="button.kitchen_pe_stop_timer_alarm");
   assert(stop_alarm_button("sensor.voice_timer").empty()&&stop_alarm_button("sensor.kitchen_timer").empty());
   assert(control_sentence("", 300, Action::STOP) == "cancel the 5 minute timer");

@@ -59,6 +59,9 @@ wifi:
           condition:
             wifi.connected:
           then:
+            - lambda: |-
+                // Cancel the provisioning session before dismantling BLE.
+                id(onx_improv)->stop();
             - ble.disable:
       - if:
           condition:

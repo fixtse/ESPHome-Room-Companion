@@ -609,3 +609,24 @@ When a dashboard address is configured, its shortcut appears automatically at
 the edge of the bottom toolbar. Choose Left or Right in the web page’s Home
 Assistant dashboard settings; the position is saved on the panel. Clearing the
 address removes the shortcut. The remaining carousel controls keep their order.
+
+
+### Extending timers
+
+The focused view offers **+1 min** for running and paused local Assist timers,
+voice-satellite timers and Home Assistant timer helpers. Assist timers use the
+built-in HA conversation agent's add-time intent; their paused state is kept
+by HA. Helpers use `timer.change` while running. HA cannot change a paused
+helper directly, so the panel starts it with its saved remaining time plus
+60 seconds, waits for confirmation, then re-pauses it. This produces a brief
+start/pause transition and may trigger HA automations listening for those events.
+The view waits for HA updates and shows a confirmation error if the update or
+pause restoration is not confirmed. Finished alarms do not offer +1 min.
+
+### Cover position presets
+
+Covers supporting position control show 15%, 25%, 50% and 75% by default. In the web configuration, select the cover and edit Position presets (up to four unique whole percentages from 0 to 100). Disable Show position presets to hide the buttons while retaining their values. An empty list also hides them. Values persist per cover entity and are included in configuration backups and presets. The web preview reflects draft edits.
+
+The dashboard defaults to 0.75 zoom on the 2.8-inch panel and 1.0 on the 3.5-inch panel. A saved zoom takes precedence over these first-boot defaults.
+
+The NS4168 amplifier starts disabled and is enabled only while the I²S speaker reports running, covering media, Assist and timer sounds. Cold-power startup noise must be checked on hardware separately from compilation.

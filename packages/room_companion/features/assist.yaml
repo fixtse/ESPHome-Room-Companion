@@ -22,6 +22,17 @@ globals:
   - id: assist_ready
     type: bool
     initial_value: 'false'
+  # Serialized helper-extension state: script parameters are passed by value,
+  # so computed snapshots live here across its asynchronous HA acknowledgements.
+  - id: timer_extension_seconds
+    type: int
+    initial_value: '0'
+  - id: timer_extension_paused
+    type: bool
+    initial_value: 'false'
+  - id: timer_extension_finish
+    type: std::string
+    initial_value: '""'
 
 switch:
   - platform: template
@@ -197,10 +208,10 @@ esphome:
             auto local_command = [](const std::string &timer_id, onx_timer::Action action) {
               for (const auto &t : id(assist).get_timers()) {
                 if (t.id != timer_id) continue;
-                if (action != onx_timer::Action::STOP &&
-                    !(t.seconds_left > 0 && t.is_active == (action == onx_timer::Action::PAUSE))) return;
+                if (action != onx_timer::Action::STOP && (t.seconds_left == 0 ||
+                    (action != onx_timer::Action::ADD_MINUTE && t.is_active != (action == onx_timer::Action::PAUSE)))) return;
                 id(timer_command).execute("local:" + timer_id, onx_timer::control_sentence(t.name, t.total_seconds, action),
-                    action == onx_timer::Action::STOP ? "Stopping..." : action == onx_timer::Action::RESUME ? "Resuming..." : "Pausing...");
+                    action == onx_timer::Action::ADD_MINUTE ? "Adding 1 min..." : action == onx_timer::Action::STOP ? "Stopping..." : action == onx_timer::Action::RESUME ? "Resuming..." : "Pausing...");
                 return;
               }
             };
@@ -209,6 +220,12 @@ esphome:
             };
             onx_panel_detail::stop_local_timer = [local_command](const std::string &key) {
               local_command(key, onx_timer::Action::STOP);
+            };
+            onx_panel_detail::extend_local_timer = [local_command](const std::string &key) {
+              local_command(key, onx_timer::Action::ADD_MINUTE);
+            };
+            onx_panel_detail::extend_helper_timer = [](const std::string &entity) {
+              id(timer_helper_extend).execute(entity);
             };
             // Voice satellite timers (their "Voice timer" sensors).
             onx_panel_detail::send_timer_sentence = [](const std::string &key, const std::string &sentence,
@@ -220,6 +237,81 @@ esphome:
             onx_panel_detail::close_timers = []() { id(timer_close).execute(); };
 
 script:
+  # timer.change only accepts running helpers. A paused helper must receive a
+  # new remaining duration and be re-paused after HA confirms its start.
+  - id: timer_helper_extend
+    mode: queued
+    max_runs: 4
+    parameters:
+      entity: string
+    then:
+      - if:
+          condition:
+            lambda: |-
+              const auto *d = custom_logic_entity_sub::entity_detail(entity);
+              return d && d->available && d->received && (d->state == "active" || d->state == "paused") &&
+                  onx_panel_detail::entity_timer(entity, *d, "").ready;
+          then:
+            - script.stop: timer_autoclose
+            - lambda: |-
+                const auto *d = custom_logic_entity_sub::entity_detail(entity);
+                const auto timer = onx_panel_detail::entity_timer(entity, *d, "");
+                id(timer_extension_seconds) = int(std::ceil(timer.left)) + 60;
+                id(timer_extension_paused) = d->state == "paused";
+                id(timer_extension_finish) = d->timer_finishes_at;
+                auto &state = onx_panel_detail::timers;
+                state.message_key = entity;
+                state.message = "Adding 1 min...";
+                state.message_until = millis() + 12000;
+                state.command_pending = true;
+            - if:
+                condition:
+                  lambda: return id(timer_extension_paused);
+                then:
+                  - homeassistant.action:
+                      action: timer.start
+                      data:
+                        entity_id: !lambda return entity;
+                        duration: !lambda return onx_timer::duration_argument(id(timer_extension_seconds));
+                else:
+                  - homeassistant.action:
+                      action: timer.change
+                      data:
+                        entity_id: !lambda return entity;
+                        duration: "00:01:00"
+            - wait_until:
+                condition:
+                  lambda: |-
+                    const auto *d = custom_logic_entity_sub::entity_detail(entity);
+                    return d && d->state == "active" && (id(timer_extension_paused) ?
+                        int(onx_timer::duration_seconds(d->timer_duration)) == id(timer_extension_seconds) : d->timer_finishes_at != id(timer_extension_finish));
+                timeout: 5s
+            - if:
+                condition:
+                  lambda: |-
+                    const auto *d = custom_logic_entity_sub::entity_detail(entity);
+                    return id(timer_extension_paused) && d && d->state == "active" && int(onx_timer::duration_seconds(d->timer_duration)) == id(timer_extension_seconds);
+                then:
+                  - homeassistant.action:
+                      action: timer.pause
+                      data:
+                        entity_id: !lambda return entity;
+                  - wait_until:
+                      condition:
+                        lambda: |-
+                          const auto *d = custom_logic_entity_sub::entity_detail(entity);
+                          return d && d->state == "paused";
+                      timeout: 5s
+            - lambda: |-
+                const auto *d = custom_logic_entity_sub::entity_detail(entity);
+                const bool confirmed = d && d->available && (id(timer_extension_paused) ?
+                    d->state == "paused" && int(onx_timer::duration_seconds(d->timer_duration)) == id(timer_extension_seconds) :
+                    d->state == "active" && d->timer_finishes_at != id(timer_extension_finish));
+                auto &state = onx_panel_detail::timers;
+                state.command_pending = false;
+                state.message = confirmed ? "" : id(timer_extension_paused) ? "Extension/pause not confirmed" : "Extension not confirmed";
+                state.message_until = millis() + 5000;
+
   # Assist timers are owned by HA, for this panel and for voice satellites.
   # Never pause only the ESPHome mirror: HA would still finish the original
   # timer. Use the built-in conversation agent. This panel's own timers wait

@@ -53,7 +53,8 @@ class RoomPanel : public Component {
   void set_touchscreen(touchscreen::Touchscreen *touch) { touch_ = touch; }
   void set_url_text(text::Text *t) { url_text_ = t; }
   void set_dashboard_switch(switch_::Switch *s) { dashboard_switch_ = s; }
-  void set_defaults(const std::string &server, const std::string &url) {
+  void set_defaults(const std::string &server, const std::string &url, float scale = 1.0f) {
+    settings_.scale = scale;
     settings_.server = server;
     settings_.url = url;
   }

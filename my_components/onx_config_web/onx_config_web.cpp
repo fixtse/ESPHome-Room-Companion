@@ -16,6 +16,7 @@
 #include <array>
 #include <charconv>
 #include <cstring>
+#include <new>
 
 namespace esphome::onx_config_web {
 namespace {
@@ -152,7 +153,13 @@ void ConfigWeb::handleRequest(AsyncWebServerRequest *request) {
     respond_(request, 403, "{\"error\":\"Reload this page to authorize configuration\"}"); return;
   }
   if (request->contentLength() > 8192) { respond_(request, 413, "{\"error\":\"Request too large\"}"); return; }
-  Query query;
+  // Keep the request's string fields off the HTTP server task stack.
+  std::unique_ptr<Query> incoming(new (std::nothrow) Query);
+  if (!incoming) {
+    respond_(request, 429, "{\"error\":\"Configuration busy; retry shortly\"}");
+    return;
+  }
+  Query &query = *incoming;
   query.clock_seconds_ring = request->arg("clock_seconds_ring");
   query.hold_cue = request->arg("hold_cue");
   query.clock_temperature = request->arg("clock_temperature");
@@ -165,6 +172,8 @@ void ConfigWeb::handleRequest(AsyncWebServerRequest *request) {
   query.idle_view = request->arg("idle_view");
   query.timer_hidden = request->arg("timer_hidden");
   query.playlists = request->arg("playlists");
+  query.cover_presets_enabled = request->arg("cover_presets_enabled");
+  query.cover_presets = request->arg("cover_presets");
   query.data = request->arg("data"); query.total = request->arg("total");
   query.op = request->arg("op"); query.entity = request->arg("entity"); query.action = request->arg("action");
   query.name = request->arg("name"); query.area = request->arg("area");
@@ -181,7 +190,7 @@ void ConfigWeb::handleRequest(AsyncWebServerRequest *request) {
   query.background_color = request->arg("background_color");
   query.media_color = request->arg("media_color"); query.standby_scope = request->arg("standby_scope");
   unsigned slot = 0, offset = 0;
-  if (query.background_color.size()>7 || query.data.size()>16384 || query.total.size()>6 || query.clock_seconds_ring.size()>1 || query.hold_cue.size()>1 || query.clock_temperature.size()>128 || query.clock_humidity.size()>128 || query.clock_layout.size()>2 || query.notifications_cover_timers.size()>1 || query.orientation.size()>3 || query.media_view.size()>8 || query.gestures.size()>1600 || query.idle_view.size()>5 || query.timer_hidden.size()>1 || query.playlists.size()>2048 || query.secondary.size()>128 || query.secondary_text.size()>160 || query.sensor_graph.size()>1 || query.show_ampm.size()>1 || query.date_format.size() > 11 || query.hour_format.size() > 2 || query.media_color.size() > 7 || query.standby_scope.size() > 5 || query.icon.size() > 80 || query.icon_override.size() > 1 || query.op.size() > 16 || query.entity.size() > 128 || query.action.size() > 128 ||
+  if (query.cover_presets_enabled.size()>1 || query.cover_presets.size()>31 || query.background_color.size()>7 || query.data.size()>16384 || query.total.size()>6 || query.clock_seconds_ring.size()>1 || query.hold_cue.size()>1 || query.clock_temperature.size()>128 || query.clock_humidity.size()>128 || query.clock_layout.size()>2 || query.notifications_cover_timers.size()>1 || query.orientation.size()>3 || query.media_view.size()>8 || query.gestures.size()>1600 || query.idle_view.size()>5 || query.timer_hidden.size()>1 || query.playlists.size()>2048 || query.secondary.size()>128 || query.secondary_text.size()>160 || query.sensor_graph.size()>1 || query.show_ampm.size()>1 || query.date_format.size() > 11 || query.hour_format.size() > 2 || query.media_color.size() > 7 || query.standby_scope.size() > 5 || query.icon.size() > 80 || query.icon_override.size() > 1 || query.op.size() > 16 || query.entity.size() > 128 || query.action.size() > 128 ||
       query.search.size() > 128 || query.domain.size() > 32 ||
       query.brightness.size() > 3 || query.standby.size() > 3 || query.sensitivity.size() > 1 ||
       query.sleep_enabled.size() > 1 || query.sleep_start.size() > 5 || query.sleep_end.size() > 5 || query.sleep_timeout.size() > 4 ||
@@ -194,13 +203,13 @@ void ConfigWeb::handleRequest(AsyncWebServerRequest *request) {
   LockGuard lock(mutex_);
   if (pending_.size() >= 4) { respond_(request, 429, "{\"error\":\"Configuration busy; retry shortly\"}"); return; }
   query.ticket = ++next_ticket_;
-  pending_.push_back(std::move(query));
+  pending_.push_back(std::move(incoming));
   respond_(request, 202, "{\"ticket\":" + std::to_string(next_ticket_) + "}");
 }
 void ConfigWeb::loop() {
   discovery_.poll();
   immich_discovery_.poll();
-  Query query;
+  std::unique_ptr<Query> pending;
   // One device-initiated request per loop, interleaved with web requests so the
   // page can poll progress while a preset applies.
   if (!internal_.empty() && handler_) {
@@ -212,9 +221,10 @@ void ConfigWeb::loop() {
   {
     LockGuard lock(mutex_);
     if (pending_.empty() || !handler_) return;
-    query = std::move(pending_.front()); pending_.pop_front();
+    pending = std::move(pending_.front()); pending_.pop_front();
   }
   // NVS, entity subscriptions, and LVGL always run in the ESPHome main task.
+  const Query &query = *pending;
   Body body = take_result_(query.op == "ha_discover" ? discovery_.response(query.search == "refresh", millis())
                               : query.op == "if_discover" ? immich_discovery_.response(query.search == "refresh", millis())
                               : handler_(query));

@@ -121,6 +121,24 @@ void set_field(custom_logic_entity_sub::EntityDetailState &d, const std::string 
   else if (k == "hue") d.light_hue = v.as<float>();
   else if (k == "saturation") d.light_saturation = v.as<float>();
   else if (k == "color_temp") d.light_temperature = v.as<bool>();
+  else if (k == "timer_finishes_in") {
+    // Relative fixture deadlines remain running on later validation dates.
+    const time_t finish = std::time(nullptr) + v.as<int>();
+    const auto utc = *std::gmtime(&finish);
+    char stamp[32]; std::strftime(stamp, sizeof(stamp), "%Y-%m-%dT%H:%M:%S+00:00", &utc);
+    d.timer_finishes_at = stamp;
+  }
+  else if (k == "voice_timers") {
+    d.voice_timer = true;
+    d.timer_received_ms = lvgl_emu::now_ms();
+    d.voice_timers.clear();
+    for (JsonArrayConst timer : v.as<JsonArrayConst>())
+      d.voice_timers.push_back({timer[0].as<std::string>(), timer[1].as<uint32_t>(), timer[2].as<uint32_t>(), timer[3].as<int>() != 0});
+    if (!d.voice_timers.empty()) {
+      const auto &timer = d.voice_timers.front();
+      d.timer_name = timer.name; d.voice_duration = timer.duration; d.voice_remaining = timer.remaining;
+    }
+  }
   else if (k == "forecast") {
     int n = 0;
     for (JsonObjectConst day : v.as<JsonArrayConst>()) {
@@ -165,6 +183,16 @@ std::vector<Shot> load_scenario(const std::string &path) {
     d.received = true;  // "unavailable": the entity reports unavailable; omit an entity to model "waiting".
     d.available = !(e["unavailable"] | false);
     d.received_ms = lvgl_emu::now_ms();
+    if (id.rfind("cover.",0)==0) {
+      auto config = onx_cover_presets::defaults();
+      if (e["cover_presets"].is<JsonArrayConst>()) {
+        std::string raw;
+        for (int v : e["cover_presets"].as<JsonArrayConst>()) { if (!raw.empty()) raw += ','; raw += std::to_string(v); }
+        if (!onx_cover_presets::parse(raw,config)) { std::fprintf(stderr,"invalid cover preset scenario\n"); std::exit(2); }
+      }
+      config.enabled = e["cover_presets_enabled"] | true;
+      onx_entity_config::cover_preset_cache.push_back({id,config});
+    }
     for (JsonPairConst kv : e) {
       const std::string k = kv.key().c_str();
       if (k == "light") {
@@ -178,7 +206,7 @@ std::vector<Shot> load_scenario(const std::string &path) {
         st.rgb_tick = uint8_t((int(l["hue"] | 0) / esphome::onx_storage::RGB_TICK_DEGREES) % esphome::onx_storage::RGB_TICKS);
         st.capability_mask = 1 | (l["brightness"].is<int>() ? 2 : 0) | (l["kelvin"].is<int>() ? 4 : 0) | ((l["color"] | false) ? 8 : 0);
         lights[id] = st;
-      } else if (k != "entity_id" && k != "name" && k != "unavailable" && k != "detail") set_field(d, k, kv.value());
+      } else if (k != "entity_id" && k != "name" && k != "unavailable" && k != "detail" && k != "cover_presets" && k != "cover_presets_enabled") set_field(d, k, kv.value());
     }
     if (registry.count < custom_logic::MAX_HA_ENTITY_COUNT) {
       auto &r = registry.entities[registry.count++];
@@ -281,7 +309,12 @@ int entity_count() {
 void show(const Shot &shot) {
   const int w = board.width, h = board.height;
   auto bind = [](lv_obj_t *icon, const std::string &entity) { bind_entity_icon(icon, entity, false); };
+  onx_panel_detail::timers.focus.clear();
   if (shot.detail) {
+    // A detail shot represents tapping that timer's row in the multi-timer list.
+    if (custom_logic_entity_sub::is_timer_detail(shot.entity))
+      for (const auto &timer : onx_panel_detail::all_timers())
+        if (timer.entity == shot.entity) { onx_panel_detail::timers.focus = timer.key; break; }
     onx_navigation::hide();
     onx_notification_ui::set_bell_visible(false);
     onx_panel_pages::render(shot.entity, w, h, true, bind);

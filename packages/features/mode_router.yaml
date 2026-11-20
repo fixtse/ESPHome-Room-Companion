@@ -338,6 +338,12 @@ onx_config_web:
     onx_gesture::Config gesture_config{};
     if(!onx_entity_config::parse_gestures(query.entity,query.gestures,gesture_config))
       return onx_entity_config::error("Choose valid gesture actions, feedback entity and step (1-100)");
+    onx_cover_presets::Config cover_presets;
+    if (!onx_cover_presets::parse(query.cover_presets,cover_presets) || (domain != "cover" && cover_presets.count))
+      return onx_entity_config::error("Use up to four unique cover positions from 0 to 100, separated by commas");
+    if (!query.cover_presets_enabled.empty() && query.cover_presets_enabled != "0" && query.cover_presets_enabled != "1")
+      return onx_entity_config::error("Choose whether cover position presets are enabled");
+    cover_presets.enabled = query.cover_presets_enabled != "0";
     onx_playlist::Config playlist_config{};
     if (!onx_entity_config::parse_playlists(query.entity,query.playlists,playlist_config))
       return onx_entity_config::error("Add up to eight playlist names (48 UTF-8 bytes) and valid script or automation entity IDs");
@@ -351,6 +357,8 @@ onx_config_web:
       return onx_entity_config::error("Could not save timer visibility; retry");
     if(!onx_entity_config::save_gestures(query.slot,gesture_config))
       return onx_entity_config::error("Could not save gesture controls; retry");
+    if (!onx_entity_config::save_cover_presets(query.entity,cover_presets))
+      return onx_entity_config::error("Could not save cover positions; retry");
     if (!onx_entity_config::save_playlists(query.slot,playlist_config))
       return onx_entity_config::error("Could not save playlist actions; retry");
     if (!onx_entity_config::save_selected_metadata(query)) return onx_entity_config::error("Could not save selected entity details");

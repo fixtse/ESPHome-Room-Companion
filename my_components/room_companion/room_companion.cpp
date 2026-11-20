@@ -134,7 +134,7 @@ void RoomPanel::load_() {
   if (deserializeJson(doc, json) != DeserializationError::Ok) return;
   const std::string server = doc["server"] | std::string();
   const std::string url = doc["url"] | std::string();
-  const float scale = doc["scale"] | 1.0f;
+  const float scale = doc["scale"] | settings_.scale;
   const std::string side = doc["toolbar_side"] | std::string("right");
   settings_.dock_pin = doc["dock_pin"] | std::string("dashboard");
   if (side == "left" || side == "right") settings_.toolbar_side = side;

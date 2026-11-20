@@ -25,6 +25,7 @@ CONFIG_SCHEMA = cv.Schema(
         cv.Optional("dashboard_switch"): cv.use_id(switch.Switch),
         cv.Optional("default_server", default=""): cv.string,
         cv.Optional("default_url", default=""): cv.string,
+        cv.Optional("default_scale", default=1.0): cv.float_range(min=0.5, max=4.0),
         cv.Optional("on_owner"): automation.validate_automation({}),
         cv.Optional("on_message"): automation.validate_automation({}),
     }
@@ -41,7 +42,7 @@ async def to_code(config):
         cg.add(var.set_url_text(await cg.get_variable(config["url_text"])))
     if "dashboard_switch" in config:
         cg.add(var.set_dashboard_switch(await cg.get_variable(config["dashboard_switch"])))
-    cg.add(var.set_defaults(config["default_server"], config["default_url"]))
+    cg.add(var.set_defaults(config["default_server"], config["default_url"], config["default_scale"]))
     for conf in config.get("on_owner", []):
         await automation.build_automation(var.get_owner_trigger(), [(cg.bool_, "dashboard")], conf)
     for conf in config.get("on_message", []):

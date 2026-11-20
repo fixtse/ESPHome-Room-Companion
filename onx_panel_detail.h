@@ -32,6 +32,7 @@
 #include "onx_display_settings.h"
 #include "onx_detail_view.h"
 #include "onx_sensor_graph.h"
+#include "onx_entity_config.h"
 
 namespace onx_panel_detail {
 using custom_logic_entity_sub::EntityDetailState;
@@ -960,7 +961,14 @@ __attribute__((noinline)) inline void build_fan(const Layout &l, const std::stri
   }
 }
 
-__attribute__((noinline)) inline void build_cover(const Layout &l, const std::string &e, const EntityDetailState &d, const std::string &title) {
+__attribute__((noinline)) inline void build_cover(const Layout &base, const std::string &e, const EntityDetailState &d, const std::string &title) {
+  Layout l = base;
+  const auto presets = onx_entity_config::cover_presets(e);
+  const bool show_presets = (d.features & 4) && presets.enabled && presets.count;
+  if (show_presets && !wide()) {
+    const int extra = P(12) + line(fonts.small) + P(6) + P(40);
+    l.vis.h -= extra; l.ctl.y -= extra; l.ctl.h += extra;
+  }
   float position = num(d.position);
   clear_pending_if(e, "position", position);
   const float want = pending_value(e, "position");
@@ -1007,6 +1015,22 @@ __attribute__((noinline)) inline void build_cover(const Layout &l, const std::st
     const bool hot = std::string(b.caption) == "Stop" && moving;
     button(root, l.ctl.x + i * (bw + gap), l.ctl.y, bw, bh, P(14), hot ? strong() : CONTROL(), b.caption, fonts.body, TEXT(),
            [e, b]() { request(e, b.service, "", "", "panel_cover"); });
+  }
+  if (show_presets) {
+      const int cols = std::min<int>(wide() && W < 400 ? 2 : 4,presets.count), pg = P(8), ph = P(40);
+      int y = l.ctl.y + bh + P(12);
+      text(root,"Positions",fonts.small,MUTED(),l.ctl.x,y,l.ctl.w);
+      y += line(fonts.small) + P(6);
+      const int pw = (l.ctl.w - (cols-1)*pg)/cols;
+      for (int i=0;i<presets.count;++i) {
+        const int target = presets.positions[i], py = y+(i/cols)*(ph+pg);
+        if (py+ph > l.ctl.bottom()) break;
+        chip(root,l.ctl.x+(i%cols)*(pw+pg),py,pw,ph,std::to_string(target)+"%",
+             known && std::abs(position-target)<0.51f,[e,target]() {
+               set_pending(e,"position",target,8000);
+               request(e,"cover.set_cover_position","position",std::to_string(target),"panel_cover");
+             });
+      }
   }
 }
 
@@ -1252,6 +1276,7 @@ struct TimerVisual {
 };
 inline std::vector<TimerVisual> timer_visuals;
 inline std::function<void(const std::string &)> stop_local_timer;
+inline std::function<void(const std::string &)> extend_local_timer, extend_helper_timer;
 inline std::function<void()> stop_ringing;  // Supplied by assist.yaml.
 inline std::function<bool()> timer_interaction_pending;
 inline std::function<void(const std::string &, bool)> set_local_timer_active;
@@ -1297,7 +1322,7 @@ inline std::function<void(const std::string &key, const std::string &sentence, c
 inline std::function<void(const std::string &button)> press_button;
 inline std::function<void()> voice_sentence_for(const TimerItem &t, onx_timer::Action action) {
   const std::string key = t.key, sentence = onx_timer::control_sentence(t.voice_name, uint32_t(t.total), action);
-  const std::string pending = action == onx_timer::Action::STOP ? "Stopping..." :
+  const std::string pending = action == onx_timer::Action::ADD_MINUTE ? "Adding 1 min..." : action == onx_timer::Action::STOP ? "Stopping..." :
                               action == onx_timer::Action::RESUME ? "Resuming..." : "Pausing...";
   return [key, sentence, pending]() { if (send_timer_sentence) send_timer_sentence(key, sentence, pending); };
 }
@@ -1568,6 +1593,8 @@ __attribute__((noinline)) inline void build_timers(const std::string &preferred,
     std::function<void()> action;
     if (timer_quick_action(t, &symbol, &action))
       controls.push_back({symbol, t.state == "paused" ? "Resume" : "Pause", true, std::move(action)});
+    if (extend_local_timer && t.ready && (t.state == "active" || t.state == "paused"))
+      controls.push_back({LV_SYMBOL_PLUS, "1 min", false, [key]() { if (extend_local_timer) extend_local_timer(key); }});
   } else if (t.voice) {
     if (ringing) {
       if (auto stop = voice_alarm_stop(t)) controls.push_back({LV_SYMBOL_STOP, "Stop", true, std::move(stop)});
@@ -1577,6 +1604,7 @@ __attribute__((noinline)) inline void build_timers(const std::string &preferred,
       std::function<void()> action;
       if (timer_quick_action(t, &symbol, &action))
         controls.push_back({symbol, t.state == "paused" ? "Resume" : "Pause", true, std::move(action)});
+      controls.push_back({LV_SYMBOL_PLUS, "1 min", false, voice_sentence_for(t, onx_timer::Action::ADD_MINUTE)});
     }
   } else if (t.helper && t.ready) {
     const bool active = t.state == "active", paused = t.state == "paused";
@@ -1584,7 +1612,7 @@ __attribute__((noinline)) inline void build_timers(const std::string &preferred,
       controls.push_back({LV_SYMBOL_STOP, "Stop", false, [e]() { request(e, "timer.cancel", "", "idle", "state"); }});
       controls.push_back({active ? LV_SYMBOL_PAUSE : LV_SYMBOL_PLAY, active ? "Pause" : "Resume", true,
                           [e, active]() { request(e, active ? "timer.pause" : "timer.start", "", active ? "paused" : "active", "state"); }});
-      controls.push_back({LV_SYMBOL_PLUS, "1 min", false, [e]() { request(e, "timer.change", "duration", "00:01:00", "panel_timer"); }});
+      controls.push_back({LV_SYMBOL_PLUS, "1 min", false, [e]() { if (extend_helper_timer) extend_helper_timer(e); }});
     } else {
       controls.push_back({LV_SYMBOL_PLAY, ringing ? "Restart" : "Start", true, [e]() { request(e, "timer.start", "", "active", "state"); }});
     }
@@ -3373,6 +3401,7 @@ inline std::string signature(const std::string &e, const EntityDetailState *d, c
   if (pending.entity == e) s += '|' + std::to_string(pending_value(e, pending.key));
   s += '|' + std::to_string(esphome::millis() - ran_at < 1500);
   s += '|' + std::to_string(onx_playlist::browser.open && onx_playlist::browser.entity == e);
+  if (has_prefix(e,"cover.")) s += "|" + onx_cover_presets::encode(onx_entity_config::cover_presets(e)) + std::to_string(onx_entity_config::cover_presets(e).enabled);
   if (shortcut) s += '|' + shortcut(e);
   if (custom_logic_entity_sub::is_timer_detail(e)) s += '|' + timer_signature();
   return s;

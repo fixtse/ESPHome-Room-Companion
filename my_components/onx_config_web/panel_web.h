@@ -936,7 +936,11 @@ static const char PANEL_JS[] = R"ONXPANEL(
    if(d.features&4)addRow('Direction',label(d.direction||'forward')+'  ›');
    if((d.features&8)&&options(d.presets).length)addRow('Preset',label(!d.preset_mode||d.preset_mode==='None'?'none':d.preset_mode)+'  ›');
   };
-  const buildCover=(l,e,d,title)=>{
+  const buildCover=(base,e,d,title)=>{
+   const raw=slot.coverPresets??d.cover_presets??'15,25,50,75',enabled=(slot.coverPresetsEnabled??d.cover_presets_enabled??'1')!=='0';
+   const presets=enabled&&(d.features&4)?String(raw).split(',').map(v=>v.trim()).filter(v=>/^\d{1,3}$/.test(v)&&Number(v)<=100).slice(0,4).map(Number):[];
+   const l={...base,vis:{...base.vis},ctl:{...base.ctl}};
+   if(presets.length&&!wide){const extra=P(12)+F.small.lh+P(6)+P(40);l.vis.h-=extra;l.ctl.y-=extra;l.ctl.h+=extra}
    const position=num(d.position),known=isFinite(position),moving=['opening','closing'].includes(d.state);header(l.head,title,label(d.state)+(known?' · '+pct(position):''));
    const fw=Math.min(P(200),l.vis.w),fh=l.vis.h-F.big.lh-P(12),fx=l.vis.x+(l.vis.w-fw)/2,fy=l.vis.y,border=P(6);
    box(fx,fy,fw,fh,CONTROL,P(10));box(fx+border,fy+border,fw-2*border,fh-2*border,'#1B2733',P(4));
@@ -945,6 +949,10 @@ static const char PANEL_JS[] = R"ONXPANEL(
    text(known?pct(position):label(d.state),F.big,TEXT,l.vis.x,fy+fh+P(8),l.vis.w,'center');
    const all=[['Open',1],['Stop',8],['Close',2]].filter(b=>!d.features||(d.features&b[1]));if(!all.length)return;
    const gap=P(10),n=all.length,bw=Math.trunc((l.ctl.w-gap*(n-1))/n),bh=Math.min(P(56),l.ctl.h);all.forEach((b,i)=>button(l.ctl.x+i*(bw+gap),l.ctl.y,bw,bh,P(14),b[0]==='Stop'&&moving?STRONG:CONTROL,b[0],F.body,TEXT));
+   if(presets.length){const cols=Math.min(wide&&W<400?2:4,presets.length),pg=P(8),ph=P(40),y=l.ctl.y+bh+P(12),pw=Math.trunc((l.ctl.w-(cols-1)*pg)/cols);
+    text('Positions',F.small,MUTED,l.ctl.x,y,l.ctl.w);const top=y+F.small.lh+P(6);
+    presets.forEach((v,i)=>{const py=top+Math.floor(i/cols)*(ph+pg);if(py+ph>bottomOf(l.ctl))return;const on=known&&Math.abs(position-v)<.51;button(l.ctl.x+(i%cols)*(pw+pg),py,pw,ph,ph/2,on?TINT:CONTROL,v+'%',F.small,on?ACCENT:SOFT,on?{stroke:ACCENT,'stroke-width':P(2)}:{})});
+   }
   };
   const buildToggle=(l,e,d,title,v)=>{
    const on=d.state==='on';header(l.head,title,d.available!==false?(on?'On':'Off'):'Unavailable');
@@ -1005,7 +1013,7 @@ static const char PANEL_JS[] = R"ONXPANEL(
    const t=v.timer||{},state=t.state||d.state||'idle',total=seconds(t.duration);
    const left=state==='paused'?seconds(t.remaining):state==='active'?num(t.deadline_seconds_left):total;
    const ready=isFinite(left),ringing=ready&&state==='active'&&left<=0;
-   let context='Timer';if(!ready)context+=' · syncing';else if(ringing)context='Time is up';
+   let context=t.voice?'Voice timer':'Timer';if(!ready)context+=' · syncing';else if(ringing)context='Time is up';
    else if(state==='active'){const f=clock(now+Math.round(left));if(f)context+=' · finishes '+f}else context+=state==='paused'?' · paused':' · idle';
    const pad=P(16),col={x:pad,y:pad,w:W-2*pad,h:H-2*pad},nf=fit(title,col.w,[F.title,F.body]);
    text(title,nf,TEXT,col.x,col.y,col.w);text(context,F.small,ringing?ACCENT:MUTED,col.x,col.y+nf.lh,col.w);

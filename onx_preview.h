@@ -156,6 +156,11 @@ inline void build(JsonObject root, const std::string &query_entity, const Contex
       panel["percentage"] = onx_controls::effective(*detail,"percentage");
       panel["oscillating"] = onx_controls::effective(*detail,"oscillating");
       panel["direction"] = onx_controls::effective(*detail,"direction");
+      if (entity.rfind("cover.",0)==0) {
+        const auto cover = onx_entity_config::cover_presets(entity);
+        panel["cover_presets"] = onx_cover_presets::encode(cover);
+        panel["cover_presets_enabled"] = cover.enabled ? "1" : "0";
+      }
       panel["position"] = detail->position; panel["options"] = detail->options;
         panel["event_type"] = detail->event_type;
       if(std::isfinite(detail->progress.duration))panel["duration"] = detail->progress.duration;
@@ -197,7 +202,13 @@ inline void build(JsonObject root, const std::string &query_entity, const Contex
         timer["state"] = detail->state;
         timer["finishes_at"] = detail->timer_finishes_at;
         timer["remaining"] = detail->timer_remaining;
-        timer["duration"] = detail->timer_duration;
+        timer["duration"] = detail->voice_timer ? onx_timer::duration_argument(uint32_t(detail->voice_duration)) : detail->timer_duration;
+        if (detail->voice_timer) {
+          timer["voice"] = true;
+          timer["remaining"] = onx_timer::duration_argument(uint32_t(detail->voice_remaining));
+          if (detail->state == "active") timer["deadline_seconds_left"] = std::max(0.0,
+              detail->voice_remaining - (esphome::millis() - detail->timer_received_ms) / 1000.0);
+        }
         if (has_finish && c.clock_valid) timer["deadline_seconds_left"] = double(finish) - clock.timestamp;
       }
       const auto now = esphome::ESPTime::from_epoch_local(c.now_epoch);

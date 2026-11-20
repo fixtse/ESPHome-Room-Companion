@@ -4,6 +4,7 @@
 #include <cstdint>
 #include "custom_logic.h"
 #include "onx_gesture.h"
+#include "onx_cover_presets.h"
 #include "onx_detail_view.h"
 #include "onx_config_rules.h"
 #include "onx_icon_state.h"
@@ -253,6 +254,34 @@ inline bool save_sensor_config(size_t i,const std::string &primary,const std::st
   snprintf(next.text,sizeof(next.text),"%s",text.empty()?"{value}":text.c_str());next.graph=primary.rfind("switch.",0)==0 ? !secondary.empty() : graph;
   if(!sensor_preferences[i].save(&next)||!esphome::global_preferences->sync())return false;
   onx_sensor_view::configs[i]=next;onx_sensor_view::states[i].bind(next);return true;
+}
+
+struct CoverPresetEntry { std::string entity; onx_cover_presets::Config config; };
+struct StoredCoverPresets { uint32_t magic{0x4F4E5843}; char entity[129]{}; onx_cover_presets::Config config; };
+inline std::vector<CoverPresetEntry> cover_preset_cache;
+inline onx_cover_presets::Config cover_presets(const std::string &entity) {
+  for (const auto &entry : cover_preset_cache) if (entry.entity == entity) return entry.config;
+  auto config = entity.rfind("cover.",0) == 0 ? onx_cover_presets::defaults() : onx_cover_presets::Config{};
+  if (entity.rfind("cover.",0) != 0 || !esphome::global_preferences) return config;
+  auto pref = esphome::global_preferences->make_preference<StoredCoverPresets>(esphome::fnv1_hash("onx.cover.presets.v1." + entity));
+  StoredCoverPresets stored;
+  if (pref.load(&stored) && stored.magic == 0x4F4E5843 && stored.config.count <= onx_cover_presets::MAX) {
+    stored.entity[128] = 0;
+    onx_cover_presets::Config checked;
+    if (entity == stored.entity && onx_cover_presets::parse(onx_cover_presets::encode(stored.config), checked)) { config = checked; config.enabled = stored.config.enabled; }
+  }
+  cover_preset_cache.push_back({entity,config});
+  return config;
+}
+inline bool save_cover_presets(const std::string &entity, const onx_cover_presets::Config &config) {
+  if (entity.rfind("cover.",0) != 0) return config.count == 0;
+  if (!esphome::global_preferences) return false;
+  StoredCoverPresets stored;
+  snprintf(stored.entity,sizeof(stored.entity),"%s",entity.c_str()); stored.config = config;
+  auto pref = esphome::global_preferences->make_preference<StoredCoverPresets>(esphome::fnv1_hash("onx.cover.presets.v1." + entity));
+  if (!pref.save(&stored) || !esphome::global_preferences->sync()) return false;
+  for (auto &entry : cover_preset_cache) if (entry.entity == entity) { entry.config = config; return true; }
+  cover_preset_cache.push_back({entity,config}); return true;
 }
 
 inline bool playlists_loaded=false;
@@ -516,6 +545,8 @@ inline void encode_slot(size_t i, JsonObject slot) {
   gestures["pressResponses"]=bound && control.press_responses?"1":"0";
   gestures["events"]=bound && control.events?"1":"0";
   gestures["step"]=std::to_string(bound?control.step:1);
+  slot["coverPresetsEnabled"] = cover_presets(custom_logic::cached_device_entity_id(i)).enabled ? "1" : "0";
+  slot["coverPresets"] = onx_cover_presets::encode(cover_presets(custom_logic::cached_device_entity_id(i)));
   slot["timerHidden"] = timer_hidden(i,custom_logic::cached_device_entity_id(i))?"1":"0";
   JsonArray playlists=slot["playlists"].to<JsonArray>();
   const auto &playlist=onx_playlist::configs[i];

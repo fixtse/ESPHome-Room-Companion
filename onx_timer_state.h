@@ -11,7 +11,13 @@ namespace onx_timer {
 
 // Use the original duration for unnamed Assist timers, never the countdown.
 // HA resolves duplicate names/durations and sends the authoritative update.
-enum class Action { PAUSE, RESUME, STOP };
+inline std::string duration_argument(uint32_t total) {
+  char value[32];
+  std::snprintf(value, sizeof(value), "%lu:%02lu:%02lu", static_cast<unsigned long>(total / 3600),
+      static_cast<unsigned long>((total / 60) % 60), static_cast<unsigned long>(total % 60));
+  return value;
+}
+enum class Action { PAUSE, RESUME, STOP, ADD_MINUTE };
 inline constexpr const char *conversation_agent = "conversation.home_assistant";
 // HA's English sentences accept hours/minutes/seconds of 1-100 each, so say
 // "5 minute", "1 hour and 30 minute", never "300 second".
@@ -27,6 +33,7 @@ inline std::string spoken_duration(uint32_t total) {
   return out.empty() ? "0 second" : out;
 }
 inline std::string control_sentence(const std::string &name, uint32_t total, Action action) {
+  if (action == Action::ADD_MINUTE) return "add 1 minute to the " + (name.empty() ? spoken_duration(total) : name) + " timer";
   return std::string(action == Action::STOP ? "cancel the " : action == Action::RESUME ? "resume the " : "pause the ") +
          (name.empty() ? spoken_duration(total) : name) + " timer";
 }

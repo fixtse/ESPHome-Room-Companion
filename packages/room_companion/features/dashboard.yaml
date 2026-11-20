@@ -4,6 +4,7 @@
 # Dashboard switch; swipe from the left edge to return.
 substitutions:
   dashboard_notice_seconds: "8"
+  default_dashboard_scale: "1"
 
 external_components:
   - source:
@@ -44,6 +45,7 @@ room_companion:
   dashboard_switch: dashboard_open_switch
   default_server: ${default_dashboard_server}
   default_url: ${default_dashboard_url}
+  default_scale: ${default_dashboard_scale}
   on_message:
     - lambda: |-
         const auto item = onx_notification::center.add("Dashboard", message, ${dashboard_notice_seconds}, "", millis());

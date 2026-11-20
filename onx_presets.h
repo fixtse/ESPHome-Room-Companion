@@ -244,6 +244,11 @@ inline bool slot_query(size_t index, JsonObjectConst slot, esphome::onx_config_w
   query.secondary = slot["secondary"] | std::string();
   query.secondary_text = slot["secondaryText"] | std::string("{value}");
   query.sensor_graph = slot["sensorGraph"] | std::string("0");
+  query.cover_presets = slot["coverPresets"] | (query.entity.rfind("cover.",0)==0 ? std::string("15,25,50,75") : std::string());
+  query.cover_presets_enabled = slot["coverPresetsEnabled"] | std::string("1");
+  onx_cover_presets::Config cover;
+  if (!onx_cover_presets::parse(query.cover_presets,cover)) return false;
+  query.cover_presets = onx_cover_presets::encode(cover);
   query.timer_hidden = slot["timerHidden"] | std::string("0");  // Registered timer: no page of its own.
   // Canonical gestures and playlists: fixed key order and defaults, so a backup
   // that omits or reorders them compares equal to the same saved slot.
@@ -272,7 +277,7 @@ inline bool slot_query(size_t index, JsonObjectConst slot, esphome::onx_config_w
          query.area.size() <= 192 && query.action_name.size() <= 192 && query.type.size() <= 32 &&
          query.icon.size() <= 80 && query.icon_override.size() <= 1 && query.secondary.size() <= 128 &&
          query.secondary_text.size() <= 160 && query.sensor_graph.size() <= 1 && query.timer_hidden.size() <= 1 &&
-         query.gestures.size() <= 1600 && query.playlists.size() <= 2048;
+         query.cover_presets_enabled.size() <= 1 && query.cover_presets.size() <= 31 && query.gestures.size() <= 1600 && query.playlists.size() <= 2048;
 }
 
 // Two slots are the same when the save requests they produce are the same, so
@@ -281,7 +286,7 @@ inline bool same_query(const esphome::onx_config_web::Query &a, const esphome::o
   return a.entity == b.entity && a.action == b.action && a.name == b.name && a.area == b.area &&
          a.action_name == b.action_name && a.type == b.type && a.icon == b.icon && a.icon_override == b.icon_override &&
          a.secondary == b.secondary && a.secondary_text == b.secondary_text && a.sensor_graph == b.sensor_graph &&
-         a.timer_hidden == b.timer_hidden && a.gestures == b.gestures && a.playlists == b.playlists;
+         a.cover_presets_enabled == b.cover_presets_enabled && a.cover_presets == b.cover_presets && a.timer_hidden == b.timer_hidden && a.gestures == b.gestures && a.playlists == b.playlists;
 }
 
 // ---- operations ----------------------------------------------------------

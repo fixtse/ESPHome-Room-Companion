@@ -25,6 +25,7 @@ substitutions:
   # Optional first-boot defaults for the dashboard stream (editable on Visit).
   default_dashboard_server: ""
   default_dashboard_url: ""
+  default_dashboard_scale: "0.75"
 
 packages:
   board: !include packages/room_companion/boards/onx2432g028.yaml

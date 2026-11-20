@@ -18,7 +18,7 @@
    "state": "heat",
    "current": "19.5",
    "target": "21.5",
-   "unit": "°C",
+   "unit": "\u00b0C",
    "modes": [
     "off",
     "heat"
@@ -43,7 +43,7 @@
    "entity_id": "sensor.living_temperature",
    "name": "Living temperature",
    "state": "21.4",
-   "unit": "°C"
+   "unit": "\u00b0C"
   },
   {
    "entity_id": "sensor.living_humidity",
@@ -105,7 +105,7 @@
    "entity_id": "weather.home",
    "name": "Home",
    "state": "partlycloudy",
-   "unit": "°C",
+   "unit": "\u00b0C",
    "humidity": "62",
    "apparent_temperature": "12",
    "wind_speed": "18",
@@ -278,7 +278,7 @@
    "current": "22",
    "low": "19",
    "high": "24",
-   "unit": "°C",
+   "unit": "\u00b0C",
    "modes": [
     "off",
     "heat",
@@ -298,6 +298,69 @@
    "name": "Porch",
    "state": "unavailable",
    "unavailable": true
+  },
+  {
+   "entity_id": "sensor.voice_kitchen_voice_timer",
+   "name": "Tea",
+   "state": "active",
+   "voice_timers": [
+    [
+     "Tea",
+     300,
+     180,
+     1
+    ]
+   ]
+  },
+  {
+   "entity_id": "sensor.voice_bedroom_voice_timer",
+   "name": "Coffee",
+   "state": "paused",
+   "voice_timers": [
+    [
+     "Coffee",
+     600,
+     240,
+     0
+    ]
+   ]
+  },
+  {
+   "entity_id": "timer.running",
+   "name": "Running helper",
+   "state": "active",
+   "timer_duration": "0:05:00",
+   "timer_remaining": "0:03:00",
+   "timer_finishes_in": 180
+  },
+  {
+   "entity_id": "cover.presets_disabled",
+   "name": "Disabled presets",
+   "state": "open",
+   "position": "50",
+   "features": 15,
+   "cover_presets_enabled": false
+  },
+  {
+   "entity_id": "cover.presets_custom",
+   "name": "Custom presets",
+   "state": "open",
+   "position": "25",
+   "features": 15,
+   "cover_presets": [
+    20,
+    40,
+    60,
+    80
+   ]
+  },
+  {
+   "entity_id": "cover.presets_empty",
+   "name": "No positions",
+   "state": "open",
+   "position": "50",
+   "features": 15,
+   "cover_presets": []
   }
  ],
  "pages": [

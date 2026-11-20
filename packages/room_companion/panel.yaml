@@ -192,15 +192,17 @@ interval:
           condition:
             lambda: |-
               auto *wifi_component = wifi::global_wifi_component;
-              static uint32_t down_since = 0, warned = 0;
+              static uint32_t warned = 0;
+              if (wifi_component == nullptr || wifi_component->is_connected()) return false;
               if (esphome::esp32_ble::global_ble != nullptr && esphome::esp32_ble::global_ble->is_active()) {
                 onx_ble_guard::done();
                 return false;
               }
-              if (wifi_component == nullptr || wifi_component->is_connected()) { down_since = 0; return false; }
-              if (down_since == 0) down_since = millis();
               const bool saved = wifi_component->has_sta() && !wifi_component->get_sta().get_ssid().empty();
-              if (saved ? millis() - down_since < 30000 : millis() < 10000) return false;
+              // A provisioned panel never automatically reopens Bluetooth,
+              // including slow Wi-Fi reconnects after a reboot. USB Improv and
+              // the setup AP remain available for network recovery.
+              if (saved || millis() < 10000) return false;
               if (onx_ble_guard::blocked()) return false;
               if (!onx_ble_guard::enough_memory(${ble_min_free}, ${ble_min_block})) {
                 if (millis() - warned > 60000) {

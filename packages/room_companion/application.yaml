@@ -60,6 +60,7 @@ esphome:
     - ../../onx_detail_view.h
     - ../../onx_sensor_graph.h
     - ../../onx_display_settings.h
+    - ../../onx_cover_presets.h
     - ../../onx_entity_config.h
     - ../../onx_clock_sensors.h
     - ../../onx_presets.h

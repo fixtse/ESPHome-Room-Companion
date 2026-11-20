@@ -40,6 +40,8 @@ light:
     internal: true
 
 # The amplifier is NS4168, enabled by EXIO0, not an I2C audio codec.
+# Keep it shut down until the I2S speaker has started its clocks. Leaving it
+# enabled from cold boot amplifies undefined input until the first playback.
 switch:
   - platform: gpio
     id: speaker_amplifier
@@ -48,7 +50,7 @@ switch:
       pcf8574: board_expander
       number: 0
       mode: OUTPUT
-    restore_mode: ALWAYS_ON
+    restore_mode: ALWAYS_OFF
 
 # The panel's ili9xxx fork (orientation and panel-sleep commands).
 display:
@@ -119,6 +121,18 @@ speaker:
     channel: mono
     i2s_comm_fmt: stand_msb
     buffer_duration: 100ms
+
+# Gate the physical amplifier from the actual speaker state, covering Assist,
+# media and timer sounds alike. Avoid I2C writes when the state is unchanged.
+interval:
+  - interval: 10ms
+    then:
+      - lambda: |-
+          const bool playing = id(panel_speaker).is_running();
+          if (id(speaker_amplifier).state != playing) {
+            if (playing) id(speaker_amplifier).turn_on();
+            else id(speaker_amplifier).turn_off();
+          }
 
 # BOOT: Improv BLE authorization during setup, Assist afterwards (assist.yaml).
 binary_sensor:

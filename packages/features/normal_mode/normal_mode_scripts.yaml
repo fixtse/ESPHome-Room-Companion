@@ -405,6 +405,17 @@ script:
           lv_obj_t *target = id(normal_panel_page)->obj;
           if (total == 0 && selected == 0) {
             target = id(normal_ha_added) ? id(device_empty)->obj : id(normal_add_hmi_page)->obj;
+            if (target == id(device_empty)->obj) {
+              std::string url = "Open the device's Visit link\nin Home Assistant";
+              if (wifi::global_wifi_component != nullptr && wifi::global_wifi_component->is_connected()) {
+                for (const auto &ip : wifi::global_wifi_component->get_ip_addresses()) {
+                  if (!ip.is_set()) continue;
+                  char address[network::IP_ADDRESS_BUFFER_SIZE] = {0};
+                  ip.str_to(address); url = std::string("http://") + address + "/"; break;
+                }
+              }
+              lv_label_set_text(id(normal_device_empty_url), url.c_str());
+            }
           } else if (total == 0 && !id(normal_ha_added) && selected == 1) {
             target = id(normal_setup_help_page)->obj;
           }
