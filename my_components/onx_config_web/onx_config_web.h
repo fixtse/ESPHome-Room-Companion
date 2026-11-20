@@ -67,5 +67,6 @@ class ConfigWeb : public Component, public AsyncWebHandler {
   std::deque<std::pair<uint32_t, Body>> results_;
   uint32_t next_ticket_{0};
   HADiscovery discovery_;
+  HADiscovery immich_discovery_{"_immichframe", "ImmichFrame"};
 };
 }  // namespace esphome::onx_config_web

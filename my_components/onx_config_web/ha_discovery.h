@@ -10,8 +10,12 @@
 namespace esphome::onx_config_web {
 // ESP-IDF performs the multicast search asynchronously. Never wait for network
 // replies on the ESPHome/LVGL task; retain at most four advertised instances.
+// The same search serves Home Assistant (_home-assistant._tcp) and ImmichFrame
+// (_immichframe._tcp); both advertise their address in TXT records.
 class HADiscovery {
  public:
+  HADiscovery(const char *service = "_home-assistant", const char *fallback_name = "Home Assistant")
+      : service_(service), fallback_name_(fallback_name) {}
   void poll() {
 #if defined(USE_ESP32) && defined(USE_MDNS)
     if (!search_) return;
@@ -26,9 +30,9 @@ class HADiscovery {
         const std::string key(txt.key), value(txt.value);
         const bool usable = value.size() <= 192 && (value.rfind("http://", 0) == 0 || value.rfind("https://", 0) == 0) &&
                             value.find('@') == std::string::npos;
-        if (key == "internal_url" && usable) url = value;
+        if ((key == "internal_url" || key == "url") && usable) url = value;
         else if (key == "base_url" && usable) base = value;
-        else if (key == "location_name") name = value.substr(0, 80);
+        else if (key == "location_name" || key == "name") name = value.substr(0, 80);
         else if (key == "version") version = value.substr(0, 32);
         else if (key == "uuid") uuid = value.substr(0, 64);
       }
@@ -44,7 +48,7 @@ class HADiscovery {
       bool duplicate = false;
       for (size_t i = 0; i < count_; ++i) duplicate |= urls_[i] == url;
       if (duplicate) continue;
-      if (name.empty()) name = r->instance_name ? std::string(r->instance_name).substr(0, 80) : "Home Assistant";
+      if (name.empty()) name = r->instance_name ? std::string(r->instance_name).substr(0, 80) : std::string(fallback_name_);
       names_[count_] = std::move(name);
       versions_[count_] = std::move(version);
       uuids_[count_] = std::move(uuid);
@@ -61,7 +65,7 @@ class HADiscovery {
 #if defined(USE_ESP32) && defined(USE_MDNS)
     if (!search_ && (!started_ || (refresh && now - started_ms_ >= 5000))) {
       started_ = true; started_ms_ = now; count_ = 0;
-      search_ = mdns_query_async_new(nullptr, "_home-assistant", "_tcp", MDNS_TYPE_PTR, 2500, 4, nullptr);
+      search_ = mdns_query_async_new(nullptr, service_, "_tcp", MDNS_TYPE_PTR, 2500, 4, nullptr);
       status_ = search_ ? "searching" : "unavailable";
     }
 #endif
@@ -85,6 +89,7 @@ class HADiscovery {
     }
     return out + '"';
   }
+  const char *service_, *fallback_name_;
   std::array<std::string, 4> names_, urls_, versions_, uuids_;
   size_t count_{0};
   bool started_{false};

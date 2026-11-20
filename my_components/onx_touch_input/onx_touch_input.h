@@ -47,6 +47,10 @@ class TouchInput : public Component, public touchscreen::TouchListener {
   void set_edge_back(std::function<bool()> &&f) { edge_back_ = std::move(f); }
   void set_swipe_left_back(std::function<bool()> &&f) { swipe_left_back_ = std::move(f); }
   void set_pull_down_enabled(std::function<bool()> &&f) { pull_down_enabled_ = std::move(f); }
+  // Photo idle screens: a horizontal swipe changes the photo (+1 next, -1
+  // previous); a tap or any other swipe is a button press (leaves the screen).
+  void set_photo_swipe(std::function<bool()> &&f) { photo_swipe_ = std::move(f); }
+  Trigger<int> *get_photo_swipe_trigger() { return &photo_swipe_trigger_; }
   Trigger<> *get_pull_down_trigger() { return &pull_down_trigger_; }
   // Live feedback for the pull-down: `drag` gets the travel while the finger
   // moves; `release` gets travel and duration and returns whether to fire
@@ -90,7 +94,7 @@ class TouchInput : public Component, public touchscreen::TouchListener {
       press_pending_ = false; pressed_ = true; press_fn_(x0_, y0_, true);
     }
     // Hold is time-based: promote a still finger to a held button.
-    if (!(dock_scroll_ && y0_>=strip_top_ && page_swipe_ && page_swipe_()) && !native_ && !back_ && !pull_only_ && !zone_ && state_ == State::DOWN && millis() - down_ms_ >= hold_ms_) {
+    if (!photo_ && !(dock_scroll_ && y0_>=strip_top_ && page_swipe_ && page_swipe_()) && !native_ && !back_ && !pull_only_ && !zone_ && state_ == State::DOWN && millis() - down_ms_ >= hold_ms_) {
       if (hold_fn_ && hold_fn_(x0_, y0_)) { state_ = State::IGNORED; return; }
       state_ = State::HELD;
       press_(true);
@@ -112,7 +116,7 @@ class TouchInput : public Component, public touchscreen::TouchListener {
       begin_(point->x, point->y);
       // Like a phone list: highlight only once the finger has stayed put
       // briefly, so the start of a swipe never flashes the card.
-      press_pending_ = state_ == State::DOWN && press_fn_ && !native_ && !pull_only_ && !zone_;
+      press_pending_ = state_ == State::DOWN && press_fn_ && !photo_ && !native_ && !pull_only_ && !zone_;
     }
     else if (state_ == State::IGNORED && handoff_(point->x, point->y)) {
     } else if (state_ == State::IGNORED) {
@@ -156,6 +160,12 @@ class TouchInput : public Component, public touchscreen::TouchListener {
       }
     }
     zone_ = false;
+    photo_ = photo_swipe_ && photo_swipe_();
+    if (photo_) {
+      back_ = left_back_ = native_ = pull_ = pull_up_ = pull_only_ = false;
+      state_ = State::DOWN; x_ = x; y_ = y; down_ms_ = millis(); consumed_ = 0; axis_ = 0;
+      return;
+    }
     back_ = back_enabled_ && back_enabled_();
     left_back_ = back_ && swipe_left_back_ && swipe_left_back_();
     // Navigation can start over an LVGL control, but LVGL still owns taps there.
@@ -189,6 +199,7 @@ class TouchInput : public Component, public touchscreen::TouchListener {
       press_pending_ = false;
       unpress_();
     }
+    if (photo_) { last_swipe_ms_ = millis(); return; }
     if (axis_ == 1 && (back_ || left_back_)) { last_swipe_ms_ = millis(); return; }
     if (zone_ && axis_ != 2) { last_swipe_ms_ = millis(); return; }
     if (axis_ == 2 && pull_ && pull_down_drag_) { last_swipe_ms_ = millis(); pull_down_drag_(dy); return; }
@@ -221,6 +232,16 @@ class TouchInput : public Component, public touchscreen::TouchListener {
     const State state = state_;
     state_ = State::IDLE;
     const int dx = x_ - x0_;
+    if (photo_) {
+      photo_ = false;
+      if (state == State::SWIPE && axis_ == 1 && std::abs(dx) >= 40) {
+        last_swipe_ms_ = millis(); photo_swipe_trigger_.trigger(dx < 0 ? 1 : -1); return;
+      }
+      if (state == State::IGNORED) return;
+      press_(true);
+      press_(false);
+      return;
+    }
     if (state == State::SWIPE && axis_ == 1 && ((left_back_ && dx <= -40) || (back_ && std::abs(dx) >= 40))) {
       last_swipe_ms_ = millis(); back_trigger_.trigger(); return;
     }
@@ -304,7 +325,9 @@ class TouchInput : public Component, public touchscreen::TouchListener {
   std::function<bool(int, uint32_t)> pull_up_release_;
   std::function<bool(int, int)> pull_up_zone_;
   Trigger<> back_trigger_, pull_down_trigger_, pull_up_trigger_;
-  bool pull_up_{false}, zone_{false};
+  bool pull_up_{false}, zone_{false}, photo_{false};
+  std::function<bool()> photo_swipe_;
+  Trigger<int> photo_swipe_trigger_;
   bool back_{false}, left_back_{false}, native_{false}, pull_{false}, pull_only_{false};
   uint32_t last_swipe_ms_{0};
   std::function<void(int)> dock_scroll_;

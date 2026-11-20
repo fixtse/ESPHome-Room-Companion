@@ -275,12 +275,47 @@ inline void sync_media(const Media &m, const lv_font_t *font) {
 // ------------------------------------------------------------ idle screen
 enum IdleMode { IDLE_CLOCK = 0, IDLE_SLIDESHOW = 1, IDLE_DASHBOARD = 2, IDLE_IMMICHFRAME = 3 };
 inline lv_obj_t *slide_layer = nullptr, *slide_image = nullptr, *slide_time = nullptr, *slide_hint = nullptr;
+// Bottom overlay over photos: the idle clock's time, date, weather and media.
+inline lv_obj_t *slide_bar = nullptr, *slide_date = nullptr, *slide_weather = nullptr, *slide_temp = nullptr,
+                *slide_media = nullptr;
 inline size_t slide_index = 0;
 inline uint32_t slide_due = 0;
 inline bool slide_loading = false;
 inline bool slide_is_immichframe = false;
+// Set by a horizontal swipe on a photo screen: -1 previous photo, +1 next.
+inline int slide_step = 0;
+// Error card when photos cannot be loaded: title, a large state and a reason.
+inline lv_obj_t *slide_error = nullptr, *slide_error_title = nullptr, *slide_error_state = nullptr,
+                *slide_error_text = nullptr;
+inline void slide_error_show(const char *title, const std::string &reason) {
+  if (slide_error == nullptr) return;
+  if (title == nullptr) { show(slide_error, false); return; }
+  lv_label_set_text(slide_error_title, title);
+  lv_label_set_text(slide_error_state, "Unavailable");
+  lv_label_set_text(slide_error_text, reason.c_str());
+  // Over a photo it sits at the top, clear of the clock; alone it is centred.
+  const bool photo = lv_image_get_src(slide_image) != nullptr;
+  lv_obj_align(slide_error, photo ? LV_ALIGN_TOP_MID : LV_ALIGN_CENTER, 0, photo ? S(12) : -S(40));
+  show(slide_error, true);
+  lv_obj_move_foreground(slide_error);
+}
+inline lv_obj_t *slide_busy = nullptr;  // "Loading…" pill shown at once on a swipe
+// Immediate answer to a swipe: dim the photo and show the pill until the new
+// one arrives (slide_ready) or fails.
+inline void slide_waiting(bool on) {
+  if (slide_busy == nullptr) return;
+  show(slide_busy, on);
+  if (on) {
+    lv_anim_delete(slide_image, nullptr);
+    lv_obj_set_style_image_opa(slide_image, LV_OPA_40, 0);
+    lv_obj_move_foreground(slide_busy);
+  }
+}
 
-inline std::string immichframe_photo_url(std::string base, int width, int height) {
+// ImmichFrame photo options (Home Assistant config entities).
+enum ImmichFrameFit { FIT_BLUR = 0, FIT_COVER = 1, FIT_CONTAIN = 2 };
+inline std::string immichframe_photo_url(std::string base, int width, int height, int fit = FIT_CONTAIN,
+                                         bool split = false, const std::string &info = "", bool back = false) {
   const auto scheme_end = base.find("://");
   if ((base.rfind("http://", 0) != 0 && base.rfind("https://", 0) != 0) ||
       base.find_first_of("?#@ \t\r\n") != std::string::npos)
@@ -288,8 +323,34 @@ inline std::string immichframe_photo_url(std::string base, int width, int height
   const auto host = scheme_end + 3;
   if (host >= base.size() || base[host] == '/') return {};
   while (base.back() == '/') base.pop_back();
-  return base + "/api/Asset/OpenNextion?width=" + std::to_string(width) +
-         "&height=" + std::to_string(height);
+  static const char *const fits[] = {"blur", "cover", "contain"};
+  std::string url = base + "/api/Asset/OpenNextion?width=" + std::to_string(width) +
+                    "&height=" + std::to_string(height);
+  if (fit != FIT_CONTAIN) url += std::string("&fit=") + fits[fit >= FIT_BLUR && fit <= FIT_CONTAIN ? fit : FIT_CONTAIN];
+  if (split) url += "&split=true";
+  if (!info.empty()) url += "&info=" + info;
+  if (back) url += "&back=true";
+  return url;
+}
+
+// Fade a new photo in from black (image opacity only: no extra layer buffer).
+inline void slide_fade_step(void *obj, int32_t v) {
+  lv_obj_set_style_image_opa(static_cast<lv_obj_t *>(obj), static_cast<lv_opa_t>(v), 0);
+}
+inline void slide_fade_in(bool animate) {
+  if (slide_image == nullptr) return;
+  lv_anim_delete(slide_image, slide_fade_step);
+  slide_waiting(false);
+  if (!animate) { slide_fade_step(slide_image, LV_OPA_COVER); return; }
+  slide_fade_step(slide_image, LV_OPA_TRANSP);
+  lv_anim_t a;
+  lv_anim_init(&a);
+  lv_anim_set_var(&a, slide_image);
+  lv_anim_set_exec_cb(&a, slide_fade_step);
+  lv_anim_set_values(&a, LV_OPA_TRANSP, LV_OPA_COVER);
+  lv_anim_set_duration(&a, 700);
+  lv_anim_set_path_cb(&a, lv_anim_path_ease_out);
+  lv_anim_start(&a);
 }
 
 inline std::vector<std::string> split_urls(const std::string &text) {
@@ -307,7 +368,8 @@ inline std::vector<std::string> split_urls(const std::string &text) {
   return out;
 }
 
-inline void create_slideshow(lv_obj_t *standby_page, const lv_font_t *time_font, const lv_font_t *hint_font) {
+inline void create_slideshow(lv_obj_t *standby_page, const lv_font_t *time_font, const lv_font_t *hint_font,
+                             const lv_font_t *value_font) {
   slide_layer = lv_obj_create(standby_page);
   lv_obj_set_size(slide_layer, width, height);
   lv_obj_set_pos(slide_layer, 0, 0);
@@ -327,15 +389,67 @@ inline void create_slideshow(lv_obj_t *standby_page, const lv_font_t *time_font,
   lv_obj_set_style_text_align(slide_hint, LV_TEXT_ALIGN_CENTER, 0);
   lv_label_set_text(slide_hint, "Add picture addresses in\n\"Slideshow pictures\" in Home Assistant.");
   lv_obj_center(slide_hint);
-  slide_time = lv_label_create(slide_layer);
-  lv_obj_set_style_text_font(slide_time, time_font, 0);
-  lv_obj_set_style_text_color(slide_time, lv_color_hex(0xFFFFFF), 0);
-  lv_obj_set_style_bg_color(slide_time, lv_color_hex(0x000000), 0);
-  lv_obj_set_style_bg_opa(slide_time, LV_OPA_50, 0);
-  lv_obj_set_style_pad_hor(slide_time, S(8), 0);
-  lv_obj_set_style_radius(slide_time, S(8), 0);
-  lv_obj_align(slide_time, LV_ALIGN_BOTTOM_LEFT, S(12), -S(12));
-  lv_label_set_text(slide_time, "");
+  // Darkening fade under the overlay so white text reads on bright photos.
+  slide_bar = lv_obj_create(slide_layer);
+  lv_obj_remove_style_all(slide_bar);
+  lv_obj_remove_flag(slide_bar, static_cast<lv_obj_flag_t>(LV_OBJ_FLAG_SCROLLABLE | LV_OBJ_FLAG_CLICKABLE));
+  lv_obj_set_style_bg_opa(slide_bar, LV_OPA_COVER, 0);
+  lv_obj_set_style_bg_color(slide_bar, lv_color_hex(0x000000), 0);
+  lv_obj_set_style_bg_grad_color(slide_bar, lv_color_hex(0x000000), 0);
+  lv_obj_set_style_bg_main_opa(slide_bar, LV_OPA_TRANSP, 0);
+  lv_obj_set_style_bg_grad_opa(slide_bar, LV_OPA_70, 0);
+  lv_obj_set_style_bg_grad_dir(slide_bar, LV_GRAD_DIR_VER, 0);
+  auto text = [&](const lv_font_t *font, uint32_t color) {
+    lv_obj_t *l = lv_label_create(slide_bar);
+    lv_obj_set_style_text_font(l, font, 0);
+    lv_obj_set_style_text_color(l, lv_color_hex(color), 0);
+    lv_obj_remove_flag(l, LV_OBJ_FLAG_CLICKABLE);
+    lv_label_set_text(l, "");
+    return l;
+  };
+  slide_time = text(time_font, 0xFFFFFF);
+  slide_date = text(hint_font, 0xE0E0E0);
+  slide_temp = text(value_font, 0xFFFFFF);
+  slide_media = text(hint_font, 0xE0E0E0);
+  lv_label_set_long_mode(slide_media, LV_LABEL_LONG_DOT);
+  slide_error = lv_obj_create(slide_layer);
+  lv_obj_remove_flag(slide_error, static_cast<lv_obj_flag_t>(LV_OBJ_FLAG_SCROLLABLE | LV_OBJ_FLAG_CLICKABLE));
+  lv_obj_set_size(slide_error, width - 2 * S(16), LV_SIZE_CONTENT);
+  lv_obj_set_style_bg_color(slide_error, lv_color_hex(0x1C1C1E), 0);
+  lv_obj_set_style_bg_opa(slide_error, LV_OPA_90, 0);
+  lv_obj_set_style_border_color(slide_error, lv_color_hex(0x48484A), 0);
+  lv_obj_set_style_border_width(slide_error, 1, 0);
+  lv_obj_set_style_radius(slide_error, S(14), 0);
+  lv_obj_set_style_pad_all(slide_error, S(14), 0);
+  lv_obj_set_style_pad_row(slide_error, S(2), 0);
+  lv_obj_set_flex_flow(slide_error, LV_FLEX_FLOW_COLUMN);
+  auto card_text = [&](const lv_font_t *font, uint32_t color) {
+    lv_obj_t *l = lv_label_create(slide_error);
+    lv_obj_set_width(l, lv_pct(100));
+    lv_obj_set_style_text_font(l, font, 0);
+    lv_obj_set_style_text_color(l, lv_color_hex(color), 0);
+    lv_label_set_long_mode(l, LV_LABEL_LONG_WRAP);
+    return l;
+  };
+  slide_error_title = card_text(hint_font, 0xC7C7CC);
+  slide_error_state = card_text(value_font, 0xFFFFFF);
+  slide_error_text = card_text(hint_font, 0x9C9C9E);
+  show(slide_error, false);
+  slide_busy = lv_label_create(slide_layer);
+  lv_obj_set_style_text_font(slide_busy, hint_font, 0);
+  lv_obj_set_style_text_color(slide_busy, lv_color_hex(0xFFFFFF), 0);
+  lv_obj_set_style_bg_color(slide_busy, lv_color_hex(0x000000), 0);
+  lv_obj_set_style_bg_opa(slide_busy, LV_OPA_60, 0);
+  lv_obj_set_style_pad_hor(slide_busy, S(14), 0);
+  lv_obj_set_style_pad_ver(slide_busy, S(6), 0);
+  lv_obj_set_style_radius(slide_busy, LV_RADIUS_CIRCLE, 0);
+  lv_obj_remove_flag(slide_busy, LV_OBJ_FLAG_CLICKABLE);
+  lv_label_set_text(slide_busy, "Loading...");
+  lv_obj_center(slide_busy);
+  show(slide_busy, false);
+  slide_weather = lv_image_create(slide_bar);
+  lv_obj_remove_flag(slide_weather, LV_OBJ_FLAG_CLICKABLE);
+  lv_image_set_inner_align(slide_weather, LV_IMAGE_ALIGN_CONTAIN);
   show(slide_layer, false);
 }
 

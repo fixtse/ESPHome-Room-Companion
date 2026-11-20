@@ -150,13 +150,45 @@ static const char PANEL_JS[] = R"ONXPANEL(
  function selectPage(i){view='page';selectedPage=i;const p=pageConfigs[i];selectedPos=Math.max(0,p?p.entities.findIndex(Boolean):0);status('');if(!focusMember())touch()}
  function selectPos(pos){view='page';selectedPos=pos;status('');if(!focusMember())touch()}
  function place(page,pos,item){
-  const e=item.entity;if(page.entities.includes(e)&&page.entities[pos]!==e){status(nameOf(e)+' is already on this page.');return}
+  const e=item.entity;if(page.entities.includes(e)&&page.entities[pos]!==e){status(nameOf(e)+' is already on this page.');return false}
   // The same entity may appear on several pages: one entry, one subscription.
-  const other=!page.entities.slice(0,pos).some(Boolean)&&pageConfigs.find(p=>p!==page&&lead(p)===e);if(other){status(nameOf(e)+' already leads “'+(other.name||nameOf(e))+'”. Place it in another position.');return}
-  if(pos>0&&page.layout==='control_sensors'&&!compact(e)){status('Compact positions show sensors and binary sensors.');return}
-  try{if(slotOf(e)<0)app()?.add(item)}catch(error){status(error.message);return}
+  const other=!page.entities.slice(0,pos).some(Boolean)&&pageConfigs.find(p=>p!==page&&lead(p)===e);if(other){status(nameOf(e)+' already leads “'+(other.name||nameOf(e))+'”. Place it in another position.');return false}
+  if(pos>0&&page.layout==='control_sensors'&&!compact(e)){status('Compact positions show sensors and binary sensors.');return false}
+  try{if(slotOf(e)<0)app()?.add(item)}catch(error){status(error.message);return false}
   const old=page.entities[pos];page.entities[pos]=e;if(old!==e){updateArt(page,pos,'');setIconOnly(page,pos,false);if(old)release(old)}
   status('');view='page';selectedPage=pageConfigs.indexOf(page);selectedPos=pos;if(!focusMember())touch();
+  return true;
+ }
+ // ---- moving entities between pages
+ // A placed entity drags as {page,pos}; over a page in the list it opens that
+ // page after a short hover, and the list end makes a new single page.
+ const MEMBER='application/x-onx-member',ENTITY='application/x-onx-entity';
+ let dragged=null;  // {page,pos}: dataTransfer is unreadable during dragover
+ const dragKinds=ev=>[...ev.dataTransfer.types];
+ const carries=ev=>dragKinds(ev).includes(MEMBER)||dragKinds(ev).includes(ENTITY);
+ function endDrag(){dragged=null;document.body.classList.remove('dragging-entity')}
+ document.addEventListener('dragend',endDrag);document.addEventListener('drop',()=>setTimeout(endDrag));
+ // Take the entity off its page, then place it; put it back if placing fails.
+ function moveMember(from,page,pos){
+  const src=pageConfigs[from.page],e=src?.entities[from.pos];if(!e)return false;
+  if(src===page&&from.pos===pos)return false;
+  const art=positionArt(src,from.pos),icon=iconOnly(src,from.pos);
+  src.entities[from.pos]='';updateArt(src,from.pos,'');setIconOnly(src,from.pos,false);
+  if(place(page,pos,{entity:e,name:nameOf(e),icon:iconOf(e)})){if(art)updateArt(page,pos,art);if(icon)setIconOnly(page,pos,true);touch();return true}
+  src.entities[from.pos]=e;updateArt(src,from.pos,art);setIconOnly(src,from.pos,icon);touch();return false;
+ }
+ function dropOnNewPage(ev){
+  ev.preventDefault();const item=ev.dataTransfer.getData(ENTITY),from=dragKinds(ev).includes(MEMBER)?dragged:null;endDrag();
+  const page={name:'',icon:'',layout:'single',entities:['']};pageConfigs.push(page);
+  const ok=from?moveMember(from,page,0):item?place(page,0,JSON.parse(item)):false;
+  if(!ok){pageConfigs.splice(pageConfigs.indexOf(page),1);touch()}
+ }
+ function newPageDrop(){
+  const z=el('div','page-drop-new','Drop here for a new page');
+  z.ondragover=ev=>{if(!carries(ev))return;ev.preventDefault();z.classList.add('drop-target')};
+  z.ondragleave=()=>z.classList.remove('drop-target');
+  z.ondrop=ev=>{z.classList.remove('drop-target');dropOnNewPage(ev)};
+  return z;
  }
  // Entries stay while a page or the timer list still uses them.
  function release(e){const i=slotOf(e);if(e&&i>=0&&editorSlots[i].timerHidden!=='1'&&!pageConfigs.some(p=>p.entities.includes(e)))app()?.clear(i)}
@@ -176,16 +208,18 @@ static const char PANEL_JS[] = R"ONXPANEL(
   if(e){
    const tools=el('div','cell-tools'),swap=tool('Replace '+nameOf(e),'M4 7h13l-3-3M20 17H7l3 3'),rm=tool('Remove '+nameOf(e)+' from this page','m6 6 12 12M18 6 6 18',true);
    swap.onclick=()=>{selectPos(pos);pickFor(page,pos)};rm.onclick=()=>removeAt(page,pos);swap.disabled=rm.disabled=editorBusy;tools.append(swap,rm);if(!isGrid(page))c.append(tools);
-   c.draggable=!editorBusy;c.ondragstart=ev=>{ev.dataTransfer.setData('application/x-onx-cell',String(pos));ev.dataTransfer.effectAllowed='move'};
+   c.draggable=!editorBusy;c.ondragstart=ev=>{const pg=pageConfigs.indexOf(page);dragged={page:pg,pos};ev.dataTransfer.setData('application/x-onx-cell',String(pos));ev.dataTransfer.setData(MEMBER,JSON.stringify(dragged));ev.dataTransfer.effectAllowed='move';document.body.classList.add('dragging-entity')};
   }
   c.ondragover=ev=>{ev.preventDefault();c.classList.add('drop')};c.ondragleave=()=>c.classList.remove('drop');
-  c.ondrop=ev=>{ev.preventDefault();c.classList.remove('drop');const from=ev.dataTransfer.getData('application/x-onx-cell'),item=ev.dataTransfer.getData('application/x-onx-entity');
+  c.ondrop=ev=>{ev.preventDefault();c.classList.remove('drop');const member=dragKinds(ev).includes(MEMBER)?dragged:null,from=ev.dataTransfer.getData('application/x-onx-cell'),item=ev.dataTransfer.getData('application/x-onx-entity');
+   // From another page: move it here (into an empty position, or replacing).
+   if(member&&pageConfigs[member.page]!==page){endDrag();moveMember(member,page,pos);return}
    if(from!==''){const f=+from,a=page.entities[f],b=page.entities[pos]||'';if(f===pos)return;if(page.layout==='control_sensors'&&((pos>0&&a&&!compact(a))||(f>0&&b&&!compact(b)))){status('Compact positions show sensors and binary sensors.');return}const art=positionArt(page,f),dest=positionArt(page,pos),fromIcon=iconOnly(page,f),toIcon=iconOnly(page,pos);page.entities[f]=b;page.entities[pos]=a;updateArt(page,f,dest);updateArt(page,pos,art);setIconOnly(page,f,toIcon);setIconOnly(page,pos,fromIcon);selectedPos=pos;status('');touch()}
    else if(item)place(page,pos,JSON.parse(item))};
   return c;
  }
  // Dropping a placed entity outside the screen removes it.
- $('page-grid').addEventListener('dragend',ev=>{if(ev.dataTransfer.dropEffect==='none'&&ev.target.dataset?.member!==undefined){const p=pageConfigs[selectedPage];if(p)removeAt(p,+ev.target.dataset.member)}});
+ $('page-grid').addEventListener('dragend',ev=>{if(ev.dataTransfer.dropEffect==='none'&&ev.target.isConnected&&ev.target.dataset?.member!==undefined){const p=pageConfigs[selectedPage];if(p)removeAt(p,+ev.target.dataset.member)}});
  let lastSettings={};
  const screen=()=>globalThis.ONX_PANEL_SCREEN?.(lastSettings)||{width:320,height:480};
  function thumb(kind){
@@ -261,8 +295,12 @@ static const char PANEL_JS[] = R"ONXPANEL(
   const dirty=JSON.stringify(savedList[i])!==JSON.stringify(p)||p.entities.some(e=>{const j=slotOf(e);return j>=0&&app()?.dirtyAt?.(j)});if(dirty)b.append(el('span','dirty-dot','●'));
   b.title=pageTitle(p,i);b.setAttribute('aria-label','Page '+(i+1)+': '+pageTitle(p,i)+(dirty?', unsaved':''));b.setAttribute('aria-current',String(view==='page'&&i===selectedPage));b.disabled=editorBusy;b.onclick=()=>selectPage(i);
   b.draggable=!editorBusy;b.ondragstart=ev=>{ev.dataTransfer.setData('application/x-onx-page',String(i));ev.dataTransfer.effectAllowed='move'};
-  b.ondragover=ev=>{if(![...ev.dataTransfer.types].includes('application/x-onx-page'))return;ev.preventDefault();b.classList.add('drop-target')};b.ondragleave=()=>b.classList.remove('drop-target');
-  b.ondrop=ev=>{b.classList.remove('drop-target');const f=ev.dataTransfer.getData('application/x-onx-page');if(f==='')return;ev.preventDefault();movePage(+f,i)};return b;
+  let openTimer=0;
+  b.ondragover=ev=>{
+   if(carries(ev)){ev.preventDefault();b.classList.add('drop-hover');if(!openTimer&&i!==selectedPage)openTimer=setTimeout(()=>{openTimer=0;if(document.body.classList.contains('dragging-entity')||dragKinds(ev).includes(ENTITY))selectPage(i)},550);return}
+   if(![...ev.dataTransfer.types].includes('application/x-onx-page'))return;ev.preventDefault();b.classList.add('drop-target')};
+  b.ondragleave=()=>{b.classList.remove('drop-target','drop-hover');clearTimeout(openTimer);openTimer=0};
+  b.ondrop=ev=>{b.classList.remove('drop-target','drop-hover');clearTimeout(openTimer);openTimer=0;if(carries(ev)){ev.preventDefault();return}const f=ev.dataTransfer.getData('application/x-onx-page');if(f==='')return;ev.preventDefault();movePage(+f,i)};return b;
  }
  function movePage(from,to){if(from===to||to<0||to>=pageConfigs.length)return;const [m]=pageConfigs.splice(from,1);pageConfigs.splice(to,0,m);selectedPage=to;view='page';touch()}
  // Rebuild a list only when what it shows changed, so a re-render cannot
@@ -275,7 +313,7 @@ static const char PANEL_JS[] = R"ONXPANEL(
   if(view==='page'&&selectedPage>=pageConfigs.length)selectedPage=Math.max(0,pageConfigs.length-1);
   if(view==='timer'&&!editorSlots.some(s=>s.entity===timerEntity&&s.timerHidden==='1')){view='page'}
   const names=pageConfigs.map(p=>p.entities.map(e=>e&&nameOf(e)+'|'+iconOf(e)+'|'+(app()?.dirtyAt?.(slotOf(e))?1:0)));
-  patch('slots',JSON.stringify([pageConfigs,savedPages,names,view,selectedPage,locked,pagesLoaded,pageError,!!editorTarget]),()=>pageConfigs.length?pageConfigs.map((p,i)=>pageButton(p,i,savedList)):[el('p','empty-note',pagesLoaded||editorTarget?'No pages yet.':pageError||'Loading pages…')]);
+  patch('slots',JSON.stringify([pageConfigs,savedPages,names,view,selectedPage,locked,pagesLoaded,pageError,!!editorTarget]),()=>[...(pageConfigs.length?pageConfigs.map((p,i)=>pageButton(p,i,savedList)):[el('p','empty-note',pagesLoaded||editorTarget?'No pages yet.':pageError||'Loading pages…')]),newPageDrop()]);
   $('slot-capacity').textContent=used()+'/'+MAX_ENTRIES+' entities';$('slot-capacity').title=used()+' of '+MAX_ENTRIES+' entity entries in use (pages and timers)';
   const timers=editorSlots.filter(s=>s.entity&&s.timerHidden==='1');
   patch('timer-list',JSON.stringify([timers.map(t=>t.entity+'|'+nameOf(t.entity)),view,timerEntity,locked]),()=>timers.map(t=>{

@@ -466,4 +466,68 @@ inline void update(lv_obj_t *page, int W, int H, const std::string &weather_stat
   }
 }
 
+// ------------------------------------------------------------ photo overlay
+// The slideshow and ImmichFrame screens keep the idle clock's information in a
+// band at the bottom: time and date on the left, current weather on the right
+// and the playing media above them. The parts follow the clock settings.
+inline void update_photo_overlay(int W, int H, const std::string &weather_state) {
+  using namespace onx_panel_ui;
+  if (slide_bar == nullptr || base.time == nullptr) return;
+  const int m = S(12);
+  const bool ampm = onx_display_settings::datetime.hour_format == 1 && onx_display_settings::datetime.show_ampm;
+  const lv_font_t *tf = ampm || fonts.clock == nullptr ? fonts.clock_ampm : fonts.clock;
+  if (tf != nullptr) onx_render::style_text_font(slide_time, tf, 0);
+  onx_render::style_text_font(slide_date, fonts.date, 0);
+  set_text(slide_date, lv_label_get_text(base.date));
+  if (lv_label_get_long_mode(slide_date) != LV_LABEL_LONG_DOT) lv_label_set_long_mode(slide_date, LV_LABEL_LONG_DOT);
+
+  const uint8_t parts = onx_clock_sensors::parts();
+  const std::string temp = base.temp ? lv_label_get_text(base.temp) : "";
+  const bool weather = (parts & onx_clock_sensors::WEATHER) && !weather_state.empty() &&
+                       weather_state != "unknown" && weather_state != "unavailable" && !temp.empty();
+  const auto *player = (parts & onx_clock_sensors::MEDIA) ? now_playing() : nullptr;
+  std::string media;
+  if (player != nullptr) {
+    media = player->media_title;
+    if (!player->media_artist.empty()) media += "  \xC2\xB7  " + player->media_artist;
+    if (player->state == "paused") media += "  \xC2\xB7  Paused";
+  }
+
+  // The clock line is the time font's height minus its empty descent, as on the idle clock.
+  const int time_h = line(tf) - line(tf) / 7, date_h = std::max(line(fonts.date), S(28)), media_h = line(fonts.small);
+  const int body = time_h + date_h + (media.empty() ? 0 : media_h + S(6));
+  const int bar_h = std::min(H / 2, body + 2 * m + S(36));  // headroom for the fade
+  size(slide_bar, W, bar_h);
+  at(slide_bar, 0, H - bar_h);
+  const int date_y = bar_h - m - date_h, time_y = date_y - time_h;
+  at(slide_time, m, time_y - line(tf) / 14);
+  at(slide_date, m + S(2), date_y + (date_h - line(fonts.date)) / 2);
+
+  show(slide_media, !media.empty());
+  if (!media.empty()) {
+    set_text(slide_media, media);
+    width(slide_media, W - 2 * m);
+    at(slide_media, m, time_y - S(6) - media_h);
+  }
+
+  // Weather sits right-aligned on the date line, under the clock, so the large
+  // digits never run into it.
+  show(slide_temp, weather);
+  show(slide_weather, weather);
+  if (weather) {
+    set_text(slide_temp, temp);
+    onx_render::style_text_font(slide_temp, fonts.date, 0);
+    const int icon = S(28), tw = text_width(temp.c_str(), fonts.date);
+    const int cy = date_y + date_h / 2;
+    at(slide_temp, W - m - tw, cy - line(fonts.date) / 2);
+    const void *src = condition_image ? condition_image(weather_state) : nullptr;
+    if (lv_image_get_src(slide_weather) != src) lv_image_set_src(slide_weather, src);
+    size(slide_weather, icon, icon);
+    at(slide_weather, W - m - tw - S(4) - icon, cy - icon / 2);
+    width(slide_date, std::max(S(40), W - 3 * m - tw - icon));
+  } else {
+    width(slide_date, W - 2 * m);
+  }
+}
+
 }  // namespace onx_idle_clock

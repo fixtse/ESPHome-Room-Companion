@@ -50,6 +50,17 @@ onx_touch_input:
   swipe_left_back: |-
     return id(room_panel)->native_ui_has_touch() && id(normal_device_detail_active) &&
            id(ui_presenter)->get_normal_device_entity_id(id(normal_device_detail_index)).rfind("climate.", 0) == 0;
+  # Photo idle screens: swipe left/right for the next/previous photo; a tap or
+  # vertical swipe is a normal press, which leaves the idle screen.
+  photo_swipe: |-
+    return !onx_panel_ui::hidden(onx_panel_ui::slide_layer) && id(ui_presenter)->is_standby_active() &&
+           !id(screen_off_state) && !id(sleep_mode_state) && !onx_notification_ui::owns_screen();
+  on_photo_swipe:
+    - lambda: |-
+        onx_panel_ui::slide_step = direction;
+        onx_panel_ui::slide_waiting(true);
+        onx_panel_ui::slide_due = millis();
+        onx_panel_ui::request_render();
   pull_down_enabled: |-
     return id(room_panel)->native_ui_has_touch() && !onx_notification_ui::owns_screen();
   on_pull_down:

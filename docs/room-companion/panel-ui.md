@@ -154,7 +154,8 @@ dropped.
   new lines (JPEG/PNG over HTTP, e.g. `http://homeassistant.local:8123/local/photos/1.jpg`).
   An address that returns a different picture each time (a camera snapshot or a
   random-photo service) also works on its own.
-- **Slideshow interval**: seconds per picture (5–600).
+- **Seconds per photo** (5–600) and **fade** are set on the web setup's
+  ImmichFrame page and apply to both photo idle screens.
 
 For photos hosted by Home Assistant, put JPEG or PNG files in
 `/config/www/room-companion/` and enter their full URLs under **Slideshow
@@ -168,14 +169,48 @@ Select **Photo slideshow** and wait for the standby timeout.
 
 ### ImmichFrame
 
-Run the ImmichFrame fork with the OpenNextion JPEG endpoint. In Home Assistant,
-set **ImmichFrame server** to its base address (for example
-`https://frame.example.net`), select **ImmichFrame** under **Idle screen**,
-and set **Slideshow interval**. The panel requests one photo per interval
-using its configured screen orientation. Rotate the panel through its existing
-orientation setting to switch between portrait and landscape. ImmichFrame uses
-the configured album and account filters, and the panel shows its local clock
-over the photo.
+Run the ImmichFrame fork with the OpenNextion JPEG endpoint. Open the panel's
+web setup and choose the **ImmichFrame** page. It searches the network for the
+server (mDNS, like the Home Assistant page; run the container with host
+networking) when no address is set, or when you press search. Pick the server
+or enter its address (for example `https://frame.example.net`), choose
+**ImmichFrame** as the idle screen and set the seconds per photo. Home Assistant
+keeps only **Idle screen** and **Slideshow pictures**; the other photo settings
+are on that page. The panel requests one photo per interval using its screen
+orientation. ImmichFrame uses its configured album and account filters.
+
+Photo options (panel web setup, ImmichFrame page):
+
+- **Photo fit**: *Blurred background* (default) shows the whole
+  photo over a blurred, darkened copy of itself, as ImmichFrame does when
+  `ImageFill` is off. *Fill screen* crops the edges, and *Whole photo* uses black
+  bars.
+- **Show two photos** (on by default): ImmichFrame's split view. A
+  portrait photo on a landscape screen is shown beside a second portrait photo,
+  and a landscape photo on a portrait screen is stacked with a second landscape
+  photo. A photo is shown alone when its size is unknown or the next photo does
+  not match. In that case, the unmatched photo is shown next.
+- **Photo details** (date, place, album, people, description): which photo
+  details ImmichFrame draws in the top-left corner of each photo (at most three
+  lines, in that order). Date and place are on by default; turn all of them off
+  for a clean photo. The date and place formats follow ImmichFrame's
+  `PhotoDateFormat`, `Language` and `ImageLocationFormat`.
+- **Fade in each new photo** (on by default): each new photo fades in from black. This
+  also applies to *Photo slideshow*.
+
+The server composes the photo, so the panel still downloads one screen-sized
+JPEG per interval. ImmichFrame's zoom and pan (Ken Burns) effects are not
+available because animating a full-screen photo is too slow on the SPI
+display.
+
+On both photo idle screens, swipe left for the next photo and right for the
+previous one. A tap or a vertical swipe leaves the idle screen. ImmichFrame
+remembers its last 20 screens for going back.
+
+Both photo idle screens show the idle clock's information in a band at the
+bottom: a large clock, with the date and current weather (from the idle clock's
+weather entity) on the line beneath it and the playing media above it. The clock settings that hide weather or
+now playing apply here too.
 
 If ImmichFrame uses `AuthenticationSecret`, add the full
 `Bearer <AuthenticationSecret>` header to your private `secrets.yaml` and

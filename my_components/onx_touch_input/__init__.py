@@ -36,6 +36,9 @@ CONFIG_SCHEMA = cv.Schema(
         # Swipe down from the top edge (e.g. open the notification centre).
         cv.Optional("pull_down_enabled"): cv.returning_lambda,
         cv.Optional("on_pull_down"): automation.validate_automation({}),
+        # Photo idle screens: horizontal swipes change the photo (on_photo_swipe).
+        cv.Optional("photo_swipe"): cv.returning_lambda,
+        cv.Optional("on_photo_swipe"): automation.validate_automation({}),
         cv.Optional("pull_up_enabled"): cv.returning_lambda,
         cv.Optional("on_pull_up"): automation.validate_automation({}),
         cv.Optional("on_back"): automation.validate_automation({}),
@@ -58,7 +61,7 @@ async def to_code(config):
     if "enabled" in config:
         lam = await cg.process_lambda(config["enabled"], [], return_type=cg.bool_)
         cg.add(var.set_enabled_lambda(lam))
-    for key in ("back_enabled", "native_touch", "page_swipe", "edge_back", "swipe_left_back", "pull_down_enabled", "pull_up_enabled"):
+    for key in ("back_enabled", "native_touch", "page_swipe", "edge_back", "swipe_left_back", "pull_down_enabled", "pull_up_enabled", "photo_swipe"):
         if key in config:
             lam = await cg.process_lambda(config[key], [], return_type=cg.bool_)
             cg.add(getattr(var, "set_" + key)(lam))
@@ -70,5 +73,7 @@ async def to_code(config):
         await automation.build_automation(var.get_pull_up_trigger(), [], conf)
     for conf in config.get("on_turn", []):
         await automation.build_automation(var.get_turn_trigger(), [(cg.int_, "direction")], conf)
+    for conf in config.get("on_photo_swipe", []):
+        await automation.build_automation(var.get_photo_swipe_trigger(), [(cg.int_, "direction")], conf)
     for conf in config.get("on_strip_tap", []):
         await automation.build_automation(var.get_strip_trigger(), [(cg.int_, "offset")], conf)

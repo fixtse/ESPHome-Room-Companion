@@ -46,6 +46,53 @@ async function discoverHA(auto=false){
  stop('No Home Assistant found automatically. Search again or enter its address below.');
 }
 $('ha-discover').onclick=()=>discoverHA(false);
+// ImmichFrame: discovery (the panel's mDNS search, as for Home Assistant) and
+// the idle-screen photo settings, saved through the panel's entities.
+let discoveringIF=false;
+// force: the search button (always a new search). Otherwise the panel returns
+// what an earlier search found and only searches when it has nothing yet.
+async function discoverIF(force=false){
+ if(discoveringIF)return;discoveringIF=true;
+ const button=$('if-discover'),status=$('if-discovery-status'),results=$('if-discovery-results'),scanner=$('if-scanner');
+ const stop=text=>{scanner.classList.remove('loading');button.disabled=false;status.textContent=text;discoveringIF=false};
+ scanner.classList.add('loading');button.disabled=true;status.textContent='Looking for ImmichFrame on the panel’s network…';
+ let response;
+ try{response=await rpc({op:'if_discover',...(force?{q:'refresh'}:{})});if(!force&&response.status==='ready'&&!(response.instances||[]).length)response=await rpc({op:'if_discover',q:'refresh'});for(let i=0;response.status==='searching'&&i<40;i++){await new Promise(r=>setTimeout(r,250));response=await rpc({op:'if_discover'})}}
+ catch{stop('Discovery is unavailable. Enter the ImmichFrame address below.');return}
+ results.replaceChildren();const seen=new Set();
+ for(const item of response.instances||[]){
+  const url=String(item.url||'').replace(/\/+$/,'');if(!/^https?:\/\/[^\s/?#@]+/.test(url)||seen.has(url))continue;seen.add(url);
+  const choice=document.createElement('button');choice.type='button';choice.className='ha-result';
+  choice.innerHTML='<svg viewBox="0 0 24 24" width="28" height="28" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="3" fill="#4250AF"/><circle cx="9" cy="10" r="2" fill="#fff"/><path d="m21 16-5-5-8 8h10a3 3 0 0 0 3-3Z" fill="#fff" fill-opacity=".85"/></svg>';
+  const text=document.createElement('span');text.append(element('b',item.name||'ImmichFrame'),element('small',url+(item.version?' · '+item.version:'')));
+  const chev=element('span','›');chev.className='chev';chev.setAttribute('aria-hidden','true');choice.append(text,chev);
+  choice.onclick=()=>{$('if-url').value=url;if($('if-idle').value!=='3')$('if-idle').value='3';$('if-status').textContent='Selected '+(item.name||'ImmichFrame')+'. Save to use it.';$('if-save').focus()};results.append(choice);
+ }
+ if(response.status==='unavailable'){stop('This panel cannot search the network. Enter the address below.');return}
+ stop(seen.size?(seen.size===1?'Found 1 ImmichFrame server. Select it, then save.':'Found '+seen.size+' ImmichFrame servers. Select one, then save.'):'No ImmichFrame found automatically. Search again or enter its address below.');
+}
+async function loadIF(){
+ try{const s=await rpc({op:'immich_state'});if(s.error)throw Error(s.error);
+  $('if-url').value=s.url||'';$('if-idle').value=s.idle||'0';$('if-fit').value=s.fit||'0';$('if-interval').value=s.interval||'20';
+  $('if-split').checked=s.split==='1';$('if-fade').checked=s.fade==='1';
+  const on=new Set(String(s.details||'').split(',').filter(Boolean));for(const c of document.querySelectorAll('[data-detail]'))c.checked=on.has(c.dataset.detail);
+  if(!s.url)void discoverIF();
+ }catch(error){$('if-status').textContent='Could not read the ImmichFrame settings: '+error.message}
+}
+$('if-discover').onclick=()=>discoverIF(true);
+$('if-form').onsubmit=async event=>{
+ event.preventDefault();const url=$('if-url').value.trim().replace(/\/+$/,''),status=$('if-status');
+ if(url&&!/^https?:\/\/[^\s/?#@]+(:\d+)?(\/[^\s?#@]*)?$/.test(url)){status.textContent='Enter the address with http:// or https://, for example http://192.168.1.20:8080.';return}
+ const details=[...document.querySelectorAll('[data-detail]')].filter(c=>c.checked).map(c=>c.dataset.detail);
+ if(details.length>3){status.textContent='Choose at most three photo details.';return}
+ const interval=Math.min(600,Math.max(5,Math.round((+$('if-interval').value||20)/5)*5));
+ const data=[url,$('if-idle').value,$('if-fit').value,$('if-split').checked?'1':'0',details.join(','),$('if-fade').checked?'1':'0',String(interval)].join('\n');
+ $('if-save').disabled=true;status.textContent='Saving…';
+ try{const r=await rpc({op:'immich',data});if(r.error)throw Error(r.error);status.textContent='Saved. The panel uses these settings at its next idle screen.'}
+ catch(error){status.textContent=error.message}finally{$('if-save').disabled=false}
+};
+document.querySelector('.tabs [data-page="photos"]')?.addEventListener('click',()=>loadIF());
+
 const copy=value=>JSON.parse(JSON.stringify(value));
 const emptyGestures=()=>({cw:'',ccw:'',holdCw:'',holdCcw:'',feedback:'',popup:'1',responses:'0',pressResponses:'0',events:'0',step:'1'});
 const empty=()=>({entity:'',name:'',area:'',action:'',actionName:'',typeOption:'',icon:'',iconOverride:'0',secondary:'',secondaryText:'{value}',sensorGraph:'0',timerHidden:'0',gestures:emptyGestures(),playlists:[]});
@@ -310,7 +357,7 @@ function isManualEntity(value){return /^[a-z0-9_]+\.[a-z0-9_]+$/.test(value)&&va
 function search(append=false){const mine=++revision,offset=append?next:0,query=$('search').value.trim();if(!append)$('results').replaceChildren();$('manual').replaceChildren();$('more').hidden=true;
  const available=mode==='page'?ha.items.filter(i=>!pagePick||pagePick.accept(i.entity)):isActionPicker()?ha.items.filter(i=>/^(automation|script)\./.test(i.entity)):mode==='secondary'&&slots[active].entity.startsWith('switch.')?ha.items.filter(i=>i.entity.startsWith('sensor.')&&(i.unit===undefined||['W','kWh'].includes(i.unit))):ha.items;const items=$('room').value?available.filter(i=>i.area===$('room').value):available,data=OnxHA.search(items,query,domain,offset);if(mine!==revision)return;$('count').textContent=data.total+' matches';
  if(!data.items.length&&!append){$('results').append(element('p',ha.ready?'No matches. Try another name, room, or entity type.':mode==='playlist'?'Sign in on the Home Assistant page to choose a script or automation.':'Sign in on the Home Assistant page to browse entities, or enter a full entity ID.','empty'));if(!ha.ready){const b=element('button','Open Home Assistant setup');b.onclick=()=>{closePicker();page('connection')};$('results').append(b)}}
- for(const item of data.items){const row=element('button','','result'),text=element('span','');text.append(element('strong',item.name||item.entity),element('small',item.entity));row.append(text,element('em',item.area||item.entity.split('.')[0]));row.classList.toggle('selected',selectedPickerEntity()===item.entity);row.disabled=busy||(mode==='action'&&(!slots[active].entity||nativePress(slots[active].entity)));row.onclick=()=>choose(item);row.draggable=true;row.ondragstart=e=>{e.dataTransfer.setData('application/x-onx-entity',JSON.stringify(item));e.dataTransfer.effectAllowed='copy'};$('results').append(row)}
+ for(const item of data.items){const row=element('button','','result'),text=element('span','');text.append(element('strong',item.name||item.entity),element('small',item.entity));row.append(text,element('em',item.area||item.entity.split('.')[0]));row.classList.toggle('selected',selectedPickerEntity()===item.entity);row.disabled=busy||(mode==='action'&&(!slots[active].entity||nativePress(slots[active].entity)));row.onclick=()=>choose(item);row.draggable=true;row.ondragstart=e=>{e.dataTransfer.setData('application/x-onx-entity',JSON.stringify(item));e.dataTransfer.effectAllowed='copy';document.body.classList.add('dragging-entity')};$('results').append(row)}
  next=data.next;$('more').hidden=next<0;if(isManualEntity(query)&&!ha.items.some(i=>i.entity===query)){const b=element('button','Use entity ID: '+query);b.disabled=busy;b.onclick=()=>choose({entity:query,name:query});$('manual').append(b)}
 }
 

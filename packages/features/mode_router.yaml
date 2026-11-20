@@ -297,6 +297,58 @@ onx_config_web:
       custom_logic::disconnect_all_clients_for_refresh(id(api_server));
       return std::string("{\"ok\":true}");
     }
+    // ImmichFrame idle screen (room_companion/panel.yaml entities), also editable
+    // from Home Assistant. "immich" takes the values as lines in `data`:
+    // url, idle screen, fit, pairs, details (comma list), fade, interval.
+    if (query.op == "immich_state") {
+      return onx_entity_config::build_json([&](JsonObject root) {
+        root["url"] = id(panel_immichframe_url).state;
+        root["idle"] = std::to_string(id(panel_idle_screen).active_index().value_or(0));
+        root["fit"] = std::to_string(id(panel_immichframe_fit).active_index().value_or(0));
+        root["split"] = id(panel_immichframe_split).state ? "1" : "0";
+        std::string details;
+        auto add = [&](bool on, const char *n) { if (on) details += (details.empty() ? "" : ",") + std::string(n); };
+        add(id(panel_immichframe_info_date).state, "date");
+        add(id(panel_immichframe_info_location).state, "location");
+        add(id(panel_immichframe_info_album).state, "album");
+        add(id(panel_immichframe_info_people).state, "people");
+        add(id(panel_immichframe_info_description).state, "description");
+        root["details"] = details;
+        root["fade"] = id(panel_slideshow_fade).state ? "1" : "0";
+        root["interval"] = std::to_string(static_cast<int>(id(panel_slideshow_seconds).state));
+      });
+    }
+    if (query.op == "immich") {
+      std::vector<std::string> v;
+      size_t start = 0;
+      while (start <= query.data.size() && v.size() < 8) {
+        const auto end = query.data.find('\n', start);
+        v.push_back(query.data.substr(start, end == std::string::npos ? std::string::npos : end - start));
+        if (end == std::string::npos) break;
+        start = end + 1;
+      }
+      if (v.size() != 7) return onx_entity_config::error("Incomplete ImmichFrame settings");
+      const auto &url = v[0];
+      const int idle = std::atoi(v[1].c_str()), fit = std::atoi(v[2].c_str()), interval = std::atoi(v[6].c_str());
+      if (url.size() > 255 || (!url.empty() && onx_panel_ui::immichframe_photo_url(url, 320, 480).empty()))
+        return onx_entity_config::error("Enter the ImmichFrame address, for example http://192.168.1.20:8080");
+      if (idle < 0 || idle > 3 || fit < 0 || fit > 2 || interval < 5 || interval > 600)
+        return onx_entity_config::error("Invalid ImmichFrame settings");
+      { auto c = id(panel_immichframe_url).make_call(); c.set_value(url); c.perform(); }
+      { auto c = id(panel_idle_screen).make_call(); c.set_index(idle); c.perform(); }
+      { auto c = id(panel_immichframe_fit).make_call(); c.set_index(fit); c.perform(); }
+      { auto c = id(panel_slideshow_seconds).make_call(); c.set_value(interval); c.perform(); }
+      auto set = [](esphome::switch_::Switch *sw, bool on) { if (sw->state != on) { if (on) sw->turn_on(); else sw->turn_off(); } };
+      set(id(panel_immichframe_split), v[3] == "1");
+      set(id(panel_slideshow_fade), v[5] == "1");
+      const auto has = [&](const char *n) { return ("," + v[4] + ",").find("," + std::string(n) + ",") != std::string::npos; };
+      set(id(panel_immichframe_info_date), has("date"));
+      set(id(panel_immichframe_info_location), has("location"));
+      set(id(panel_immichframe_info_album), has("album"));
+      set(id(panel_immichframe_info_people), has("people"));
+      set(id(panel_immichframe_info_description), has("description"));
+      return std::string("{\"ok\":true}");
+    }
     if (query.op == "settings_state") {
       return onx_entity_config::build_json([&](JsonObject root) {
         root["brightness"] = std::to_string(std::clamp(id(normal_brightness_value), 10, 100));

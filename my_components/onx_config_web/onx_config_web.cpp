@@ -8,17 +8,64 @@
 #include "ha_discovery.h"
 #include "esphome/core/hal.h"
 #include "panel_web.h"
+#include "request_diagnostics.h"
 #include "esphome/components/wifi/wifi_component.h"
+#include "esp_system.h"
+#include "freertos/FreeRTOS.h"
+#include "freertos/task.h"
 #include <array>
 #include <charconv>
 #include <cstring>
 
 namespace esphome::onx_config_web {
+namespace {
+class RequestTrace {
+ public:
+  explicit RequestTrace(RequestMethod method) {
+    retained_request.magic = 0;
+    retained_request.at_ms = millis();
+    retained_request.route = RequestRoute::UNKNOWN;
+    retained_request.method = method;
+    retained_request.completed = false;
+    retained_request.entry_stack_bytes = 0;
+    retained_request.exit_stack_bytes = 0;
+    retained_request.magic = REQUEST_DIAGNOSTICS_MAGIC;
+  }
+
+  void route(std::string_view url) {
+    for (auto value = static_cast<uint8_t>(RequestRoute::ROOT);
+         value < static_cast<uint8_t>(RequestRoute::OTHER); ++value) {
+      const auto candidate = static_cast<RequestRoute>(value);
+      if (url == route_name(candidate)) {
+        retained_request.route = candidate;
+        break;
+      }
+    }
+    if (retained_request.route == RequestRoute::UNKNOWN) retained_request.route = RequestRoute::OTHER;
+    retained_request.entry_stack_bytes = uxTaskGetStackHighWaterMark(nullptr);
+  }
+
+  ~RequestTrace() {
+    retained_request.exit_stack_bytes = uxTaskGetStackHighWaterMark(nullptr);
+    retained_request.completed = true;
+  }
+};
+}  // namespace
+
 static bool number(const std::string &text, unsigned &value) {
   auto result = std::from_chars(text.data(), text.data() + text.size(), value);
   return result.ec == std::errc{} && result.ptr == text.data() + text.size();
 }
 void ConfigWeb::setup() {
+  if (esp_reset_reason() == ESP_RST_PANIC && retained_request.magic == REQUEST_DIAGNOSTICS_MAGIC) {
+    previous_request = retained_request;
+    ESP_LOGW("onx.httpd", "Previous request: %s %s at %u ms, completed=%u, stack low-water marks=%u/%u bytes (entry/exit)",
+             method_name(previous_request.method), route_name(previous_request.route),
+             static_cast<unsigned>(previous_request.at_ms), static_cast<unsigned>(previous_request.completed),
+             static_cast<unsigned>(previous_request.entry_stack_bytes),
+             static_cast<unsigned>(previous_request.exit_stack_bytes));
+  }
+  retained_request.magic = 0;
   nonce_ = str_sprintf("%08x%08x%08x%08x", random_uint32(), random_uint32(), random_uint32(), random_uint32());
   auto *base = web_server_base::global_web_server_base;
   base->add_handler(this);
@@ -49,8 +96,12 @@ void ConfigWeb::respond_(AsyncWebServerRequest *request, int code, const char *d
   request->send(response);
 }
 void ConfigWeb::handleRequest(AsyncWebServerRequest *request) {
+  const auto method = request->method();
+  RequestTrace trace(method == HTTP_GET ? RequestMethod::GET :
+                     method == HTTP_POST ? RequestMethod::POST : RequestMethod::OTHER);
   std::array<char, AsyncWebServerRequest::URL_BUF_SIZE> buffer;
   const auto url = request->url_to(buffer);
+  trace.route(std::string_view(url.c_str(), url.size()));
   if (request->method() == HTTP_GET && (url == "/panel/fixtse-logo.png" || url == "/panel/favicon.svg")) {
     const bool logo = url == "/panel/fixtse-logo.png";
     auto *response = request->beginResponse(200, logo ? "image/png" : "image/svg+xml",
@@ -148,6 +199,7 @@ void ConfigWeb::handleRequest(AsyncWebServerRequest *request) {
 }
 void ConfigWeb::loop() {
   discovery_.poll();
+  immich_discovery_.poll();
   Query query;
   // One device-initiated request per loop, interleaved with web requests so the
   // page can poll progress while a preset applies.
@@ -163,7 +215,9 @@ void ConfigWeb::loop() {
     query = std::move(pending_.front()); pending_.pop_front();
   }
   // NVS, entity subscriptions, and LVGL always run in the ESPHome main task.
-  Body body = take_result_(query.op == "ha_discover" ? discovery_.response(query.search == "refresh", millis()) : handler_(query));
+  Body body = take_result_(query.op == "ha_discover" ? discovery_.response(query.search == "refresh", millis())
+                              : query.op == "if_discover" ? immich_discovery_.response(query.search == "refresh", millis())
+                              : handler_(query));
   LockGuard lock(mutex_);
   results_.emplace_back(query.ticket, std::move(body));
   while (results_.size() > 4) results_.pop_front();

@@ -261,6 +261,12 @@ such as the task name in a FreeRTOS stack overflow. The panel also logs the
 retained panic at startup. Wireless updates are available through the
 **Firmware Update** entity in Home Assistant.
 
+After a panic, `last_event_before_boot.http_request` identifies the last
+Room Companion web request the handler saw, whether it returned, and the
+HTTP task's minimum free stack measured at entry and exit. These measurements
+are task-lifetime low-water marks. The route comes from a fixed list, so the
+record excludes query parameters and request bodies.
+
 ## Display orientation
 
 The panels have no accelerometer, so choose **Device settings → Display

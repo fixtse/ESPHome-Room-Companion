@@ -10,6 +10,7 @@
 #include "onx_display_settings.h"
 #include "onx_sensor_view.h"
 #include "esphome/components/onx_config_web/onx_config_web.h"
+#include "esphome/components/onx_config_web/request_diagnostics.h"
 
 namespace onx_entity_config {
 using custom_logic::MAX_HA_ENTITY_ID_LENGTH;
@@ -572,6 +573,16 @@ inline std::string state(const std::string &host = "", bool wifi_connected = fal
     previous["entity"]=onx_runtime::previous.entity;
     if (onx_runtime::previous_panic_details.message[0]) {
       previous["panic_message"] = onx_runtime::previous_panic_details.message;
+    }
+    using namespace esphome::onx_config_web;
+    if (previous_request.magic == REQUEST_DIAGNOSTICS_MAGIC) {
+      auto request = previous["http_request"].to<JsonObject>();
+      request["route"] = route_name(previous_request.route);
+      request["method"] = method_name(previous_request.method);
+      request["uptime_ms"] = previous_request.at_ms;
+      request["entry_stack_min_free_bytes"] = previous_request.entry_stack_bytes;
+      request["completed"] = previous_request.completed;
+      if (previous_request.completed) request["exit_stack_min_free_bytes"] = previous_request.exit_stack_bytes;
     }
     previous["uptime_ms"]=onx_runtime::previous.at_ms;
     previous["internal_heap_free"]=onx_runtime::previous.free_heap;
