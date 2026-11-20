@@ -33,8 +33,12 @@ struct Point { uint32_t epoch{0}; float value{NAN}; };
 struct State {
   std::string primary, secondary, value, unit;
   time_t secondary_epoch{0};
-  bool received{false}, available{false}, pending{false}, requested{false};
+  bool received{false}, available{false}, pending{false}, requested{false}, failed{false};
   uint32_t requested_ms{0}, range_seconds{43200};
+  bool waiting(uint32_t now) const { return pending && now - requested_ms < 20000; }
+  bool request_due(uint32_t now) const {
+    return !requested || now - requested_ms >= (pending || failed ? 60000U : 300000U);
+  }
   std::string range_label() const { return range_seconds == 3600 ? "1 h" : range_seconds == 86400 ? "24 h" : range_seconds == 604800 ? "7 d" : "12 h"; }
   std::array<Point,73> points{};
   void bind(const Config &c) {

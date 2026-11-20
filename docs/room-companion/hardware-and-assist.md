@@ -65,9 +65,11 @@ prevents new captures and stops the running pipeline; it is a software control,
 not physical electrical isolation. Reply volume (default 60%) is on the
 settings page and part of presets.
 
-The optional wake-word package is `examples/room-companion/wake-word.yaml`.
-Add it through `packages:` after verifying tap-to-talk. Enable its switch in HA;
-it is intentionally off at boot and is disabled when muted or disconnected.
+The OTA builds use `ONX2432G028.wake-word.yaml` and
+`ONX3248G035.wake-word.yaml`, which enable local “Okay Nabu” by default.
+To add wake word to a custom build, include `examples/room-companion/wake-word.yaml`
+through `packages:` and enable its switch in Home Assistant. Detection pauses
+when the microphone is muted or the Assist connection is unavailable.
 Local wake-word detection keeps one CPU core busy and competes with dashboard
 JPEG decoding; prefer tap-to-talk in dashboard mode. It is not an
 echo-cancellation implementation, and successful compilation does not verify

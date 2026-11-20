@@ -1838,7 +1838,7 @@ inline std::vector<onx_sensor_view::Point> card_history(const std::string &e) {
   auto h = st.history(std::time(nullptr));
   // Live samples alone (collected before Home Assistant was reachable) are
   // not history: ask until a request has gone out for this range.
-  if ((h.size() < 2 || !st.requested) && !st.pending && request_history) request_history(e);
+  if (st.request_due(esphome::millis()) && request_history) request_history(e);
   return h;
 }
 inline const Chart *chart(lv_obj_t *parent, int x, int y, int w, int h, const std::string &e,
@@ -1892,7 +1892,7 @@ __attribute__((noinline)) inline void build_sensor(const Layout &l, const std::s
   if (graph && !onx_sensor_view::states[i].requested && !onx_sensor_view::states[i].pending && request_history) request_history(e);
   if (history.size() < 2 && graph) {
     const auto &state = onx_sensor_view::states[i];
-    text(root, state.pending ? "Loading history…" : state.requested ? "No recorded history" : "Collecting history…", fonts.small, MUTED(), area.x, y, area.w);
+    text(root, state.waiting(esphome::millis()) ? "Loading history…" : state.pending || state.failed ? "History unavailable" : state.requested ? "No recorded statistics" : "Collecting history…", fonts.small, MUTED(), area.x, y, area.w);
     y += line(fonts.small);
   }
   // Percentages also get a level bar.
@@ -2188,8 +2188,7 @@ __attribute__((noinline)) inline void build_weather(const std::string &e, const 
                            : Rect{pad, y, W - 2 * pad, H - pad - y};
   lv_obj_t *panel = box(root, list.x, list.y, list.w, list.h, CARD(), P(14));
   if (!d.forecast_count) {
-    const bool timed_out = d.forecast_pending && esphome::millis() - d.forecast_requested_ms >= 20000;
-    text(panel, d.forecast_pending && !timed_out ? "Loading forecast…" : "Forecast not available", fonts.small, MUTED(), P(14),
+    text(panel, d.forecast_waiting(esphome::millis()) ? "Loading forecast…" : "Forecast not available", fonts.small, MUTED(), P(14),
          P(14), list.w - P(28));
     return;
   }
@@ -2881,21 +2880,13 @@ inline void card_generic(lv_obj_t *c, const Tile &t, const EntityDetailState *d)
   const float pv = d != nullptr ? num(d->state) : NAN;
   if (available && !switchable && d->unit == "%" && std::isfinite(pv) && pv >= 0 && pv <= 100 && r.h < P(300) &&
       r.h >= P(110)) {
-    // Title across the top; a smaller ring below it on the left, the context
-    // (two lines) and a tall chart beside it.
     const int tw = r.w - 2 * pad;
     const int nl = lines_for(t.name, fonts.title, tw, 2);
     text(c, t.name, fonts.title, TEXT(), pad, pad, tw, LV_TEXT_ALIGN_LEFT, nl);
-    int top = pad + nl * line(fonts.title) + P(4);
-    // The context (e.g. "Resets in 1 hour") goes straight under the name.
-    if (!t.context.empty()) {
-      const int cl = lines_for(t.context, fonts.body, tw, 2);
-      text(c, t.context, fonts.body, SOFT_TEXT(), pad, top, tw, LV_TEXT_ALIGN_LEFT, cl);
-      top += cl * line(fonts.body);
-    }
-    top += P(10);
+    const int top = pad + nl * line(fonts.title) + P(10);
     const int avail = r.h - pad - top;
-    const int size = std::max(P(48), std::min(avail, r.w * 34 / 100));
+    if (avail <= 0) return;
+    const int size = std::min(avail, r.w * 34 / 100);
     lv_obj_t *arc = lv_arc_create(c);
     lv_obj_set_size(arc, size, size);
     lv_obj_set_pos(arc, pad, top + (avail - size) / 2);
@@ -2916,11 +2907,18 @@ inline void card_generic(lv_obj_t *c, const Tile &t, const EntityDetailState *d)
     lv_obj_set_style_pad_all(arc, 0, LV_PART_MAIN);
     lv_obj_remove_flag(arc, static_cast<lv_obj_flag_t>(LV_OBJ_FLAG_CLICKABLE | LV_OBJ_FLAG_SCROLLABLE));
     const std::string v = fmt(pv, pv < 10 ? 1 : 0) + "%";
-    const lv_font_t *vf = fit(v, size - 2 * aw - P(8), {fonts.big, fonts.title, fonts.body});
+    const lv_font_t *vf = fit(v, size - 2 * aw - P(8), {fonts.big, fonts.title, fonts.body, fonts.small});
     text(c, v, vf, TEXT(), pad, top + (avail - line(vf)) / 2, size, LV_TEXT_ALIGN_CENTER);
-    // The chart beside the ring, over the ring's full height.
     const int nx = pad + size + P(14), nw = r.w - nx - pad;
-    if (avail >= P(24) && nw >= P(48)) chart(c, nx, top, nw, avail, e, card_history(e), accent(), false);
+    int y = top;
+    if (!t.context.empty()) {
+      const int lines = std::clamp(avail / line(fonts.body), 1, 2);
+      text(c, t.context, fonts.body, SOFT_TEXT(), nx, y, nw, LV_TEXT_ALIGN_LEFT, lines);
+      y += lines_for(t.context, fonts.body, nw, lines) * line(fonts.body) + P(8);
+    }
+    const auto history = card_history(e);
+    const int gh = r.h - pad - y;
+    if (gh >= P(24) && nw >= P(48)) chart(c, nx, y, nw, gh, e, history, accent(), false);
     return;
   }
   lv_obj_t *chip = chip_icon(c, e, pad, pad, cs, t.on);
@@ -3317,7 +3315,7 @@ inline std::string signature(const std::string &e, const EntityDetailState *d, c
        effective(*d, "preset_mode") + '|' + effective(*d, "fan_mode") + '|' + effective(*d, "swing_mode") + '|' + effective(*d, "swing_horizontal_mode") + '|' + d->presets +
        '|' + d->options + '|' + d->humidity + '|' + d->apparent_temperature + '|' + d->wind_speed + '|' +
        std::to_string(d->features) + '|' + std::to_string(d->available) + '|' + std::to_string(d->received) + '|' +
-       std::to_string(d->forecast_count) + '|' + std::to_string(d->forecast_pending) + '|' + d->timer_duration;
+       std::to_string(d->forecast_count) + '|' + std::to_string(d->forecast_waiting(esphome::millis())) + '|' + d->timer_duration;
   for (int i = 0; i < d->forecast_count; ++i) s += '|' + d->forecast[i].date + d->forecast[i].high + d->forecast[i].low;
   s += '|' + d->media_title + '|' + d->media_artist + '|' + d->picture + '|' + onx_media::ready_url;
   s += '|' + v.value.text + '|' + v.context.text + '|' + v.name.text + '|' + std::to_string(v.value_ring);
@@ -3330,7 +3328,7 @@ inline std::string signature(const std::string &e, const EntityDetailState *d, c
   const int i = onx_sensor_view::index(e);
   if (i >= 0) {
     const auto &st = onx_sensor_view::states[i];
-    s += '|' + st.value + st.unit + std::to_string(st.history(std::time(nullptr)).size()) + std::to_string(st.range_seconds) + std::to_string(st.pending);
+    s += '|' + st.value + st.unit + std::to_string(st.history(std::time(nullptr)).size()) + std::to_string(st.range_seconds) + std::to_string(st.waiting(esphome::millis())) + std::to_string(st.failed) + std::to_string(st.requested);
   }
   if (const auto *c = changes_for(e)) s += '|' + std::to_string(c->items.size()) + ',' + std::to_string(std::time(nullptr) / 60);
   if (pending.entity == e) s += '|' + std::to_string(pending_value(e, pending.key));

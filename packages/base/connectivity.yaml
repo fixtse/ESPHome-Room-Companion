@@ -107,7 +107,7 @@ esp32_ble:
 # BLE provisioning is authorized with a BOOT button press.
 improv_ble:
   id: onx_improv
-  authorizer: key_btn
+  authorizer: boot_btn
   authorized_duration: 1min
   wifi_timeout: 10s
 

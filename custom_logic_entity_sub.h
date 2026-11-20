@@ -361,6 +361,11 @@ struct EntityDetailState {
   int forecast_count{0}, weather_page{0};
   uint32_t forecast_requested_ms{0};
   bool forecast_requested{false}, forecast_pending{false}, forecast_failed{false};
+  bool forecast_waiting(uint32_t now) const { return forecast_pending && now - forecast_requested_ms < 20000; }
+  bool forecast_due(uint32_t now) const {
+    return !forecast_requested ||
+           now - forecast_requested_ms >= (forecast_pending || forecast_failed ? 60000U : 900000U);
+  }
   onx_media::Progress progress;
   std::string event_type, tones;
   std::string options, presets, preset, fan_modes, fan_mode, swing_modes, swing_mode, hswing_modes, hswing_mode;

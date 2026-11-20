@@ -255,6 +255,15 @@ interval:
           const int index = detail ? id(normal_device_detail_index) : id(normal_device_selected_index);
           const auto entity = index >= 0 && index < id(normal_device_count) ?
               id(ui_presenter)->get_normal_device_entity_id(index) : std::string();
+          if (entity_detail && normal && id(normal_ha_api_connected)) {
+            const int sensor = onx_sensor_view::index(entity);
+            if (sensor >= 0 && onx_sensor_view::configs[sensor].graph &&
+                onx_sensor_view::states[sensor].request_due(millis()))
+              id(request_normal_sensor_history).execute(entity);
+            const auto *weather = entity.rfind("weather.", 0) == 0 ? custom_logic_entity_sub::entity_detail(entity) : nullptr;
+            if (weather && weather->available && weather->forecast_due(millis()))
+              id(request_normal_weather_forecast).execute(entity);
+          }
           // Media keeps its specialised artwork/transport view. Main pages and
           // generic details use the entire rectangle, without the round ring.
           if (normal && !entity.empty() && ((!detail && id(normal_page_index)==0) || entity_detail)) {

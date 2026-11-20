@@ -130,7 +130,9 @@ onx_config_web:
           const auto current=std::find(entries.begin(),entries.end(),ui_slot);
           if(current!=entries.end()) {
             const int rank=current-entries.begin();
-            for(int n=std::max(0,rank-2);n<std::min<int>(entries.size(),rank+3);++n) {
+            const int visible = std::min<int>(entries.size(), onx_navigation::VISIBLE_ICONS);
+            const int first = std::clamp(rank - visible / 2, 0, int(entries.size()) - visible);
+            for (int n = first; n < first + visible; ++n) {
               const int index=entries[n];
               auto item=navigator.add<JsonObject>();
               item["visible"]=true;item["selected"]=index==ui_slot;item["offset"]=n-rank;
@@ -159,7 +161,7 @@ onx_config_web:
             panel["pressure"] = detail->pressure; panel["pressure_unit"] = detail->pressure_unit;
             panel["visibility"] = detail->visibility; panel["visibility_unit"] = detail->visibility_unit;
             panel["uv"] = detail->uv_index; panel["title"] = detail->media_title; panel["artist"] = detail->media_artist;
-            panel["forecast_pending"] = detail->forecast_pending;
+            panel["forecast_pending"] = detail->forecast_waiting(millis());
             if(entity.rfind("light.",0)==0) {
               const auto light=id(app_storage)->normal_device_slot(custom_logic::normal_ui_slot_for_device_config_slot(i)).light();
               panel["brightness"] = light.brightness_pct; panel["dimmable"] = light.supports_brightness();

@@ -154,7 +154,9 @@ script:
                     id(normal_device_detail_online) && id(normal_ha_api_connected) &&
                     pressed_entity.rfind("weather.", 0) == 0 && pressed_detail != nullptr) {
                   pressed_detail->weather_page = 2;
-                  id(request_normal_weather_forecast).execute(pressed_entity, true);
+                  if (!pressed_detail->forecast_pending && millis() - pressed_detail->forecast_requested_ms >= 20000)
+                    pressed_detail->forecast_requested = false;
+                  id(request_normal_weather_forecast).execute(pressed_entity);
                   id(key_long_press_handled) = true;
                   id(refresh_normal_automation_detail_page).execute();
                 }

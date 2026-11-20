@@ -4,7 +4,7 @@
 substitutions:
   device_model: ONX2432G028
   display_model: ST7789V
-  display_invert_colors: "true"
+  display_invert_colors: "false"
   display_width: "240"
   display_height: "320"
   ui_scale: 1

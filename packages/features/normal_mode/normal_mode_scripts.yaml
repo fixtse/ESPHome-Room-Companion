@@ -103,9 +103,12 @@ script:
                 return false;
               }
               auto &s=onx_sensor_view::states[i];
-              if(s.requested && millis()-s.requested_ms<300000)return false;
+              if (!s.request_due(millis())) return false;
               ESP_LOGI("sensor_history","%s: requesting %s",entity.c_str(),onx_sensor_view::history_entity(entity).c_str());
-              s.requested=s.pending=true;s.requested_ms=millis();return true;
+              s.requested = s.pending = true;
+              s.failed = false;
+              s.requested_ms = millis();
+              return true;
           then:
             - homeassistant.action:
                 action: recorder.get_statistics
@@ -124,36 +127,42 @@ script:
                   const auto history_entity=onx_sensor_view::history_entity(entity);
                   const auto range=onx_sensor_view::states[onx_sensor_view::index(entity)].range_seconds;
                   const std::string stride=range==604800 ? "3" : range==43200 ? "2" : "1";
-                  return "{% set ns = namespace(points=[]) %}{% for p in response.get('statistics', response).get('"+history_entity+"', [])[::"+stride+"][:73] %}{% set y = p.get('mean') if p.get('mean') is not none else p.get('state') %}{% if y is number %}{% set ns.points = ns.points + [dict(t=as_timestamp(p['start']), y=y)] %}{% endif %}{% endfor %}{{ dict(points=ns.points) | to_json }}";
+                  return "{% set ns = namespace(points=[]) %}{% for p in response.get('statistics', response).get('"+history_entity+"', [])[::"+stride+"][:73] %}{% set y = p.get('mean') if p.get('mean') is not none else p.get('state') %}{% set t = as_timestamp(p.get('start'), none) %}{% if y is number and t is number %}{% set ns.points = ns.points + [dict(t=t | int, y=y)] %}{% endif %}{% endfor %}{{ dict(points=ns.points) }}";
                 on_success:
                   - lambda: |-
                       const int i=onx_sensor_view::index(entity);if(i<0)return;
                       auto &s=onx_sensor_view::states[i];s.pending=false;
                       for(JsonObjectConst p:response["response"]["points"].as<JsonArrayConst>())
-                        if(p["t"].is<double>()&&p["y"].is<float>())s.sample(p["t"].as<uint32_t>(),p["y"].as<float>());
+                        if(p["t"].is<uint32_t>()&&p["y"].is<float>())s.sample(p["t"].as<uint32_t>(),p["y"].as<float>());
                       ESP_LOGI("sensor_history","%s (%s): %u points from statistics",entity.c_str(),
                                onx_sensor_view::history_entity(entity).c_str(),
                                unsigned(response["response"]["points"].as<JsonArrayConst>().size()));
                       id(refresh_normal_automation_detail_page).execute();
                 on_error:
                   - lambda: |-
-                      const int i=onx_sensor_view::index(entity);if(i>=0)onx_sensor_view::states[i].pending=false;
+                      const int i = onx_sensor_view::index(entity);
+                      if (i >= 0) {
+                        auto &s = onx_sensor_view::states[i];
+                        s.pending = false;
+                        s.failed = true;
+                      }
+                      id(refresh_normal_automation_detail_page).execute();
                       ESP_LOGW("sensor_history","%s: statistics request failed: %s",entity.c_str(),error.c_str());
 
+  # Match the history and idle forecast script parameter types so ESPHome
+  # 2026.11.0 allocates their response IDs from one counter.
   - id: request_normal_weather_forecast
     mode: parallel
     max_runs: 2
     parameters:
       entity: string
-      force: bool
     then:
       - if:
           condition:
             lambda: |-
               auto *d = custom_logic_entity_sub::entity_detail(entity);
               if (!d || entity.rfind("weather.", 0) != 0 || !d->available || !id(normal_ha_api_connected)) return false;
-              const uint32_t age = millis() - d->forecast_requested_ms;
-              if (d->forecast_requested && (age < 20000 || (!force && age < 900000))) return false;
+              if (!d->forecast_due(millis())) return false;
               d->forecast_requested = d->forecast_pending = true;
               d->forecast_requested_ms = millis();
               return true;
@@ -192,6 +201,7 @@ script:
                   - lambda: |-
                       auto *d = custom_logic_entity_sub::entity_detail(entity);
                       if (d) { d->forecast_pending = false; d->forecast_failed = true; }
+                      ESP_LOGW("weather", "%s: forecast request failed: %s", entity.c_str(), error.c_str());
                       id(refresh_normal_automation_detail_page).execute();
 
   - id: enter_sleep_mode
@@ -2073,7 +2083,7 @@ script:
             if (weather_entity.rfind("weather.", 0) == 0) {
               auto *d = custom_logic_entity_sub::entity_detail(weather_entity);
               if (d) d->weather_page = 0;
-              id(request_normal_weather_forecast).execute(weather_entity, false);
+              id(request_normal_weather_forecast).execute(weather_entity);
             }
             id(normal_automation_press_feedback_active) = false;
             ESP_LOGI("normal_mode", "automation detail opened for index=%d", detail_index);

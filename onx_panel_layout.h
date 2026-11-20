@@ -44,7 +44,7 @@ constexpr int MAIN_TOP=40,DETAIL_TOP=12;
 inline std::array<Rect,MAX_CELLS> geometry(Kind k,int w,int h,bool detail=false,int rows=2,int cols=2) {
   // The main carousel keeps a slim row for the notification bell and the
   // bottom dock; details use the whole screen (pull down for notifications).
-  const int top=detail?DETAIL_TOP:MAIN_TOP,bottom=detail?12:52,gap=8,pad=12,body=h-top-bottom,inner=w-pad*2;
+  const int top=detail?DETAIL_TOP:MAIN_TOP,bottom=detail?12:std::min(w,h)==240?78:52,gap=8,pad=12,body=h-top-bottom,inner=w-pad*2;
   std::array<Rect,MAX_CELLS> out{};
   if(k==Kind::ACTION_GRID && grid_axis(rows) && grid_axis(cols)) {
     // Grids keep a little room below the status row and above the dock.

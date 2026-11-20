@@ -23,10 +23,10 @@ PY
 fi
 cat > .validation-extension.yaml <<'YAML'
 packages:
-  device: !include ONX2432G028.yaml
+  device: !include ONX2432G028.wake-word.yaml
   extension: !include examples/room-companion/extension.yaml
 YAML
-for config in ONX2432G028.yaml ONX3248G035.yaml ONX3248G035.wake-word.yaml .validation-extension.yaml; do
+for config in ONX2432G028.yaml ONX2432G028.wake-word.yaml ONX3248G035.yaml ONX3248G035.wake-word.yaml .validation-extension.yaml; do
   echo "== $config"
   esphome config "$config" > /tmp/room-companion-config.log
   if [[ "${1:-}" = --compile ]]; then esphome compile "$config"; fi

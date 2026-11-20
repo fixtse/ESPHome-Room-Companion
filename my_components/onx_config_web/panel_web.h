@@ -688,7 +688,7 @@ static const char PANEL_JS[] = R"ONXPANEL(
  rpc({op:'panel_pages'}).then(result=>{panelPages=JSON.stringify(normalize(result.pages));pagesLoaded=true;if(!editorTarget){pageConfigs=JSON.parse(panelPages);savedPages=panelPages;selectedPage=0;selectedPos=Math.max(0,pageConfigs[0]?.entities.findIndex(Boolean)??0)}if(!focusMember())touch()}).catch(error=>{pageError='Could not load pages: '+error.message;renderPageEditor()});
  // Mirrors onx_panel_layout::geometry (portrait and landscape).
  globalThis.ONX_PANEL_GEOMETRY=(kind,w,h,detail=false,rows=2,columns=2)=>{
-  const top=detail?12:40,bottom=detail?12:52,gap=8,pad=12,body=h-top-bottom,inner=w-pad*2;
+  const top=detail?12:40,bottom=detail?12:Math.min(w,h)===240?78:52,gap=8,pad=12,body=h-top-bottom,inner=w-pad*2;
   if(kind===gridLayout){
    const usableW=w-16-gap*(columns-1),usableH=body-6-4-gap*(rows-1);  // As onx_panel_layout.h (GRID_TOP 6, GRID_BOTTOM 4).
    return Array.from({length:rows*columns},(_,i)=>{
@@ -1103,9 +1103,9 @@ static const char PANEL_JS[] = R"ONXPANEL(
    const switchable=available&&['switch','input_boolean','automation','fan','siren'].includes(domain),runnable=available&&['scene','script','button','input_button'].includes(domain),pv=num(d.state),hst=history(v);
    if(available&&!switchable&&d.unit==='%'&&isFinite(pv)&&pv>=0&&pv<=100&&r.h<P(300)&&r.h>=P(110)){
     const tw=r.w-2*pad,nl=linesFor(t.name,F.title,tw,2);text(t.name,F.title,TEXT,r.x+pad,r.y+pad,tw,'left',nl);
-    const top=pad+nl*F.title.lh+P(10),avail=r.h-pad-top,size=Math.max(P(48),Math.min(avail,Math.trunc(r.w*34/100))),aw=Math.max(P(8),Math.trunc(size/10)),cx=r.x+pad+size/2,cy=r.y+top+avail/2;
+    const top=pad+nl*F.title.lh+P(10),avail=r.h-pad-top,size=Math.min(avail,Math.trunc(r.w*34/100)),aw=Math.max(P(8),Math.trunc(size/10)),cx=r.x+pad+size/2,cy=r.y+top+avail/2;
     arc(cx,cy,size,aw,0,360,CONTROL,false);if(pv>0)arc(cx,cy,size,aw,270,270+Math.min(pv,99.99)*3.6,ACCENT);
-    const val=fmt(pv,pv<10?1:0)+'%',vf=fit(val,size-2*aw-P(8),[F.big,F.title,F.body]);text(val,vf,TEXT,r.x+pad,cy-vf.lh/2,size,'center');
+    const val=fmt(pv,pv<10?1:0)+'%',vf=fit(val,size-2*aw-P(8),[F.big,F.title,F.body,F.small]);text(val,vf,TEXT,r.x+pad,cy-vf.lh/2,size,'center');
     const nx=pad+size+P(14),nw=r.w-nx-pad;let y=top;if(t.context){const cl=linesFor(t.context,F.body,nw,2);text(t.context,F.body,SOFT,r.x+nx,r.y+y,nw,'left',cl);y+=cl*F.body.lh+P(8)}
     const gh=r.h-pad-y;if(gh>=P(24))chart(hst.points,hst.now,hst.range,r.x+nx,r.y+y,nw,gh,ACCENT,false);return;
    }
@@ -1175,9 +1175,15 @@ static const char PANEL_JS[] = R"ONXPANEL(
     currentArt='';});
    // The dock: the selected page on an accent-tinted marker.
    // Strip constants per board (boards/onx3248g035.yaml, onx2432g028.yaml).
-   const big35=Math.min(W,H)>=320,cy=H-(big35?22:52),spacing=big35?54:48,is=big35?20:26,marker=big35?32:40;
-   add(node('circle',{cx:W/2,cy,r:marker/2,fill:TINT,'data-nav-marker':''}));
-   for(const item of view?.carousel?.navigator||[]){const page=pageConfigs.find(q=>lead(q)===item.entity)||(item.offset===0?pageConfigs[selectedPage]:null);currentArt=artUrl(page?.carousel_artwork);glyph(page?pageIcon(page):item.icon,W/2+item.offset*spacing,cy,is,item.offset===0?ACCENT:ACCENT);currentArt=''}
+   const big35=Math.min(W,H)>=320,cy=H-(big35?22:52),is=big35?Math.round(20*ui):26,marker=big35?32:40;
+   const dock=view?.carousel?.navigator||[];
+   dock.forEach((item,i)=>{
+    const x=Math.floor(W*(2*i+1)/(2*dock.length)),selected=item.selected??item.offset===0;
+    const page=pageConfigs.find(q=>lead(q)===item.entity)||(selected?pageConfigs[selectedPage]:null);
+    if(selected)add(node('circle',{cx:x,cy,r:marker/2,fill:TINT,'data-nav-marker':''}));
+    currentArt=artUrl(page?.carousel_artwork);glyph(page?pageIcon(page):item.icon,x,cy,is,selected?ACCENT:TEXT);currentArt='';
+   });
+   if(!big35)text(slot.name||tiles[0]?.name||'',F.small,TEXT,0,H-18-F.small.lh/2,W,'center');
   };
   if(detail)renderDetail();else renderMain();
   status(view?'Live rectangular panel view':'Save configured entities to load live readings.');

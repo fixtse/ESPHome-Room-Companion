@@ -129,8 +129,7 @@ inline View build(const std::string &entity, const std::string &name) {
       v.hint.text = "Visibility " + reading(d->visibility, " " + d->visibility_unit) + "\nUV " + reading(d->uv_index, "");
     } else if (page == 2) {
       v.badge.text = "Daily forecast"; v.value.size = 24;
-      const bool timed_out = d->forecast_pending && static_cast<uint32_t>(millis() - d->forecast_requested_ms) >= 20000;
-      v.value.text = d->forecast_count ? std::to_string(d->forecast_count) + " days" : d->forecast_pending && !timed_out ? "Loading…" : "Not available";
+      v.value.text = d->forecast_count ? std::to_string(d->forecast_count) + " days" : d->forecast_waiting(millis()) ? "Loading…" : "Not available";
       v.context.text = d->forecast_count ? "Turn to see each day" : "Provider or action unavailable";
       v.hint.text = "Press to refresh";
     } else {
