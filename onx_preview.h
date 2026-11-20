@@ -7,6 +7,7 @@
 #include <functional>
 #include <string>
 #include <ArduinoJson.h>
+#include "onx_lyrics.h"
 #include "esphome/components/onx_storage/onx_storage.h"
 
 namespace onx_preview {
@@ -129,6 +130,15 @@ inline void build(JsonObject root, const std::string &query_entity, const Contex
       panel["pressure"] = detail->pressure; panel["pressure_unit"] = detail->pressure_unit;
       panel["visibility"] = detail->visibility; panel["visibility_unit"] = detail->visibility_unit;
       panel["uv"] = detail->uv_index; panel["title"] = detail->media_title; panel["artist"] = detail->media_artist;
+      if (onx_media::has_playback(detail->state) && onx_lyrics::shown(entity, detail->media_title)) {
+        auto projection = detail->progress;
+        const auto pv = projection.view(esphome::millis(), double(std::time(nullptr)), detail->available);
+        const int li = pv.visible ? onx_lyrics::index_at(pv.seconds) : -1;
+        auto lyric = panel["lyrics"].to<JsonArray>();
+        std::string cur = onx_lyrics::line(li);
+        if (cur.empty() && li >= 0) cur = "\xC2\xB7 \xC2\xB7 \xC2\xB7";
+        lyric.add(onx_lyrics::line(li - 1)); lyric.add(cur); lyric.add(onx_lyrics::line(li + 1));
+      }
       panel["forecast_pending"] = detail->forecast_waiting(esphome::millis());
       if(entity.rfind("light.",0)==0) {
         const auto light=c.light(custom_logic::normal_ui_slot_for_device_config_slot(i));

@@ -78,6 +78,10 @@ your Immich library at the panel’s resolution. Open the panel’s **Idle scree
 settings, choose **ImmichFrame**, and select your server or enter its URL. The
 panel fetches photos directly from ImmichFrame. [Slideshow setup](docs/room-companion/panel-ui.md#immichframe)
 
+**Sing along.** An optional Home Assistant blueprint fetches synced lyrics
+from [LRCLIB](https://lrclib.net) once per track. The media screen shows them
+over the album art, in time with Spotify or any other player. [Lyrics setup](docs/lyrics.md)
+
 ## Find your guide
 
 | I want to… | Guide |

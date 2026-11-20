@@ -158,6 +158,9 @@
    "media_title": "Bohemian Rhapsody (Remastered 2011)",
    "media_artist": "Queen",
    "volume": "0.45",
+   "media_duration": 354,
+   "media_position": 13,
+   "lyrics": "[00:00.50]Sample lyric line one\n[00:04.10]The panel follows the song\n[00:07.60]This current line can wrap across two or three rows\n[00:15.00]And the next one waits below",
    "features": 16829
   },
   {

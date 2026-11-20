@@ -1115,6 +1115,10 @@ static const char PANEL_JS[] = R"ONXPANEL(
    const subY=progY-P(12)-F.body.lh,titleY=subY-tf.lh;text(name,tf,TEXT,x,titleY,w,'center');if(sub)text(sub,F.body,MUTED,x,subY,w,'center');
    const room=titleY-P(12)-pad,art=wide?sideArt:Math.max(P(48),Math.min(P(220),w-2*reserve,room)),ax=wide?pad:(W-art)/2,ay=wide?(H-art)/2:pad+Math.max(0,(room-art)/2);
    if(!artwork(v?.artwork,ax,ay,art,P(14)))icon(e,ax+art/2,ay+art/2,Math.trunc(art*40/100),playing?ACCENT:SOFT);
+   // As build_media: synced lyrics veil the artwork (previous, current, next).
+   const ly=playback&&Array.isArray(d.lyrics)?d.lyrics:null;
+   if(ly){const lp=P(12),lw=art-2*lp,cf=art>=P(200)?F.title:F.body,ch=cf.lh*3,cy=ay+(art-ch)/2;add(node('rect',{x:ax,y:ay,width:art,height:art,rx:P(14),fill:CARD,'fill-opacity':0.8}));
+    text(ly[0]||'',F.small,MUTED,ax+lp,Math.max(ay,cy-P(6)-2*F.small.lh),lw,'center',2);text(ly[1]||'',cf,TEXT,ax+lp,cy,lw,'center',3);text(ly[2]||'',F.small,SOFT,ax+lp,cy+ch+P(6),lw,'center',2)}
   };
   const renderDetail=()=>{
    const e=slot.entity,v=view,d={...(v?.panel||{})},title=slot.name||v?.lines?.[4]?.text||e,l=layout(),quick=(d.actions||[]).length;

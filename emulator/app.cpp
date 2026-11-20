@@ -206,8 +206,17 @@ std::vector<Shot> load_scenario(const std::string &path) {
         st.rgb_tick = uint8_t((int(l["hue"] | 0) / esphome::onx_storage::RGB_TICK_DEGREES) % esphome::onx_storage::RGB_TICKS);
         st.capability_mask = 1 | (l["brightness"].is<int>() ? 2 : 0) | (l["kelvin"].is<int>() ? 4 : 0) | ((l["color"] | false) ? 8 : 0);
         lights[id] = st;
+      } else if (k == "media_position" || k == "media_duration" || k == "lyrics") {
+        // Handled below, once the state is known.
       } else if (k != "entity_id" && k != "name" && k != "unavailable" && k != "detail" && k != "cover_presets" && k != "cover_presets_enabled") set_field(d, k, kv.value());
     }
+    // Media position (seconds) and synced lyrics (LRC text, as the lyrics blueprint sends).
+    if (e["media_duration"].is<float>()) d.progress.set_duration(e["media_duration"].as<float>());
+    if (e["media_position"].is<float>()) {
+      d.progress.set_state(d.state, lvgl_emu::now_ms());
+      d.progress.set_position(e["media_position"].as<float>(), lvgl_emu::now_ms());
+    }
+    if (e["lyrics"].is<const char *>()) onx_lyrics::set(id, d.media_title, e["lyrics"].as<std::string>());
     if (registry.count < custom_logic::MAX_HA_ENTITY_COUNT) {
       auto &r = registry.entities[registry.count++];
       std::snprintf(r.entity_id, sizeof(r.entity_id), "%s", id.c_str());

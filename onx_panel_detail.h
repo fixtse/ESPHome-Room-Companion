@@ -33,6 +33,7 @@
 #include "onx_detail_view.h"
 #include "onx_sensor_graph.h"
 #include "onx_entity_config.h"
+#include "onx_lyrics.h"
 
 namespace onx_panel_detail {
 using custom_logic_entity_sub::EntityDetailState;
@@ -2765,6 +2766,30 @@ inline void tick_media_progress() {
     if (el != lv_label_get_text(m.elapsed)) lv_label_set_text(m.elapsed, el.c_str());
     if (to != lv_label_get_text(m.total)) lv_label_set_text(m.total, to.c_str());
   }
+  if (lyric_view.cur != nullptr) {
+    const auto *d = custom_logic_entity_sub::entity_detail(lyric_view.entity);
+    if (d != nullptr) {
+      auto projection = d->progress;
+      const auto v = projection.view(esphome::millis(), double(std::time(nullptr)), d->available);
+      tick_lyrics(v.seconds, v.visible);
+    }
+  }
+}
+
+// Synced lyrics over the media detail artwork: previous, current, next line.
+struct LyricView { std::string entity; lv_obj_t *prev{nullptr}, *cur{nullptr}, *next{nullptr}; int shown{-2}; };
+inline LyricView lyric_view;
+inline void tick_lyrics(float seconds, bool visible) {
+  auto &v = lyric_view;
+  if (v.cur == nullptr) return;
+  const int i = visible ? onx_lyrics::index_at(seconds) : -1;
+  if (i == v.shown) return;
+  v.shown = i;
+  std::string cur = onx_lyrics::line(i);
+  if (cur.empty()) cur = i < 0 ? "" : "\xC2\xB7 \xC2\xB7 \xC2\xB7";  // Instrumental gap.
+  lv_label_set_text(v.prev, onx_lyrics::line(i - 1).c_str());
+  lv_label_set_text(v.cur, cur.c_str());
+  lv_label_set_text(v.next, onx_lyrics::line(i + 1).c_str());
 }
 
 // Round transport: dark previous/next circles around a larger accent play.
@@ -2931,6 +2956,24 @@ __attribute__((noinline)) inline void build_media(const Layout &l, const std::st
       lv_obj_center(main_artwork);
     }
   } else icon(root, e, ax + art / 2, ay + art / 2, art * 40 / 100, playing ? accent() : SOFT_TEXT());
+  // Synced lyrics (optional blueprint) cover the artwork; a tap shows it again.
+  if (playback && onx_lyrics::available(e, d.media_title)) {
+    lv_obj_add_flag(frame, LV_OBJ_FLAG_CLICKABLE);
+    on(frame, LV_EVENT_CLICKED, [](lv_event_t *) { if (allowed()) { onx_lyrics::toggle(); built_signature.clear(); } });
+    if (onx_lyrics::shown(e, d.media_title)) {
+      auto *veil = box(frame, 0, 0, art, art, CARD(), 0, LV_OPA_80);
+      lv_obj_remove_flag(veil, LV_OBJ_FLAG_CLICKABLE);
+      const int lp = P(12), lw = art - 2 * lp;
+      const lv_font_t *cf = art >= P(200) ? fonts.title : fonts.body;
+      const int ch = line(cf) * 3, cy = (art - ch) / 2;
+      lyric_view = LyricView{e};
+      lyric_view.prev = text(veil, "", fonts.small, MUTED(), lp, std::max(0, cy - P(6) - 2 * line(fonts.small)), lw, LV_TEXT_ALIGN_CENTER, 2);
+      lyric_view.cur = text(veil, "", cf, TEXT(), lp, cy, lw, LV_TEXT_ALIGN_CENTER, 3);
+      lv_label_set_long_mode(lyric_view.cur, LV_LABEL_LONG_WRAP);
+      lv_obj_set_style_text_align(lyric_view.cur, LV_TEXT_ALIGN_CENTER, 0);
+      lyric_view.next = text(veil, "", fonts.small, SOFT_TEXT(), lp, cy + ch + P(6), lw, LV_TEXT_ALIGN_CENTER, 2);
+    }
+  }
   tick_media_progress();
 }
 
@@ -3385,6 +3428,7 @@ inline std::string signature(const std::string &e, const EntityDetailState *d, c
        std::to_string(d->forecast_count) + '|' + std::to_string(d->forecast_waiting(esphome::millis())) + '|' + d->timer_duration;
   for (int i = 0; i < d->forecast_count; ++i) s += '|' + d->forecast[i].date + d->forecast[i].high + d->forecast[i].low;
   s += '|' + d->media_title + '|' + d->media_artist + '|' + d->picture + '|' + onx_media::ready_url;
+  if (has_prefix(e, "media_player.")) s += '|' + std::to_string(onx_lyrics::store().version);
   s += '|' + v.value.text + '|' + v.context.text + '|' + v.name.text + '|' + std::to_string(v.value_ring);
   if (has_prefix(e, "light.") && light_state) {
     const auto l = light_state(e);
@@ -3434,6 +3478,7 @@ inline void clear(bool invalidate_root) {
   for (auto *o : targets) t.erase(std::remove(t.begin(), t.end(), o), t.end());
   targets.clear();
   media_progress.clear();
+  lyric_view = LyricView{};
   if (root != nullptr) {
     if (invalidate_root) {
       lv_obj_clean(root);

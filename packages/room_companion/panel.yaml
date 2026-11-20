@@ -20,6 +20,20 @@ uart: !remove
 # Public firmware uses an unencrypted API; provisioning stays in device NVS.
 api:
   encryption: !remove
+  # Optional synced lyrics, sent once per track by the Room Companion lyrics
+  # blueprint (blueprints/automation/room_companion_lyrics.yaml).
+  actions:
+    - action: set_lyrics
+      description: Synced LRC lyrics for a media player's current track; an empty lrc clears them.
+      variables:
+        entity_id: string
+        title: string
+        lrc: string
+      then:
+        - lambda: |-
+            if (lrc.empty()) onx_lyrics::clear();
+            else if (!onx_lyrics::set(entity_id, title, lrc)) ESP_LOGW("lyrics", "No timed lines for %s", title.c_str());
+            else ESP_LOGI("lyrics", "%d lines for %s", onx_lyrics::count(), title.c_str());
 
 lvgl:
   id: lvgl_ui
