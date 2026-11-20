@@ -470,14 +470,41 @@ inline void update(lv_obj_t *page, int W, int H, const std::string &weather_stat
 // The slideshow and ImmichFrame screens keep the idle clock's information in a
 // band at the bottom: time and date on the left, current weather on the right
 // and the playing media above them. The parts follow the clock settings.
+// Styles (select "Clock on photos"): a large clock (the band above), a small
+// clock (smaller time and date, a thinner band) or the photo with only a
+// small time in a corner pill.
+enum PhotoOverlay { OVERLAY_LARGE = 0, OVERLAY_SMALL = 1, OVERLAY_PHOTO_ONLY = 2 };
+inline int photo_overlay = OVERLAY_LARGE;
 inline void update_photo_overlay(int W, int H, const std::string &weather_state) {
   using namespace onx_panel_ui;
   if (slide_bar == nullptr || base.time == nullptr) return;
-  const int m = S(12);
+  const bool small = photo_overlay == OVERLAY_SMALL, only = photo_overlay == OVERLAY_PHOTO_ONLY;
+  const int m = small || only ? S(10) : S(12);
   const bool ampm = onx_display_settings::datetime.hour_format == 1 && onx_display_settings::datetime.show_ampm;
-  const lv_font_t *tf = ampm || fonts.clock == nullptr ? fonts.clock_ampm : fonts.clock;
+  const lv_font_t *tf = only ? fonts.value
+                        : small ? fonts.clock_ampm
+                        : ampm || fonts.clock == nullptr ? fonts.clock_ampm : fonts.clock;
   if (tf != nullptr) onx_render::style_text_font(slide_time, tf, 0);
-  onx_render::style_text_font(slide_date, fonts.date, 0);
+  // Photo only: the time alone in a translucent pill, no fade band.
+  show(slide_date, !only);
+  if (only) {
+    show(slide_media, false);
+    show(slide_temp, false);
+    show(slide_weather, false);
+    const int ph = S(8), pv = S(4), tw = text_width(lv_label_get_text(slide_time), tf), th = line(tf);
+    lv_obj_set_style_bg_main_opa(slide_bar, LV_OPA_50, 0);
+    lv_obj_set_style_bg_grad_opa(slide_bar, LV_OPA_50, 0);
+    lv_obj_set_style_radius(slide_bar, S(10), 0);
+    size(slide_bar, tw + 2 * ph, th + 2 * pv);
+    at(slide_bar, m, H - m - th - 2 * pv);
+    at(slide_time, ph, pv);
+    return;
+  }
+  lv_obj_set_style_bg_main_opa(slide_bar, LV_OPA_TRANSP, 0);
+  lv_obj_set_style_bg_grad_opa(slide_bar, LV_OPA_70, 0);
+  lv_obj_set_style_radius(slide_bar, 0, 0);
+  const lv_font_t *df = small ? fonts.small : fonts.date;
+  onx_render::style_text_font(slide_date, df, 0);
   set_text(slide_date, lv_label_get_text(base.date));
   if (lv_label_get_long_mode(slide_date) != LV_LABEL_LONG_DOT) lv_label_set_long_mode(slide_date, LV_LABEL_LONG_DOT);
 
@@ -494,14 +521,14 @@ inline void update_photo_overlay(int W, int H, const std::string &weather_state)
   }
 
   // The clock line is the time font's height minus its empty descent, as on the idle clock.
-  const int time_h = line(tf) - line(tf) / 7, date_h = std::max(line(fonts.date), S(28)), media_h = line(fonts.small);
+  const int time_h = line(tf) - line(tf) / 7, date_h = std::max(line(df), small ? S(20) : S(28)), media_h = line(fonts.small);
   const int body = time_h + date_h + (media.empty() ? 0 : media_h + S(6));
-  const int bar_h = std::min(H / 2, body + 2 * m + S(36));  // headroom for the fade
+  const int bar_h = std::min(H / 2, body + 2 * m + (small ? S(18) : S(36)));  // headroom for the fade
   size(slide_bar, W, bar_h);
   at(slide_bar, 0, H - bar_h);
   const int date_y = bar_h - m - date_h, time_y = date_y - time_h;
   at(slide_time, m, time_y - line(tf) / 14);
-  at(slide_date, m + S(2), date_y + (date_h - line(fonts.date)) / 2);
+  at(slide_date, m + S(2), date_y + (date_h - line(df)) / 2);
 
   show(slide_media, !media.empty());
   if (!media.empty()) {
@@ -516,10 +543,10 @@ inline void update_photo_overlay(int W, int H, const std::string &weather_state)
   show(slide_weather, weather);
   if (weather) {
     set_text(slide_temp, temp);
-    onx_render::style_text_font(slide_temp, fonts.date, 0);
-    const int icon = S(28), tw = text_width(temp.c_str(), fonts.date);
+    onx_render::style_text_font(slide_temp, df, 0);
+    const int icon = small ? S(20) : S(28), tw = text_width(temp.c_str(), df);
     const int cy = date_y + date_h / 2;
-    at(slide_temp, W - m - tw, cy - line(fonts.date) / 2);
+    at(slide_temp, W - m - tw, cy - line(df) / 2);
     const void *src = condition_image ? condition_image(weather_state) : nullptr;
     if (lv_image_get_src(slide_weather) != src) lv_image_set_src(slide_weather, src);
     size(slide_weather, icon, icon);

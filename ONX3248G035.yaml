@@ -15,7 +15,8 @@ substitutions:
   logger_level: INFO
   uart_baud: "115200"
   encoder_resolution: "4"
-  standby_timeout_seconds: "300"
+  # Idle screen after this many seconds without a touch (default; editable).
+  standby_timeout_seconds: "30"
   diagnostics_update_interval: 15s
   display_update_interval: 50ms
   lcd_spi_data_rate: 40MHz

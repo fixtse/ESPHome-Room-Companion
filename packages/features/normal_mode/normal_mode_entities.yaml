@@ -11,7 +11,7 @@ number:
     optimistic: true
     restore_value: true
     entity_category: config
-    initial_value: 300
+    initial_value: ${standby_timeout_seconds}
     min_value: 1
     max_value: 900
     step: 1

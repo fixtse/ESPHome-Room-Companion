@@ -957,8 +957,12 @@ static const char PANEL_JS[] = R"ONXPANEL(
   const buildAction=(l,e,d,title)=>{
    const script=e.startsWith('script.'),scene=e.startsWith('scene.'),automation=e.startsWith('automation.'),running=script&&d.state==='on';
    header(l.head,title,(script?'Script':automation?'Automation':scene?'Scene':'Button')+(running?' · Running…':''));
-   const size=Math.min(P(170),l.vis.w,l.vis.h-P(40)),cx=l.vis.x+l.vis.w/2,cy=l.vis.y+(l.vis.h-P(30))/2;
-   circle(cx,cy,size,STRONG,'play',TEXT,running?{stroke:ACCENT,'stroke-width':P(6)}:{});text(running?'Running…':'Tap to run',F.body,SOFT,l.vis.x,cy+size/2+P(12),l.vis.w,'center');
+   // As build_action: the 2.8" uses a smaller button without "Tap to run" and gives the room to the history.
+   const compact=Math.min(W,H)<320&&!wide;
+   if(compact){l.vis.h=Math.min(P(120),l.vis.w)+P(8);l.ctl.y=l.vis.y+l.vis.h+P(12);l.ctl.h=H-P(16)-l.ctl.y}
+   const size=compact?Math.min(P(120),l.vis.w):Math.min(P(170),l.vis.w,l.vis.h-P(40)),cx=l.vis.x+l.vis.w/2,cy=compact?l.vis.y+l.vis.h/2:l.vis.y+(l.vis.h-P(30))/2;
+   circle(cx,cy,size,STRONG,'play',TEXT,running?{stroke:ACCENT,'stroke-width':P(6)}:{});
+   if(!compact||running){if(compact)l.ctl.y+=F.body.lh;text(running?'Running…':'Tap to run',F.body,SOFT,l.vis.x,cy+size/2+(compact?P(4):P(12)),l.vis.w,'center')}
    if(automation){const en=d.state==='on';button(l.ctl.x,l.ctl.y,l.ctl.w,P(48),P(16),CONTROL,en?'Enabled · Tap to disable':'Disabled · Tap to enable',F.body,TEXT)}
    else if(running)button(l.ctl.x,l.ctl.y,l.ctl.w,P(48),P(16),CONTROL,'Stop script',F.body,TEXT);
    // Run history, as build_action: last run, a 24 h strip and the recent runs.
@@ -1093,8 +1097,8 @@ static const char PANEL_JS[] = R"ONXPANEL(
    if(quick&&!wide)bottom=H-pad;
    if(d.features&4){const vh=P(48),vy=bottom-vh,p=Math.max(0,Math.min(100,Math.round(num(d.volume)*100)||0));
     // As build_media: whenever volume is supported.
-    box(x,vy,w,vh,CARD,P(14),{'data-media-volume':''});symbol('volume',x+P(12)+P(13),vy+vh/2,SOFT);
-    const nw=width('100',F.body)+P(4),sx=x+P(12)+P(30),sw=w-(sx-x)-nw-P(24),th=P(6),ks=P(22);text(String(p),F.body,TEXT,x+w-P(12)-nw,vy+(vh-F.body.lh)/2,nw,'right');
+    box(x,vy,w,vh,CARD,P(14),{'data-media-volume':''});const iw=Math.round(F.symbol.size*1.07);symbol('volume',x+P(12)+iw/2,vy+vh/2,SOFT);  // As build_media: glyph, then a gap.
+    const nw=width('100',F.body)+P(4),sx=x+P(12)+iw+P(14),sw=w-(sx-x)-nw-P(24),th=P(6),ks=P(22);text(String(p),F.body,TEXT,x+w-P(12)-nw,vy+(vh-F.body.lh)/2,nw,'right');
     box(sx,vy+(vh-th)/2,sw,th,TRACK,th/2);box(sx,vy+(vh-th)/2,Math.max(th,sw*p/100),th,ACCENT,th/2);add(node('circle',{cx:sx+Math.max(ks/2,Math.min(sw-ks/2,sw*p/100)),cy:vy+vh/2,r:ks/2,fill:TEXT}));bottom=vy-P(14)}
    const bh=P(64),by=bottom-bh;transport(x+w/2,by+bh/2,P(52),bh,P(28),playing);
    const bar=P(6),progH=bar+P(6)+F.small.lh,progY=by-P(16)-progH;progressBar(v,x,progY,w,false);
@@ -1131,12 +1135,22 @@ static const char PANEL_JS[] = R"ONXPANEL(
   const chipIcon=(e,x,y,s,on)=>{add(node('circle',{cx:x+s/2,cy:y+s/2,r:s/2,fill:on?TINT:INSET}));icon(e,x+s/2,y+s/2,Math.trunc(s*56/100),on?ACCENT:SOFT)};
   const toggle=(x,y,on)=>{const w=P(54),h=P(30),k=h-P(8);box(x,y,w,h,on?ACCENT:TRACK,h/2,{'data-panel-control':'toggle'});box(on?x+w-k-P(4):x+P(4),y+P(4),k,k,on?'#101418':SOFT,k/2)};
   const cardWeather=(t,d)=>{
-   const r=t.r,pad=P(16),is=Math.min(P(84),Math.trunc(r.h/3));text(t.name,F.small,SOFT,r.x+pad,r.y+pad,r.w-2*pad-is);let y=r.y+pad+F.small.lh;
-   const temp=present(d.temperature,'°')||'—',hero=r.h>=P(240)&&heroText(temp),tf=hero?F.hero:F.big;text(temp,tf,TEXT,r.x+pad-(hero?P(3):0),y-(hero?P(6):0),r.w-2*pad-is);
-   y+=tf.lh-(hero?P(14):P(2));text(conditionText(d.state),F.body,TEXT,r.x+pad,y,r.w-2*pad-is);y+=F.body.lh+P(14);icon(t.entity,r.x+r.w-pad-is/2,r.y+pad+is/2+P(8),is,TEXT);
+   // As card_weather: the 2.8" (compact) trades the hero reading for more readings and the forecast.
+   const compact=Math.min(W,H)<320,r=t.r,pad=compact?P(14):P(16),is=compact?Math.min(P(64),Math.trunc(r.h/4)):Math.min(P(84),Math.trunc(r.h/3));text(t.name,F.small,SOFT,r.x+pad,r.y+pad,r.w-2*pad-is);let y=r.y+pad+F.small.lh;
+   const temp=present(d.temperature,'°')||'—',hero=!compact&&r.h>=P(240)&&heroText(temp),tf=hero?F.hero:F.big;text(temp,tf,TEXT,r.x+pad-(hero?P(3):0),y-(hero?P(6):0),r.w-2*pad-is);
+   y+=tf.lh-(hero?P(14):P(2));text(conditionText(d.state),F.body,TEXT,r.x+pad,y,r.w-2*pad-is);y+=F.body.lh+(compact?P(10):P(14));icon(t.entity,r.x+r.w-pad-is/2,r.y+pad+is/2+P(8),is,TEXT);
    const stats=[['Humidity',present(d.humidity,'%')],['Wind',present(d.wind,d.wind_unit)],['Pressure',present(d.pressure,d.pressure_unit)],['Visibility',present(d.visibility,d.visibility_unit)],['UV index',present(d.uv,'')],['Feels like',present(d.feels_like,'°')]].filter(s=>s[1]);
-   const gap=P(8),th=P(56),tw=Math.trunc((r.w-2*pad-gap)/2),rows=Math.min(Math.ceil(stats.length/2),Math.trunc((r.y+r.h-pad-y+gap)/(th+gap)));
+   const gap=compact?P(6):P(8),th=compact?P(50):P(56),tw=Math.trunc((r.w-2*pad-gap)/2),rows=Math.min(Math.ceil(stats.length/2),Math.trunc((r.y+r.h-pad-y+gap)/(th+gap)));
    for(let i=0;i<Math.min(stats.length,rows*2);i++)tile({x:r.x+pad+(i%2)*(tw+gap),y:y+Math.trunc(i/2)*(th+gap),w:tw,h:th},stats[i][0],stats[i][1],INSET);
+   const fc=Array.isArray(d.forecast)?d.forecast:[];
+   if(compact&&fc.length){
+    const n=new Date(),today=n.getFullYear()+'-'+String(n.getMonth()+1).padStart(2,'0')+'-'+String(n.getDate()).padStart(2,'0');
+    const day=iso=>String(iso).slice(0,10)===today?'Today':new Date(String(iso).slice(0,10)+'T12:00:00').toLocaleDateString('en-US',{weekday:'short'});
+    const deg=v=>present(v,'°')||'—',rh=F.small.lh+P(4),dw=Math.trunc(r.w*22/100),vw=Math.trunc(r.w*30/100);
+    let fy=y+rows*(th+gap)+(rows?P(2):0);
+    for(const f of fc){if(fy+rh>r.y+r.h-pad+P(4))break;text(day(f.date),F.small,TEXT,r.x+pad,fy,dw);text(conditionText(f.condition),F.small,MUTED,r.x+pad+dw,fy,r.w-2*pad-dw-vw);
+     text(deg(f.low)+' / '+deg(f.high),F.small,TEXT,r.x+r.w-pad-vw,fy,vw,'right');fy+=rh}
+   }
    if(rows<=0&&stats.length&&r.y+r.h-pad-y+P(14)>=F.small.lh)text(stats.slice(0,2).map(s=>s[0]+' '+s[1]).join('  ·  '),F.small,MUTED,r.x+pad,y-P(8),r.w-2*pad);
   };
   const cardLight=(t,d)=>{

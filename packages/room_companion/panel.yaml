@@ -83,6 +83,20 @@ select:
       - Fill screen
       - Whole photo
     initial_option: Blurred background
+  # The clock over photos: large (time, date, weather, media), small (a thinner
+  # band) or photo only (the time in a corner pill).
+  - platform: template
+    id: panel_photo_overlay
+    name: Clock on photos
+    # Set from the web setup (Idle screen page); not exposed to Home Assistant.
+    internal: true
+    optimistic: true
+    restore_value: true
+    options:
+      - Large clock
+      - Small clock
+      - Photo only
+    initial_option: Large clock
 
 switch:
   # Two photos side by side (or stacked) when one alone would not suit the screen.
@@ -349,6 +363,7 @@ interval:
             auto now = id(ha_time).now();
             if (now.is_valid()) onx_render::label(onx_panel_ui::slide_time, now.strftime(onx_display_settings::time_pattern()).c_str());
           }
+          onx_idle_clock::photo_overlay = id(panel_photo_overlay).active_index().value_or(0);
           onx_idle_clock::update_photo_overlay(onx_panel_ui::width, onx_panel_ui::height, id(standby_weather_state));
           const bool due = !onx_panel_ui::slide_loading &&
                            static_cast<int32_t>(millis() - onx_panel_ui::slide_due) >= 0;

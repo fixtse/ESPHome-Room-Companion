@@ -2554,6 +2554,11 @@ script:
   - id: refresh_standby_seconds_ring
     then:
       - lambda: |-
+          #ifdef USE_ROOM_COMPANION
+          // Rectangular panels have no round edge for the seconds ring.
+          lv_obj_add_flag(id(standby_seconds_arc),LV_OBJ_FLAG_HIDDEN);
+          return;
+          #endif
           const auto now=id(ha_time).now();
           const bool show=onx_display_settings::behavior.clock_seconds && now.is_valid() &&
               id(ui_presenter)->is_normal_mode_active() && id(ui_presenter)->is_standby_active() &&

@@ -39,7 +39,13 @@ else
   docker build -q -t "$image" https://github.com/fixtse/esphome-lvgl-emulator.git#main >/dev/null
 fi
 run() { docker run --rm --name "rc-emulator-$$-$RANDOM" -u "$(id -u):$(id -g)" -e HOME=/tmp "${mounts[@]}" -w /src "$image" "$@"; }
-run sh -c "cmake -S emulator -B emulator/build -DCMAKE_BUILD_TYPE=Release ${cmake_args[*]} >/dev/null && cmake --build emulator/build -j\$(nproc) 2>&1 | grep -E 'error|warning: unused' || true; test -x emulator/build/rc-emulator"
+# Always recompile the panel code: synced files keep the source machine's
+# timestamps, which can look older than the last build. LVGL stays cached.
+[ -d emulator/build/CMakeFiles/rc-emulator.dir ] && find emulator/build/CMakeFiles/rc-emulator.dir -name "*.o" -delete
+rm -f emulator/build/rc-emulator
+run sh -c "cmake -S emulator -B emulator/build -DCMAKE_BUILD_TYPE=Release ${cmake_args[*]} >/dev/null &&
+  cmake --build emulator/build -j\$(nproc) > emulator/build/build.log 2>&1" ||
+  { grep -E 'error' emulator/build/build.log | head -20; echo "emulator build failed (emulator/build/build.log)"; exit 1; }
 rm -rf emulator/out
 for model in "${models[@]}"; do
   run emulator/build/rc-emulator --model "$model" --scenario "$scenario" --out emulator/out --preview emulator/out/preview "${only[@]}"

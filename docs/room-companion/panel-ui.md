@@ -174,6 +174,14 @@ orientation. ImmichFrame uses its configured album and account filters.
 
 Photo options (panel web setup, Idle screen page):
 
+- **Clock on photos** (each choice shows a small picture of the result):
+  - *Large clock* (default) shows the time, date, weather and playing media
+    over a fade at the bottom.
+  - *Small clock* uses a smaller time and date in a thinner band, so more of
+    the photo shows.
+  - *Photo only* shows just the time, small, in a corner pill.
+
+  **Hardware status:** compiled; appearance not yet checked on a panel.
 - **Photo fit**: *Blurred background* (default) shows the whole
   photo over a blurred, darkened copy of itself, as ImmichFrame does when
   `ImageFill` is off. *Fill screen* crops the edges, and *Whole photo* uses black

@@ -1132,13 +1132,22 @@ __attribute__((noinline)) inline void build_toggle(const Layout &l, const std::s
   }
 }
 
-__attribute__((noinline)) inline void build_action(const Layout &l, const std::string &e, const EntityDetailState &d, const std::string &title) {
+__attribute__((noinline)) inline void build_action(const Layout &layout_in, const std::string &e, const EntityDetailState &d, const std::string &title) {
   const bool script = has_prefix(e, "script."), scene = has_prefix(e, "scene."), automation = has_prefix(e, "automation.");
   const bool running = script && d.state == "on";
   const std::string kind = script ? "Script" : automation ? "Automation" : scene ? "Scene" : "Button";
-  header(l.head, title, kind + (running ? " · Running…" : ""));
-  const int size = std::min({P(170), l.vis.w, l.vis.h - P(40)});
-  const int cx = l.vis.x + l.vis.w / 2, cy = l.vis.y + (l.vis.h - P(30)) / 2;
+  header(layout_in.head, title, kind + (running ? " · Running…" : ""));
+  // The 2.8" panel uses a smaller button without the "Tap to run" label and
+  // gives the space to the controls and run history below.
+  const bool compact = std::min(W, H) < 320 && !wide();
+  Layout l = layout_in;
+  if (compact) {
+    l.vis.h = std::min(P(120), l.vis.w) + P(8);
+    l.ctl.y = l.vis.bottom() + P(12);
+    l.ctl.h = H - P(16) - l.ctl.y;
+  }
+  const int size = compact ? std::min(P(120), l.vis.w) : std::min({P(170), l.vis.w, l.vis.h - P(40)});
+  const int cx = l.vis.x + l.vis.w / 2, cy = compact ? l.vis.y + l.vis.h / 2 : l.vis.y + (l.vis.h - P(30)) / 2;
   const bool ring = esphome::millis() - ran_at < 1500 || running;
   lv_obj_t *b = circle(root, cx, cy, size, strong(), LV_SYMBOL_PLAY, TEXT(), [e, script, automation]() {
     ran_at = esphome::millis();
@@ -1150,8 +1159,11 @@ __attribute__((noinline)) inline void build_action(const Layout &l, const std::s
     lv_obj_set_style_border_width(b, P(6), 0);
     lv_obj_set_style_border_color(b, lv_color_hex(accent()), 0);
   }
-  text(root, running ? "Running…" : "Tap to run", fonts.body, SOFT_TEXT(), l.vis.x, cy + size / 2 + P(12), l.vis.w,
-       LV_TEXT_ALIGN_CENTER);
+  if (!compact || running) {
+    if (compact) l.ctl.y += line(fonts.body);
+    text(root, running ? "Running…" : "Tap to run", fonts.body, SOFT_TEXT(), l.vis.x, cy + size / 2 + (compact ? P(4) : P(12)),
+         l.vis.w, LV_TEXT_ALIGN_CENTER);
+  }
   if (automation) {
     const bool enabled = d.state == "on";
     button(root, l.ctl.x, l.ctl.y, l.ctl.w, P(48), P(16), CONTROL(),
@@ -2520,19 +2532,22 @@ inline int titled(lv_obj_t *c, const Tile &t, int x, int y, int w, uint32_t cont
 
 inline void card_weather(lv_obj_t *c, const Tile &t, const EntityDetailState &d) {
   const Rect r = t.r;
-  const int pad = P(16), is = std::min(P(84), r.h / 3);
+  // The 2.8" panel trades the hero temperature for more readings: a smaller
+  // reading and icon, shorter tiles, then the forecast in the space left.
+  const bool compact = std::min(W, H) < 320;
+  const int pad = compact ? P(14) : P(16), is = compact ? std::min(P(64), r.h / 4) : std::min(P(84), r.h / 3);
   // Wide cards (landscape): the reading on the left half, the tiles on the right.
   const bool split = r.w >= r.h * 3 / 2 && r.w >= P(360);
   const int lw = split ? r.w * 46 / 100 : r.w;
   text(c, t.name, fonts.small, SOFT_TEXT(), pad, pad, lw - 2 * pad - is);
   int y = pad + line(fonts.small);
   const std::string temp = present(d.target, "°").empty() ? "—" : present(d.target, "°");
-  const bool hero = r.h >= P(240) && hero_text(temp);
+  const bool hero = !compact && r.h >= P(240) && hero_text(temp);
   const lv_font_t *tf = hero ? fonts.hero : fonts.big;
   text(c, temp, tf, TEXT(), pad - (hero ? P(3) : 0), y - (hero ? P(6) : 0), lw - 2 * pad - is);
   y += line(tf) - (hero ? P(14) : P(2));
   text(c, condition(d.state), fonts.body, TEXT(), pad, y, lw - 2 * pad - (split ? 0 : is));
-  y += line(fonts.body) + P(14);
+  y += line(fonts.body) + (compact ? P(10) : P(14));
   if (split) {  // The icon under the reading, using the left column's height.
     const int iy = y, ih = r.h - pad - iy, s2 = std::min({P(96), ih, lw - 2 * pad});
     if (s2 >= P(40)) icon(c, t.entity, pad + s2 / 2, iy + ih / 2, s2, TEXT());
@@ -2547,14 +2562,32 @@ inline void card_weather(lv_obj_t *c, const Tile &t, const EntityDetailState &d)
   add("Visibility", present(d.visibility, d.visibility_unit));
   add("UV index", present(d.uv_index, ""));
   add("Feels like", present(d.apparent_temperature, "°"));
-  const int gap = P(8), cols = 2, gx = split ? lw : pad, gw = split ? r.w - lw - pad : r.w - 2 * pad;
+  const int gap = compact ? P(6) : P(8), cols = 2, gx = split ? lw : pad, gw = split ? r.w - lw - pad : r.w - 2 * pad;
   if (split) y = pad;
   const int tw = (gw - gap) / cols, need = (int(stats.size()) + 1) / 2;
   // Split cards share their height between the rows (up to 3).
-  const int th = split && need ? std::clamp((r.h - 2 * pad - (need - 1) * gap) / need, P(48), P(72)) : P(56);
+  const int th = split && need ? std::clamp((r.h - 2 * pad - (need - 1) * gap) / need, P(48), P(72)) : compact ? P(50) : P(56);
   const int rows = std::min<int>(need, (r.h - pad - y + gap) / (th + gap));
   for (int i = 0; i < std::min<int>(stats.size(), rows * cols); ++i)
     tile(c, {gx + (i % cols) * (tw + gap), y + (i / cols) * (th + gap), tw, th}, stats[i].first, stats[i].second, INSET());
+  // Compact cards: the next days in the space below the readings.
+  if (compact && !split && d.forecast_count) {
+    char today[11] = "";
+    const time_t now = std::time(nullptr);
+    struct tm local{};
+    localtime_r(&now, &local);
+    strftime(today, sizeof(today), "%Y-%m-%d", &local);
+    int fy = y + rows * (th + gap) + (rows ? P(2) : 0);
+    const int rh = line(fonts.small) + P(4), dw = r.w * 22 / 100, vw = r.w * 30 / 100;
+    for (int i = 0; i < d.forecast_count && fy + rh <= r.h - pad + P(4); ++i, fy += rh) {
+      const auto &f = d.forecast[i];
+      text(c, weekday(f.date, today), fonts.small, TEXT(), pad, fy, dw);
+      text(c, condition(f.condition), fonts.small, MUTED(), pad + dw, fy, r.w - 2 * pad - dw - vw);
+      auto deg = [](const std::string &v) { const auto p = present(v, "°"); return p.empty() ? std::string("—") : p; };
+      text(c, deg(f.low) + " / " + deg(f.high), fonts.small, TEXT(), r.w - pad - vw, fy, vw,
+           LV_TEXT_ALIGN_RIGHT);
+    }
+  }
   // Short cards: the first readings on one line instead of tiles.
   if (rows == 0 && !stats.empty() && r.h - pad - y + P(14) >= line(fonts.small)) {
     std::string summary;
@@ -2796,7 +2829,10 @@ __attribute__((noinline)) inline void build_media(const Layout &l, const std::st
     const int pct_v = std::isfinite(level) ? std::clamp(int(std::lround(level * 100)), 0, 100) : 0;
     auto *row = box(root, x, vy, w, vh, CARD(), P(14));
     text(row, LV_SYMBOL_VOLUME_MAX, fonts.symbol, SOFT_TEXT(), P(12), (vh - line(fonts.symbol)) / 2);
-    const int nw = text_width("100", fonts.body) + P(4), sx = P(12) + P(30), sw = w - sx - nw - P(24);
+    // The track starts after the speaker glyph's own width plus a gap (a fixed
+    // offset ran into the glyph's sound waves).
+    const int nw = text_width("100", fonts.body) + P(4), sx = P(12) + text_width(LV_SYMBOL_VOLUME_MAX, fonts.symbol) + P(14),
+              sw = w - sx - nw - P(24);
     lv_obj_t *value = text(row, std::to_string(pct_v), fonts.body, TEXT(), w - P(12) - nw, (vh - line(fonts.body)) / 2, nw,
                            LV_TEXT_ALIGN_RIGHT);
     const int th = P(6), ks = P(22);

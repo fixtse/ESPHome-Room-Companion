@@ -36,6 +36,10 @@ const fonts = font('fonts/MiSans-Medium.ttf', 500) + font('fonts/MiSans-Bold.ttf
   const mdi = name => [process.env.MDI_SVG_DIR || '', 'assets/entity_icons', 'assets/panel']
     .filter(Boolean).map(dir => path.join(dir, name + '.svg')).find(f => fs.existsSync(f));
   const dot = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><circle cx="12" cy="12" r="6" fill="#fff"/></svg>';
+  // Anything else outside the page (artwork on homeassistant.local, ...) fails at
+  // once instead of holding the page open.
+  await context.route(url => !/^http:\/\/panel\.test\//.test(url.href) && !/^https:\/\/api\.iconify\.design\//.test(url.href),
+    route => route.abort());
   await context.route(/^https:\/\/api\.iconify\.design\//, route => {
     const url = new URL(route.request().url());
     const name = url.pathname.split('/').pop().replace(/\.svg$/, '');
@@ -75,7 +79,7 @@ const fonts = font('fonts/MiSans-Medium.ttf', 500) + font('fonts/MiSans-Bold.ttf
       await document.fonts.ready;
       await Promise.all([...document.images, ...document.querySelectorAll('image')].map(i => i.decode?.().catch(() => {})));
     });
-    await shotPage.waitForLoadState('networkidle');
+    await shotPage.waitForLoadState('networkidle', {timeout: 5000}).catch(() => {});
     await shotPage.screenshot({path: path.join(out, 'web', file.replace(/\.json$/, '.png'))});
     await shotPage.close();
   }
