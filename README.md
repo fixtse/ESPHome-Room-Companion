@@ -21,7 +21,6 @@ Made by [fixtSE](https://fixtse.com/).
 | Keep timers in sight | See active Home Assistant and supported Assist timers, with countdowns and controls for pausing or stopping them. |
 | Catch the things that matter | Put a laundry reminder, calendar alert, or doorbell photo on screen with a Home Assistant automation. Swipe down to open the notification center. |
 | Ask Home Assistant | With a compatible microphone, speaker, and Assist pipeline, tap **Talk** to make a request, see the transcript, and hear the reply. The wake-word variant adds hands-free activation with **Okay Nabu**. |
-| Open your dashboard | Add your Home Assistant dashboard to the panel with a Remote WebView server. The built-in touch controls work with Home Assistant on their own. |
 
 ## Make it yours
 
@@ -34,9 +33,9 @@ Made by [fixtSE](https://fixtse.com/).
 - **Set up from a phone or computer.** Open **Visit** from the Home Assistant
   device page to browse entities, arrange controls, preview changes, and back
   up your configuration. The browser handles Home Assistant sign-in.
-- **Choose what shows when you’re away.** Leave a clock or the currently playing
-  media on screen, or schedule the display to switch off while the panel stays
-  connected to Home Assistant. Choose portrait or landscape, brightness, and
+- **Choose what shows when you’re away.** Show a clock, a dashboard, or a photo slideshow,
+  or schedule the display to switch off while the panel stays connected to
+  Home Assistant. Choose portrait or landscape, brightness, and
   accent colors to suit the room.
 
 ## Choose your panel
@@ -63,6 +62,21 @@ the model number on your panel.
 
 Already running Room Companion? Check the panel’s **Firmware Update** entity
 in Home Assistant for available updates. [Setup and update guide](docs/setup.md#keep-it-updated)
+
+## Add a dashboard or photo slideshow
+
+**Bring your dashboard to the room.** The optional
+[RemoteWebViewServer](https://github.com/strange-v/RemoteWebViewServer) streams an
+interactive Home Assistant dashboard to the panel. Install it as a Home Assistant
+add-on or run it on a separate Docker host. [Dashboard streaming setup](docs/room-companion/dashboard-stream.md)
+
+[![Add the Remote WebView Server repository to Home Assistant](https://my.home-assistant.io/badges/supervisor_add_addon_repository.svg)](https://my.home-assistant.io/redirect/supervisor_add_addon_repository/?repository_url=https%3A%2F%2Fgithub.com%2Fstrange-v%2FRemoteWebViewServer)
+
+**Turn the idle screen into a photo frame.** The
+[fixtSE ImmichFrame fork](https://github.com/fixtse/ImmichFrame) serves photos from
+your Immich library at the panel’s resolution. Open the panel’s **Idle screen**
+settings, choose **ImmichFrame**, and select your server or enter its URL. The
+panel fetches photos directly from ImmichFrame. [Slideshow setup](docs/room-companion/panel-ui.md#immichframe)
 
 ## Find your guide
 

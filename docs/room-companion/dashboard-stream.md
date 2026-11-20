@@ -1,14 +1,32 @@
 # Home Assistant dashboard on the panel
 
-In **Home Assistant dashboard** mode, a server renders any web page (usually a
-Lovelace dashboard) in headless Chromium and streams changed tiles to the
+In **Home Assistant dashboard** mode, [RemoteWebViewServer](https://github.com/strange-v/RemoteWebViewServer) renders a web page (usually a
+Home Assistant dashboard) in headless Chromium and streams changed tiles to the
 panel; touches go back to the server. The panel switches to its native screens
 for setup, Assist, notifications and the corner menu, then returns to the
 dashboard.
 
 ## 1. Run the server
 
-On any always-on Docker host on the same network (not on the panel):
+Choose one installation method. The panel connects to the server over your local
+network, typically on port `8081`.
+
+### Home Assistant OS add-on
+
+[![Add the Remote WebView Server repository to Home Assistant](https://my.home-assistant.io/badges/supervisor_add_addon_repository.svg)](https://my.home-assistant.io/redirect/supervisor_add_addon_repository/?repository_url=https%3A%2F%2Fgithub.com%2Fstrange-v%2FRemoteWebViewServer)
+
+1. Open the button and confirm the repository in Home Assistant. You can also
+   add `https://github.com/strange-v/RemoteWebViewServer` under **Settings →
+   Apps → App store → Repositories**. Older Home Assistant versions call this
+   section **Add-ons**.
+2. Install and start **Remote WebView Server** from the store.
+3. Use the Home Assistant host’s LAN address and the add-on’s `ws_port`
+   (default `8081`) in the panel’s **Remote WebView server** field.
+
+### Standalone Docker Compose
+
+On a Docker host the panel can reach, open a local copy of this repository and
+run the [included Compose example](../../deploy/remote-webview/compose.yaml):
 
 ```sh
 cd deploy/remote-webview
@@ -23,15 +41,21 @@ much smoother. One server can drive several panels at their own sizes.
 
 ## 2. Sign the server's browser in to Home Assistant
 
-The server's Chromium needs its own Home Assistant session. Once:
+For a dashboard that requires sign-in, [point the panel at the server](#3-point-the-panel-at-it)
+and open the dashboard on the panel so the server opens the page. Then sign in
+once through the server’s Chromium session.
 
-1. `docker compose --profile devtools up -d` (exposes Chrome DevTools on 9222).
-2. In desktop Chrome open `chrome://inspect/#devices`, **Configure…**, add
-   `<server-host>:9222`.
-3. Set the panel's dashboard address (below) so the server opens it, then click
-   **inspect** on that tab and sign in. Enable **Keep me logged in**.
-4. `docker compose stop devtools`. Anyone who can reach port 9222 controls that
-   browser session, so do not leave it running on an untrusted network.
+1. Temporarily enable Chrome DevTools. In the add-on’s **Configuration**, set
+   `expose_debug_proxy: true`, save, and restart the add-on. For standalone
+   Docker, run `docker compose --profile devtools up -d` from
+   `deploy/remote-webview`.
+2. In desktop Chrome, open `chrome://inspect/#devices`, select **Configure…**,
+   and add `<server-host>:9222` (or the add-on’s configured `debug_proxy_port`).
+3. Select **inspect** on the dashboard tab, sign in, and enable **Keep me
+   logged in**.
+4. Turn DevTools off. Set `expose_debug_proxy: false`, save, and restart the
+   add-on, or run `docker compose stop devtools` for standalone Docker. Anyone
+   who can reach that port while it is open can control the browser session.
 
 A dedicated, non-admin Home Assistant user for panels is recommended.
 

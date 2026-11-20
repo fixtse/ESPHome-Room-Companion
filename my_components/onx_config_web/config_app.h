@@ -666,7 +666,7 @@ globalThis.ONX_APP={
  item:entity=>ha.items.find(i=>i.entity===entity),
  slots:()=>slots,select:i=>{active=i;slotTab='display';render();search();refreshPreview()},
  // A new entity becomes its own configuration entry (shortcut, gestures, quick actions), saved with Save changes.
- add:item=>{const i=slots.findIndex((s,j)=>!s.entity&&!saved[j].entity);if(i<0)throw Error('All '+MAX_SLOTS+' entities are in use. Remove one from a page first.');slots[i]={...empty(),entity:item.entity,name:item.name||item.entity,area:item.area||'',icon:item.icon||'',iconOverride:item.iconOverride||'0'};changed();return i},
+ add:item=>{const i=slots.findIndex((s,j)=>!s.entity&&!saved[j].entity);if(i<0)throw Error('All '+MAX_SLOTS+' entities are in use. Remove one from a page first.');slots[i]={...empty(),entity:item.entity,name:item.name||item.entity,area:item.area||'',icon:item.icon||'',iconOverride:item.iconOverride||'0',coverPresets:item.entity.startsWith('cover.')?'15,25,50,75':''};changed();return i},
  clear:i=>{slots[i]=empty();changed()},
  setTimer:(i,on)=>{slots[i].timerHidden=on?'1':'0';changed()},
  saveAll:()=>saveSlots(dirtyIndices()),
