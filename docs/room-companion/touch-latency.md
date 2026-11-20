@@ -45,3 +45,25 @@ removed or disabled before a release build.
    do after 1–3).
 5. Move the LVGL draw buffer to internal RAM (two partial buffers) only if
    frame draw time is still the bottleneck after 1–4.
+
+## Outcome (2026-11-20)
+
+Implemented: touch-down press feedback (70 ms hold before cards highlight),
+render pass requested immediately after an action, requested state shown at
+once (toggles, play/pause, brightness/colour switch the light on), swipe and
+tap work moved out of the touchscreen callback, notification-centre drag sheet
+(both directions, including hand-off from a list scrolled to its end), smooth
+toast timeout bar, in-place updates for the light detail screen and for light
+and switch cards, and icons downscaled once instead of transformed per frame.
+
+Measured before the card/icon changes: control result 18–26 ms after release
+(was 230–570 ms), sheet drags 8–15 fps with ~50 ms finger lag (was 1.6–5 fps,
+500–990 ms).
+
+Tried and reverted: a 12.5% internal-RAM draw buffer (LVGL time doubled,
+frames no faster) and a finger-following page slide (visible jump when the
+next page is built after the slide; would need pre-built neighbour pages).
+
+Open: wake-word ring-buffer overflow warnings were seen with both buffer
+configurations; not yet compared against the last commit (`90e6bc1`). The
+temporary `lat` trace and `runtime_stats` were removed.
