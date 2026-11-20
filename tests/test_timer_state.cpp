@@ -3,6 +3,9 @@
 
 int main() {
   using namespace onx_timer;
+  assert(stop_alarm_button("sensor.kitchen_pe_voice_timer")=="button.kitchen_pe_stop_timer_alarm");
+  assert(stop_alarm_button("sensor.voice_timer").empty()&&stop_alarm_button("sensor.kitchen_timer").empty());
+  assert(control_sentence("", 300, Action::STOP) == "cancel the 5 minute timer");
   assert(std::string(conversation_agent) == "conversation.home_assistant");
   assert(control_sentence("pasta",300,Action::STOP)=="cancel the pasta timer");
   assert(control_sentence("",30,Action::STOP)=="cancel the 30 second timer");

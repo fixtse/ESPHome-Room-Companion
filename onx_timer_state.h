@@ -34,6 +34,18 @@ inline std::string control_sentence(const std::string &name, uint32_t total, Act
 inline std::string control_sentence(const std::string &name, uint32_t total, bool resume) {
   return control_sentence(name, total, resume ? Action::RESUME : Action::PAUSE);
 }
+// One timer from a voice satellite's onx.timer.v1 "timers" list
+// ([name, duration, remaining, active]), soonest first.
+struct VoiceTimer { std::string name; uint32_t duration{0}, remaining{0}; bool active{false}; };
+// The satellite's "Stop timer alarm" button for its "Voice timer" sensor, using
+// Home Assistant's default entity ids ("" when the sensor id does not match).
+inline std::string stop_alarm_button(const std::string &sensor) {
+  const std::string prefix = "sensor.", suffix = "_voice_timer";
+  if (sensor.size() <= prefix.size() + suffix.size() || sensor.compare(0, prefix.size(), prefix) != 0 ||
+      sensor.compare(sensor.size() - suffix.size(), suffix.size(), suffix) != 0) return "";
+  return "button." + sensor.substr(prefix.size(), sensor.size() - prefix.size() - suffix.size()) + "_stop_timer_alarm";
+}
+
 struct Popup { bool visible{false}, dismissed{false}; int previous_index{0}; std::string entity; };
 inline Popup popup;
 inline bool popup_due(uint32_t idle_ms, bool detail_active, bool dismissed=false) {

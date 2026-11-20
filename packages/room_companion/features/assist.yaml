@@ -193,71 +193,92 @@ esphome:
     - priority: -100
       then:
         - lambda: |-
-            onx_panel_detail::set_local_timer_active = [](const std::string &key, bool active) {
-              id(timer_command).execute(key, active ? "resume" : "pause");
+            // Pause/resume/stop a timer of this panel: only when its state allows it.
+            auto local_command = [](const std::string &timer_id, onx_timer::Action action) {
+              for (const auto &t : id(assist).get_timers()) {
+                if (t.id != timer_id) continue;
+                if (action != onx_timer::Action::STOP &&
+                    !(t.seconds_left > 0 && t.is_active == (action == onx_timer::Action::PAUSE))) return;
+                id(timer_command).execute("local:" + timer_id, onx_timer::control_sentence(t.name, t.total_seconds, action),
+                    action == onx_timer::Action::STOP ? "Stopping..." : action == onx_timer::Action::RESUME ? "Resuming..." : "Pausing...");
+                return;
+              }
             };
-            onx_panel_detail::stop_local_timer = [](const std::string &key) {
-              id(timer_command).execute(key, "stop");
+            onx_panel_detail::set_local_timer_active = [local_command](const std::string &key, bool active) {
+              local_command(key, active ? onx_timer::Action::RESUME : onx_timer::Action::PAUSE);
             };
+            onx_panel_detail::stop_local_timer = [local_command](const std::string &key) {
+              local_command(key, onx_timer::Action::STOP);
+            };
+            // Voice satellite timers (their "Voice timer" sensors).
+            onx_panel_detail::send_timer_sentence = [](const std::string &key, const std::string &sentence,
+                                                       const std::string &pending) {
+              id(timer_command).execute(key, sentence, pending);
+            };
+            onx_panel_detail::press_button = [](const std::string &button) { id(timer_press_button).execute(button); };
             onx_panel_detail::stop_ringing = []() { id(timer_stop).execute(); };
             onx_panel_detail::close_timers = []() { id(timer_close).execute(); };
 
 script:
-  # Assist timers are owned by HA. Never pause only the ESPHome mirror: HA
-  # would still finish the original timer. Use the built-in conversation agent
-  # and wait for on_timer_updated rather than showing optimistic local state.
+  # Assist timers are owned by HA, for this panel and for voice satellites.
+  # Never pause only the ESPHome mirror: HA would still finish the original
+  # timer. Use the built-in conversation agent. This panel's own timers wait
+  # for on_timer_updated; a satellite's sensor follows on its next update.
   - id: timer_command
     mode: queued
     max_runs: 4
     parameters:
-      timer_id: string
-      command: string
+      key: string
+      sentence: string
+      pending: string
     then:
-      - if:
-          condition:
-            lambda: |-
-              for (const auto &t : id(assist).get_timers())
-                if (t.id == timer_id) return command == "stop" ||
-                    (t.seconds_left > 0 && t.is_active == (command == "pause"));
-              return false;
-          then:
-            - script.stop: timer_autoclose
+      - script.stop: timer_autoclose
+      - lambda: |-
+          auto &state = onx_panel_detail::timers;
+          state.message_key = key;
+          state.message = pending;
+          state.message_until = millis() + 8000;
+          state.command_pending = true;
+          id(ui_presenter)->notify_user_activity();
+      - homeassistant.action:
+          action: conversation.process
+          data:
+            agent_id: !lambda 'return std::string(onx_timer::conversation_agent);'
+            language: en
+            text: !lambda 'return sentence;'
+          capture_response: true
+          response_template: "{{ dict(type=response.get('response', {}).get('response_type', ''), code=response.get('response', {}).get('data', {}).get('code', '')) }}"
+          on_success:
             - lambda: |-
                 auto &state = onx_panel_detail::timers;
-                state.message_key = "local:" + timer_id;
-                state.message = command == "stop" ? "Stopping..." : command == "resume" ? "Resuming..." : "Pausing...";
-                state.message_until = millis() + 8000;
-                state.command_pending = true;
-            - homeassistant.action:
-                action: conversation.process
-                data:
-                  agent_id: !lambda 'return std::string(onx_timer::conversation_agent);'
-                  language: en
-                  text: !lambda |-
-                    const auto action = command == "stop" ? onx_timer::Action::STOP :
-                        command == "resume" ? onx_timer::Action::RESUME : onx_timer::Action::PAUSE;
-                    for (const auto &t : id(assist).get_timers())
-                      if (t.id == timer_id) return onx_timer::control_sentence(t.name, t.total_seconds, action);
-                    return std::string();
-                capture_response: true
-                response_template: "{{ dict(type=response.get('response', {}).get('response_type', ''), code=response.get('response', {}).get('data', {}).get('code', '')) }}"
-                on_success:
-                  - lambda: |-
-                      if (std::string(response["response"]["type"] | "") != "error") return;
-                      auto &state = onx_panel_detail::timers;
-                      state.message_key = "local:" + timer_id;
-                      state.message = "Timer command rejected by HA";
-                      state.message_until = millis() + 5000;
-                      state.command_pending = false;
-                      ESP_LOGW("panel_timer", "HA rejected timer command: %s", response["response"]["code"] | "unknown");
-                on_error:
-                  - lambda: |-
-                      auto &state = onx_panel_detail::timers;
-                      state.message_key = "local:" + timer_id;
-                      state.message = "HA timer action failed";
-                      state.message_until = millis() + 5000;
-                      state.command_pending = false;
-                      ESP_LOGW("panel_timer", "Timer action failed: %s", error.c_str());
+                if (state.message_key != key) return;
+                if (std::string(response["response"]["type"] | "") != "error") {
+                  // HA confirmed a satellite's timer; its sensor shows the result.
+                  if (key.rfind("local:", 0) != 0) { state.message.clear(); state.command_pending = false; }
+                  return;
+                }
+                state.message = "Timer command rejected by HA";
+                state.message_until = millis() + 5000;
+                state.command_pending = false;
+                ESP_LOGW("panel_timer", "HA rejected \"%s\": %s", sentence.c_str(), response["response"]["code"] | "unknown");
+          on_error:
+            - lambda: |-
+                auto &state = onx_panel_detail::timers;
+                state.message_key = key;
+                state.message = "HA timer action failed";
+                state.message_until = millis() + 5000;
+                state.command_pending = false;
+                ESP_LOGW("panel_timer", "Timer action failed: %s", error.c_str());
+
+  # Presses a voice satellite's "Stop timer alarm" button.
+  - id: timer_press_button
+    parameters:
+      button: string
+    then:
+      - homeassistant.action:
+          action: button.press
+          data:
+            entity_id: !lambda 'return button;'
 
   # Copies the voice assistant's timers for the timer screen.
   - id: timer_sync

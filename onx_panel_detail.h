@@ -1248,7 +1248,25 @@ struct TimerItem {
   std::string key, entity, name, kind, state;  // state: active, paused, ringing, idle
   double left{0}, total{0};
   bool ready{false}, helper{false};
+  bool voice{false};          // One timer of a voice satellite's "Voice timer" sensor.
+  std::string voice_name;     // Its Assist name ("" for unnamed timers).
 };
+// Voice satellite timers are owned by Home Assistant: they are controlled with
+// Assist sentences (features/assist.yaml), and a satellite's ringing alarm with
+// its "Stop timer alarm" button.
+inline std::function<void(const std::string &key, const std::string &sentence, const std::string &pending)> send_timer_sentence;
+inline std::function<void(const std::string &button)> press_button;
+inline std::function<void()> voice_sentence_for(const TimerItem &t, onx_timer::Action action) {
+  const std::string key = t.key, sentence = onx_timer::control_sentence(t.voice_name, uint32_t(t.total), action);
+  const std::string pending = action == onx_timer::Action::STOP ? "Stopping..." :
+                              action == onx_timer::Action::RESUME ? "Resuming..." : "Pausing...";
+  return [key, sentence, pending]() { if (send_timer_sentence) send_timer_sentence(key, sentence, pending); };
+}
+inline std::function<void()> voice_alarm_stop(const TimerItem &t) {
+  const auto button = onx_timer::stop_alarm_button(t.entity);
+  if (button.empty()) return nullptr;
+  return [button]() { if (press_button) press_button(button); };
+}
 inline TimerItem entity_timer(const std::string &e, const EntityDetailState &d, const std::string &title) {
   TimerItem t;
   t.key = e; t.entity = e; t.state = d.state;
@@ -1298,7 +1316,27 @@ inline std::vector<TimerItem> all_timers() {
       const auto *d = custom_logic_entity_sub::entity_detail(e);
       if (d == nullptr || !d->received || !d->available) continue;
       auto title = custom_logic::ha_entity_title_from_registry_cache(e);
-      out.push_back(entity_timer(e, *d, title.empty() ? e : onx_media::display_text(title)));
+      title = title.empty() ? e : onx_media::display_text(title);
+      if (!d->voice_timer || d->voice_timers.empty()) { out.push_back(entity_timer(e, *d, title)); continue; }
+      // A voice satellite: its ringing alarm, then each of its timers.
+      if (d->state == "ringing") {
+        TimerItem t{e + "#ringing", e, d->timer_name.empty() ? title : d->timer_name, "Voice timer", "ringing", 0, 0, true, false};
+        t.voice = true;
+        out.push_back(t);
+      }
+      const double age = (esphome::millis() - d->timer_received_ms) / 1000.0;
+      std::vector<std::string> seen;
+      for (const auto &v : d->voice_timers) {
+        std::string key = e + '#' + v.name + '/' + std::to_string(v.duration);
+        const std::string base = key;
+        for (int n = 2; std::find(seen.begin(), seen.end(), key) != seen.end(); ++n) key = base + '/' + std::to_string(n);
+        seen.push_back(key);
+        TimerItem t{key, e, v.name.empty() ? "Timer" : v.name, "Voice timer", v.active ? "active" : "paused",
+                    std::max(0.0, v.remaining - (v.active ? age : 0.0)), double(v.duration), true, false};
+        t.voice = true;
+        t.voice_name = v.name;
+        out.push_back(t);
+      }
     }
   return out;
 }
@@ -1323,7 +1361,7 @@ inline void timer_button(lv_obj_t *parent, const Rect &r, const char *symbol, co
   }
 }
 // The one action a timer row offers: Stop for a sounding panel timer, pause /
-// resume for local Assist timers and HA timer helpers. Remote voice and
+// resume for local Assist timers, voice satellite timers and HA timer helpers.
 // Google timers are controlled on their own device. Returns false when there is none.
 inline bool timer_quick_action(const TimerItem &t, const char **symbol, std::function<void()> *fn) {
   const bool local = t.key.rfind("local:", 0) == 0;
@@ -1335,6 +1373,14 @@ inline bool timer_quick_action(const TimerItem &t, const char **symbol, std::fun
     const bool resume = t.state == "paused";
     *symbol = resume ? LV_SYMBOL_PLAY : LV_SYMBOL_PAUSE;
     *fn = [key, resume]() { if (set_local_timer_active) set_local_timer_active(key, resume); };
+    return true;
+  }
+  if (t.voice) {
+    if (t.state == "ringing") { *fn = voice_alarm_stop(t); *symbol = LV_SYMBOL_STOP; return bool(*fn); }
+    if (t.state != "active" && t.state != "paused") return false;
+    const bool resume = t.state == "paused";
+    *symbol = resume ? LV_SYMBOL_PLAY : LV_SYMBOL_PAUSE;
+    *fn = voice_sentence_for(t, resume ? onx_timer::Action::RESUME : onx_timer::Action::PAUSE);
     return true;
   }
   if (!t.helper || !t.ready) return false;
@@ -1462,7 +1508,7 @@ __attribute__((noinline)) inline void build_timers(const std::string &preferred,
     if (!timers.focus.empty() && items[i].key == timers.focus) focus = i;
   if (focus < 0)
     for (int i = 0; i < int(items.size()); ++i)
-      if (!preferred.empty() && items[i].key == preferred) focus = i;
+      if (focus < 0 && !preferred.empty() && (items[i].key == preferred || items[i].entity == preferred)) focus = i;
   if (focus < 0 && !items.empty() && (preferred.empty() || running(items[0]))) focus = 0;
   TimerItem t;
   if (focus >= 0) t = items[focus];
@@ -1510,6 +1556,16 @@ __attribute__((noinline)) inline void build_timers(const std::string &preferred,
     std::function<void()> action;
     if (timer_quick_action(t, &symbol, &action))
       controls.push_back({symbol, t.state == "paused" ? "Resume" : "Pause", true, std::move(action)});
+  } else if (t.voice) {
+    if (ringing) {
+      if (auto stop = voice_alarm_stop(t)) controls.push_back({LV_SYMBOL_STOP, "Stop", true, std::move(stop)});
+    } else if (t.state == "active" || t.state == "paused") {
+      controls.push_back({LV_SYMBOL_STOP, "Stop", false, voice_sentence_for(t, onx_timer::Action::STOP)});
+      const char *symbol = nullptr;
+      std::function<void()> action;
+      if (timer_quick_action(t, &symbol, &action))
+        controls.push_back({symbol, t.state == "paused" ? "Resume" : "Pause", true, std::move(action)});
+    }
   } else if (t.helper && t.ready) {
     const bool active = t.state == "active", paused = t.state == "paused";
     if (active || paused) {
