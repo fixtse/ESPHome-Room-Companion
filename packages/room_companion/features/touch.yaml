@@ -56,10 +56,12 @@ onx_touch_input:
     - lambda: |-
         id(ui_presenter)->notify_user_activity();
         onx_notification_ui::open_panel();
-  # Swipe up closes the notification centre. It follows the finger
-  # (set_pull_up_drag in notifications.yaml) and only closes on release.
+  # Swipe up closes the notification centre only when it starts on the
+  # "Swipe up to close" handle area at the bottom (set_pull_up_zone in
+  # notifications.yaml); swipes over the list just scroll it. The close
+  # follows the finger and only happens on release.
   pull_up_enabled: |-
-    return onx_notification_ui::swipe_closes();
+    return false;
   on_pull_up:
     - lambda: |-
         id(ui_presenter)->notify_user_activity();

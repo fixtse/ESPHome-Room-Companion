@@ -1191,6 +1191,7 @@ static const char PANEL_JS[] = R"ONXPANEL(
   if(!entries.some(([id])=>id===value))entries.push([value,value+' (page unavailable)']);
   select.replaceChildren(...entries.map(([id,label])=>new Option(label,id)));
   select.value=value;
+  const summary=$('dock-summary');if(summary)summary.textContent=select.selectedOptions[0]?.textContent||'';
  }
  function showDock(state){
   savedDockPin=state.dock_pin||'dashboard';refreshDockOptions(true);

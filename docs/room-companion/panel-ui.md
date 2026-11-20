@@ -21,7 +21,7 @@ second carousel renderer.
 | Media player | Swipe up / down | Change volume |
 | Detail view | Swipe right **starting at the left edge** | Back |
 | Anywhere in the native UI | Swipe down **from the top edge** | Open the notification centre (the only way on detail screens) |
-| Notification centre | Swipe up past a fifth of the screen (or flick up); a swipe from the bottom handle area always works, or tap the handle at the bottom | Close it; the centre follows the finger and springs back from a shorter drag |
+| Notification centre | Swipe up starting on the bottom handle area (*Swipe up to close* and the line below it) past a fifth of the screen, or flick up; or tap the handle. Swipes over the list only scroll it | Close it; a sheet follows the finger and springs back from a shorter drag |
 | Dashboard stream | Swipe from the left edge | Back to the native UI |
 
 ## Header, notifications and dashboard
@@ -35,8 +35,7 @@ second carousel renderer.
   *Notifications · count* and *Clear all*; each card has an accent bar while
   unread, a thumbnail with its time underneath (*now*, *5 min*, then the time
   of day), a full-width text-column title, up to two lines of the message, and ×
-  to dismiss. Tap a card for its detail with the small title thumbnail. Swipe up (or tap the
-  handle) to close: the centre moves with the finger, the handle reads
+  to dismiss. Tap a card for its detail with the small title thumbnail. Swipe up from the handle (or tap it) to close: the centre moves with the finger, the handle reads
   *Release to close* once the drag is far enough, and it closes only when the
   finger lifts. A shorter drag springs back. A banner announces new notifications. Home Assistant sends
   them with the device's *show message* action.
