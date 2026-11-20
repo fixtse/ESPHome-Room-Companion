@@ -1,1 +1,0 @@
-Validation runs on devserv under /home/fixt/AGENTS.md. Upstream cloud build/publishing workflows were removed from this private project. Use scripts/validate-room-companion.sh in the pinned development container.
