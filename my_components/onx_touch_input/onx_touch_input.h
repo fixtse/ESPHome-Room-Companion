@@ -181,6 +181,7 @@ class TouchInput : public Component, public touchscreen::TouchListener {
   void move_(int x, int y) {
     x_ = x; y_ = y;
     const int dx = x - x0_, dy = y - y0_;
+    if (press_pending_ && (std::abs(dx) > PRESS_STILL || std::abs(dy) > PRESS_STILL)) press_pending_ = false;
     if (axis_ == 0) {
       if (std::abs(dx) < SLOP && std::abs(dy) < SLOP) return;
       axis_ = std::abs(dx) >= std::abs(dy) ? 1 : 2;
@@ -283,7 +284,10 @@ class TouchInput : public Component, public touchscreen::TouchListener {
   }
   std::function<void(int, int, bool)> press_fn_;
   bool pressed_{false}, press_pending_{false};
-  static constexpr uint32_t PRESS_DELAY_MS = 70;
+  // A card highlights only once the finger has rested this long without
+  // moving more than PRESS_STILL px; the start of a swipe never qualifies.
+  static constexpr uint32_t PRESS_DELAY_MS = 130;
+  static constexpr int PRESS_STILL = 6;
   void press_(bool pressed) {
     if (button_ != nullptr) button_->set_virtual_pressed(pressed);
   }
