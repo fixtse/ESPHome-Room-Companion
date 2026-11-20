@@ -49,7 +49,6 @@ OTAResponseTypes IDFOTABackend::prepare_http_image(size_t image_size) {
     const auto result = this->erase_ahead_(end);
     if (result != OTA_RESPONSE_OK)
       return result;
-    App.feed_wdt();
     delay(10);
   }
 #endif
@@ -125,7 +124,6 @@ void IDFOTABackend::set_update_md5(const char *expected_md5) {""",
         ESP_LOGW(TAG, "OTA server did not return the requested byte range");
         partial->end();
       }
-      App.feed_wdt();
       delay(100);
     }
     return false;
