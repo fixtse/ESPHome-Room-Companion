@@ -1251,22 +1251,6 @@ struct TimerItem {
   bool voice{false};          // One timer of a voice satellite's "Voice timer" sensor.
   std::string voice_name;     // Its Assist name ("" for unnamed timers).
 };
-// Voice satellite timers are owned by Home Assistant: they are controlled with
-// Assist sentences (features/assist.yaml), and a satellite's ringing alarm with
-// its "Stop timer alarm" button.
-inline std::function<void(const std::string &key, const std::string &sentence, const std::string &pending)> send_timer_sentence;
-inline std::function<void(const std::string &button)> press_button;
-inline std::function<void()> voice_sentence_for(const TimerItem &t, onx_timer::Action action) {
-  const std::string key = t.key, sentence = onx_timer::control_sentence(t.voice_name, uint32_t(t.total), action);
-  const std::string pending = action == onx_timer::Action::STOP ? "Stopping..." :
-                              action == onx_timer::Action::RESUME ? "Resuming..." : "Pausing...";
-  return [key, sentence, pending]() { if (send_timer_sentence) send_timer_sentence(key, sentence, pending); };
-}
-inline std::function<void()> voice_alarm_stop(const TimerItem &t) {
-  const auto button = onx_timer::stop_alarm_button(t.entity);
-  if (button.empty()) return nullptr;
-  return [button]() { if (press_button) press_button(button); };
-}
 inline TimerItem entity_timer(const std::string &e, const EntityDetailState &d, const std::string &title) {
   TimerItem t;
   t.key = e; t.entity = e; t.state = d.state;
@@ -1293,6 +1277,22 @@ inline TimerItem entity_timer(const std::string &e, const EntityDetailState &d, 
   if (!std::isfinite(t.total)) t.total = 0;
   if (t.ready && d.state == "active" && t.left <= 0) t.state = "ringing";
   return t;
+}
+// Voice satellite timers are owned by Home Assistant: they are controlled with
+// Assist sentences (features/assist.yaml), and a satellite's ringing alarm with
+// its "Stop timer alarm" button.
+inline std::function<void(const std::string &key, const std::string &sentence, const std::string &pending)> send_timer_sentence;
+inline std::function<void(const std::string &button)> press_button;
+inline std::function<void()> voice_sentence_for(const TimerItem &t, onx_timer::Action action) {
+  const std::string key = t.key, sentence = onx_timer::control_sentence(t.voice_name, uint32_t(t.total), action);
+  const std::string pending = action == onx_timer::Action::STOP ? "Stopping..." :
+                              action == onx_timer::Action::RESUME ? "Resuming..." : "Pausing...";
+  return [key, sentence, pending]() { if (send_timer_sentence) send_timer_sentence(key, sentence, pending); };
+}
+inline std::function<void()> voice_alarm_stop(const TimerItem &t) {
+  const auto button = onx_timer::stop_alarm_button(t.entity);
+  if (button.empty()) return nullptr;
+  return [button]() { if (press_button) press_button(button); };
 }
 inline std::vector<TimerItem> local_items() {
   std::vector<TimerItem> out;

@@ -1157,5 +1157,5 @@ static const uint8_t FIXTSE_LOGO[] = {
   0x4d,0x97,0x74,0x9d,0xa4,0xff,0xce,0x8d,0xeb,0xd3,0x56,0xc6,0x18,0x93,0xca,0xff,0x01,0xa2,0x5e,0x3c,
   0xd7,0xc7,0xd6,0x21,0xbd,0x00,0x00,0x00,0x00,0x49,0x45,0x4e,0x44,0xae,0x42,0x60,0x82,
 };
-static const char PANEL_FAVICON[] = R"ONXSVG(<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"><circle cx="32" cy="32" r="31" fill="#0f172a"/><circle cx="32" cy="32" r="24" fill="#1e293b" stroke="#64748b" stroke-width="2"/><path d="M12 20a24 24 0 0 1 40 0" fill="none" stroke="#f97316" stroke-width="4" stroke-linecap="round"/><circle cx="32" cy="32" r="15" fill="#f8fafc"/><path d="M32 32l8-10" stroke="#f97316" stroke-width="5" stroke-linecap="round"/></svg>)ONXSVG";
+static const char PANEL_FAVICON[] = R"ONXSVG(<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"><rect x="4" y="10" width="56" height="44" rx="8" fill="#0f172a" stroke="#64748b" stroke-width="2"/><rect x="10" y="16" width="44" height="32" rx="3" fill="#1e293b"/><rect x="14" y="20" width="16" height="11" rx="2" fill="#f97316"/><rect x="34" y="20" width="16" height="11" rx="2" fill="#f8fafc"/><rect x="14" y="34" width="16" height="10" rx="2" fill="#f8fafc"/><rect x="34" y="34" width="16" height="10" rx="2" fill="#f8fafc"/></svg>)ONXSVG";
 }
