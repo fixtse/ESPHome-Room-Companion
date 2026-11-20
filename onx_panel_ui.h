@@ -4,7 +4,7 @@
 //   - media detail rearranged for a tall screen: large cover art, title,
 //     progress bar and previous / play-pause / next buttons (no header: swipe
 //     horizontally to close, pull down from the top for notifications)
-//   - idle screen: clock (default), photo slideshow, ImmichFrame or dashboard stream
+//   - idle screen: clock (default), dashboard stream or ImmichFrame
 // Everything is created lazily on LVGL's existing objects; the shared packages
 // are not modified.
 #include <algorithm>
@@ -273,15 +273,13 @@ inline void sync_media(const Media &m, const lv_font_t *font) {
 }
 
 // ------------------------------------------------------------ idle screen
-enum IdleMode { IDLE_CLOCK = 0, IDLE_SLIDESHOW = 1, IDLE_DASHBOARD = 2, IDLE_IMMICHFRAME = 3 };
+enum IdleMode { IDLE_CLOCK = 0, IDLE_DASHBOARD = 1, IDLE_IMMICHFRAME = 2 };
 inline lv_obj_t *slide_layer = nullptr, *slide_image = nullptr, *slide_time = nullptr, *slide_hint = nullptr;
 // Bottom overlay over photos: the idle clock's time, date, weather and media.
 inline lv_obj_t *slide_bar = nullptr, *slide_date = nullptr, *slide_weather = nullptr, *slide_temp = nullptr,
                 *slide_media = nullptr;
-inline size_t slide_index = 0;
 inline uint32_t slide_due = 0;
 inline bool slide_loading = false;
-inline bool slide_is_immichframe = false;
 // Set by a horizontal swipe on a photo screen: -1 previous photo, +1 next.
 inline int slide_step = 0;
 // Error card when photos cannot be loaded: title, a large state and a reason.
@@ -353,21 +351,6 @@ inline void slide_fade_in(bool animate) {
   lv_anim_start(&a);
 }
 
-inline std::vector<std::string> split_urls(const std::string &text) {
-  std::vector<std::string> out;
-  std::string cur;
-  for (char c : text) {
-    if (c == ' ' || c == ',' || c == '\n' || c == ';' || c == '\t') {
-      if (!cur.empty()) out.push_back(cur);
-      cur.clear();
-    } else {
-      cur += c;
-    }
-  }
-  if (!cur.empty()) out.push_back(cur);
-  return out;
-}
-
 inline void create_slideshow(lv_obj_t *standby_page, const lv_font_t *time_font, const lv_font_t *hint_font,
                              const lv_font_t *value_font) {
   slide_layer = lv_obj_create(standby_page);
@@ -387,7 +370,7 @@ inline void create_slideshow(lv_obj_t *standby_page, const lv_font_t *time_font,
   lv_obj_set_style_text_font(slide_hint, hint_font, 0);
   lv_obj_set_style_text_color(slide_hint, lv_color_hex(0x9C9C9E), 0);
   lv_obj_set_style_text_align(slide_hint, LV_TEXT_ALIGN_CENTER, 0);
-  lv_label_set_text(slide_hint, "Add picture addresses in\n\"Slideshow pictures\" in Home Assistant.");
+  lv_label_set_text(slide_hint, "Add picture addresses on the panel's\nweb setup (ImmichFrame page).");
   lv_obj_center(slide_hint);
   // Darkening fade under the overlay so white text reads on bright photos.
   slide_bar = lv_obj_create(slide_layer);

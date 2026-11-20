@@ -131,7 +131,7 @@ interval:
               if (id(screen_off_state)) id(ha_screen_off).turn_off();
               // Photo idle screens stay up: the banner and the bell show over the photo.
               const auto idle = id(panel_idle_screen).active_index().value_or(0);
-              const bool photos = (idle == onx_panel_ui::IDLE_SLIDESHOW || idle == onx_panel_ui::IDLE_IMMICHFRAME) &&
+              const bool photos = idle == onx_panel_ui::IDLE_IMMICHFRAME &&
                                   id(ui_presenter)->is_standby_active() && !onx_panel_ui::hidden(onx_panel_ui::slide_layer);
               if (!photos) id(ui_presenter)->notify_user_activity();
             }

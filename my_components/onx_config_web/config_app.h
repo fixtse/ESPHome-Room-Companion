@@ -66,29 +66,55 @@ async function discoverIF(force=false){
   choice.innerHTML='<svg viewBox="0 0 24 24" width="28" height="28" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="3" fill="#4250AF"/><circle cx="9" cy="10" r="2" fill="#fff"/><path d="m21 16-5-5-8 8h10a3 3 0 0 0 3-3Z" fill="#fff" fill-opacity=".85"/></svg>';
   const text=document.createElement('span');text.append(element('b',item.name||'ImmichFrame'),element('small',url+(item.version?' · '+item.version:'')));
   const chev=element('span','›');chev.className='chev';chev.setAttribute('aria-hidden','true');choice.append(text,chev);
-  choice.onclick=()=>{$('if-url').value=url;if($('if-idle').value!=='3')$('if-idle').value='3';$('if-status').textContent='Selected '+(item.name||'ImmichFrame')+'. Save to use it.';$('if-save').focus()};results.append(choice);
+  choice.onclick=()=>{$('if-url').value=url;$('if-status').textContent='Selected '+(item.name||'ImmichFrame')+'. Save to use it.';$('if-save').focus()};results.append(choice);
  }
  if(response.status==='unavailable'){stop('This panel cannot search the network. Enter the address below.');return}
  stop(seen.size?(seen.size===1?'Found 1 ImmichFrame server. Select it, then save.':'Found '+seen.size+' ImmichFrame servers. Select one, then save.'):'No ImmichFrame found automatically. Search again or enter its address below.');
 }
+// Idle screen page: the mode (0 clock, 1 dashboard, 2 ImmichFrame) and the
+// ImmichFrame settings go through the "immich" RPC; the clock, weather and
+// timing fields are device settings and save with them.
+let ifSaved=null,changingIF=false;
+const idleMode=()=>document.querySelector('[name="idle-mode"]:checked')?.value||'0';
+function idleSections(){const mode=idleMode();for(const e of document.querySelectorAll('#page-photos [data-idle]'))e.hidden=!e.dataset.idle.split(' ').includes(mode)}
+const DETAIL_NAMES={date:'Date',location:'Place',album:'Album',people:'People',description:'Description'};
+function ifCard(){
+ const url=ifSaved?.url||'',show=!!url&&!changingIF;$('if-connected').hidden=!show;$('if-setup').hidden=show;$('if-cancel-change').hidden=!(changingIF&&url);
+ if(!show){if(idleMode()==='2'&&!discoveringIF&&!$('if-discovery-results').children.length)void discoverIF();return}
+ $('if-link').href=url;$('if-link').textContent=url.replace(/^https?:\/\//,'');
+ const facts=[['Photo fit',$('if-fit').selectedOptions[0]?.textContent||''],['New photo every',(ifSaved.interval||'20')+' s'],['Details',String(ifSaved.details||'').split(',').filter(Boolean).map(d=>DETAIL_NAMES[d]||d).join(', ')||'None']];
+ $('if-facts').replaceChildren(...facts.map(([k,v])=>{const d=document.createElement('div');d.append(element('dt',k),element('dd',v));return d}));
+ const pill=$('if-pill');pill.textContent='Checking…';delete pill.dataset.state;
+ const ctl=new AbortController(),timer=setTimeout(()=>ctl.abort(),5000);
+ fetch(url+'/',{mode:'no-cors',signal:ctl.signal,cache:'no-store'}).then(()=>{pill.textContent='Reachable';pill.dataset.state='ok'},()=>{pill.textContent='Not reachable from this browser';pill.dataset.state='off'}).finally(()=>clearTimeout(timer));
+}
 async function loadIF(){
- try{const s=await rpc({op:'immich_state'});if(s.error)throw Error(s.error);
-  $('if-url').value=s.url||'';$('if-idle').value=s.idle||'0';$('if-fit').value=s.fit||'0';$('if-interval').value=s.interval||'20';
+ try{const s=await rpc({op:'immich_state'});if(s.error)throw Error(s.error);ifSaved=s;changingIF=false;
+  $('if-url').value=s.url||'';const mode=['0','1','2'].includes(s.idle)?s.idle:'0';for(const r of document.querySelectorAll('[name="idle-mode"]'))r.checked=r.value===mode;
+  $('if-fit').value=s.fit||'0';$('if-interval').value=s.interval||'20';
   $('if-split').checked=s.split==='1';$('if-fade').checked=s.fade==='1';
   const on=new Set(String(s.details||'').split(',').filter(Boolean));for(const c of document.querySelectorAll('[data-detail]'))c.checked=on.has(c.dataset.detail);
-  if(!s.url)void discoverIF();
- }catch(error){$('if-status').textContent='Could not read the ImmichFrame settings: '+error.message}
+  idleSections();ifCard();
+ }catch(error){$('if-status').textContent='Could not read the idle screen settings: '+error.message}
 }
 $('if-discover').onclick=()=>discoverIF(true);
-$('if-form').onsubmit=async event=>{
- event.preventDefault();const url=$('if-url').value.trim().replace(/\/+$/,''),status=$('if-status');
- if(url&&!/^https?:\/\/[^\s/?#@]+(:\d+)?(\/[^\s?#@]*)?$/.test(url)){status.textContent='Enter the address with http:// or https://, for example http://192.168.1.20:8080.';return}
+for(const r of document.querySelectorAll('[name="idle-mode"]'))r.onchange=()=>{idleSections();ifCard();$('if-status').textContent='Not saved yet.'};
+$('if-change').onclick=()=>{changingIF=true;ifCard();$('if-url').focus()};
+$('if-cancel-change').onclick=()=>{changingIF=false;$('if-url').value=ifSaved?.url||'';ifCard()};
+$('if-remove').onclick=()=>{changingIF=true;$('if-url').value='';ifCard();$('if-status').textContent='Save to remove the server.'};
+$('idle-form').addEventListener('input',event=>{if(event.target.closest('#if-section')||event.target.name==='idle-mode'){$('if-status').textContent='Not saved yet.';return}settingsInput()});
+$('idle-form').onsubmit=async event=>{
+ event.preventDefault();const url=$('if-url').value.trim().replace(/\/+$/,''),status=$('if-status'),mode=idleMode();
+ if(url&&!/^https?:\/\/[^\s/?#@]+(:\d+)?(\/[^\s?#@]*)?$/.test(url)){status.textContent='Enter the address with http:// or https://, for example http://192.168.1.20:8080.';$('if-url').focus();return}
+ if(mode==='2'&&!url){status.textContent='Choose an ImmichFrame server or enter its address.';$('if-url').focus();return}
  const details=[...document.querySelectorAll('[data-detail]')].filter(c=>c.checked).map(c=>c.dataset.detail);
  if(details.length>3){status.textContent='Choose at most three photo details.';return}
- const interval=Math.min(600,Math.max(5,Math.round((+$('if-interval').value||20)/5)*5));
- const data=[url,$('if-idle').value,$('if-fit').value,$('if-split').checked?'1':'0',details.join(','),$('if-fade').checked?'1':'0',String(interval)].join('\n');
+ const interval=Math.min(600,Math.max(5,Math.round((+$('if-interval').value||20)/5)*5));$('if-interval').value=interval;
+ const data=[url,mode,$('if-fit').value,$('if-split').checked?'1':'0',details.join(','),$('if-fade').checked?'1':'0',String(interval)].join('\n');
  $('if-save').disabled=true;status.textContent='Saving…';
- try{const r=await rpc({op:'immich',data});if(r.error)throw Error(r.error);status.textContent='Saved. The panel uses these settings at its next idle screen.'}
+ try{const r=await rpc({op:'immich',data});if(r.error)throw Error(r.error);
+  if(initialized&&dirtySettings()&&!await saveSettings())throw Error('The clock and weather settings were not saved. Check the message at the top and try again.');
+  status.textContent='Idle screen saved.';await loadIF()}
  catch(error){status.textContent=error.message}finally{$('if-save').disabled=false}
 };
 document.querySelector('.tabs [data-page="photos"]')?.addEventListener('click',()=>loadIF());
@@ -378,7 +404,7 @@ function combo(select){
 }
 function comboLabel(select){const t=select.parentElement.querySelector('.combo-trigger span');if(t){const o=select.selectedOptions[0];t.textContent=o?o.textContent.split(' · ')[0]:'Choose a sensor';t.title=o?.value||''}const b=select.parentElement.querySelector('.combo-trigger');if(b)b.disabled=select.disabled}
 function weatherOptions(){const value=settings.weather||'',items=ha.items.filter(i=>i.entity.startsWith('weather.'));if(value&&!items.some(i=>i.entity===value))items.push({entity:value,name:value});$('standby-weather').replaceChildren(...[{entity:'',name:'None'},...items].map(item=>{const o=element('option',item.name||item.entity);o.value=item.entity;return o}));$('standby-weather').value=value;for(const [id,key,cls] of [['clock-temperature','clock_temperature','temperature'],['clock-humidity','clock_humidity','humidity']]){const current=settings[key]||'',sensors=ha.items.filter(i=>i.entity.startsWith('sensor.')).sort((a,b)=>(a.name||a.entity).localeCompare(b.name||b.entity));if(current&&!sensors.some(i=>i.entity===current))sensors.unshift({entity:current,name:current});$(id).replaceChildren(...[{entity:'',name:'Weather '+cls+' (default)'},...sensors].map(item=>{const o=element('option',item.name&&item.name!==item.entity?item.name+' · '+item.entity:item.entity||item.name);o.value=item.entity;return o}));$(id).value=current;combo($(id))}}
-function colorPicker(){$('background-color').value=settings.background_color||'#101418';const color=settings.media_color||'#62B0FF';$('media-color').value=color;$('color-value').textContent=color;$('ring-sample').style.setProperty('--ring-color',color);document.querySelectorAll('[data-ring-color]').forEach(button=>button.setAttribute('aria-pressed',String(button.dataset.ringColor===color)))}
+function colorPicker(){const bg=(settings.background_color||'#101418').toUpperCase();$('background-color').value=bg;$('bg-value').textContent=bg;let preset=false;document.querySelectorAll('[data-bg-color]').forEach(b=>{const on=b.dataset.bgColor===bg;preset||=on;b.setAttribute('aria-pressed',String(on))});document.querySelector('.bg-custom').toggleAttribute('data-active',!preset);const color=settings.media_color||'#62B0FF';$('media-color').value=color;$('color-value').textContent=color;$('ring-sample').style.setProperty('--ring-color',color);document.querySelectorAll('[data-ring-color]').forEach(button=>button.setAttribute('aria-pressed',String(button.dataset.ringColor===color)))}
 function sleepFields(){for(const key of ['sleep-start','sleep-end','sleep-timeout'])$(key).disabled=settings.sleep_enabled!=='1'}
 function layoutParts(){let v=0;for(const c of document.querySelectorAll('.layout-parts input[data-part]'))if(c.checked)v|=+c.dataset.part;return v}
 function clockLayout(value){const v=value===undefined||value===''?15:+value;for(const c of document.querySelectorAll('.layout-parts input[data-part]'))c.checked=!!(v&+c.dataset.part);for(const b of document.querySelectorAll('.layout-presets button'))b.setAttribute('aria-pressed',String(+b.dataset.layout===v));const shown=[1,2,4,8].filter(p=>v&p).length;for(const s of document.querySelectorAll('#clock-preview [data-part]'))s.hidden=!(v&+s.dataset.part);$('clock-preview').style.setProperty('--pv-clock',(46-shown*3)+'px')}
@@ -453,10 +479,13 @@ $('add-slot').onclick=()=>{if(busy||visibleSlots>=MAX_SLOTS)return;active=visibl
 $('move-up').onclick=()=>move(-1);$('move-down').onclick=()=>move(1);$('duplicate').onclick=()=>{const target=slots.findIndex(s=>!s.entity);if(target<0||busy)return;slots[target]=copy(slots[active]);active=target;changed();search()};
 $('search').oninput=()=>{clearTimeout(debounce);debounce=setTimeout(()=>search(),200)};$('room').onchange=()=>search();$('more').onclick=()=>search(true);
 $('preview-screen').onchange=()=>drawPreview(slots[active]);
+document.querySelectorAll('[data-bg-color]').forEach(button=>button.onclick=()=>{$('background-color').value=button.dataset.bgColor;$('settings-form').dispatchEvent(new Event('input',{bubbles:true}))});
 document.querySelectorAll('[data-ring-color]').forEach(button=>button.onclick=()=>{$('media-color').value=button.dataset.ringColor;$('settings-form').dispatchEvent(new Event('input',{bubbles:true}))});
-$('settings-form').oninput=()=>{if(!initialized)return;settings={clock_seconds_ring:$('clock-seconds-ring').checked?'1':'0',hold_cue:$('hold-cue').checked?'1':'0',notifications_cover_timers:$('notifications-cover-timers').checked?'1':'0',orientation:$('orientation').value,media_view:$('media-view').value,idle_view:$('idle-view').value,show_ampm:$('show-ampm').checked?'1':'0',date_format:$('date-format').value,hour_format:$('hour-format').value,background_color:$('background-color').value.toUpperCase(),media_color:$('media-color').value.toUpperCase(),standby_scope:$('standby-scope').value,brightness:$('brightness').value,standby:$('standby').value,sensitivity:$('sensitivity').value,sleep_enabled:$('sleep-enabled').checked?'1':'0',sleep_start:$('sleep-start').value,sleep_end:$('sleep-end').value,sleep_timeout:$('sleep-timeout').value,weather:$('standby-weather').value,clock_temperature:$('clock-temperature').value,clock_humidity:$('clock-humidity').value,clock_layout:String(layoutParts())};clockLayout(settings.clock_layout);$('show-ampm').disabled=settings.hour_format!=='12';sleepFields();colorPicker();drawPreview(slots[active]);persistDraft();$('save-settings').disabled=busy||!dirtySettings();message('Device settings not saved.')};
+const settingsInput=()=>{if(!initialized)return;settings={clock_seconds_ring:$('clock-seconds-ring').checked?'1':'0',hold_cue:$('hold-cue').checked?'1':'0',notifications_cover_timers:$('notifications-cover-timers').checked?'1':'0',orientation:$('orientation').value,media_view:$('media-view').value,idle_view:$('idle-view').value,show_ampm:$('show-ampm').checked?'1':'0',date_format:$('date-format').value,hour_format:$('hour-format').value,background_color:$('background-color').value.toUpperCase(),media_color:$('media-color').value.toUpperCase(),standby_scope:$('standby-scope').value,brightness:$('brightness').value,standby:$('standby').value,sensitivity:$('sensitivity').value,sleep_enabled:$('sleep-enabled').checked?'1':'0',sleep_start:$('sleep-start').value,sleep_end:$('sleep-end').value,sleep_timeout:$('sleep-timeout').value,weather:$('standby-weather').value,clock_temperature:$('clock-temperature').value,clock_humidity:$('clock-humidity').value,clock_layout:String(layoutParts())};clockLayout(settings.clock_layout);$('show-ampm').disabled=settings.hour_format!=='12';sleepFields();colorPicker();drawPreview(slots[active]);persistDraft();$('save-settings').disabled=busy||!dirtySettings();message('Device settings not saved.')};
+$('settings-form').oninput=settingsInput;
 $('discard-settings').onclick=()=>{settings=copy(savedSettings);settingsForm();persistDraft();render();message('Unsaved device settings discarded.')};
-$('settings-form').onsubmit=async event=>{event.preventDefault();if(busy||!initialized)return;try{validateSettings(settings)}catch(error){message(error.message,true);return}busy=true;render();const snapshot=copy(settings);try{message('Saving device settings…');await rpc({op:'settings',...snapshot,clock_temperature:snapshot.clock_temperature||'none',clock_humidity:snapshot.clock_humidity||'none'});savedSettings={...snapshot,weather:savedWeather};persistDraft();if(snapshot.weather!==savedWeather){const item=ha.items.find(i=>i.entity===snapshot.weather)||{};await rpc({op:'weather',entity:snapshot.weather,name:item.name||snapshot.weather,area:item.area||''});savedWeather=snapshot.weather}savedSettings=snapshot;message('Device settings saved.')}catch(error){message(error.message+' Review the settings and retry any unsaved changes.',true)}finally{busy=false;persistDraft();render()}};
+async function saveSettings(){if(busy||!initialized)return false;try{validateSettings(settings)}catch(error){message(error.message,true);return false}busy=true;render();const snapshot=copy(settings);try{message('Saving device settings…');await rpc({op:'settings',...snapshot,clock_temperature:snapshot.clock_temperature||'none',clock_humidity:snapshot.clock_humidity||'none'});savedSettings={...snapshot,weather:savedWeather};persistDraft();if(snapshot.weather!==savedWeather){const item=ha.items.find(i=>i.entity===snapshot.weather)||{};await rpc({op:'weather',entity:snapshot.weather,name:item.name||snapshot.weather,area:item.area||''});savedWeather=snapshot.weather}savedSettings=snapshot;message('Device settings saved.');return true}catch(error){message(error.message+' Review the settings and retry any unsaved changes.',true);return false}finally{busy=false;persistDraft();render()}}
+$('settings-form').onsubmit=event=>{event.preventDefault();void saveSettings()};
 async function syncIconMetadata(){
  let count=0;if(editTarget)return count;
  for(let i=0;i<saved.length;i++){

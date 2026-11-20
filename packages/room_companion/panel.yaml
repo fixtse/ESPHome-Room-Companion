@@ -67,7 +67,6 @@ select:
     restore_value: true
     options:
       - Clock
-      - Photo slideshow
       - Dashboard
       - ImmichFrame
     initial_option: Clock
@@ -75,7 +74,7 @@ select:
   - platform: template
     id: panel_immichframe_fit
     name: ImmichFrame photo fit
-    # Set from the web setup (ImmichFrame page); not exposed to Home Assistant.
+    # Set from the web setup (Idle screen page); not exposed to Home Assistant.
     internal: true
     optimistic: true
     restore_value: true
@@ -90,7 +89,7 @@ switch:
   - platform: template
     id: panel_immichframe_split
     name: ImmichFrame photo pairs
-    # Set from the web setup (ImmichFrame page); not exposed to Home Assistant.
+    # Set from the web setup (Idle screen page); not exposed to Home Assistant.
     internal: true
     optimistic: true
     restore_mode: RESTORE_DEFAULT_ON
@@ -98,61 +97,51 @@ switch:
   - platform: template
     id: panel_immichframe_info_date
     name: ImmichFrame show date
-    # Set from the web setup (ImmichFrame page); not exposed to Home Assistant.
+    # Set from the web setup (Idle screen page); not exposed to Home Assistant.
     internal: true
     optimistic: true
     restore_mode: RESTORE_DEFAULT_ON
   - platform: template
     id: panel_immichframe_info_location
     name: ImmichFrame show place
-    # Set from the web setup (ImmichFrame page); not exposed to Home Assistant.
+    # Set from the web setup (Idle screen page); not exposed to Home Assistant.
     internal: true
     optimistic: true
     restore_mode: RESTORE_DEFAULT_ON
   - platform: template
     id: panel_immichframe_info_album
     name: ImmichFrame show album
-    # Set from the web setup (ImmichFrame page); not exposed to Home Assistant.
+    # Set from the web setup (Idle screen page); not exposed to Home Assistant.
     internal: true
     optimistic: true
     restore_mode: RESTORE_DEFAULT_OFF
   - platform: template
     id: panel_immichframe_info_people
     name: ImmichFrame show people
-    # Set from the web setup (ImmichFrame page); not exposed to Home Assistant.
+    # Set from the web setup (Idle screen page); not exposed to Home Assistant.
     internal: true
     optimistic: true
     restore_mode: RESTORE_DEFAULT_OFF
   - platform: template
     id: panel_immichframe_info_description
     name: ImmichFrame show description
-    # Set from the web setup (ImmichFrame page); not exposed to Home Assistant.
+    # Set from the web setup (Idle screen page); not exposed to Home Assistant.
     internal: true
     optimistic: true
     restore_mode: RESTORE_DEFAULT_OFF
   - platform: template
     id: panel_slideshow_fade
     name: Slideshow fade
-    # Set from the web setup (ImmichFrame page); not exposed to Home Assistant.
+    # Set from the web setup (Idle screen page); not exposed to Home Assistant.
     internal: true
     optimistic: true
     restore_mode: RESTORE_DEFAULT_ON
 
 text:
   - platform: template
-    id: panel_slideshow_urls
-    name: Slideshow pictures
-    icon: mdi:image-multiple
-    entity_category: config
-    mode: text
-    max_length: 255
-    optimistic: true
-    restore_value: true
-    initial_value: ""
-  - platform: template
     id: panel_immichframe_url
     name: ImmichFrame server
-    # Set from the web setup (ImmichFrame page); not exposed to Home Assistant.
+    # Set from the web setup (Idle screen page); not exposed to Home Assistant.
     internal: true
     mode: text
     max_length: 255
@@ -164,7 +153,7 @@ number:
   - platform: template
     id: panel_slideshow_seconds
     name: Slideshow interval
-    # Set from the web setup (ImmichFrame page); not exposed to Home Assistant.
+    # Set from the web setup (Idle screen page); not exposed to Home Assistant.
     internal: true
     unit_of_measurement: s
     min_value: 5
@@ -309,7 +298,7 @@ interval:
           // Idle screen.
           const auto mode = id(panel_idle_screen).active_index().value_or(0);
           const bool idle_clock = standby && mode == onx_panel_ui::IDLE_CLOCK && !id(screen_off_state) && !id(sleep_mode_state);
-          const bool idle_photos = standby && (mode == onx_panel_ui::IDLE_SLIDESHOW || mode == onx_panel_ui::IDLE_IMMICHFRAME) &&
+          const bool idle_photos = standby && mode == onx_panel_ui::IDLE_IMMICHFRAME &&
                                    !id(screen_off_state) && !id(sleep_mode_state);
           onx_panel_ui::update_idle_badge(onx_notification::center.items.size(), idle_clock || idle_photos);
           if (idle_clock) {
@@ -327,7 +316,7 @@ interval:
           if (entered && mode == onx_panel_ui::IDLE_DASHBOARD && id(room_panel)->stream_status() != "not configured")
             id(room_panel)->open_dashboard();
           const bool immichframe = mode == onx_panel_ui::IDLE_IMMICHFRAME;
-          const bool slideshow = standby && (immichframe || mode == onx_panel_ui::IDLE_SLIDESHOW);
+          const bool slideshow = standby && immichframe;
           auto *layer = onx_panel_ui::slide_layer;
           if (!slideshow) {
             if (!onx_panel_ui::hidden(layer)) {
@@ -335,7 +324,6 @@ interval:
               onx_panel_ui::slide_error_show(nullptr, "");
               lv_image_set_src(onx_panel_ui::slide_image, static_cast<const void *>(nullptr));
               if (!onx_panel_ui::slide_loading) {
-                id(slideshow_image)->release();
                 id(immichframe_image)->release();
               }
             }
@@ -355,50 +343,28 @@ interval:
           onx_idle_clock::update_photo_overlay(onx_panel_ui::width, onx_panel_ui::height, id(standby_weather_state));
           const bool due = !onx_panel_ui::slide_loading &&
                            static_cast<int32_t>(millis() - onx_panel_ui::slide_due) >= 0;
-          std::string url;
-          if (immichframe) {
-            url = onx_panel_ui::immichframe_photo_url(id(panel_immichframe_url).state,
-                                                     onx_panel_ui::width, onx_panel_ui::height,
-                                                     id(panel_immichframe_fit).active_index().value_or(0),
-                                                     id(panel_immichframe_split).state, [&]() {
-                                                       std::string f;
-                                                       auto add = [&](bool on, const char *name) { if (on) f += (f.empty() ? "" : ",") + std::string(name); };
-                                                       add(id(panel_immichframe_info_date).state, "date");
-                                                       add(id(panel_immichframe_info_location).state, "location");
-                                                       add(id(panel_immichframe_info_album).state, "album");
-                                                       add(id(panel_immichframe_info_people).state, "people");
-                                                       add(id(panel_immichframe_info_description).state, "description");
-                                                       return f;
-                                                     }(),
-                                                     due && onx_panel_ui::slide_step < 0);
-          } else {
-            const auto slides = onx_panel_ui::split_urls(id(panel_slideshow_urls).state);
-            if (!slides.empty() && due) {
-              // slide_index is the next picture; going back skips the current one too.
-              if (onx_panel_ui::slide_step < 0) onx_panel_ui::slide_index += 2 * slides.size() - 2;
-              onx_panel_ui::slide_index %= slides.size();
-              url = slides[onx_panel_ui::slide_index];
-              onx_panel_ui::slide_index = (onx_panel_ui::slide_index + 1) % slides.size();
-            }
-            if (!slides.empty() && !due) {
-              onx_panel_ui::show(onx_panel_ui::slide_hint, false);
-              return;
-            }
-          }
+          const std::string url = onx_panel_ui::immichframe_photo_url(id(panel_immichframe_url).state,
+                                                   onx_panel_ui::width, onx_panel_ui::height,
+                                                   id(panel_immichframe_fit).active_index().value_or(0),
+                                                   id(panel_immichframe_split).state, [&]() {
+                                                     std::string f;
+                                                     auto add = [&](bool on, const char *name) { if (on) f += (f.empty() ? "" : ",") + std::string(name); };
+                                                     add(id(panel_immichframe_info_date).state, "date");
+                                                     add(id(panel_immichframe_info_location).state, "location");
+                                                     add(id(panel_immichframe_info_album).state, "album");
+                                                     add(id(panel_immichframe_info_people).state, "people");
+                                                     add(id(panel_immichframe_info_description).state, "description");
+                                                     return f;
+                                                   }(),
+                                                   due && onx_panel_ui::slide_step < 0);
           if (url.empty()) {
-            onx_render::label(onx_panel_ui::slide_hint, immichframe
-                ? "Set ImmichFrame server in Home Assistant."
-                : "Add picture addresses in\n\"Slideshow pictures\" in Home Assistant.");
+            onx_render::label(onx_panel_ui::slide_hint,
+                "Set the ImmichFrame address on the panel's\nweb setup (Idle screen page).");
           }
           onx_panel_ui::show(onx_panel_ui::slide_hint, url.empty());
           if (url.empty()) onx_panel_ui::slide_error_show(nullptr, "");
           if (url.empty() || !due) return;
-          if (immichframe != onx_panel_ui::slide_is_immichframe) {
-            lv_image_set_src(onx_panel_ui::slide_image, static_cast<const void *>(nullptr));
-            (immichframe ? id(slideshow_image) : id(immichframe_image))->release();
-            onx_panel_ui::slide_is_immichframe = immichframe;
-          }
-          auto *image = immichframe ? id(immichframe_image) : id(slideshow_image);
+          auto *image = id(immichframe_image);
           onx_panel_ui::slide_step = 0;
           onx_panel_ui::slide_loading = true;
           onx_panel_ui::slide_due = millis() + static_cast<uint32_t>(id(panel_slideshow_seconds).state * 1000.0f);
@@ -611,46 +577,6 @@ esphome:
 # Icons for the panel-local controls (Material Design Icons, as the panel's fallbacks).
 image:
   - platform: online_image
-    id: slideshow_image
-    url: http://homeassistant.local:8123/
-    format: AUTO
-    type: RGB565
-    resize: ${display_width}x${display_height}
-    update_interval: never
-    on_download_finished: &slide_download_finished
-      then:
-        - lambda: |-
-            onx_panel_ui::slide_loading = false;
-            id(entity_icon_downloader)->set_artwork_busy(onx_media::downloading);
-            auto *image = onx_panel_ui::slide_is_immichframe ? id(immichframe_image) : id(slideshow_image);
-            if (onx_panel_ui::hidden(onx_panel_ui::slide_layer)) { image->release(); return; }
-            lv_image_set_src(onx_panel_ui::slide_image, image->get_lv_image_dsc());
-            lv_obj_center(onx_panel_ui::slide_image);
-            onx_panel_ui::slide_error_show(nullptr, "");
-            onx_panel_ui::slide_fade_in(id(panel_slideshow_fade).state);
-    on_error: &slide_download_error
-      then:
-        - lambda: |-
-            onx_panel_ui::slide_loading = false;
-            id(entity_icon_downloader)->set_artwork_busy(onx_media::downloading);
-            auto *image = onx_panel_ui::slide_is_immichframe ? id(immichframe_image) : id(slideshow_image);
-            if (onx_panel_ui::hidden(onx_panel_ui::slide_layer)) image->release();
-            onx_panel_ui::slide_waiting(false);
-            lv_obj_set_style_image_opa(onx_panel_ui::slide_image, LV_OPA_COVER, 0);
-            if (image->get_width() == 0) lv_image_set_src(onx_panel_ui::slide_image, static_cast<const void *>(nullptr));
-            {
-              // Tell the user why photos stopped; the card clears on the next photo.
-              const auto &err = image->last_error();
-              std::string reason = onx_panel_ui::slide_is_immichframe
-                  ? "Can't get a photo from the ImmichFrame server. Retrying in 15 s."
-                  : "Can't load this picture. Trying the next one.";
-              if (err.find("401") != std::string::npos || err.find("403") != std::string::npos)
-                reason = "The server refused the request. Check the ImmichFrame authorization.";
-              if (!err.empty()) reason += "\n" + err.substr(0, 80);
-              onx_panel_ui::slide_error_show(onx_panel_ui::slide_is_immichframe ? "ImmichFrame" : "Photo slideshow", reason);
-            }
-            onx_panel_ui::slide_due = millis() + (onx_panel_ui::slide_is_immichframe ? 15000 : 3000);
-  - platform: online_image
     id: immichframe_image
     url: http://homeassistant.local:8123/
     format: JPEG
@@ -658,8 +584,37 @@ image:
     update_interval: never
     request_headers:
       Authorization: "${immichframe_authorization}"
-    on_download_finished: *slide_download_finished
-    on_error: *slide_download_error
+    on_download_finished:
+      then:
+        - lambda: |-
+            onx_panel_ui::slide_loading = false;
+            id(entity_icon_downloader)->set_artwork_busy(onx_media::downloading);
+            auto *image = id(immichframe_image);
+            if (onx_panel_ui::hidden(onx_panel_ui::slide_layer)) { image->release(); return; }
+            lv_image_set_src(onx_panel_ui::slide_image, image->get_lv_image_dsc());
+            lv_obj_center(onx_panel_ui::slide_image);
+            onx_panel_ui::slide_error_show(nullptr, "");
+            onx_panel_ui::slide_fade_in(id(panel_slideshow_fade).state);
+    on_error:
+      then:
+        - lambda: |-
+            onx_panel_ui::slide_loading = false;
+            id(entity_icon_downloader)->set_artwork_busy(onx_media::downloading);
+            auto *image = id(immichframe_image);
+            if (onx_panel_ui::hidden(onx_panel_ui::slide_layer)) image->release();
+            onx_panel_ui::slide_waiting(false);
+            lv_obj_set_style_image_opa(onx_panel_ui::slide_image, LV_OPA_COVER, 0);
+            if (image->get_width() == 0) lv_image_set_src(onx_panel_ui::slide_image, static_cast<const void *>(nullptr));
+            {
+              // Tell the user why photos stopped; the card clears on the next photo.
+              const auto &err = image->last_error();
+              std::string reason = "Can't get a photo from the ImmichFrame server. Retrying in 15 s.";
+              if (err.find("401") != std::string::npos || err.find("403") != std::string::npos)
+                reason = "The server refused the request. Check the ImmichFrame authorization.";
+              if (!err.empty()) reason += "\n" + err.substr(0, 80);
+              onx_panel_ui::slide_error_show("ImmichFrame", reason);
+            }
+            onx_panel_ui::slide_due = millis() + 15000;
   - platform: file
     file: "../../assets/entity_icons/monitor-dashboard.svg"
     id: panel_dashboard_icon

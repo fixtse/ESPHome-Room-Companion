@@ -299,7 +299,8 @@ onx_config_web:
     }
     // ImmichFrame idle screen (room_companion/panel.yaml entities), also editable
     // from Home Assistant. "immich" takes the values as lines in `data`:
-    // url, idle screen, fit, pairs, details (comma list), fade, interval.
+    // url, idle screen (0 clock, 1 dashboard, 2 ImmichFrame), fit, pairs,
+    // details (comma list), fade and interval.
     if (query.op == "immich_state") {
       return onx_entity_config::build_json([&](JsonObject root) {
         root["url"] = id(panel_immichframe_url).state;
@@ -327,12 +328,12 @@ onx_config_web:
         if (end == std::string::npos) break;
         start = end + 1;
       }
-      if (v.size() != 7) return onx_entity_config::error("Incomplete ImmichFrame settings");
+      if (v.size() != 7) return onx_entity_config::error("Incomplete idle screen settings");
       const auto &url = v[0];
       const int idle = std::atoi(v[1].c_str()), fit = std::atoi(v[2].c_str()), interval = std::atoi(v[6].c_str());
       if (url.size() > 255 || (!url.empty() && onx_panel_ui::immichframe_photo_url(url, 320, 480).empty()))
         return onx_entity_config::error("Enter the ImmichFrame address, for example http://192.168.1.20:8080");
-      if (idle < 0 || idle > 3 || fit < 0 || fit > 2 || interval < 5 || interval > 600)
+      if (idle < 0 || idle > 2 || fit < 0 || fit > 2 || interval < 5 || interval > 600)
         return onx_entity_config::error("Invalid ImmichFrame settings");
       { auto c = id(panel_immichframe_url).make_call(); c.set_value(url); c.perform(); }
       { auto c = id(panel_idle_screen).make_call(); c.set_index(idle); c.perform(); }

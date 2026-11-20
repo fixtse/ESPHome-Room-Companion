@@ -82,7 +82,7 @@ view). [Create reminders and calendar messages](display-notifications.md).
 
 ## When you leave it idle
 
-Choose **Clock**, **Photo slideshow** or **Dashboard** as the idle screen. Timers
+Choose **Clock**, **Dashboard** or **ImmichFrame** as the idle screen. Timers
 and scheduled sleep keep priority. [Display and sleep options](web-configuration.md#display-and-idle-screen).
 
 ## Reset Wi-Fi and device configuration

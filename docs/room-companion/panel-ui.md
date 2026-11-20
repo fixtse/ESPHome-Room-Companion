@@ -130,7 +130,7 @@ been verified on a physical panel (display direction, touch mapping).
 
 Home Assistant entities (device configuration):
 
-- **Idle screen**: *Clock* (default), *Photo slideshow*, *Dashboard* or *ImmichFrame*. The idle
+- **Idle screen**: *Clock* (default), *Dashboard* or *ImmichFrame*. The idle
   screen appears after the standby timeout.
 
 The *Clock* uses the whole screen. Wi-Fi and Home Assistant status sit at the
@@ -150,36 +150,29 @@ you choose. The layout uses the room it has: with fewer items the clock switches
 to larger digits, the weather values and forecast icons get bigger, and the
 spacing grows; when space is short they shrink in steps before anything is
 dropped.
-- **Slideshow pictures**: picture addresses separated by spaces, commas or
-  new lines (JPEG/PNG over HTTP, e.g. `http://homeassistant.local:8123/local/photos/1.jpg`).
-  An address that returns a different picture each time (a camera snapshot or a
-  random-photo service) also works on its own.
 - **Seconds per photo** (5–600) and **fade** are set on the web setup's
-  ImmichFrame page and apply to both photo idle screens.
+  Idle screen page with the other ImmichFrame options.
 
-For photos hosted by Home Assistant, put JPEG or PNG files in
-`/config/www/room-companion/` and enter their full URLs under **Slideshow
-pictures**, for example `http://192.168.1.10:8123/local/room-companion/01.jpg`.
-Use the Home Assistant address reachable from the panel. Open each URL in a
-private browser window to check that it serves the image without signing in.
-Home Assistant serves `/local/` files without authentication. If you just
-created the `www` directory, restart Home Assistant once. The picture list
-allows up to 255 characters, so use short filenames for multiple photos.
-Select **Photo slideshow** and wait for the standby timeout.
+The web setup's **Idle screen** page shows only the options for the selected
+screen: clock layout and formats for *Clock*, a note for *Dashboard*, and the
+server and photo options for *ImmichFrame*. Weather and the two readings apply
+to both the clock and the photo overlay. Firmware before this change also had a
+*Photo slideshow*; it has been removed, so re-select the idle screen after
+updating if it changed.
 
 ### ImmichFrame
 
 Run the ImmichFrame fork with the OpenNextion JPEG endpoint. Open the panel's
-web setup and choose the **ImmichFrame** page. It searches the network for the
+web setup, open the **Idle screen** page and choose **ImmichFrame**. It searches the network for the
 server (mDNS, like the Home Assistant page; run the container with host
 networking) when no address is set, or when you press search. Pick the server
-or enter its address (for example `https://frame.example.net`), choose
-**ImmichFrame** as the idle screen and set the seconds per photo. Home Assistant
-keeps only **Idle screen** and **Slideshow pictures**; the other photo settings
+or enter its address (for example `https://frame.example.net`), then save.
+Once saved, the page shows the server as a card with its reachability and
+settings. Home Assistant keeps only **Idle screen**; the other photo settings
 are on that page. The panel requests one photo per interval using its screen
 orientation. ImmichFrame uses its configured album and account filters.
 
-Photo options (panel web setup, ImmichFrame page):
+Photo options (panel web setup, Idle screen page):
 
 - **Photo fit**: *Blurred background* (default) shows the whole
   photo over a blurred, darkened copy of itself, as ImmichFrame does when
@@ -195,8 +188,7 @@ Photo options (panel web setup, ImmichFrame page):
   lines, in that order). Date and place are on by default; turn all of them off
   for a clean photo. The date and place formats follow ImmichFrame's
   `PhotoDateFormat`, `Language` and `ImageLocationFormat`.
-- **Fade in each new photo** (on by default): each new photo fades in from black. This
-  also applies to *Photo slideshow*.
+- **Fade in each new photo** (on by default): each new photo fades in from black.
 
 The server composes the photo, so the panel still downloads one screen-sized
 JPEG per interval. ImmichFrame's zoom and pan (Ken Burns) effects are not
