@@ -37,7 +37,7 @@ int main(){
  esphome::onx_touch_input::TouchInput touch;
  esphome::onx_button::BufferedButton button;touch.set_button(&button);touch.set_geometry(320,436,54,29);
  touch.set_passthrough_fn([](int x,int y){return bell_hit(x,y)||timer_chip_hit(x,y);});
- auto tap=[&](int x,int y){touch.update({{x,y,esphome::touchscreen::STATE_PRESSED}});touch.release();};
+ auto tap=[&](int x,int y){touch.update({{x,y,esphome::touchscreen::STATE_PRESSED}});touch.release();touch.loop();};
  tap(300,0);tap(262,20);tap(300,46);tap(175,0);tap(200,20);
  assert(button.edges.empty()); // No underlying entity opens from any header tap.
  tap(150,220);assert(button.edges.size()==2); // Ordinary entity taps still work.

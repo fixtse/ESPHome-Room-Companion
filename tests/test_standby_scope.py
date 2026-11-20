@@ -20,6 +20,7 @@ struct OnxUi {
  bool normal=true;
  std::function<bool()> standby_guard_;
  uint32_t last_user_activity_ms_=0,standby_timeout_ms_=1000;
+ bool standby_timeout_enabled_=true;
  bool is_normal_mode_active()const{return normal;}
  bool is_standby_active()const;
 };

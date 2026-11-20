@@ -11,6 +11,7 @@ code=r'''
 #include <cassert>
 #include "onx_config_rules.h"
 namespace esphome::onx_config_web { struct Query {std::string entity,action,name,area,action_name;}; }
+namespace onx_memory { constexpr size_t ENTRY_COUNT=40; }
 namespace custom_logic {
 constexpr size_t MAX_HA_ENTITY_COUNT=81;  // 40 entries, 40 press actions, standby weather
 constexpr unsigned HA_ENTITIES_MAGIC=42;
@@ -45,7 +46,7 @@ int main(){
  }
  assert(found);
  ids[0]="climate.calentador";actions[0]="none";query={ids[0],"none","Calentador","Kitchen",""};
- assert(save_selected_metadata(query));assert(cache.count==40);
+ assert(save_selected_metadata(query));assert(cache.count==80);  // 40 entities, 39 actions, weather
  for(size_t i=0;i<cache.count;++i){
   assert(std::string(cache.entities[i].entity_id)!="sensor.selected_0");
   assert(std::string(cache.entities[i].entity_id)!="script.action_0");
