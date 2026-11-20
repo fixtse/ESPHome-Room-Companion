@@ -4,7 +4,7 @@
 //   - media detail rearranged for a tall screen: large cover art, title,
 //     progress bar and previous / play-pause / next buttons (no header: swipe
 //     horizontally to close, pull down from the top for notifications)
-//   - idle screen: clock (default), photo slideshow or dashboard stream
+//   - idle screen: clock (default), photo slideshow, ImmichFrame or dashboard stream
 // Everything is created lazily on LVGL's existing objects; the shared packages
 // are not modified.
 #include <algorithm>
@@ -273,12 +273,24 @@ inline void sync_media(const Media &m, const lv_font_t *font) {
 }
 
 // ------------------------------------------------------------ idle screen
-enum IdleMode { IDLE_CLOCK = 0, IDLE_SLIDESHOW = 1, IDLE_DASHBOARD = 2 };
+enum IdleMode { IDLE_CLOCK = 0, IDLE_SLIDESHOW = 1, IDLE_DASHBOARD = 2, IDLE_IMMICHFRAME = 3 };
 inline lv_obj_t *slide_layer = nullptr, *slide_image = nullptr, *slide_time = nullptr, *slide_hint = nullptr;
-inline std::vector<std::string> slides;
 inline size_t slide_index = 0;
 inline uint32_t slide_due = 0;
 inline bool slide_loading = false;
+inline bool slide_is_immichframe = false;
+
+inline std::string immichframe_photo_url(std::string base, int width, int height) {
+  const auto scheme_end = base.find("://");
+  if ((base.rfind("http://", 0) != 0 && base.rfind("https://", 0) != 0) ||
+      base.find_first_of("?#@ \t\r\n") != std::string::npos)
+    return {};
+  const auto host = scheme_end + 3;
+  if (host >= base.size() || base[host] == '/') return {};
+  while (base.back() == '/') base.pop_back();
+  return base + "/api/Asset/OpenNextion?width=" + std::to_string(width) +
+         "&height=" + std::to_string(height);
+}
 
 inline std::vector<std::string> split_urls(const std::string &text) {
   std::vector<std::string> out;

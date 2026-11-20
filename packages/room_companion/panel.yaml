@@ -1,4 +1,6 @@
 substitutions:
+  # Private builds can override this with a full Bearer header from secrets.yaml.
+  immichframe_authorization: ""
   # Internal RAM (total / largest contiguous block, bytes) that must be free
   # before Bluetooth may start; see the esp32_ble comment below.
   ble_min_free: "56000"
@@ -67,12 +69,23 @@ select:
       - Clock
       - Photo slideshow
       - Dashboard
+      - ImmichFrame
     initial_option: Clock
 
 text:
   - platform: template
     id: panel_slideshow_urls
     name: Slideshow pictures
+    icon: mdi:image-multiple
+    entity_category: config
+    mode: text
+    max_length: 255
+    optimistic: true
+    restore_value: true
+    initial_value: ""
+  - platform: template
+    id: panel_immichframe_url
+    name: ImmichFrame server
     icon: mdi:image-multiple
     entity_category: config
     mode: text
@@ -245,34 +258,65 @@ interval:
           }
           if (entered && mode == onx_panel_ui::IDLE_DASHBOARD && id(room_panel)->stream_status() != "not configured")
             id(room_panel)->open_dashboard();
-          const bool slideshow = standby && mode == onx_panel_ui::IDLE_SLIDESHOW;
+          const bool immichframe = mode == onx_panel_ui::IDLE_IMMICHFRAME;
+          const bool slideshow = standby && (immichframe || mode == onx_panel_ui::IDLE_SLIDESHOW);
           auto *layer = onx_panel_ui::slide_layer;
           if (!slideshow) {
             if (!onx_panel_ui::hidden(layer)) {
               onx_panel_ui::show(layer, false);
               lv_image_set_src(onx_panel_ui::slide_image, static_cast<const void *>(nullptr));
-              if (!onx_panel_ui::slide_loading) id(slideshow_image)->release();
+              if (!onx_panel_ui::slide_loading) {
+                id(slideshow_image)->release();
+                id(immichframe_image)->release();
+              }
             }
             return;
           }
           if (onx_panel_ui::hidden(layer)) {
             onx_panel_ui::show(layer, true);
             lv_obj_move_foreground(layer);
-            onx_panel_ui::slide_due = 0;
+            onx_panel_ui::slide_due = millis();
           }
           if (id(ha_time_ready)) {
             auto now = id(ha_time).now();
             if (now.is_valid()) onx_render::label(onx_panel_ui::slide_time, now.strftime(onx_display_settings::time_pattern()).c_str());
           }
-          onx_panel_ui::slides = onx_panel_ui::split_urls(id(panel_slideshow_urls).state);
-          onx_panel_ui::show(onx_panel_ui::slide_hint, onx_panel_ui::slides.empty());
-          if (onx_panel_ui::slides.empty() || onx_panel_ui::slide_loading || millis() < onx_panel_ui::slide_due) return;
-          onx_panel_ui::slide_index = (onx_panel_ui::slide_index + 1) % onx_panel_ui::slides.size();
+          const bool due = !onx_panel_ui::slide_loading &&
+                           static_cast<int32_t>(millis() - onx_panel_ui::slide_due) >= 0;
+          std::string url;
+          if (immichframe) {
+            url = onx_panel_ui::immichframe_photo_url(id(panel_immichframe_url).state,
+                                                     onx_panel_ui::width, onx_panel_ui::height);
+          } else {
+            const auto slides = onx_panel_ui::split_urls(id(panel_slideshow_urls).state);
+            if (!slides.empty() && due) {
+              onx_panel_ui::slide_index %= slides.size();
+              url = slides[onx_panel_ui::slide_index];
+              onx_panel_ui::slide_index = (onx_panel_ui::slide_index + 1) % slides.size();
+            }
+            if (!slides.empty() && !due) {
+              onx_panel_ui::show(onx_panel_ui::slide_hint, false);
+              return;
+            }
+          }
+          if (url.empty()) {
+            onx_render::label(onx_panel_ui::slide_hint, immichframe
+                ? "Set ImmichFrame server in Home Assistant."
+                : "Add picture addresses in\n\"Slideshow pictures\" in Home Assistant.");
+          }
+          onx_panel_ui::show(onx_panel_ui::slide_hint, url.empty());
+          if (url.empty() || !due) return;
+          if (immichframe != onx_panel_ui::slide_is_immichframe) {
+            lv_image_set_src(onx_panel_ui::slide_image, static_cast<const void *>(nullptr));
+            (immichframe ? id(slideshow_image) : id(immichframe_image))->release();
+            onx_panel_ui::slide_is_immichframe = immichframe;
+          }
+          auto *image = immichframe ? id(immichframe_image) : id(slideshow_image);
           onx_panel_ui::slide_loading = true;
           onx_panel_ui::slide_due = millis() + static_cast<uint32_t>(id(panel_slideshow_seconds).state * 1000.0f);
           id(entity_icon_downloader)->set_artwork_busy(true);
-          id(slideshow_image)->set_url(onx_panel_ui::slides[onx_panel_ui::slide_index]);
-          id(slideshow_image)->update();
+          image->set_url(url);
+          image->update();
   # A new orientation changes the screen size: restart once it is saved.
   - interval: 1s
     then:
@@ -485,20 +529,34 @@ image:
     type: RGB565
     resize: ${display_width}x${display_height}
     update_interval: never
-    on_download_finished:
+    on_download_finished: &slide_download_finished
       then:
         - lambda: |-
             onx_panel_ui::slide_loading = false;
             id(entity_icon_downloader)->set_artwork_busy(onx_media::downloading);
-            if (onx_panel_ui::hidden(onx_panel_ui::slide_layer)) { id(slideshow_image)->release(); return; }
-            lv_image_set_src(onx_panel_ui::slide_image, id(slideshow_image)->get_lv_image_dsc());
+            auto *image = onx_panel_ui::slide_is_immichframe ? id(immichframe_image) : id(slideshow_image);
+            if (onx_panel_ui::hidden(onx_panel_ui::slide_layer)) { image->release(); return; }
+            lv_image_set_src(onx_panel_ui::slide_image, image->get_lv_image_dsc());
             lv_obj_center(onx_panel_ui::slide_image);
-    on_error:
+    on_error: &slide_download_error
       then:
         - lambda: |-
             onx_panel_ui::slide_loading = false;
             id(entity_icon_downloader)->set_artwork_busy(onx_media::downloading);
-            onx_panel_ui::slide_due = millis() + 3000;  // Skip a broken picture quickly.
+            auto *image = onx_panel_ui::slide_is_immichframe ? id(immichframe_image) : id(slideshow_image);
+            if (onx_panel_ui::hidden(onx_panel_ui::slide_layer)) image->release();
+            if (image->get_width() == 0) lv_image_set_src(onx_panel_ui::slide_image, static_cast<const void *>(nullptr));
+            onx_panel_ui::slide_due = millis() + (onx_panel_ui::slide_is_immichframe ? 15000 : 3000);
+  - platform: online_image
+    id: immichframe_image
+    url: http://homeassistant.local:8123/
+    format: JPEG
+    type: RGB565
+    update_interval: never
+    request_headers:
+      Authorization: "${immichframe_authorization}"
+    on_download_finished: *slide_download_finished
+    on_error: *slide_download_error
   - platform: file
     file: "../../assets/entity_icons/monitor-dashboard.svg"
     id: panel_dashboard_icon
@@ -800,6 +858,8 @@ script:
                 id(ui_presenter)->get_normal_device_entity_id(id(normal_device_detail_index)));
             return d != nullptr && d->state == "playing";
           };
+          id(immichframe_image)->set_source_pixel_limit(${display_width} * ${display_height});
+          id(immichframe_image)->set_allow_redirects(false);
           onx_panel_ui::create_slideshow(id(standby_page)->obj, id(fonts_MiSans_Bold_24)->get_lv_font(),
                                          id(fonts_MiSans_Medium_14)->get_lv_font());
           id(touch_input)->set_dock_tap([](int x) {

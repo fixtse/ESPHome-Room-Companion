@@ -76,7 +76,7 @@ void OnlineImage::update() {
   last_error_.clear();
   if(!memory_ready()) {last_error_="Waiting for artwork worker memory";failed_.call();return;}
   if(!validate_url_(url_)) { last_error_="Invalid artwork URL";failed_.call(); return; }
-  auto *work=new(std::nothrow) Work{this,url_,{},generation_,2500};
+  auto *work=new(std::nothrow) Work{this,url_,{},generation_,2500,allow_redirects_};
   if(!work) { last_error_="Request allocation failed";failed_.call(); return; }
   if(parent_) work->timeout=std::min<uint32_t>(2500,parent_->get_timeout());
   work->stats.heap_free_start=heap_caps_get_free_size(MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
@@ -87,7 +87,10 @@ void OnlineImage::update() {
     const size_t end=url_.find_first_of(":/?",begin);
     work->stats.host=url_.substr(begin,std::min<size_t>(end==std::string::npos?url_.size()-begin:end-begin,64));
   }
-  for(auto &header:request_headers_) work->headers.push_back({header.first,header.second.value()});
+  for(auto &header:request_headers_) {
+    auto value=header.second.value();
+    if(!value.empty()) work->headers.push_back({header.first,std::move(value)});
+  }
   busy_=true;
   // All DNS, TCP, TLS, redirects and body reads happen off the ESPHome/UI task.
   // Prefer an internal stack (TLS is slower on a PSRAM stack). Fall back to PSRAM
@@ -151,7 +154,7 @@ void OnlineImage::fetch_task_(void *arg) {
       length=esp_http_client_fetch_headers(client);
       const int status=esp_http_client_get_status_code(client);
       if(status==200) {opened=true;break;}
-      if(redirects<3 && (status==301 || status==302 || status==303 || status==307 || status==308)) {
+      if(work->allow_redirects && redirects<3 && (status==301 || status==302 || status==303 || status==307 || status==308)) {
         if(esp_http_client_set_redirection(client)!=ESP_OK) {error="Invalid redirect";break;}
         esp_http_client_close(client);continue;
       }

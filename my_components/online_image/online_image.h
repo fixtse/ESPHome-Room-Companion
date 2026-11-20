@@ -22,6 +22,7 @@ class OnlineImage final : public PollingComponent,
   void release();
   bool is_busy() const { return busy_; }
   void set_source_pixel_limit(uint32_t pixels) { source_pixel_limit_=pixels; }
+  void set_allow_redirects(bool allow) { allow_redirects_ = allow; }
   static bool memory_ready();
   const std::string &last_error() const { return last_error_; }
   // Diagnostics for the most recent fetch (start heap is sampled in update()).
@@ -47,6 +48,7 @@ class OnlineImage final : public PollingComponent,
     std::string url;
     std::vector<http_request::Header> headers;
     uint32_t generation, timeout;
+    bool allow_redirects;
     FetchStats stats;
   };
   static void fetch_task_(void *arg);
@@ -57,6 +59,7 @@ class OnlineImage final : public PollingComponent,
   CallbackManager<void(bool)> finished_;
   CallbackManager<void()> failed_;
   Mutex mutex_;
+  bool allow_redirects_{true};
   bool busy_{false}, completed_{false};
   void *worker_{nullptr};  // WithCaps task; loop() deletes it once suspended
   void reap_worker_();

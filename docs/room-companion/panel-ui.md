@@ -130,7 +130,7 @@ been verified on a physical panel (display direction, touch mapping).
 
 Home Assistant entities (device configuration):
 
-- **Idle screen**: *Clock* (default), *Photo slideshow* or *Dashboard*. The idle
+- **Idle screen**: *Clock* (default), *Photo slideshow*, *Dashboard* or *ImmichFrame*. The idle
   screen appears after the standby timeout.
 
 The *Clock* uses the whole screen. Wi-Fi and Home Assistant status sit at the
@@ -165,6 +165,29 @@ Home Assistant serves `/local/` files without authentication. If you just
 created the `www` directory, restart Home Assistant once. The picture list
 allows up to 255 characters, so use short filenames for multiple photos.
 Select **Photo slideshow** and wait for the standby timeout.
+
+### ImmichFrame
+
+Run the ImmichFrame fork with the OpenNextion JPEG endpoint. In Home Assistant,
+set **ImmichFrame server** to its base address (for example
+`https://frame.example.net`), select **ImmichFrame** under **Idle screen**,
+and set **Slideshow interval**. The panel requests one photo per interval
+using its configured screen orientation. Rotate the panel through its existing
+orientation setting to switch between portrait and landscape. ImmichFrame uses
+the configured album and account filters, and the panel shows its local clock
+over the photo.
+
+If ImmichFrame uses `AuthenticationSecret`, add the full
+`Bearer <AuthenticationSecret>` header to your private `secrets.yaml` and
+override the firmware substitution:
+
+```yaml
+substitutions:
+  immichframe_authorization: !secret immichframe_authorization
+```
+
+Use the final HTTPS address for authenticated requests. Keep this credential in
+a private build. The photo client does not follow redirects.
 
 *Dashboard* opens the stream when the panel goes idle; it needs a configured
 server and is limited by the stream's frame rate.
