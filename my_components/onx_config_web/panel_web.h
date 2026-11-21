@@ -1193,15 +1193,16 @@ static const char PANEL_JS[] = R"ONXPANEL(
    const r=t.r,on=!!d.light_on&&d.available!==false,dimmable=d.dimmable!==false,lvl=on?Number(d.brightness??0):0;
    const head={...t,context:d.available===false?'Unavailable':on?'On':'Off'};if(on&&d.kelvin>0&&d.supports_ct)head.context+=' · '+d.kelvin+' K';
    const pad=P(14),cs=P(44),tx=pad+cs+P(12),sh=P(40),sy=r.h-pad-sh,vy=pad+cs+P(8);
-   // Compact card (2.8" split page), as card_light: brightness in the status line, last level dimmed while off.
-   const compact=dimmable&&sy-vy<F.big.lh,last=Number(d.brightness??0);
-   if(compact&&d.available!==false){const shown=on?lvl:last;head.context=(on?'On':'Off')+(shown>0?' · '+pct(shown):'')}
+   // Compact card (2.8" split page), as card_light: brightness in the status line while on.
+   const compact=dimmable&&sy-vy<F.big.lh;
+   if(compact&&on&&lvl>0)head.context='On · '+pct(lvl);
    chipIcon(t.entity,r.x+pad,r.y+pad,cs,on);titled(head,r.x+tx,r.y+pad+P(2),r.w-tx-pad-P(62));
    if(d.available!==false)toggle(r.x+r.w-pad-P(54),r.y+pad+P(7),on);
    if(!dimmable){if(sy-vy>=F.big.lh)text(on?'On':'Off',F.big,TEXT,r.x+pad,r.y+vy,r.w-2*pad);return}
    if(sy-vy>=F.big.lh)text(pct(lvl),F.big,TEXT,r.x+pad,r.y+vy,r.w-2*pad);
    const sw=r.w-2*pad,id='lc'+Math.random().toString(36).slice(2),clip=node('clipPath',{id});clip.append(node('rect',{x:r.x+pad,y:r.y+sy,width:sw,height:sh,rx:P(12)}));add(clip);
-   box(r.x+pad,r.y+sy,sw,sh,INSET,P(12),{'data-brightness-slider':''});const bar=compact&&!on?last:lvl,fw=Math.trunc(sw*Math.max(0,Math.min(100,bar))/100);box(r.x+pad,r.y+sy,fw,sh,ACCENT,0,{'clip-path':`url(#${id})`,...(compact&&!on?{'fill-opacity':.3}:{})});
+   box(r.x+pad,r.y+sy,sw,sh,INSET,P(12),{'data-brightness-slider':''});const fw=Math.trunc(sw*Math.max(0,Math.min(100,lvl))/100),fillC=d.hs_known&&Number(d.saturation)>=1?hsv(Number(d.hue),Math.max(Number(d.saturation),35)):d.kelvin>0?kelvinRgb(d.kelvin):ACCENT;  // As light_fill_color.
+   box(r.x+pad,r.y+sy,fw,sh,fillC,0,{'clip-path':`url(#${id})`});
    box(r.x+pad+Math.max(P(4),Math.min(sw-P(8),fw-P(9))),r.y+sy+P(9),P(4),sh-P(18),'#101418',P(2));
   };
   const cardClimate=(t,d)=>{
