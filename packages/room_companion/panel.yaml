@@ -751,6 +751,10 @@ image:
             lv_obj_center(onx_panel_ui::slide_image);
             onx_panel_ui::slide_error_show(nullptr, "");
             onx_panel_ui::slide_fade_in(id(panel_slideshow_fade).state);
+            {
+              const int32_t left = static_cast<int32_t>(onx_panel_ui::slide_due - millis());
+              onx_panel_ui::slide_progress_start(left > 0 ? uint32_t(left) : 1);
+            }
     on_error:
       then:
         - lambda: |-
@@ -759,6 +763,7 @@ image:
             auto *image = id(immichframe_image);
             if (onx_panel_ui::hidden(onx_panel_ui::slide_layer)) image->release();
             onx_panel_ui::slide_waiting(false);
+            onx_panel_ui::slide_progress_stop();
             lv_obj_set_style_image_opa(onx_panel_ui::slide_image, LV_OPA_COVER, 0);
             if (image->get_width() == 0) lv_image_set_src(onx_panel_ui::slide_image, static_cast<const void *>(nullptr));
             const auto &err0 = image->last_error();

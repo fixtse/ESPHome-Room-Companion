@@ -302,6 +302,28 @@ inline void slide_error_show(const char *title, const std::string &reason) {
   show(slide_error, true);
   lv_obj_move_foreground(slide_error);
 }
+// Timeout bar along the bottom edge: shrinks until the next photo is due.
+inline lv_obj_t *slide_progress = nullptr;
+inline void slide_progress_step(void *obj, int32_t w) { lv_obj_set_width(static_cast<lv_obj_t *>(obj), std::max<int32_t>(0, w)); }
+inline void slide_progress_start(uint32_t duration) {
+  if (slide_progress == nullptr) return;
+  lv_anim_delete(slide_progress, slide_progress_step);
+  slide_progress_step(slide_progress, width);
+  lv_obj_move_foreground(slide_progress);
+  lv_anim_t a;
+  lv_anim_init(&a);
+  lv_anim_set_var(&a, slide_progress);
+  lv_anim_set_exec_cb(&a, slide_progress_step);
+  lv_anim_set_values(&a, width, 0);
+  lv_anim_set_duration(&a, std::max<uint32_t>(1, duration));
+  lv_anim_set_path_cb(&a, lv_anim_path_linear);
+  lv_anim_start(&a);
+}
+inline void slide_progress_stop() {
+  if (slide_progress == nullptr) return;
+  lv_anim_delete(slide_progress, slide_progress_step);
+  slide_progress_step(slide_progress, 0);
+}
 inline lv_obj_t *slide_busy = nullptr;  // "Loading…" pill shown at once on a swipe
 // Immediate answer to a swipe: dim the photo and show the pill until the new
 // one arrives (slide_ready) or fails.
@@ -309,6 +331,7 @@ inline void slide_waiting(bool on) {
   if (slide_busy == nullptr) return;
   show(slide_busy, on);
   if (on) {
+    slide_progress_stop();
     lv_anim_delete(slide_image, nullptr);
     lv_obj_set_style_image_opa(slide_image, LV_OPA_40, 0);
     lv_obj_move_foreground(slide_busy);
@@ -438,6 +461,13 @@ inline void create_slideshow(lv_obj_t *standby_page, const lv_font_t *time_font,
   slide_weather = lv_image_create(slide_bar);
   lv_obj_remove_flag(slide_weather, LV_OBJ_FLAG_CLICKABLE);
   lv_image_set_inner_align(slide_weather, LV_IMAGE_ALIGN_CONTAIN);
+  slide_progress = lv_obj_create(slide_layer);
+  lv_obj_remove_style_all(slide_progress);
+  lv_obj_remove_flag(slide_progress, static_cast<lv_obj_flag_t>(LV_OBJ_FLAG_SCROLLABLE | LV_OBJ_FLAG_CLICKABLE));
+  lv_obj_set_style_bg_opa(slide_progress, LV_OPA_70, 0);
+  lv_obj_set_style_bg_color(slide_progress, lv_color_hex(0xFFFFFF), 0);
+  lv_obj_set_size(slide_progress, 0, S(3));
+  lv_obj_align(slide_progress, LV_ALIGN_BOTTOM_LEFT, 0, 0);
   show(slide_layer, false);
 }
 
