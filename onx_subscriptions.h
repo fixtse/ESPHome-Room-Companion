@@ -47,6 +47,7 @@ namespace onx_subs {
 // attribute), so the panel redraws at once. `shown` is set by the panel; other
 // entities are picked up by its once-a-second refresh.
 inline uint32_t state_revision = 0;
+inline uint32_t any_revision = 0;  // Every update, shown or not (main-page backstop key).
 inline bool (*shown)(const std::string &entity) = nullptr;
 
 enum class Kind : uint8_t { PRIMARY = 1, SECONDARY = 2, GESTURE = 3, WEATHER = 4 };
@@ -178,6 +179,7 @@ class Registry {
   }
 
   void dispatch(Entry &entry, esphome::StringRef value) {
+    ++any_revision;
     if (shown == nullptr || shown(entry.entity)) ++state_revision;  // Redraw only for what is on screen.
     ++this->dispatching_;
     // Index loop: the vector is not resized while dispatching_ > 0.

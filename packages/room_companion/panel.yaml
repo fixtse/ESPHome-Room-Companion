@@ -316,11 +316,31 @@ interval:
             static uint32_t seen_revision = 0, last_full_ms = 0;
             static std::string last_carousel;
             const std::string key = (detail ? "d:" : "c:") + entity;
+            // Main pages (up to 12 cards) cost ~50 ms to re-check, so the
+            // once-a-second refresh first compares a cheap key of what they can
+            // show; a full check still runs every 10 s for anything it misses.
+            static uint32_t last_inputs = 0;
+            uint32_t inputs = 2166136261u;
+            auto mix = [&inputs](uint32_t v) { inputs = (inputs ^ v) * 16777619u; };
+            mix(onx_subs::any_revision); mix(custom_logic::entity_revision); mix(onx_panel_pages::seen_revision);
+            mix(onx_display_settings::accent()); mix(onx_display_settings::background());
+            mix(uint32_t(std::time(nullptr) / 60)); mix(onx_lyrics::store().version);
+            for (char c : onx_media::ready_url) mix(uint8_t(c));
+            // Timer cards count down locally: they change every second.
+            for (int i = 0; i < onx_panel_pages::count; ++i)
+              if (onx_panel_pages::entities[i].rfind("timer.", 0) == 0 || custom_logic_entity_sub::is_timer_detail(onx_panel_pages::entities[i])) {
+                mix(uint32_t(std::time(nullptr))); break;
+              }
+            static uint32_t last_tick_ms = 0;
+            const bool timer_due = millis() - last_tick_ms >= 1000;
+            const bool main_quiet = !detail && inputs == last_inputs && millis() - last_full_ms < 10000;
             const bool full = requested || onx_subs::state_revision != seen_revision ||
-                              key != last_carousel || millis() - last_full_ms >= 1000;
+                              key != last_carousel || (timer_due && !main_quiet);
+            if (timer_due) last_tick_ms = millis();
+            if (!full && timer_due) onx_panel_detail::refresh_icons();  // Downloaded icons (~0.1 ms).
             if (full) {
               seen_revision = onx_subs::state_revision; last_full_ms = millis();
-              last_carousel = key;
+              last_carousel = key; last_inputs = inputs;
               onx_panel_pages::render(entity, onx_panel_ui::width, onx_panel_ui::height, detail, [](lv_obj_t *icon, const std::string &target) {
                 id(apply_normal_entity_icon).execute(icon,target,"",false);
               });
