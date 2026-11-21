@@ -1,8 +1,6 @@
 interval:
   - interval: 100ms
     then:
-      - script.execute: refresh_standby_seconds_ring
-      - script.execute: refresh_normal_message_popup
       - script.execute: dispatch_normal_gesture_queue
       - script.execute: refresh_normal_gesture_feedback
       - lambda: |-

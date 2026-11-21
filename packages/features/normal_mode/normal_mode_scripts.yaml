@@ -12,10 +12,13 @@ script:
           };
           const bool wifi_connected = id(normal_wifi_connected);
           const bool ha_connected = id(api_server)->is_connected_with_state_subscription();
-          set_hidden(id(standby_wifi_online_widget), !wifi_connected);
-          set_hidden(id(standby_wifi_offline_widget), wifi_connected);
-          set_hidden(id(standby_homeassistant_online_widget), !ha_connected);
-          set_hidden(id(standby_homeassistant_offline_widget), ha_connected);
+          // One set of status icons (top layer) serves the carousel and the idle
+          // clock. Only the clock shows them; they would cover the photo slideshow.
+          const bool clock = id(panel_idle_screen).active_index().value_or(0) == onx_panel_ui::IDLE_CLOCK;
+          set_hidden(id(normal_device_wifi_online_widget), !clock || !wifi_connected);
+          set_hidden(id(normal_device_wifi_offline_widget), !clock || wifi_connected);
+          set_hidden(id(normal_device_homeassistant_online_widget), !clock || !ha_connected);
+          set_hidden(id(normal_device_homeassistant_offline_widget), !clock || ha_connected);
           const std::string &state = id(standby_weather_state);
           const bool known =
               state == "clear-night" ||
@@ -64,11 +67,6 @@ script:
           }
           id(entity_icon_downloader)->bind(id(standby_temperature_icon_widget), onx_clock_sensors::first_icon(), id(standby_weather_temp_icon_img), false);
           id(entity_icon_downloader)->bind(id(standby_humidity_icon_widget), onx_clock_sensors::second_icon(), id(standby_weather_humidity_icon_img), false);
-      - lambda: |-
-          lv_obj_add_flag(id(normal_device_wifi_online_widget), LV_OBJ_FLAG_HIDDEN);
-          lv_obj_add_flag(id(normal_device_wifi_offline_widget), LV_OBJ_FLAG_HIDDEN);
-          lv_obj_add_flag(id(normal_device_homeassistant_online_widget), LV_OBJ_FLAG_HIDDEN);
-          lv_obj_add_flag(id(normal_device_homeassistant_offline_widget), LV_OBJ_FLAG_HIDDEN);
       - lambda: |-
           #ifndef USE_ROOM_COMPANION
           // The rectangular panels size the clock in onx_idle_clock.h.
@@ -255,14 +253,6 @@ script:
           }
           if (ha_connected) {
             id(normal_ha_added) = true;
-          }
-
-          if (ha_connected) {
-            lv_obj_clear_flag(id(standby_homeassistant_online_widget), LV_OBJ_FLAG_HIDDEN);
-            lv_obj_add_flag(id(standby_homeassistant_offline_widget), LV_OBJ_FLAG_HIDDEN);
-          } else {
-            lv_obj_add_flag(id(standby_homeassistant_online_widget), LV_OBJ_FLAG_HIDDEN);
-            lv_obj_clear_flag(id(standby_homeassistant_offline_widget), LV_OBJ_FLAG_HIDDEN);
           }
 
           if (id(ui_presenter)->is_normal_mode_active() &&
@@ -1979,159 +1969,6 @@ script:
           lv_obj_clear_flag(id(normal_gesture_feedback),LV_OBJ_FLAG_HIDDEN);
           lv_obj_move_foreground(id(normal_gesture_feedback));
 
-  - id: refresh_standby_seconds_ring
-    then:
-      - lambda: |-
-          #ifdef USE_ROOM_COMPANION
-          // Rectangular panels have no round edge for the seconds ring.
-          lv_obj_add_flag(id(standby_seconds_arc),LV_OBJ_FLAG_HIDDEN);
-          return;
-          #endif
-          const auto now=id(ha_time).now();
-          const bool show=onx_display_settings::behavior.clock_seconds && now.is_valid() &&
-              id(ui_presenter)->is_normal_mode_active() && id(ui_presenter)->is_standby_active() &&
-              !id(screen_off_state) && !id(sleep_mode_state);
-          if(!show) {lv_obj_add_flag(id(standby_seconds_arc),LV_OBJ_FLAG_HIDDEN);return;}
-          static time_t last_second=0;
-          static uint32_t tick_ms=0;
-          if(last_second!=now.timestamp) {last_second=now.timestamp;tick_ms=millis();}
-          const uint32_t fraction=std::min<uint32_t>(999,millis()-tick_ms);
-          lv_arc_set_value(id(standby_seconds_arc),(now.second*1000+fraction)/60);
-          onx_render::style_arc_color(id(standby_seconds_arc),lv_color_hex(onx_display_settings::current.media_color),LV_PART_INDICATOR);
-          lv_obj_clear_flag(id(standby_seconds_arc),LV_OBJ_FLAG_HIDDEN);
-
-  - id: refresh_normal_message_popup
-    then:
-      - lambda: |-
-          auto &message=onx_notification::current;
-          auto &picture=onx_notification::image;
-          const uint32_t now_ms=millis();
-          auto release_picture=[&]() {
-            // Detach LVGL before freeing pixels, even if the popup is hidden.
-            lv_obj_add_flag(id(normal_message_image),LV_OBJ_FLAG_HIDDEN);
-            onx_render::image(id(normal_message_image),id(fallback_music_note_img)->get_lv_image_dsc());
-            lv_image_cache_drop(id(notification_image)->get_lv_image_dsc());
-            lv_image_header_cache_drop(id(notification_image)->get_lv_image_dsc());
-            id(notification_image)->release();
-            picture.attempted=picture.downloading=picture.ready=false;
-            id(entity_icon_downloader)->set_artwork_busy(onx_media::downloading);
-          };
-          if(picture.revision!=message.revision) {
-            release_picture();
-            picture={};picture.revision=message.revision;
-          }
-          const auto now=id(ha_time).now();
-          const bool sleep_due=now.is_valid() && id(ui_presenter)->should_enter_sleep_mode(now.hour,now.minute);
-          const bool available=id(ui_presenter)->is_normal_mode_active() &&
-              !id(mode_manager)->is_provisioning_mode_enabled() && !id(sleep_mode_state) &&
-              !id(screen_off_state) && !sleep_due &&
-              (onx_display_settings::behavior.cover_timers || !onx_timer::popup.visible);
-          if(!available)message.suspend(now_ms);
-          if(!available || !message.display(now_ms)) {
-            if(!message.pending && (picture.attempted || picture.ready)) {
-              release_picture();picture={};picture.revision=message.revision;
-            }
-            lv_obj_add_flag(id(normal_message_overlay),LV_OBJ_FLAG_HIDDEN);return;
-          }
-          if(!message.image_url.empty() && !picture.ready && !picture.failed) {
-            if(!picture.waiting) {picture.waiting=true;picture.started_ms=now_ms;}
-            if(now_ms-picture.started_ms>=8000) {
-              release_picture();picture.failed=true;
-            } else if(!picture.attempted && !id(notification_image)->is_busy() &&
-                !onx_media::downloading && !id(media_cover_image)->is_busy() &&
-                !id(entity_icon_downloader)->busy() && id(notification_image)->memory_ready()) {
-              picture.attempted=picture.downloading=true;
-              id(notification_image)->set_source_pixel_limit(1024*1024);
-              id(notification_image)->set_url(message.image_url);
-              id(entity_icon_downloader)->set_artwork_busy(true);
-              id(notification_image)->update();
-            }
-          }
-          if(picture.failed && picture.attempted && !picture.downloading)release_picture();
-          const int countdown=message.countdown(now_ms);
-          if(countdown<0)lv_obj_add_flag(id(normal_message_countdown_arc),LV_OBJ_FLAG_HIDDEN);
-          else {
-            lv_arc_set_value(id(normal_message_countdown_arc),countdown);
-            onx_render::style_arc_color(id(normal_message_countdown_arc),lv_color_hex(onx_display_settings::current.media_color),LV_PART_INDICATOR);
-            lv_obj_clear_flag(id(normal_message_countdown_arc),LV_OBJ_FLAG_HIDDEN);
-          }
-          static uint32_t rendered_revision=0;
-          static bool rendered_image=false;
-          if(rendered_revision!=message.revision || rendered_image!=picture.ready) {
-            const bool with_image=picture.ready;
-            lv_obj_set_y(id(normal_message_title),onx_geom::S(with_image?40:43));
-            lv_obj_set_height(id(normal_message_title),onx_geom::S(with_image?24:44));
-            onx_render::style_text_font(id(normal_message_title),with_image?
-                id(fonts_MiSans_Medium_16)->get_lv_font():id(fonts_MiSans_Medium_18)->get_lv_font(),0);
-            lv_label_set_long_mode(id(normal_message_title),with_image?LV_LABEL_LONG_DOT:LV_LABEL_LONG_WRAP);
-            lv_obj_set_y(id(normal_message_body),onx_geom::S(with_image?138:94));
-            lv_obj_set_height(id(normal_message_body),onx_geom::S(with_image?64:110));
-            onx_render::style_text_font(id(normal_message_text),with_image?
-                id(fonts_MiSans_Medium_14)->get_lv_font():id(fonts_MiSans_Medium_16)->get_lv_font(),0);
-            if(with_image) {
-              onx_render::image(id(normal_message_image),id(notification_image)->get_lv_image_dsc());
-              lv_obj_clear_flag(id(normal_message_image),LV_OBJ_FLAG_HIDDEN);
-            } else lv_obj_add_flag(id(normal_message_image),LV_OBJ_FLAG_HIDDEN);
-            auto *body=id(normal_message_body);
-            const int old_y=lv_obj_get_scroll_y(body),old_total=old_y+lv_obj_get_scroll_bottom(body);
-            const bool keep=message.appended && message.held(now_ms) && rendered_revision!=0;
-            onx_render::label(id(normal_message_title),message.title.c_str());
-            onx_render::label(id(normal_message_text),message.body.c_str());
-            lv_obj_update_layout(body);
-            // Newest lines are on top. While the user is reading, keep their place
-            // as new lines arrive above; otherwise show the newest message.
-            const int new_total=lv_obj_get_scroll_y(body)+lv_obj_get_scroll_bottom(body);
-            lv_obj_scroll_to_y(body,keep?std::max(0,old_y+new_total-old_total):0,LV_ANIM_OFF);
-            if(!keep)id(expand_normal_message).execute(false);
-            else if(onx_notification::expanded) {onx_notification::expanded=false;id(expand_normal_message).execute(true);}
-            rendered_revision=message.revision;rendered_image=with_image;
-          }
-          if(id(key_btn).state) {
-            // An arriving popup also takes ownership of an already-held press.
-            // Keep it consumed through release if the popup disappears first.
-            onx_notification::press_consumed=true;
-            id(key_pressed)=false;
-            id(normal_clear_wifi_allowed)=false;
-            id(key_long_press_handled)=true;
-          }
-          onx_navigation::hide();
-          lv_obj_clear_flag(id(normal_message_overlay),LV_OBJ_FLAG_HIDDEN);
-          lv_obj_move_foreground(id(normal_message_overlay));
-
-  - id: scroll_normal_message
-    parameters:
-      direction: int
-    then:
-      - lambda: |-
-          if(!onx_notification::current.visible)return;
-          onx_notification::current.interact(millis());
-          auto *body=id(normal_message_body);
-          const int maximum=std::max(0,static_cast<int>(lv_obj_get_scroll_y(body)+lv_obj_get_scroll_bottom(body)));
-          const int target=std::clamp(static_cast<int>(lv_obj_get_scroll_y(body))+direction*32,0,maximum);
-          // Scrolling a long message hides the title and picture for more text.
-          if(maximum>0)id(expand_normal_message).execute(target>0);
-          lv_obj_scroll_to_y(body,target,LV_ANIM_ON);
-          id(ui_presenter)->notify_user_activity();
-
-  - id: expand_normal_message
-    parameters:
-      expanded: bool
-    then:
-      - lambda: |-
-          if(onx_notification::expanded==expanded)return;
-          onx_notification::expanded=expanded;
-          const bool with_image=onx_notification::image.ready;
-          auto *body=id(normal_message_body);
-          if(expanded) {
-            lv_obj_add_flag(id(normal_message_title),LV_OBJ_FLAG_HIDDEN);
-            lv_obj_add_flag(id(normal_message_image),LV_OBJ_FLAG_HIDDEN);
-            lv_obj_set_y(body,onx_geom::S(40));lv_obj_set_height(body,onx_geom::S(with_image?162:164));
-          } else {
-            lv_obj_clear_flag(id(normal_message_title),LV_OBJ_FLAG_HIDDEN);
-            if(with_image)lv_obj_clear_flag(id(normal_message_image),LV_OBJ_FLAG_HIDDEN);
-            lv_obj_set_y(body,onx_geom::S(with_image?138:94));lv_obj_set_height(body,onx_geom::S(with_image?64:110));
-          }
-
   - id: check_normal_idle_media_popup
     then:
       - lambda: |-
@@ -2370,7 +2207,7 @@ script:
     then:
       - lambda: |-
           // Notification pictures take priority over cosmetic media fetches.
-          if(onx_notification::current.visible || onx_notification::image.downloading)return;
+          if(onx_notification::current.visible)return;
           onx_media::artwork_wait_reason.clear();
           // The redesigned media detail shares the main card's artwork path.
           const bool main_art = (!id(normal_device_detail_active) || onx_panel_detail::active) && !onx_media::main_entity.empty();

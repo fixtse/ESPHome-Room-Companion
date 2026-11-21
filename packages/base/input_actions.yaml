@@ -82,11 +82,10 @@ script:
                 }
                 const bool dismiss=onx_notification::press_consumed;
                 onx_notification::press_consumed=false;
-                if(dismiss)onx_notification::current.dismiss();
+                (void) dismiss;
                 id(key_pressed)=false;
                 id(key_long_press_handled)=true;
                 id(ui_presenter)->notify_user_activity();
-                id(refresh_normal_message_popup).execute();
           else:
             - logger.log:
                 level: INFO
@@ -699,9 +698,8 @@ script:
           condition:
             lambda: return onx_power::sleeping || onx_power::waking || onx_notification::current.visible || onx_notification::press_consumed;
           then:
-            - script.execute:
-                id: scroll_normal_message
-                direction: 1
+            - lambda: |-
+                // Rotation is swallowed while the panel sleeps or wakes.
           else:
             - if:
                 condition:
@@ -1149,9 +1147,8 @@ script:
           condition:
             lambda: return onx_power::sleeping || onx_power::waking || onx_notification::current.visible || onx_notification::press_consumed;
           then:
-            - script.execute:
-                id: scroll_normal_message
-                direction: -1
+            - lambda: |-
+                // Rotation is swallowed while the panel sleeps or wakes.
           else:
             - if:
                 condition:

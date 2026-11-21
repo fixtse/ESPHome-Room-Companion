@@ -786,8 +786,9 @@ script:
           // Idle clock layout (onx_idle_clock.h) over the shared standby widgets.
           {
             auto &b = onx_idle_clock::base;
-            b.wifi_on = id(standby_wifi_online_widget); b.wifi_off = id(standby_wifi_offline_widget);
-            b.ha_on = id(standby_homeassistant_online_widget); b.ha_off = id(standby_homeassistant_offline_widget);
+            // One set of status icons (top layer) serves the carousel and the idle clock.
+            b.wifi_on = id(normal_device_wifi_online_widget); b.wifi_off = id(normal_device_wifi_offline_widget);
+            b.ha_on = id(normal_device_homeassistant_online_widget); b.ha_off = id(normal_device_homeassistant_offline_widget);
             b.weather_icons = {id(standby_weather_unknown_widget), id(standby_weather_clear_night_widget),
                 id(standby_weather_cloudy_widget), id(standby_weather_exceptional_widget), id(standby_weather_fog_widget),
                 id(standby_weather_hail_widget), id(standby_weather_lightning_widget), id(standby_weather_lightning_rainy_widget),
