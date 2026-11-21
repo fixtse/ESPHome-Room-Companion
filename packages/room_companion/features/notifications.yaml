@@ -112,7 +112,7 @@ image:
   - platform: file
     file: "../../../assets/entity_icons/music-note.svg"
     id: panel_music_chip_icon
-    resize: ${ (18 * (ui_scale | float)) | round | int }x${ (18 * (ui_scale | float)) | round | int }
+    resize: ${ (16 * (ui_scale | float)) | round | int }x${ (16 * (ui_scale | float)) | round | int }
     type: RGB565
     transparency: alpha_channel
   # Bell on the main carousel and the idle clock (Material Design Icons).

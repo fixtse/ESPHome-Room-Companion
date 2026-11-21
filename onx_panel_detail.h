@@ -3911,22 +3911,13 @@ inline bool render_grid_cached(const std::vector<Tile> &tiles) {
   return true;
 }
 
-// Draws or keeps the cards for the current page.
-inline void render_main(lv_obj_t *parent, const std::vector<Tile> &tiles, int width, int height) {
-  ensure_root(parent);
-  W = width; H = height;
-  lv_obj_set_pos(root, 0, 0);
-  lv_obj_set_size(root, W, H);
-  lv_obj_remove_flag(root, LV_OBJ_FLAG_HIDDEN);
-  active = true;
-  if (dragging) return;
-  if (!tiles.empty() && tiles[0].key && render_grid_cached(tiles)) {
-    built_signature.clear();
-    return;
-  }
+inline void compute_main_signatures(const std::vector<Tile> &tiles, std::string &sig, std::string &structure,
+                                    std::vector<std::string> &tile_sigs) {
   std::string head = "main|" + std::to_string(W) + 'x' + std::to_string(H) + '|' + std::to_string(accent()) + '|' + std::to_string(BG());
-  std::string sig = head, structure = head;
-  std::vector<std::string> tile_sigs;
+  sig = head;
+  structure = head;
+  tile_sigs.clear();
+  tile_sigs.reserve(tiles.size());
   const time_t now = std::time(nullptr);
   for (const auto &t : tiles) {
     const auto *d = custom_logic_entity_sub::entity_detail(t.entity);
@@ -3965,6 +3956,24 @@ inline void render_main(lv_obj_t *parent, const std::vector<Tile> &tiles, int wi
     structure += shape;
     tile_sigs.push_back(std::move(full));
   }
+}
+
+// Draws or keeps the cards for the current page.
+inline void render_main(lv_obj_t *parent, const std::vector<Tile> &tiles, int width, int height) {
+  ensure_root(parent);
+  W = width; H = height;
+  lv_obj_set_pos(root, 0, 0);
+  lv_obj_set_size(root, W, H);
+  lv_obj_remove_flag(root, LV_OBJ_FLAG_HIDDEN);
+  active = true;
+  if (dragging) return;
+  if (!tiles.empty() && tiles[0].key && render_grid_cached(tiles)) {
+    built_signature.clear();
+    return;
+  }
+  std::string sig, structure;
+  std::vector<std::string> tile_sigs;
+  compute_main_signatures(tiles, sig, structure, tile_sigs);
   if (sig == built_signature && main_mode && !grid_cached_mode) { refresh_icons(); tick_media_progress(); return; }
   if (main_mode && !grid_cached_mode && structure == built_main_structure && card_patches.size() == tiles.size() &&
       built_tile_sigs.size() == tiles.size()) {
@@ -4172,6 +4181,135 @@ inline void activate_main_page(const std::string &key) {
   auto &live_targets = onx_panel_ui::touch_targets;
   live_targets.insert(live_targets.end(), targets.begin(), targets.end());
   main_mode = true;
+}
+
+// Pre-warm a neighbor Action Grid page directly into its PSRAM RGB565 buffer
+// without touching any visible LVGL widget or evicting the active grid page.
+inline lv_obj_t *prewarm_icon_img = nullptr;
+inline bool prewarm_grid(const std::string &key, const std::vector<Tile> &tiles, int width, int height) {
+  if (tiles.empty() || tiles.size() > 16) return false;
+  const int saved_w = W, saved_h = H;
+  W = width; H = height;
+  int min_y = H, max_y = 0;
+  for (const auto &t : tiles) {
+    min_y = std::min(min_y, t.r.y);
+    max_y = std::max(max_y, t.r.bottom());
+  }
+  min_y = std::clamp(min_y, 0, H);
+  max_y = std::clamp(max_y, min_y + 1, H);
+  const int buf_h = max_y - min_y;
+  uint32_t pal_sig = 2166136261u;
+  auto mix32 = [&](uint32_t v) { pal_sig ^= v; pal_sig *= 16777619u; };
+  mix32(BG()); mix32(accent()); mix32(uint32_t(W)); mix32(uint32_t(H));
+  if (onx_grid_cache::has_valid_page(key, W, buf_h, min_y, pal_sig, int(tiles.size()))) {
+    W = saved_w; H = saved_h;
+    return false;
+  }
+  bool full_redraw = false;
+  auto *page = onx_grid_cache::acquire_page(key, W, buf_h, min_y, pal_sig, int(tiles.size()), full_redraw, active_grid_page);
+  if (!page) { W = saved_w; H = saved_h; return false; }
+  if (full_redraw)
+    onx_grid_cache::fill_rect(page->pixels, page->w, page->h, 0, 0, page->w, page->h, onx_grid_cache::pack565(BG()));
+  for (size_t i = 0; i < tiles.size(); ++i) {
+    const auto &t = tiles[i];
+    const auto *d = custom_logic_entity_sub::entity_detail(t.entity);
+    const bool ready = d != nullptr && d->received && d->available;
+    const void *src = nullptr;
+    if (!t.entity.empty()) {
+      if (t.artwork) {
+        if (auto *art = onx_grid_cache::get_artwork(t.artwork))
+          src = art->frame(t.on, animation_elapsed(t.entity));
+      } else if (bind_icon) {
+        if (prewarm_icon_img == nullptr) {
+          prewarm_icon_img = lv_image_create(lv_layer_top());
+          lv_obj_add_flag(prewarm_icon_img, LV_OBJ_FLAG_HIDDEN);
+          lv_obj_remove_flag(prewarm_icon_img, static_cast<lv_obj_flag_t>(LV_OBJ_FLAG_CLICKABLE | LV_OBJ_FLAG_SCROLLABLE));
+        }
+        bind_icon(prewarm_icon_img, t.entity);
+        src = lv_image_get_src(prewarm_icon_img);
+      }
+    }
+    const uint64_t tsig = grid_tile_sig(t, src, ready);
+    if (full_redraw || page->tile_sigs[i] != tsig) {
+      rasterize_grid_tile(*page, i, t, src, ready);
+      page->tile_sigs[i] = tsig;
+    }
+  }
+  page->valid = true;
+  W = saved_w; H = saved_h;
+  return true;
+}
+
+// Pre-warm a neighbor main page while idle (PSRAM buffer for grids, hidden
+// RetainedPage widget tree for regular non-media pages). Returns true if work ran.
+inline bool prewarm_main_page(lv_obj_t *parent, const std::string &key, const std::vector<Tile> &tiles,
+                              int width, int height) {
+  if (!parent || key.empty() || key == main_page_key || tiles.empty() || dragging) return false;
+  if (tiles[0].key) return prewarm_grid(key, tiles, width, height);
+  for (const auto &slot : retained_pages) if (slot.key == key && slot.root) return false;
+  for (const auto &t : tiles) if (has_prefix(t.entity, "media_player.")) return false;
+  // Save active page state cleanly, build the neighbor into a hidden root, stash it, restore.
+  const int saved_w = W, saved_h = H;
+  const bool saved_main = main_mode, saved_grid = grid_cached_mode, saved_active = active;
+  auto saved_key = std::move(main_page_key);
+  auto saved_sig = std::move(built_signature);
+  auto saved_struct = std::move(built_main_structure);
+  auto saved_tile_sigs = std::move(built_tile_sigs);
+  auto saved_patches = std::move(card_patches);
+  auto *saved_root = root;
+  auto saved_targets = std::move(targets);
+  auto saved_actions = std::move(actions);
+  auto saved_charts = std::move(charts);
+  auto saved_icons = icon_pool;
+  auto saved_uses = std::move(icon_uses);
+  auto saved_media_entity = onx_media::main_entity;
+
+  W = width; H = height;
+  root = nullptr;
+  icon_pool.fill(nullptr);
+  targets.clear(); actions.clear(); charts.clear(); icon_uses.clear(); card_patches.clear();
+  main_mode = true; grid_cached_mode = false;
+  ensure_root(parent);
+  lv_obj_add_flag(root, LV_OBJ_FLAG_HIDDEN);
+  lv_obj_set_pos(root, 0, 0);
+  lv_obj_set_size(root, W, H);
+
+  std::string sig, structure;
+  std::vector<std::string> tile_sigs;
+  compute_main_signatures(tiles, sig, structure, tile_sigs);
+  build_main_cards(tiles);
+
+  auto &live_targets = onx_panel_ui::touch_targets;
+  for (auto *target : targets)
+    live_targets.erase(std::remove(live_targets.begin(), live_targets.end(), target), live_targets.end());
+  for (auto *icon : icon_pool) if (icon) lv_anim_delete(icon, nullptr);
+
+  // Prefer an empty RetainedPage slot so pre-warming never evicts recently visited pages prematurely.
+  RetainedPage *dest = nullptr;
+  for (auto &slot : retained_pages) if (!slot.root) { dest = &slot; break; }
+  if (!dest) {
+    dest = &retained_pages[next_retained_page];
+    next_retained_page = (next_retained_page + 1) % retained_pages.size();
+    delete_page_widgets(dest->root, dest->icons);
+  }
+  *dest = {key, std::move(sig), std::move(structure), std::move(tile_sigs), std::move(card_patches),
+           root, std::move(targets), std::move(actions), std::move(charts), icon_pool, std::move(icon_uses)};
+
+  W = saved_w; H = saved_h;
+  main_mode = saved_main; grid_cached_mode = saved_grid; active = saved_active;
+  main_page_key = std::move(saved_key);
+  built_signature = std::move(saved_sig);
+  built_main_structure = std::move(saved_struct);
+  built_tile_sigs = std::move(saved_tile_sigs);
+  card_patches = std::move(saved_patches);
+  root = saved_root;
+  targets = std::move(saved_targets);
+  actions = std::move(saved_actions);
+  charts = std::move(saved_charts);
+  icon_pool = saved_icons;
+  icon_uses = std::move(saved_uses);
+  onx_media::main_entity = std::move(saved_media_entity);
+  return true;
 }
 
 // Quick actions: every entry as a large tile, two columns over the whole

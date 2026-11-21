@@ -116,9 +116,72 @@ inline void icon_offset(void *widget,int32_t offset_milli) {
 }
 inline void hide() {
   if(dock)lv_obj_add_flag(dock,LV_OBJ_FLAG_HIDDEN);
+  if(marker) {
+    lv_anim_delete(marker, nullptr);
+    onx_render::style_number(marker, LV_STYLE_TRANSLATE_X, 0, 0);
+  }
   for(auto *icon:icons)if(icon)lv_anim_delete(icon,icon_offset);
   visible=false;
   dock_offset=0;
+}
+// Live 60 FPS dock-follow feedback during a horizontal page swipe: moves only
+// the tiny 32x32 selection marker (and highlights the neighbor icon once past
+// the commit threshold), invalidating ~2-4 KB instead of the whole screen.
+inline int drag_preview_slot = -1;
+inline void marker_tx_step(void *o, int32_t v) {
+  onx_render::style_number(static_cast<lv_obj_t *>(o), LV_STYLE_TRANSLATE_X, v, 0);
+}
+inline void clear_drag_preview() {
+  if (drag_preview_slot >= 0 && drag_preview_slot < dock_count && icons[drag_preview_slot] != nullptr) {
+    const bool keep = targets[drag_preview_slot] == selected_target || targets[drag_preview_slot] == pinned_target;
+    onx_render::style_opa(icons[drag_preview_slot], keep ? LV_OPA_COVER : 170, 0);
+  }
+  drag_preview_slot = -1;
+}
+inline void drag_page(int dx) {
+  if (!visible || !strip.enabled || marker == nullptr || dock_count <= 0) return;
+  lv_anim_delete(marker, marker_tx_step);
+  int active_slot = -1;
+  for (int n = 0; n < dock_count; ++n) if (targets[n] == selected_target) { active_slot = n; break; }
+  if (active_slot < 0) return;
+  const int step = std::max(24, strip.width / dock_count);
+  // Swipe left (dx < 0) moves toward the next icon (+x); swipe right toward previous (-x).
+  int tx = std::clamp(-dx * step / 72, -step, step);
+  const int base_x = strip.width * (2 * active_slot + 1) / (2 * dock_count) - strip.width / 2;
+  const int limit = strip.width / 2 - strip.marker / 2 - 4;
+  tx = std::clamp(base_x + tx, -limit, limit) - base_x;
+  onx_render::style_number(marker, LV_STYLE_TRANSLATE_X, tx, 0);
+  const int next_slot = std::abs(dx) >= 32 ? active_slot + (dx < 0 ? 1 : -1) : -1;
+  if (next_slot != drag_preview_slot) {
+    clear_drag_preview();
+    if (next_slot >= 0 && next_slot < dock_count && targets[next_slot] != pinned_target && icons[next_slot] != nullptr) {
+      onx_render::style_opa(icons[next_slot], LV_OPA_COVER, 0);
+      drag_preview_slot = next_slot;
+    }
+  }
+}
+inline bool release_page_drag(int dx, uint32_t ms) {
+  clear_drag_preview();
+  const bool commit = std::abs(dx) >= 36 || (ms > 0 && ms < 280 && std::abs(dx) >= 20);
+  if (marker == nullptr) return commit;
+  if (commit) {
+    lv_anim_delete(marker, marker_tx_step);
+    onx_render::style_number(marker, LV_STYLE_TRANSLATE_X, 0, 0);
+    return true;
+  }
+  const int32_t cur = lv_obj_get_style_translate_x(marker, LV_PART_MAIN);
+  if (cur != 0) {
+    lv_anim_delete(marker, marker_tx_step);
+    lv_anim_t a;
+    lv_anim_init(&a);
+    lv_anim_set_var(&a, marker);
+    lv_anim_set_exec_cb(&a, marker_tx_step);
+    lv_anim_set_values(&a, cur, 0);
+    lv_anim_set_duration(&a, 100);
+    lv_anim_set_path_cb(&a, lv_anim_path_ease_out);
+    lv_anim_start(&a);
+  }
+  return false;
 }
 inline void create() {
   if(dock)return;
@@ -157,7 +220,14 @@ inline std::function<bool(const std::string &)> local_action;     // Handles a p
 inline std::function<bool(int io)> local_state;                     // On/off for the icon.
 inline std::function<esphome::image::Image *(const std::string &)> local_icon;
 template<typename Bind> void render(std::vector<int> entries,int selected,Bind bind) {
-  if(selected!=selected_target)dock_offset=0;
+  if(selected!=selected_target) {
+    dock_offset=0;
+    clear_drag_preview();
+    if(marker) {
+      lv_anim_delete(marker, marker_tx_step);
+      onx_render::style_number(marker, LV_STYLE_TRANSLATE_X, 0, 0);
+    }
+  }
   selected_target=selected;
   auto current=std::find(entries.begin(),entries.end(),selected);
   if(current==entries.end()) {hide();return;}

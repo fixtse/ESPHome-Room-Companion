@@ -81,15 +81,18 @@ inline std::string timer_text;
 inline bool media_playing = false, status_centered = true;
 inline const void *music_image = nullptr, *rotate_tile_image = nullptr;  // MDI images, set before init().
 inline std::function<void()> on_timer_chip, on_media_chip;
-inline bool status_row_shown() { return bell_wanted && (!timer_text.empty() || media_playing); }
+constexpr int STATUS_CHIP_H = 28;  // Fixed inside the 40 px MAIN_TOP header (6 px gap above cards on 2.8" and 3.5").
+inline bool has_status_chips() { return !timer_text.empty() || media_playing; }
+inline bool status_row_shown() { return bell_wanted && has_status_chips(); }
 inline void update_timer_chip() {
   if (status_row == nullptr) return;
   auto show = [](lv_obj_t *o, bool on) { if (on) lv_obj_remove_flag(o, LV_OBJ_FLAG_HIDDEN); else lv_obj_add_flag(o, LV_OBJ_FLAG_HIDDEN); };
   show(timer_chip, !timer_text.empty());
   show(media_chip, media_playing);
   show(status_row, status_row_shown());
-  if (status_centered) lv_obj_align(status_row, LV_ALIGN_TOP_MID, 0, 2 + (36 - S(28)) / 2);
-  else lv_obj_align(status_row, LV_ALIGN_TOP_RIGHT, -(4 + 44 + S(4)), 2 + (36 - S(28)) / 2);
+  const int y = (40 - STATUS_CHIP_H) / 2;
+  if (status_centered) lv_obj_align(status_row, LV_ALIGN_TOP_MID, 0, y);
+  else lv_obj_align(status_row, LV_ALIGN_TOP_RIGHT, -(4 + 44 + S(4)), y);
 }
 inline void set_status_centered(bool centered) {
   if (centered == status_centered) return;
@@ -628,13 +631,13 @@ inline void init(int screen_width, int screen_height, Fonts f, Hooks h) {
   lv_obj_add_event_cb(bell, on_bell, LV_EVENT_CLICKED, nullptr);
   status_row = box(top, CARD, 0);
   lv_obj_set_style_bg_opa(status_row, LV_OPA_TRANSP, 0);
-  lv_obj_set_size(status_row, LV_SIZE_CONTENT, S(28));
+  lv_obj_set_size(status_row, LV_SIZE_CONTENT, STATUS_CHIP_H);
   lv_obj_set_flex_flow(status_row, LV_FLEX_FLOW_ROW);
   lv_obj_set_flex_align(status_row, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
   lv_obj_set_style_pad_column(status_row, S(6), 0);
   lv_obj_remove_flag(status_row, LV_OBJ_FLAG_CLICKABLE);
-  timer_chip = box(status_row, CARD, S(14));
-  lv_obj_set_size(timer_chip, LV_SIZE_CONTENT, S(28));
+  timer_chip = box(status_row, CARD, STATUS_CHIP_H / 2);
+  lv_obj_set_size(timer_chip, LV_SIZE_CONTENT, STATUS_CHIP_H);
   lv_obj_set_style_pad_hor(timer_chip, S(10), 0);
   lv_obj_add_flag(timer_chip, LV_OBJ_FLAG_CLICKABLE);
   lv_obj_set_ext_click_area(timer_chip, S(6));
@@ -643,8 +646,8 @@ inline void init(int screen_width, int screen_height, Fonts f, Hooks h) {
   lv_obj_center(timer_label);
   lv_obj_add_event_cb(timer_chip, [](lv_event_t *) { if (on_timer_chip) on_timer_chip(); }, LV_EVENT_CLICKED, nullptr);
   lv_obj_add_flag(timer_chip, LV_OBJ_FLAG_HIDDEN);
-  media_chip = box(status_row, CARD, S(14));
-  lv_obj_set_size(media_chip, S(40), S(28));
+  media_chip = box(status_row, CARD, STATUS_CHIP_H / 2);
+  lv_obj_set_size(media_chip, std::min(44, S(40)), STATUS_CHIP_H);
   lv_obj_add_flag(media_chip, LV_OBJ_FLAG_CLICKABLE);
   lv_obj_set_ext_click_area(media_chip, S(6));
   if (music_image != nullptr) {

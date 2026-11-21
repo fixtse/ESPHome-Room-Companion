@@ -421,7 +421,7 @@ void setup() {
   onx_notification_ui::clock_tile_image = lvgl_emu::svg(root + "/assets/panel/screen-sleep.svg", ui(24));
   onx_notification_ui::preset_tile_image = lvgl_emu::svg(root + "/assets/panel/preset-layers.svg", ui(24));
   onx_notification_ui::rotate_tile_image = lvgl_emu::svg(root + "/assets/panel/screen-rotation.svg", ui(22));
-  onx_notification_ui::music_image = lvgl_emu::svg(root + "/assets/entity_icons/music-note.svg", ui(18));
+  onx_notification_ui::music_image = lvgl_emu::svg(root + "/assets/entity_icons/music-note.svg", ui(16));
   onx_notification_ui::init(w, h, nf, {});
   lv_obj_set_style_bg_color(lv_screen_active(), lv_color_hex(onx_display_settings::background()), 0);
 }

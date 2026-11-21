@@ -132,8 +132,42 @@ inline uint32_t retry_at_ms{0};
 inline uint32_t stat_attempts{0}, stat_ok{0}, stat_failed{0}, stat_timeouts{0}, stat_last_ms{0}, stat_slowest_ms{0};
 inline std::string stat_last_failure;
 // Copied from OnlineImage::last_stats() when a fetch ends.
-struct LastFetch { uint32_t attempts{0}, open_ms{0}, read_ms{0}, bytes{0}, heap_free_start{0}, heap_largest_start{0}, heap_free_after_open{0}; bool https{false}, stack_psram{false}; std::string host; };
+struct LastFetch { uint32_t attempts{0}, open_ms{0}, read_ms{0}, bytes{0}, heap_free_start{0}, heap_largest_start{0}, heap_free_after_open{0}; bool https{false}, stack_psram{false}, cached{false}; std::string host; };
 inline LastFetch last_fetch;
+// Fast, wrap-safe exponential backoff for failed artwork URLs:
+// 1.5 s -> 3.5 s -> 8 s -> 20 s -> 30 s, resetting on URL change or success.
+struct ArtworkRetry {
+  std::string url;
+  uint32_t failures{0};
+  uint32_t next_try_ms{0};
+  bool waiting{false};
+  static uint32_t delay_for(uint32_t streak) {
+    static constexpr uint32_t DELAYS[] = {1500, 3500, 8000, 20000, 30000};
+    if (streak == 0) return 0;
+    return DELAYS[std::min<uint32_t>(streak - 1, 4)];
+  }
+  void clear() { url.clear(); failures = 0; next_try_ms = 0; waiting = false; }
+  void on_success(const std::string &ok_url) {
+    if (url.empty() || url == ok_url) clear();
+  }
+  uint32_t on_failure(const std::string &failed_url, uint32_t now) {
+    if (failed_url != url) { url = failed_url; failures = 0; }
+    ++failures;
+    const uint32_t wait = delay_for(failures);
+    next_try_ms = now + wait;
+    waiting = true;
+    return wait;
+  }
+  bool ready(const std::string &desired, uint32_t now) const {
+    if (!waiting || desired != url) return true;
+    return static_cast<int32_t>(now - next_try_ms) >= 0;
+  }
+  uint32_t wakeup_ms(const std::string &desired, uint32_t now) const {
+    if (ready(desired, now)) return 0;
+    return next_try_ms == 0 ? 1 : next_try_ms;
+  }
+};
+inline ArtworkRetry artwork_retry;
 inline void stat_end(bool ok, uint32_t now) {
   const uint32_t took = now - requested_ms;
   stat_last_ms = took; if (took > stat_slowest_ms) stat_slowest_ms = took;

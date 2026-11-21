@@ -360,7 +360,12 @@ interval:
             const bool timer_due = millis() - last_tick_ms >= 1000;
             const bool main_quiet = !detail && inputs == last_inputs && millis() - last_full_ms < 10000;
             const bool full = requested || onx_subs::state_revision != seen_revision ||
-                              key != last_carousel || (timer_due && !main_quiet);
+                              (key != last_carousel && (detail || onx_panel_pages::page_lead != entity)) ||
+                              (timer_due && !main_quiet);
+            if (!full && key != last_carousel) {
+              // Synchronously rendered by show_normal_device_entry_page; sync tracking without re-rendering.
+              last_carousel = key; last_inputs = inputs; last_full_ms = millis();
+            }
             if (timer_due) last_tick_ms = millis();
             if (!full && timer_due) onx_panel_detail::refresh_icons();  // Downloaded icons (~0.1 ms).
             if (full) {
@@ -377,26 +382,57 @@ interval:
             onx_panel_pages::render_settings(onx_panel_ui::width, onx_panel_ui::height);
           } else onx_panel_pages::hide();
           static uint32_t last_main_artwork = 0;
-          if ((!detail || onx_panel_detail::active) && normal && !onx_media::main_entity.empty() && millis() - last_main_artwork >= 1000) {
+          static std::string last_main_art_entity;
+          if ((!detail || onx_panel_detail::active) && normal && !onx_media::main_entity.empty() &&
+              (onx_media::main_entity != last_main_art_entity || millis() - last_main_artwork >= 1000)) {
+            last_main_art_entity = onx_media::main_entity;
             last_main_artwork = millis();
             id(refresh_normal_media_cover).execute();
+          } else if (onx_media::main_entity.empty()) {
+            last_main_art_entity.clear();
+          }
+          // Idle neighbor pre-warming: warm page+1 after 600 ms idle and page-1 after
+          // 1100 ms idle (one per pass) so the next swipe hits a warm PSRAM/widget cache.
+          if (normal && !detail && id(normal_page_index) == 0 && !onx_media::downloading &&
+              !id(touch_input)->interaction_pending() && id(ui_presenter)->user_idle_ms() >= 600) {
+            static std::string warmed_for;
+            static uint32_t warmed_rev = 0;
+            static uint8_t warmed_stage = 0;
+            const uint32_t rev = custom_logic::entity_revision ^ onx_panel_pages::seen_revision;
+            if (warmed_for != entity || warmed_rev != rev) {
+              warmed_for = entity; warmed_rev = rev; warmed_stage = 0;
+            }
+            if (warmed_stage < 2 && (warmed_stage == 0 || id(ui_presenter)->user_idle_ms() >= 1100)) {
+              const auto order = onx_panel_pages::order();
+              const int n = int(order.size());
+              if (n > 1) {
+                const int cur_slot = id(normal_device_selected_index);
+                const auto it = std::find(order.begin(), order.end(), cur_slot);
+                if (it != order.end()) {
+                  const int pos = int(it - order.begin());
+                  const int dir = warmed_stage == 0 ? 1 : -1;
+                  const int nb_slot = order[(pos + dir + n) % n];
+                  if (nb_slot >= 0 && nb_slot < id(normal_device_count)) {
+                    const auto nb_entity = id(ui_presenter)->get_normal_device_entity_id(nb_slot);
+                    onx_panel_pages::prewarm(nb_entity, onx_panel_ui::width, onx_panel_ui::height);
+                  }
+                }
+              }
+              ++warmed_stage;
+            }
           }
           // The bell (with its unread count) belongs to the main carousel; other
           // screens open the centre by pulling down from the top edge. The
           // dashboard also has an automatic shortcut when a URL is configured.
+          const bool main_carousel = normal && !detail && id(normal_page_index) == 0;
+          static bool was_main_carousel = false;
+          const bool entered_main = main_carousel && !was_main_carousel;
+          was_main_carousel = main_carousel;
           onx_notification_ui::set_bell_visible(normal && !detail && onx_navigation::visible);
-          // The shared Wi-Fi/HA status icons (top layer) show only on the carousel
-          // and the idle clock; hide them in this pass so they never linger for
-          // the 1 s carousel refresh when another screen opens.
-          if (!standby && !(normal && !detail && id(normal_page_index) == 0)) {
-            for (auto *icon : {id(normal_device_wifi_online_widget), id(normal_device_wifi_offline_widget),
-                               id(normal_device_homeassistant_online_widget), id(normal_device_homeassistant_offline_widget)})
-              lv_obj_add_flag(icon, LV_OBJ_FLAG_HIDDEN);
-          }
-          // Timer chip: Assist's local timers and every HA timer entry (paged or
-          // registered), so timers without a page stay one tap away.
+          // Timer & music chips: refresh immediately on entering the main carousel
+          // (or every 1 s) so they never lag behind or overlap Wi-Fi/HA icons.
           static uint32_t last_chip = 0;
-          if (millis() - last_chip >= 1000) {
+          if (entered_main || millis() - last_chip >= 1000) {
             last_chip = millis();
             // Only active (or ringing) timers; paused ones stay on the timer screen.
             int count = 0; double soonest = -1;
@@ -419,6 +455,19 @@ interval:
               if (playing(i)) player = i;
             onx_panel_ui::playing_index = player;
             onx_notification_ui::set_media_chip(player >= 0);
+          }
+          // With Wi-Fi and HA online the status row replaces their icons;
+          // otherwise it sits by the bell. Synchronise icon visibility in this
+          // same pass so Wi-Fi/HA icons never flash behind the timer/music chip.
+          const bool both_online = id(normal_wifi_connected) && id(normal_ha_api_connected);
+          onx_notification_ui::set_status_centered(both_online);
+          if (!standby && !main_carousel) {
+            for (auto *icon : {id(normal_device_wifi_online_widget), id(normal_device_wifi_offline_widget),
+                               id(normal_device_homeassistant_online_widget), id(normal_device_homeassistant_offline_widget)})
+              lv_obj_add_flag(icon, LV_OBJ_FLAG_HIDDEN);
+          } else if (main_carousel && both_online && onx_notification_ui::has_status_chips()) {
+            lv_obj_add_flag(id(normal_device_wifi_online_widget), LV_OBJ_FLAG_HIDDEN);
+            lv_obj_add_flag(id(normal_device_homeassistant_online_widget), LV_OBJ_FLAG_HIDDEN);
           }
           // "Page" select: keep its options and the shown page current (1 s).
           static uint32_t last_page_sync = 0;
@@ -445,9 +494,6 @@ interval:
             if (page >= 0 && page < int(page_options.size()) && select->current_option().str() != page_options[page])
               select->publish_state(size_t(page));
           }
-          // With Wi-Fi and HA online the status row replaces their icons
-          // (normal_mode_scripts.yaml hides them); otherwise it sits by the bell.
-          onx_notification_ui::set_status_centered(id(normal_wifi_connected) && id(normal_ha_api_connected));
           // Media detail rearranged for the tall screen.
           // Idle screen.
           const auto mode = id(panel_idle_screen).active_index().value_or(0);
@@ -1122,6 +1168,16 @@ script:
             id(ui_presenter)->notify_user_activity();
             if (onx_navigation::scroll_dock(steps)) id(refresh_normal_device_page).execute();
           });
+          // 60 FPS dock-follow horizontal page drag feedback (commits on release/flick).
+          id(touch_input)->set_page_drag(
+              [](int dx) {
+                if (!onx_navigation::visible || onx_notification_ui::owns_screen()) return;
+                onx_navigation::drag_page(dx);
+              },
+              [](int dx, uint32_t ms) {
+                if (!onx_navigation::visible || onx_notification_ui::owns_screen()) return false;
+                return onx_navigation::release_page_drag(dx, ms);
+              });
           id(touch_input)->set_passthrough_fn([](int x, int y) {
             onx_notification_ui::hide_toast_unless(x, y);
             return onx_panel_ui::hit(x, y) || onx_notification_ui::bell_hit(x, y) || onx_notification_ui::timer_chip_hit(x, y) || onx_notification_ui::toast_hit(x,y);

@@ -564,19 +564,29 @@ constexpr size_t GRID_PAGE_CACHE_LIMIT = 4;
 inline std::array<GridPage, GRID_PAGE_CACHE_LIMIT> grid_pages{};
 inline uint32_t grid_page_clock = 0;
 
+inline bool has_valid_page(const std::string &key, int w, int h, int top_y, uint32_t palette_sig, int tile_count) {
+  for (const auto &p : grid_pages) {
+    if (p.key == key && p.pixels && p.valid && p.w == w && p.h == h &&
+        p.top_y == top_y && p.palette_sig == palette_sig && p.tile_count == tile_count)
+      return true;
+  }
+  return false;
+}
+
 inline GridPage *acquire_page(const std::string &key, int w, int h, int top_y, uint32_t palette_sig, int tile_count,
-                              bool &full_redraw) {
+                              bool &full_redraw, const GridPage *protect = nullptr) {
   full_redraw = false;
   GridPage *slot = nullptr;
   for (auto &p : grid_pages) {
     if (p.key == key && p.pixels) { slot = &p; break; }
   }
   if (!slot) {
-    slot = &grid_pages[0];
     for (auto &p : grid_pages) {
+      if (&p == protect) continue;
       if (!p.pixels) { slot = &p; break; }
-      if (p.used < slot->used) slot = &p;
+      if (!slot || p.used < slot->used) slot = &p;
     }
+    if (!slot) slot = &grid_pages[0];
     slot->key = key;
     slot->invalidate_all();
     full_redraw = true;

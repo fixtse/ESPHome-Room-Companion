@@ -78,4 +78,20 @@ int main() {
   Progress r;  // A stale report (on subscribe) still uses the timestamp.
   r.set_state("playing", 0); r.set_duration(200); r.set_position(30, 5000); r.set_updated_at(2000.0, 5000, 2060.0);
   assert(std::fabs(r.view(5000, 2060.0, true).seconds - 90) < .001f);
+
+  // ArtworkRetry fast exponential backoff, URL reset, success reset, and millis() wraparound.
+  ArtworkRetry ar;
+  assert(ar.ready("https://art/a.jpg", 100));
+  assert(ar.on_failure("https://art/a.jpg", 1000) == 1500);
+  assert(!ar.ready("https://art/a.jpg", 2499) && ar.ready("https://art/a.jpg", 2500));
+  assert(ar.ready("https://art/b.jpg", 1100));  // Different URL is not blocked.
+  assert(ar.on_failure("https://art/a.jpg", 2500) == 3500);
+  assert(ar.on_failure("https://art/a.jpg", 6000) == 8000);
+  assert(ar.on_failure("https://art/a.jpg", 14000) == 20000);
+  assert(ar.on_failure("https://art/a.jpg", 34000) == 30000);
+  assert(ar.on_failure("https://art/a.jpg", 64000) == 30000);  // Capped at 30 s.
+  ar.on_success("https://art/a.jpg");
+  assert(ar.failures == 0 && ar.ready("https://art/a.jpg", 64001));
+  assert(ar.on_failure("https://art/wrap.jpg", UINT32_MAX - 500) == 1500);
+  assert(!ar.ready("https://art/wrap.jpg", 998) && ar.ready("https://art/wrap.jpg", 999));
 }

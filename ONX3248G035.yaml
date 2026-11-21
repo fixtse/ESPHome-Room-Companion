@@ -18,10 +18,10 @@ substitutions:
   # Idle screen after this many seconds without a touch (default; editable).
   standby_timeout_seconds: "30"
   diagnostics_update_interval: 15s
-  display_update_interval: 50ms
+  display_update_interval: 16ms
   lcd_spi_data_rate: 40MHz
   lcd_backlight_default: 100%
-  product_firmware_version: "2026.11.0.129"
+  product_firmware_version: "2026.11.0.130"
   product_firmware_manifest_url: "https://raw.githubusercontent.com/fixtse/esp-ota/main/ota/releases/onx3248g035_manifest.yml"
   # Optional first-boot defaults for the dashboard stream (editable on Visit).
   default_dashboard_server: ""

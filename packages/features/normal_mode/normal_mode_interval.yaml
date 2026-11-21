@@ -301,18 +301,20 @@ interval:
   - interval: 100ms
     then:
       - lambda: |-
-          // The worker has its own 15 s network budget plus decode time; only catch hangs.
-          if (onx_media::downloading && millis() - onx_media::requested_ms >= 25000) {
+          // The worker has a strict 10 s HTTPS / 7 s HTTP network budget plus decode time; catch hangs fast.
+          if (onx_media::downloading && millis() - onx_media::requested_ms >= 13000) {
+            const uint32_t now = millis();
             lv_image_cache_drop(id(media_cover_image)->get_lv_image_dsc());
             lv_image_header_cache_drop(id(media_cover_image)->get_lv_image_dsc());
             if (onx_media::detach_main_artwork) onx_media::detach_main_artwork();
             id(media_cover_image)->release();
             onx_media::downloading = false; onx_media::ready_url.clear();
             id(entity_icon_downloader)->set_artwork_busy(false);
-            onx_media::last_artwork_end_ms = millis();
-            // Retry the same URL after ~10 s rather than the 60 s duplicate guard.
+            onx_media::last_artwork_end_ms = now;
             ++onx_media::stat_timeouts; onx_media::stat_last_failure = "watchdog timeout";
-            onx_media::requested_ms = millis() - 50000;
+            onx_media::artwork_retry.on_failure(onx_media::requested_url, now);
+            onx_media::artwork_wait_reason = "retry_wait";
+            onx_media::retry_at_ms = onx_media::artwork_retry.wakeup_ms(onx_media::requested_url, now);
             onx_media::artwork_refresh_pending = true;
             onx_runtime::record("artwork_timeout");
           }

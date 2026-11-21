@@ -119,4 +119,26 @@ int main() {
   assert(handed && drag_dy==0);            // Hand-off starts the drag at zero travel.
   move(160,140); assert(drag_dy==-60);
   touch.release();touch.loop(); assert(release_dy==-60);
+
+  // Horizontal page drag: live dx updates, cancel on short drag, commit on drag/flick.
+  int page_dx = 0, page_turns = 0;
+  touch.set_enabled_lambda([] { return true; });
+  touch.set_pull_up_enabled([] { return false; });
+  touch.set_page_swipe([] { return true; });
+  touch.set_back_enabled([] { return false; });
+  touch.set_native_touch([] { return false; });
+  touch.set_passthrough_fn([](int, int) { return false; });
+  touch.get_turn_trigger()->callback = [&](int d) { page_turns += d; };
+  touch.set_page_drag(
+      [&](int dx) { page_dx = dx; },
+      [&](int dx, uint32_t ms) { return std::abs(dx) >= 36 || (ms < 280 && std::abs(dx) >= 20); });
+  test_ms += 200;
+  down(160, 200); move(140, 200); test_ms += 400; touch.release(); touch.loop();
+  assert(page_dx == -20 && page_turns == 0);  // Slow short drag cancels cleanly.
+  test_ms += 200;
+  down(160, 200); move(135, 200); test_ms += 100; touch.release(); touch.loop();
+  assert(page_dx == -25 && page_turns == 1);  // Quick flick commits next page.
+  test_ms += 200;
+  down(100, 200); move(150, 200); test_ms += 500; touch.release(); touch.loop();
+  assert(page_dx == 50 && page_turns == 0);   // Deliberate right drag commits previous page.
 }

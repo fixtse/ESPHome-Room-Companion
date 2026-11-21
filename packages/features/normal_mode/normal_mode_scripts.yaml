@@ -309,7 +309,9 @@ script:
           };
           #ifdef USE_ROOM_COMPANION
           // The timer/music status row takes the place of the "online" icons.
-          const bool status_row = onx_notification_ui::status_row_shown() && id(normal_wifi_connected) && id(normal_ha_api_connected);
+          // Check has_status_chips() rather than status_row_shown() because bell_wanted
+          // may still be false on the first pass returning from detail/standby.
+          const bool status_row = onx_notification_ui::has_status_chips() && id(normal_wifi_connected) && id(normal_ha_api_connected);
           #else
           const bool status_row = false;
           #endif
@@ -431,6 +433,8 @@ script:
                   onx_panel_ui::width, onx_panel_ui::height, false,
                   [](lv_obj_t *icon, const std::string &entity) { id(apply_normal_entity_icon).execute(icon, entity, "", false); });
             } else onx_panel_pages::render_settings(onx_panel_ui::width, onx_panel_ui::height);
+            // Already rendered synchronously; skip the redundant 16 ms follow-up pass.
+            onx_panel_ui::render_requested = false;
           } else onx_panel_pages::hide();
 
 
@@ -2018,8 +2022,26 @@ script:
             const auto *detail=custom_logic_entity_sub::entity_detail(entity);
             return entity.rfind("media_player.",0)==0 && detail && detail->received && detail->available && detail->state=="playing";
           };
-          int candidate=playing(id(normal_device_selected_index))?id(normal_device_selected_index):-1;
+          static std::vector<std::string> prev_playing;
+          static int prev_detail_index=-1;
+          static bool prev_detail_playing=false;
+          std::vector<std::string> now_playing_entities;
+          int newly_playing=-1;
+          for(int i=0;i<id(normal_device_count) && i<(int)custom_logic::CONFIGURABLE_DEVICE_SLOT_COUNT;++i) {
+            if(!playing(i))continue;
+            const auto ent=id(ui_presenter)->get_normal_device_entity_id(i);
+            now_playing_entities.push_back(ent);
+            if(newly_playing<0 && std::find(prev_playing.begin(),prev_playing.end(),ent)==prev_playing.end())
+              newly_playing=i;
+          }
+          const int cur_detail=id(normal_device_detail_index);
+          const bool cur_detail_playing=id(normal_device_detail_active) && playing(cur_detail);
+          const bool detail_stopped_playing=id(normal_device_detail_active) && cur_detail==prev_detail_index && prev_detail_playing && !cur_detail_playing;
+          int candidate=cur_detail_playing?cur_detail:(newly_playing>=0?newly_playing:(playing(id(normal_device_selected_index))?id(normal_device_selected_index):-1));
           if(candidate<0)for(int i=0;i<id(normal_device_count) && i<(int)custom_logic::CONFIGURABLE_DEVICE_SLOT_COUNT;++i)if(playing(i)) {candidate=i;break;}
+          prev_playing=std::move(now_playing_entities);
+          prev_detail_index=id(normal_device_detail_active)?cur_detail:-1;
+          prev_detail_playing=cur_detail_playing;
           if(popup.visible) {
             if(!allowed || candidate<0) {
               popup.visible=false;
@@ -2027,15 +2049,23 @@ script:
               id(exit_normal_switch_detail).execute();
               return;
             }
-            if(candidate!=id(normal_device_detail_index)) {
+            if(candidate!=cur_detail) {
               id(normal_device_selected_index)=candidate;
               id(enter_normal_switch_detail).execute();
             }
             return;
           }
-          const auto current_entity=id(ui_presenter)->get_normal_device_entity_id(id(normal_device_detail_index));
+          const auto current_entity=id(ui_presenter)->get_normal_device_entity_id(cur_detail);
           const bool manual_player=id(normal_device_detail_active) &&
               id(normal_device_detail_kind)==NORMAL_DEVICE_DETAIL_KIND_AUTOMATION && current_entity.rfind("media_player.",0)==0;
+          // If the open media player paused/stopped and another player is now playing
+          // (either newly started or already playing when this one paused), hand off to it.
+          if(allowed && manual_player && !cur_detail_playing && candidate>=0 && candidate!=cur_detail &&
+             (newly_playing>=0 || detail_stopped_playing)) {
+            id(normal_device_selected_index)=candidate;
+            id(enter_normal_switch_detail).execute();
+            return;
+          }
           if(!allowed || candidate<0 || (id(normal_device_detail_active) && !manual_player) || !id(ui_presenter)->is_standby_active())return;
           #ifdef USE_ROOM_COMPANION
           if(!onx_notification_ui::standby_timeout_enabled)return;  // Idle timeout off: the music chip opens it instead.
@@ -2252,52 +2282,68 @@ script:
               (main_art || id(normal_device_detail_online)) && !id(screen_off_state) && !id(sleep_mode_state) &&
               !id(ui_presenter)->is_standby_active() && onx_media::has_playback(detail->state);
           const std::string desired = playable ? onx_media::artwork_url(origin, detail->picture) : "";
+          const uint32_t now = millis();
           if (desired != onx_media::candidate_url) {
-            onx_media::candidate_url = desired; onx_media::candidate_ms = millis();
+            onx_media::candidate_url = desired; onx_media::candidate_ms = now;
           }
-          if (!playable && onx_media::downloading) {
+          const bool stale_download = onx_media::downloading && !desired.empty() &&
+                                      desired != onx_media::requested_url && now - onx_media::candidate_ms >= 300;
+          if ((!playable || stale_download) && onx_media::downloading) {
             // Detach the LVGL source before release invalidates the pixel buffer.
             if (onx_media::detach_main_artwork) onx_media::detach_main_artwork();
             lv_image_cache_drop(id(media_cover_image)->get_lv_image_dsc());
             lv_image_header_cache_drop(id(media_cover_image)->get_lv_image_dsc());
             id(media_cover_image)->release();
             onx_media::downloading = false; onx_media::ready_url.clear();
-            // Nothing was shown; let the same URL start again as soon as it is wanted.
+            // Nothing was shown; let the desired URL start as soon as the old worker unwinds.
             onx_media::requested_url.clear();
+            if (!playable) onx_media::artwork_retry.clear();
             id(entity_icon_downloader)->set_artwork_busy(false);
-            onx_media::last_artwork_end_ms = millis();
+            onx_media::last_artwork_end_ms = now;
+            onx_media::artwork_wait_reason = stale_download ? "cancelling" : "";
             onx_runtime::record("artwork_cancelled", entity);
           }
           const bool ready = !desired.empty() && desired == onx_media::ready_url;
           if (desired.empty() || ready || onx_media::downloading ||
               !id(normal_ha_api_connected) || (!main_art && !id(normal_device_detail_online)) ||
               id(screen_off_state) || id(ui_presenter)->is_standby_active()) return;
-          // Wait for a stable URL and keep concurrent TLS clients off the small
+          // Wait briefly for a stable URL and keep concurrent TLS clients off the small
           // internal heap. Cosmetic artwork must not crowd out API/Wi-Fi buffers.
-          if (id(media_cover_image)->is_busy() || id(key_btn).state || millis() - onx_media::candidate_ms < 750 ||
-              millis() - onx_media::last_artwork_end_ms < 1000 || id(entity_icon_downloader)->busy()) {
-            onx_media::retry_at_ms = millis() + 1000; if (onx_media::retry_at_ms == 0) onx_media::retry_at_ms = 1;
+          if (id(media_cover_image)->is_busy()) {
+            onx_media::artwork_wait_reason = "cancelling";
+            onx_media::retry_at_ms = now + 250; if (onx_media::retry_at_ms == 0) onx_media::retry_at_ms = 1;
+            return;
+          }
+          if (id(key_btn).state || now - onx_media::candidate_ms < 350 ||
+              now - onx_media::last_artwork_end_ms < 250) {
+            onx_media::retry_at_ms = now + 250; if (onx_media::retry_at_ms == 0) onx_media::retry_at_ms = 1;
+            return;
+          }
+          if (id(entity_icon_downloader)->busy()) {
+            onx_media::artwork_wait_reason = "waiting_for_icons";
+            onx_media::retry_at_ms = now + 400; if (onx_media::retry_at_ms == 0) onx_media::retry_at_ms = 1;
             return;
           }
           if (!id(media_cover_image)->memory_ready()) {
             onx_media::artwork_wait_reason = "waiting_for_memory";
-            onx_media::retry_at_ms = millis() + 1000; if (onx_media::retry_at_ms == 0) onx_media::retry_at_ms = 1;
+            onx_media::retry_at_ms = now + 1000; if (onx_media::retry_at_ms == 0) onx_media::retry_at_ms = 1;
             return;
           }
-          if (desired == onx_media::requested_url && millis() - onx_media::requested_ms < 60000) {
-            // No HA update may arrive before the song ends; wake up when the guard expires.
-            onx_media::retry_at_ms = onx_media::requested_ms + 60000;
-            if (onx_media::retry_at_ms == 0) onx_media::retry_at_ms = 1;
+          if (!onx_media::artwork_retry.ready(desired, now)) {
+            onx_media::artwork_wait_reason = "retry_wait";
+            onx_media::retry_at_ms = onx_media::artwork_retry.wakeup_ms(desired, now);
             return;
           }
           onx_media::retry_at_ms = 0;
+          onx_media::artwork_wait_reason.clear();
+          id(media_cover_image)->set_cache_entries(4, 512 * 1024);
           // The detail's artwork image still holds the old buffer; detach it.
           if (onx_media::detach_main_artwork) onx_media::detach_main_artwork();
           lv_image_cache_drop(id(media_cover_image)->get_lv_image_dsc());
           lv_image_header_cache_drop(id(media_cover_image)->get_lv_image_dsc());
           onx_media::ready_url.clear();
           onx_media::requested_url = desired;
-          onx_media::requested_ms = millis();
+          onx_media::requested_ms = now;
           onx_media::downloading = true;
           id(media_cover_image)->set_url(desired);
           onx_runtime::record("artwork_start", entity);

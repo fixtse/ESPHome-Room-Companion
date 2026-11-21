@@ -924,6 +924,14 @@ inline void render_settings(int width,int height) {
   onx_panel_detail::render_main(layer, {settings_tile(width, height)}, width, height);
   refresh_carousel_clock(width);
 }
+// Pre-warm a neighbor main page while idle (PSRAM grid buffer or hidden RetainedPage).
+inline bool prewarm(const std::string &entity, int width, int height) {
+  if (!layer || entity.empty() || !onx_panel_detail::bind_icon) return false;
+  const auto *p = led_by(entity);
+  const auto kind = p ? Kind(p->kind) : Kind::SINGLE;
+  const auto areas = onx_panel_layout::geometry(kind, width, height, false, p ? p->rows : 2, p ? p->cols : 2);
+  return onx_panel_detail::prewarm_main_page(layer, entity, main_tiles(entity, p, kind, areas), width, height);
+}
 // The panel's own Assist timers: full screen, above the dock.
 inline void show_timers(int width,int height) {
   if(!layer)return;

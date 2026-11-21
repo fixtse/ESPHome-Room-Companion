@@ -42,6 +42,11 @@ class TouchInput : public Component, public touchscreen::TouchListener {
   void set_press_fn(std::function<void(int, int, bool)> f) { press_fn_ = std::move(f); }
 
   void set_page_swipe(std::function<bool()> &&f) { page_swipe_ = std::move(f); }
+  // Live feedback for horizontal page swipes (e.g. dock marker follows finger);
+  // `release` receives (dx, duration_ms) and returns true to commit the page turn.
+  void set_page_drag(std::function<void(int)> &&drag, std::function<bool(int, uint32_t)> &&release) {
+    page_drag_ = std::move(drag); page_drag_release_ = std::move(release);
+  }
   void set_back_enabled(std::function<bool()> &&f) { back_enabled_ = std::move(f); }
   void set_native_touch(std::function<bool()> &&f) { native_touch_ = std::move(f); }
   void set_edge_back(std::function<bool()> &&f) { edge_back_ = std::move(f); }
@@ -186,7 +191,7 @@ class TouchInput : public Component, public touchscreen::TouchListener {
     const bool enabled = enabled_now_();
     if (!back_ && !pull_ && !pull_up_ && !enabled) { state_ = State::IGNORED; return; }
     pull_only_ = !back_ && !enabled;  // e.g. a pull-down over the dashboard stream
-    state_ = State::DOWN; x0_ = x; y0_ = y; x_ = x; y_ = y; down_ms_ = millis(); consumed_ = 0; axis_ = 0;
+    state_ = State::DOWN; x0_ = x; y0_ = y; x_ = x; y_ = y; down_ms_ = millis(); consumed_ = 0; axis_ = 0; page_dragging_ = false;
   }
   void move_(int x, int y) {
     x_ = x; y_ = y;
@@ -215,6 +220,12 @@ class TouchInput : public Component, public touchscreen::TouchListener {
           consumed_ += steps;
           pending_dock_ += steps;
         }
+        return;
+      }
+      if (axis_ == 1 && page_drag_ && page_drag_release_) {
+        last_swipe_ms_ = millis();
+        page_dragging_ = true;
+        page_drag_(dx);
         return;
       }
       if (axis_ == 1 && consumed_ == 0 && std::abs(dx) >= 40) {
@@ -260,6 +271,13 @@ class TouchInput : public Component, public touchscreen::TouchListener {
     }
     if (state == State::SWIPE && axis_ == 2 && pull_up_ && y0_ - y_ >= 40) {
       last_swipe_ms_ = millis(); pull_up_trigger_.trigger(); return;
+    }
+    if (page_dragging_) {
+      page_dragging_ = false;
+      last_swipe_ms_ = millis();
+      if (page_drag_release_ && page_drag_release_(dx, millis() - down_ms_) && dx != 0)
+        turn_trigger_.trigger(dx < 0 ? 1 : -1);
+      return;
     }
     if (native_ || pull_only_ || zone_) return;  // LVGL handles taps in the close zone.
     if (state == State::HELD) { press_(false); return; }
@@ -320,12 +338,12 @@ class TouchInput : public Component, public touchscreen::TouchListener {
   std::function<bool()> enabled_, back_enabled_, native_touch_, page_swipe_, edge_back_, swipe_left_back_, pull_down_enabled_,
       pull_up_enabled_;
   std::function<bool(int, int)> passthrough_fn_;
-  std::function<void(int)> pull_up_drag_, pull_down_drag_;
+  std::function<void(int)> pull_up_drag_, pull_down_drag_, page_drag_;
   std::function<bool(int, uint32_t)> pull_down_release_;
-  std::function<bool(int, uint32_t)> pull_up_release_;
+  std::function<bool(int, uint32_t)> pull_up_release_, page_drag_release_;
   std::function<bool(int, int)> pull_up_zone_;
   Trigger<> back_trigger_, pull_down_trigger_, pull_up_trigger_;
-  bool pull_up_{false}, zone_{false}, photo_{false};
+  bool pull_up_{false}, zone_{false}, photo_{false}, page_dragging_{false};
   std::function<bool()> photo_swipe_;
   Trigger<int> photo_swipe_trigger_;
   bool back_{false}, left_back_{false}, native_{false}, pull_{false}, pull_only_{false};

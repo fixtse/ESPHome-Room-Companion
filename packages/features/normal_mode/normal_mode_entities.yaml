@@ -1151,10 +1151,12 @@ image:
       then:
         - lambda: |-
             onx_media::ready_url = onx_media::requested_url;
+            onx_media::artwork_retry.on_success(onx_media::requested_url);
+            onx_media::artwork_wait_reason.clear();
             onx_media::stat_end(true, millis());
             { const auto &f = id(media_cover_image)->last_stats(); auto &d = onx_media::last_fetch;
               d.attempts=f.attempts; d.open_ms=f.open_ms; d.read_ms=f.read_ms; d.bytes=f.bytes; d.heap_free_start=f.heap_free_start;
-              d.heap_largest_start=f.heap_largest_start; d.heap_free_after_open=f.heap_free_after_open; d.https=f.https; d.stack_psram=f.stack_psram; d.host=f.host; }
+              d.heap_largest_start=f.heap_largest_start; d.heap_free_after_open=f.heap_free_after_open; d.https=f.https; d.stack_psram=f.stack_psram; d.cached=f.cached; d.host=f.host; }
             onx_media::downloading = false;
             id(entity_icon_downloader)->set_artwork_busy(false);
             onx_media::last_artwork_end_ms = millis();
@@ -1168,13 +1170,15 @@ image:
             onx_media::downloading = false;
             id(entity_icon_downloader)->set_artwork_busy(false);
             onx_media::ready_url.clear();
-            onx_media::last_artwork_end_ms = millis();
-            // Failed fetches retry the same URL after ~10 s instead of 60 s.
-            onx_media::stat_end(false, millis());
+            const uint32_t now = millis();
+            onx_media::last_artwork_end_ms = now;
+            onx_media::stat_end(false, now);
             { const auto &f = id(media_cover_image)->last_stats(); auto &d = onx_media::last_fetch;
               d.attempts=f.attempts; d.open_ms=f.open_ms; d.read_ms=f.read_ms; d.bytes=f.bytes; d.heap_free_start=f.heap_free_start;
-              d.heap_largest_start=f.heap_largest_start; d.heap_free_after_open=f.heap_free_after_open; d.https=f.https; d.stack_psram=f.stack_psram; d.host=f.host; }
+              d.heap_largest_start=f.heap_largest_start; d.heap_free_after_open=f.heap_free_after_open; d.https=f.https; d.stack_psram=f.stack_psram; d.cached=f.cached; d.host=f.host; }
             onx_media::stat_last_failure = id(media_cover_image)->last_error();
-            onx_media::requested_ms = millis() - 50000;
+            onx_media::artwork_retry.on_failure(onx_media::requested_url, now);
+            onx_media::artwork_wait_reason = "retry_wait";
+            onx_media::retry_at_ms = onx_media::artwork_retry.wakeup_ms(onx_media::requested_url, now);
             onx_media::artwork_refresh_pending = true;
             onx_runtime::record("artwork_error");
