@@ -1116,16 +1116,20 @@ static const char PANEL_JS[] = R"ONXPANEL(
    const room=titleY-(tight?P(8):P(12))-pad,ly=playback&&Array.isArray(d.lyrics)?d.lyrics:null;
    // As build_media: synced lyrics take the artwork's column; the current line
    // in full, the previous and next lines in the rows left.
-   if(ly){const ry=wide?pad:pad+reserve,rh=wide?H-2*pad:room-reserve,rx=wide?pad:x,rw=wide?sideArt:w,lp=P(12),lw=rw-2*lp,lh=rh-2*lp;
+   if(ly){const ry=wide?pad:pad+reserve,rh=wide?H-2*pad:room-reserve,rx=wide?pad:x,rw=wide?sideArt:w;
     box(rx,ry,rw,rh,CARD,P(14),{'data-media-lyrics':''});
-    // As build_media: the cover, out of focus and darkened, behind the lyrics.
+    // As build_media: the cover, heavily blurred and darkened, behind the lyrics.
     try{const u=new URL(v?.artwork);if(['http:','https:'].includes(u.protocol)){const id='lyr-'+Math.random().toString(36).slice(2),clip=node('clipPath',{id});clip.append(node('rect',{x:rx,y:ry,width:rw,height:rh,rx:P(14)}));add(clip);
-     const g=add(node('g',{'clip-path':`url(#${id})`}));g.append(node('image',{href:u.href,x:rx-P(20),y:ry-P(20),width:rw+P(40),height:rh+P(40),preserveAspectRatio:'none',style:`filter:blur(${P(18)}px)`,'data-lyrics-backdrop':''}));
-     add(node('rect',{x:rx,y:ry,width:rw,height:rh,rx:P(14),fill:BG,'fill-opacity':0.5}))}}catch{}
-    const gap=P(8),sl=F.small.lh,rows=(s,f,n)=>s&&n>0?wrap(s,f,lw,n).length:0,cur=ly[1]||'';let cf=[F.title,F.body].find(f=>{const n=rows(cur,f,24);return n<=2&&n*f.lh<=lh-2*(gap+sl)})||F.small;if(rows(cur,cf,24)*cf.lh>lh-2*(gap+sl)&&rows(cur,F.body,24)*F.body.lh<=lh)cf=F.body;
-    const ch=Math.min(lh,rows(cur,cf,24)*cf.lh),cy=Math.trunc((lh-ch)/2),top=ry+lp,space=Math.trunc((lh-ch)/2)-gap,n=Math.trunc(space/sl);text(cur,cf,TEXT,rx+lp,top+cy,lw,'center',24);
-    const ph=rows(ly[0],F.small,n)*sl;if(ph)text(ly[0],F.small,MUTED,rx+lp,top+cy-gap-ph,lw,'center',n);
-    if(rows(ly[2],F.small,n))text(ly[2],F.small,SOFT,rx+lp,top+cy+ch+gap,lw,'center',n);return}
+     const g=add(node('g',{'clip-path':`url(#${id})`}));g.append(node('image',{href:u.href,x:rx-P(30),y:ry-P(30),width:rw+P(60),height:rh+P(60),preserveAspectRatio:'none',style:`filter:blur(${Math.round(Math.max(rw,rh)/10)}px) brightness(0.62)`,'data-lyrics-backdrop':''}))}}catch{}
+    // Lines sit on translucent black chips that hug the text, as lyric_label.
+    const lp=P(10),lw=rw-2*lp,lh=rh-2*lp,px=P(8),py=P(3),tw=lw-2*px,gap=P(6),sl=F.small.lh+2*py,cur=ly[1]||'';
+    const rows=(s,f,n)=>s&&n>0?wrap(s,f,tw,n).length:0,hgt=f=>rows(cur,f,24)*f.lh+2*py;
+    let cf=[F.title,F.body].find(f=>rows(cur,f,24)<=2&&hgt(f)<=lh-2*(gap+sl))||F.small;if(hgt(cf)>lh-2*(gap+sl)&&hgt(F.body)<=lh)cf=F.body;
+    const chip=(s,f,color,y,n)=>{const r=wrap(s,f,tw,n);if(!r.length)return 0;const cw=Math.min(tw,Math.max(...r.map(t=>width(t,f)))+2)+2*px,ch=r.length*f.lh+2*py,cx=rx+lp+(lw-cw)/2;
+     box(cx,y,cw,ch,'#000000',P(12),{'fill-opacity':0.5});text(s,f,color,cx+px,y+py,cw-2*px,'center',n);return ch};
+    const ch=Math.min(lh,hgt(cf)),cy=Math.trunc((lh-ch)/2),top=ry+lp,n=Math.trunc(((lh-ch)/2-gap-2*py)/F.small.lh);chip(cur,cf,TEXT,top+cy,24);
+    const ph=rows(ly[0],F.small,n);if(ph)chip(ly[0],F.small,MUTED,top+cy-gap-(ph*F.small.lh+2*py),n);
+    if(rows(ly[2],F.small,n))chip(ly[2],F.small,SOFT,top+cy+ch+gap,n);return}
    const art=wide?sideArt:Math.max(P(48),Math.min(P(220),w-2*reserve,room)),ax=wide?pad:(W-art)/2,ay=wide?(H-art)/2:pad+Math.max(0,(room-art)/2);
    if(!artwork(v?.artwork,ax,ay,art,P(14)))icon(e,ax+art/2,ay+art/2,Math.trunc(art*40/100),playing?ACCENT:SOFT);
   };
@@ -1135,7 +1139,9 @@ static const char PANEL_JS[] = R"ONXPANEL(
    if(!v){header(l.head,title,'Waiting for initial data');text('…',F.big,MUTED,l.vis.x,l.vis.y+l.vis.h/3,l.vis.w,'center');return}
    if(d.received===false||d.available===false){const wait=d.received===false;header(l.head,title,wait?'Waiting for initial data':'Unavailable');text(wait?'…':'—',F.big,MUTED,l.vis.x,l.vis.y+l.vis.h/3,l.vis.w,'center');return}
    if(v.timer||e.startsWith('timer.')){buildTimer(e,d,title,v);return}
-   if(quick){const bs=P(44);circle(W-P(16)-bs/2,P(16)+bs/2,bs,CONTROL,'list',TEXT,{'data-quick-actions':''});l.head.w-=bs+P(8)}
+   // As the panel: lyrics on the media screen hide the quick actions button.
+   const lyricsUp=e.startsWith('media_player.')&&Array.isArray(d.lyrics)&&(['playing','paused','buffering','on'].includes(d.state)||v?.playing);
+   if(quick&&!lyricsUp){const bs=P(44);circle(W-P(16)-bs/2,P(16)+bs/2,bs,CONTROL,'list',TEXT,{'data-quick-actions':''});l.head.w-=bs+P(8)}
    if(e.startsWith('light.'))buildLight(l,e,d,title);
    else if(e.startsWith('climate.'))buildClimate(l,e,d,title);
    else if(e.startsWith('fan.'))buildFan(l,e,d,title);
@@ -1147,7 +1153,7 @@ static const char PANEL_JS[] = R"ONXPANEL(
    else if(/^(number|input_number)\./.test(e))buildNumber(l,e,d,title);
    else if(/^(select|input_select)\./.test(e))buildSelect(l,e,d,title);
    else if(e.startsWith('weather.'))buildWeather(e,d,title);
-   else if(e.startsWith('media_player.'))buildMedia(l,e,d,title,v,quick);
+   else if(e.startsWith('media_player.'))buildMedia(l,e,d,title,v,quick&&!lyricsUp);
    else buildToggle(l,e,d,title,v);
   };
 

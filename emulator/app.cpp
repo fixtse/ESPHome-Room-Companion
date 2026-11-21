@@ -163,8 +163,13 @@ const lv_image_dsc_t &demo_cover() {
   auto blob = [](int x, int y, int cx, int cy, int r) { const int dx = x - cx, dy = y - cy; return std::max(0, 255 - (dx * dx + dy * dy) * 255 / (r * r)); };
   for (int y = 0; y < 96; ++y)
     for (int x = 0; x < 96; ++x) {
-      const int a = blob(x, y, 24, 30, 40), b = blob(x, y, 74, 70, 44), c = blob(x, y, 70, 18, 26);
-      const int r = std::min(255, 20 + a + c / 2), g = std::min(255, 16 + a / 3 + b / 2 + c / 2), bl = std::min(255, 40 + b);
+      // Hard-edged shapes on a pale sky, like a photo cover, to show the blur.
+      (void) blob;
+      int r = 170, g = 200, bl = 230;                                  // sky
+      if (y > 60) { r = 40; g = 90; bl = 150; }                        // sea
+      if (std::abs(x - 30) < 12 && y > 20 && y < 80) { r = 120; g = 60; bl = 30; }  // figure
+      if ((x - 70) * (x - 70) + (y - 30) * (y - 30) < 160) { r = 250; g = 240; bl = 200; }  // sun
+      if (y > 78 && (x / 6) % 2) { r = 230; g = 220; bl = 180; }      // sand stripes
       px[y * 96 + x] = uint16_t((r >> 3) << 11 | (g >> 2) << 5 | (bl >> 3));
     }
   d.header.magic = LV_IMAGE_HEADER_MAGIC; d.header.cf = LV_COLOR_FORMAT_RGB565;

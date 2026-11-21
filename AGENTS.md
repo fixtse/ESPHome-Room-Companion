@@ -1,7 +1,9 @@
 # Room Companion
 
-Read `/home/fixt/AGENTS.md`. Builds, installs, tests and services run on devserv
-under a task lease and isolated checkout. Do not flash a board unless requested.
+Read `/home/fixt/AGENTS.md`. Emulator previews, host tests and services run on
+devserv under a task lease and isolated checkout. Firmware for testing is
+delivered as an OTA release through esp-ota (see "Delivering firmware for
+testing"); do not flash a board unless requested.
 Use SchedulerSE completion callbacks for long-running builds and tests as
 described in the global policy; do not poll running jobs.
 
@@ -111,7 +113,36 @@ Rules:
 - Never add on-device screen capture: an LVGL snapshot/flush hook made the 2.8"
   boot-loop (2026-11-20).
 
-## Building and flashing this panel
+## Delivering firmware for testing (OTA release)
+
+Firmware for the user to test is delivered as an OTA release, not built on
+devserv and not flashed by hand. After the emulator preview is approved:
+
+1. Increment `product_firmware_version` in `ONX3248G035.yaml` and
+   `ONX2432G028.yaml` (never reuse a published number), commit and push this
+   repository.
+2. In `/home/fixt/git/esp-ota`, set `configs/onx3248g035.yaml` and
+   `configs/onx2432g028.yaml` to the pushed commit (`ref:`) and the same
+   project version, then commit and push. The push starts the "Update ESPHome
+   firmware" workflow, which builds both panels on GitHub and publishes the
+   OTA images and manifests. Commit only the files you changed.
+3. End the turn. The workflow's `completion_callback` job POSTs to the
+   `T3_BUILD_CALLBACK_URL` secret, a T3 webhook bound to the user's thread,
+   on success, failure or cancellation. That wakes the thread; do not poll
+   or watch the run.
+4. On the callback, check the run (`gh run view <run_id> -R fixtse/esp-ota`).
+   On success, pull esp-ota, confirm both manifests
+   (`ota/releases/onx3248g035_manifest.yml`, `onx2432g028_manifest.yml`) show
+   the new version and that the release assets' MD5 match, then tell the user
+   the OTA is ready to test. On failure, read the failing job's log, fix it,
+   bump the version again and push.
+
+The user installs the update and reports what they see; a published release
+is not hardware verification. Devserv is still used for emulator previews and
+host tests. Build firmware on devserv or flash over USB only when the user
+explicitly asks (next section).
+
+## Manual devserv build and USB flash (only on request)
 
 A request to build is not permission to flash. Once flashing is requested,
 complete the build, transfer, flash and flash-hash verification without asking again for

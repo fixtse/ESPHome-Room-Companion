@@ -46,7 +46,8 @@ Tap the lyrics to show the artwork again. They return on the next track.
   next track or the next Home Assistant restart.
 - Lyrics are matched by title, artist, album and duration. LRCLIB doesn't have
   every song.
-- The panel keeps at most 400 lines (12 KB) per track, in PSRAM.
+- The panel keeps at most 400 lines (12 KB) per track, in PSRAM. Tap the lyrics
+  to bring back the artwork and the quick actions button.
 - To send lyrics from another source, call the action yourself with `entity_id`,
   `title` (must equal the player's `media_title`) and `lrc` (LRC text with
   `[mm:ss.xx]` tags). An empty `lrc` clears the lyrics.
