@@ -156,9 +156,44 @@ inline bool owns_screen() {
   return panel_open || detail_id != 0 || onx_notification::center.toast_visible(esphome::millis());
 }
 
+enum class SheetMode { NONE, OPENING, CLOSING };
+inline lv_obj_t *sheet = nullptr;
+inline int sheet_edge = 0;
+inline SheetMode sheet_mode = SheetMode::NONE;
+// LVGL always redraws the active screen under the top and system layers, so a
+// grid of cards under the centre or the sheet was repainted on every frame.
+// Page content (cover_root, set by the panel) fully covered by them is hidden
+// while covered and shown again as it is uncovered. Not with the translucent
+// dashboard backdrop.
+inline lv_obj_t *cover_root = nullptr;
+inline int covered_rows = 0;
+inline bool backdrop = false;
+inline void cover_walk(lv_obj_t *obj, int rows, int depth) {
+  const uint32_t n = lv_obj_get_child_count(obj);
+  for (uint32_t i = 0; i < n; ++i) {
+    lv_obj_t *c = lv_obj_get_child(obj, i);
+    lv_area_t a;
+    lv_obj_get_coords(c, &a);
+    const bool ours = lv_obj_has_flag(c, LV_OBJ_FLAG_USER_4);
+    if (a.y2 < rows) {
+      if (!ours && !lv_obj_has_flag(c, LV_OBJ_FLAG_HIDDEN)) lv_obj_add_flag(c, static_cast<lv_obj_flag_t>(LV_OBJ_FLAG_HIDDEN | LV_OBJ_FLAG_USER_4));
+      continue;
+    }
+    if (ours) lv_obj_remove_flag(c, static_cast<lv_obj_flag_t>(LV_OBJ_FLAG_HIDDEN | LV_OBJ_FLAG_USER_4));
+    if (depth < 3 && (a.y1 < rows || rows == 0)) cover_walk(c, rows, depth + 1);
+  }
+}
+inline void apply_cover(int rows) {
+  if (backdrop) rows = 0;
+  if (cover_root == nullptr || rows == covered_rows) return;
+  covered_rows = rows;
+  cover_walk(cover_root, rows, 0);
+}
 inline void set_dashboard_backdrop(bool visible) {
   if (!panel || !detail || !toast) return;
   const auto opacity = visible ? LV_OPA_80 : LV_OPA_COVER;
+  backdrop = visible;
+  if (visible) apply_cover(0);
   lv_obj_set_style_bg_opa(panel, opacity, 0);
   lv_obj_set_style_bg_opa(detail, opacity, 0);
   if (visible) {
@@ -197,6 +232,7 @@ inline void open_panel() {
   panel_open = true;
   built_revision = 0;
   refresh();
+  apply_cover(height);
 }
 inline int drag_offset = 0;  // Panel lift while a swipe up is in progress (<= 0).
 inline lv_obj_t *handle_hint = nullptr;
@@ -218,6 +254,7 @@ inline void close_panel() {
   presets_open = false;
   preset_error.clear();
   refresh();
+  if (sheet_mode == SheetMode::NONE) apply_cover(0);
 }
 
 inline void on_bell(lv_event_t *) { panel_open ? close_panel() : open_panel(); }
@@ -256,10 +293,6 @@ inline bool close_zone(int, int y) {
 // sheet never moves or resizes: it draws itself down to `sheet_edge`, and each
 // move only invalidates the strip between the old and new edge plus the grip
 // band, so a frame costs a few milliseconds and keeps up with the finger.
-enum class SheetMode { NONE, OPENING, CLOSING };
-inline lv_obj_t *sheet = nullptr;
-inline int sheet_edge = 0;
-inline SheetMode sheet_mode = SheetMode::NONE;
 inline uint32_t sheet_color = 0;
 inline int sheet_band() { return S(48); }
 inline bool sheet_releases(int travel) { return travel >= height / 5; }
@@ -274,6 +307,7 @@ inline void set_sheet_edge(int edge) {
   const int old = sheet_edge;
   sheet_edge = edge;
   sheet_invalidate(old, edge);
+  apply_cover(edge);
 }
 inline void draw_sheet(lv_event_t *e) {
   if (sheet_edge <= 0) return;

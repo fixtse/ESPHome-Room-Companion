@@ -43,8 +43,11 @@
 #endif
 
 namespace onx_subs {
-// Bumped on every Home Assistant state update (any entity, any attribute).
+// Bumped on Home Assistant state updates for entities the screen shows (any
+// attribute), so the panel redraws at once. `shown` is set by the panel; other
+// entities are picked up by its once-a-second refresh.
 inline uint32_t state_revision = 0;
+inline bool (*shown)(const std::string &entity) = nullptr;
 
 enum class Kind : uint8_t { PRIMARY = 1, SECONDARY = 2, GESTURE = 3, WEATHER = 4 };
 using Owner = uint16_t;
@@ -175,7 +178,7 @@ class Registry {
   }
 
   void dispatch(Entry &entry, esphome::StringRef value) {
-    ++state_revision;  // The carousel redraws only when something changed.
+    if (shown == nullptr || shown(entry.entity)) ++state_revision;  // Redraw only for what is on screen.
     ++this->dispatching_;
     // Index loop: the vector is not resized while dispatching_ > 0.
     for (size_t i = 0; i < entry.listeners.size(); ++i) {

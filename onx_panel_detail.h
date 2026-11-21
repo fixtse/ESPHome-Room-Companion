@@ -670,8 +670,13 @@ __attribute__((noinline)) inline void build_light(const Layout &l, const std::st
     for (const auto &sw : swatches) {
       const uint32_t rgb = sw.rgb; const int k = sw.kelvin;
       lv_obj_t *b = button(row, x, P(4), ss, ss, LV_RADIUS_CIRCLE, rgb, "", fonts.small, TEXT(), [e, rgb, k]() {
-        if (k) request(e, "light.turn_on", "color_temp_kelvin", std::to_string(k), "panel_colour");
+        // Show the chosen colour at once (the fill follows it) until HA reports back.
+        if (k) { set_pending(e, "kelvin", k); request(e, "light.turn_on", "color_temp_kelvin", std::to_string(k), "panel_colour"); }
         else {
+          const float r = (rgb >> 16 & 255) / 255.0f, g = (rgb >> 8 & 255) / 255.0f, bl = (rgb & 255) / 255.0f;
+          const float mx = std::max({r, g, bl}), mn = std::min({r, g, bl}), c = mx - mn;
+          float h = c <= 0 ? 0 : mx == r ? 60 * std::fmod((g - bl) / c + 6, 6.0f) : mx == g ? 60 * ((bl - r) / c + 2) : 60 * ((r - g) / c + 4);
+          set_pending(e, "hs", float(int(std::lround(h)) % 360 * 1000 + int(std::lround(mx > 0 ? c / mx * 100 : 0))));
           char v[24];
           std::snprintf(v, sizeof(v), "[%u, %u, %u]", unsigned(rgb >> 16 & 255), unsigned(rgb >> 8 & 255), unsigned(rgb & 255));
           request(e, "light.turn_on", "rgb_color", v, "panel_colour");
@@ -3570,6 +3575,13 @@ inline void render_main(lv_obj_t *parent, const std::vector<Tile> &tiles, int wi
       } else if (domain == "switch" || domain == "input_boolean" || domain == "automation" || domain == "fan" || domain == "siren") {
         shape = "#S" + place + '|' + t.entity + '|' + t.name + '|' + t.value + '|' + d->unit + '|' + std::to_string(t.ring) + '|' +
                 std::to_string(t.context.empty());
+      }
+      // Charts are not patched in place: new history rebuilds the card.
+      const int si = onx_sensor_view::index(t.entity);
+      if (si >= 0 && onx_sensor_view::configs[si].graph) {
+        const auto &st = onx_sensor_view::states[si];
+        shape += "|g" + std::to_string(st.history(now).size()) + ',' + std::to_string(st.range_seconds) + ',' +
+                 std::to_string(st.requested) + std::to_string(st.pending) + std::to_string(st.failed);
       }
     }
     sig += full;

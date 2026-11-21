@@ -338,10 +338,11 @@ script:
               [&](lv_obj_t *icon, int index, bool active) {
                 #ifdef USE_ROOM_COMPANION
                 if(index==onx_navigation::DASHBOARD) {
-                  lv_image_set_src(icon,id(panel_dashboard_icon)->get_lv_image_dsc());
+                  // Guarded setters: the dock is bound on every pass; unchanged values must not repaint it.
+                  onx_render::image(icon,id(panel_dashboard_icon)->get_lv_image_dsc());
                   lv_image_set_scale(icon,onx_navigation::icon_size()*256/id(panel_dashboard_icon)->get_width());
-                  lv_obj_set_style_image_recolor(icon,lv_color_hex(onx_display_settings::foreground()),0);
-                  lv_obj_set_style_image_recolor_opa(icon,LV_OPA_COVER,0);
+                  onx_render::style_image_recolor(icon,lv_color_hex(onx_display_settings::foreground()),0);
+                  onx_render::style_image_recolor_opa(icon,LV_OPA_COVER,0);
                   return;
                 }
                 #endif
@@ -361,8 +362,7 @@ script:
                     if(page->icon[0]) {
                       id(entity_icon_downloader)->bind(icon,page->icon,fallback,active);
                     } else {
-                      lv_image_set_src(icon,fallback->get_lv_image_dsc());
-                      lv_obj_set_style_image_recolor(icon,lv_color_hex(active?onx_display_settings::accent():onx_display_settings::foreground()),0);
+                      onx_render::image(icon,fallback->get_lv_image_dsc());
                     }
                     onx_render::style_image_recolor(icon,lv_color_hex(active?onx_display_settings::accent():onx_display_settings::foreground()),0);
                     onx_render::style_image_recolor_opa(icon, LV_OPA_COVER, 0);

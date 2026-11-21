@@ -190,10 +190,14 @@ template<typename Bind> void render(std::vector<int> entries,int selected,Bind b
       // Any icon that is not mid-dance sits exactly at its place.
       if(lv_anim_get(icon,dance_step)==nullptr)dance_reset(icon);
       const int x=strip.width*(2*n+1)/(2*dock_count)-strip.width/2;
-      lv_obj_align(icon,LV_ALIGN_CENTER,x,strip.center_y-strip.height/2);
+      // Only on change: setting the align style repaints the dock even when unchanged.
+      const int32_t ay=strip.center_y-strip.height/2;
+      if(lv_obj_get_style_x(icon,0)!=x || lv_obj_get_style_y(icon,0)!=ay || lv_obj_get_style_align(icon,0)!=LV_ALIGN_CENTER)
+        lv_obj_align(icon,LV_ALIGN_CENTER,x,ay);
       bind(icon,targets[n],active);
       onx_render::style_opa(icon,active||pinned?LV_OPA_COVER:170,0);
-      if(active)lv_obj_align(marker,LV_ALIGN_CENTER,x,strip.center_y-strip.height/2);
+      if(active && (lv_obj_get_style_x(marker,0)!=x || lv_obj_get_style_y(marker,0)!=ay || lv_obj_get_style_align(marker,0)!=LV_ALIGN_CENTER))
+        lv_obj_align(marker,LV_ALIGN_CENTER,x,ay);
     }
     const bool selected_visible=std::find(targets.begin(),targets.begin()+dock_count,selected)!=targets.begin()+dock_count;
     if(selected_visible)lv_obj_remove_flag(marker,LV_OBJ_FLAG_HIDDEN);

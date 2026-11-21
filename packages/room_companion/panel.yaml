@@ -247,6 +247,7 @@ interval:
           onx_panel_ui::render_requested = false;
           last_pass = millis();
           if (onx_panel_pages::layer == nullptr) return;
+          onx_notification_ui::cover_root = onx_panel_pages::layer;  // Hidden while the centre covers it.
           // Fully covered native content keeps its last frame without rebuilding.
           if (onx_notification_ui::panel_open || onx_notification_ui::detail_id != 0) return;
           // The panel's own Assist timers (features/assist.yaml) cover the
@@ -915,6 +916,10 @@ script:
           };
           onx_panel_detail::run_quick_action = [](const std::string &action) { id(emit_normal_playlist_action).execute(action); };
           onx_panel_detail::request_history = [](const std::string &entity) { id(request_normal_sensor_history).execute(entity); };
+          onx_subs::shown = [](const std::string &entity) {
+            for (int i = 0; i < onx_panel_pages::count; ++i) if (onx_panel_pages::entities[i] == entity) return true;
+            return entity == onx_media::main_entity;
+          };
           onx_panel_ui::has_quick_actions = []() {
             const auto entity = id(ui_presenter)->get_normal_device_entity_id(id(normal_device_detail_index));
             return onx_entity_config::playlists_for_ui(id(normal_device_detail_index), entity) != nullptr;
