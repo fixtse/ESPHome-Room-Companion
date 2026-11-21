@@ -2756,8 +2756,7 @@ struct LyricBackdrop {
   lv_image_dsc_t dsc{};
   uint16_t *px{nullptr};
   int w{0}, h{0};
-  const void *from{nullptr};
-  uint32_t from_size{0};
+  uint32_t key{0};  // Content fingerprint: the artwork buffer is reused for every cover.
 };
 inline LyricBackdrop &lyric_backdrop() { static LyricBackdrop b; return b; }
 inline bool pixel_rgb(const lv_image_dsc_t *d, int x, int y, int &r, int &g, int &b) {
@@ -2781,7 +2780,11 @@ inline const lv_image_dsc_t *make_backdrop(const void *source, int out_w, int ou
   const auto *d = static_cast<const lv_image_dsc_t *>(source);
   if (d == nullptr || d->data == nullptr || d->header.w < N || d->header.h < N || out_w < 8 || out_h < 8) return nullptr;
   auto &bd = lyric_backdrop();
-  if (bd.px && bd.from == d->data && bd.from_size == d->data_size && bd.w == out_w && bd.h == out_h) return &bd.dsc;
+  // FNV-1a over ~1000 bytes spread through the image, plus its size.
+  uint32_t key = 2166136261u ^ d->header.w ^ (uint32_t(d->header.h) << 16);
+  const uint32_t step = std::max<uint32_t>(1, d->data_size / 1024);
+  for (uint32_t i = 0; i < d->data_size; i += step) key = (key ^ d->data[i]) * 16777619u;
+  if (bd.px && bd.key == key && bd.w == out_w && bd.h == out_h) return &bd.dsc;
   int pr, pg, pb;
   if (!pixel_rgb(d, 0, 0, pr, pg, pb)) return nullptr;
   // 1. Cell averages (every second pixel).
@@ -2818,7 +2821,7 @@ inline const lv_image_dsc_t *make_backdrop(const void *source, int out_w, int ou
     bd.px = static_cast<uint16_t *>(heap_caps_malloc(size_t(out_w) * out_h * 2, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT));
     if (bd.px == nullptr) { bd.w = bd.h = 0; return nullptr; }
   }
-  bd.w = out_w; bd.h = out_h; bd.from = d->data; bd.from_size = d->data_size;
+  bd.w = out_w; bd.h = out_h; bd.key = key;
   static const uint8_t bayer[16] = {0, 8, 2, 10, 12, 4, 14, 6, 3, 11, 1, 9, 15, 7, 13, 5};
   constexpr float DIM = 0.62f;
   for (int y = 0; y < out_h; ++y) {

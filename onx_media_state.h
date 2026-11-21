@@ -38,7 +38,16 @@ struct Progress {
     position = value; received_ms = now; updated_epoch = NAN;
     last_drawn = NAN; waiting_track = false;
   }
-  void set_updated_at(double value) {
+  // `local_epoch` is this panel's clock when the report arrived. A fresh report
+  // (within 3 s) is anchored to its arrival instead: Home Assistant's time sync
+  // is only whole seconds, so panels side by side drifted a second apart, while
+  // all of them receive the same report at the same moment.
+  void set_updated_at(double value, uint32_t now_ms = 0, double local_epoch = NAN) {
+    if (std::isfinite(value) && std::isfinite(local_epoch) && std::fabs(local_epoch - value) < 3) {
+      if (waiting_track) { position = 0; waiting_track = false; }
+      received_ms = now_ms; updated_epoch = NAN; last_drawn = NAN;
+      return;
+    }
     updated_epoch = value;
     // A changed track may restart at the same HA position (usually zero), so its
     // unchanged position attribute may not be resent. The new timestamp anchors zero.

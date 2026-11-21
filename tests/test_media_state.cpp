@@ -71,4 +71,11 @@ int main() {
   p.set_position(0, UINT32_MAX - 500); p.updated_epoch = NAN;
   assert(std::fabs(p.view(499, NAN, true).seconds - 1) < .01f);
   p.set_state("idle", 500); assert(!p.view(500, NAN, true).visible);
+  // A fresh report anchors to its arrival, not to the (whole-second) clock.
+  Progress q;
+  q.set_state("playing", 0); q.set_duration(200); q.set_position(30, 5000); q.set_updated_at(2000.0, 5000, 2000.9);
+  assert(std::fabs(q.view(6000, 2010.0, true).seconds - 31) < .001f);   // Panel clock ignored.
+  Progress r;  // A stale report (on subscribe) still uses the timestamp.
+  r.set_state("playing", 0); r.set_duration(200); r.set_position(30, 5000); r.set_updated_at(2000.0, 5000, 2060.0);
+  assert(std::fabs(r.view(5000, 2060.0, true).seconds - 90) < .001f);
 }

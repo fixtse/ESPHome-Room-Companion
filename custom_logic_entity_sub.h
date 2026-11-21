@@ -3,6 +3,7 @@
 #include "onx_light_state.h"
 #include "onx_memory.h"
 
+#include <ctime>
 #include <algorithm>
 #include <array>
 #include <cctype>
@@ -618,7 +619,7 @@ class DeviceSlotStateUpdater {
           const size_t dot = value.find('.', 19);
           if (dot != std::string::npos) epoch += strtod(value.c_str() + dot, nullptr);
         }
-        detail.progress.set_updated_at(epoch);
+        detail.progress.set_updated_at(epoch, millis(), static_cast<double>(std::time(nullptr)));
       }
       else if (field == "media_content_id") {
         if (detail.media_content_id != value) { detail.progress.new_track(); detail.media_content_id = value; }
