@@ -2098,10 +2098,9 @@ script:
             }
             id(normal_automation_press_feedback_active) = false;
             ESP_LOGI("normal_mode", "automation detail opened for index=%d", detail_index);
-            // The redesigned detail (onx_panel_detail) covers this page; hide the
-            // legacy round media shell before the first frame so it never flashes.
-            if (onx_panel_detail::supports(weather_entity)) lv_obj_add_flag(id(normal_automation_detail_shell), LV_OBJ_FLAG_HIDDEN);
-            else lv_obj_remove_flag(id(normal_automation_detail_shell), LV_OBJ_FLAG_HIDDEN);
+            // The redesigned detail (onx_panel_detail) replaces this page; the
+            // legacy round shell is never shown.
+            lv_obj_add_flag(id(normal_automation_detail_shell), LV_OBJ_FLAG_HIDDEN);
             lv_scr_load(id(normal_automation_page)->obj);
             id(refresh_normal_automation_detail_page).execute();
             return;
@@ -3094,11 +3093,8 @@ script:
             lv_obj_set_height(id(normal_automation_detail_action),onx_geom::S(22));
             lv_obj_set_height(id(normal_automation_detail_title),onx_geom::S(22));
             lv_label_set_long_mode(id(normal_automation_detail_title),LV_LABEL_LONG_DOT);
-            lv_image_set_pivot(id(normal_media_cover),id(media_cover_image)->get_width()/2,0);
-            onx_panel_ui::sync_media({id(normal_automation_detail_shell),id(normal_media_cover),id(normal_media_title),
-                id(normal_media_artist),id(normal_media_progress_arc),id(normal_media_transport_overlay),
-                id(normal_automation_detail_icon),id(normal_playlist_overlay),id(normal_automation_detail_action),
-                id(normal_automation_detail_title)}, &lv_font_${symbol_font});
+            // The redesigned media detail (onx_panel_detail) replaces this page.
+            lv_obj_add_flag(id(normal_automation_detail_shell),LV_OBJ_FLAG_HIDDEN);
             return;
           }
           #endif

@@ -328,16 +328,10 @@ interval:
                 onx_timer::countdown(soonest) + (count > 1 ? " +" + std::to_string(count - 1) : std::string()));
           }
           // Media detail rearranged for the tall screen.
-          // The legacy shell stays hidden under redesigned detail screens.
-          if (lv_scr_act() == id(normal_automation_page)->obj && entity_detail && onx_panel_detail::supports(entity)) {
+          // The redesigned detail screens replace the legacy round media page;
+          // its shell is never shown (normal_mode_pages.yaml creates it hidden).
+          if (lv_scr_act() == id(normal_automation_page)->obj)
             lv_obj_add_flag(id(normal_automation_detail_shell), LV_OBJ_FLAG_HIDDEN);
-          } else if (lv_scr_act() == id(normal_automation_page)->obj) {
-            lv_obj_remove_flag(id(normal_automation_detail_shell), LV_OBJ_FLAG_HIDDEN);
-            onx_panel_ui::sync_media({id(normal_automation_detail_shell), id(normal_media_cover), id(normal_media_title),
-                                      id(normal_media_artist), id(normal_media_progress_arc),
-                                      id(normal_media_transport_overlay), id(normal_automation_detail_icon),
-                                      id(normal_playlist_overlay), id(normal_automation_detail_action), id(normal_automation_detail_title)}, &lv_font_${symbol_font});
-          }
           // Idle screen.
           const auto mode = id(panel_idle_screen).active_index().value_or(0);
           const bool idle_clock = standby && mode == onx_panel_ui::IDLE_CLOCK && !id(screen_off_state) && !id(sleep_mode_state);

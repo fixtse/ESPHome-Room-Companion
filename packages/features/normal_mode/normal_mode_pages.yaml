@@ -419,6 +419,8 @@ lvgl:
       widgets:
         - obj:
             id: normal_automation_detail_shell
+            # Legacy round layout; the redesigned detail screens replace it.
+            hidden: true
             x: 0
             y: 0
             width: ${ (240 * (ui_scale | float)) | round | int }
