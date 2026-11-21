@@ -248,7 +248,7 @@ inline void load_sensor_configs() {
   sensor_configs_loaded=true;
 }
 inline bool save_sensor_config(size_t i,const std::string &primary,const std::string &secondary,const std::string &text,bool graph) {
-  load_sensor_configs();if(!sensor_configs_loaded||i>=20)return false;
+  load_sensor_configs();if(!sensor_configs_loaded||i>=onx_memory::ENTRY_COUNT)return false;
   onx_sensor_view::Config next{};
   snprintf(next.primary,sizeof(next.primary),"%s",primary.c_str());snprintf(next.secondary,sizeof(next.secondary),"%s",secondary.c_str());
   snprintf(next.text,sizeof(next.text),"%s",text.empty()?"{value}":text.c_str());next.graph=primary.rfind("switch.",0)==0 ? !secondary.empty() : graph;
