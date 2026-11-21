@@ -908,7 +908,8 @@ static const char PANEL_JS[] = R"ONXPANEL(
     const k=d.kelvin||(lo+hi)/2,hh=P(6),hy=Math.min(sh-hh-P(8),Math.max(P(8),Math.trunc(sh*(1-(k-lo)/(hi-lo)))-hh/2));box(sx+sw2/4,sy+hy,sw2/2,hh,'#161B22',hh/2,{stroke:'#ffffff','stroke-width':P(2)});return}
    const id='clip'+Math.random().toString(36).slice(2),clip=node('clipPath',{id});clip.append(node('rect',{x:sx,y:sy,width:sw2,height:sh,rx:P(30)}));add(clip);
    box(sx,sy,sw2,sh,CONTROL,P(30),{'data-brightness-slider':''});const fh=Math.trunc(sh*Math.max(0,Math.min(100,lvl))/100);
-   box(sx,sy+sh-fh,sw2,fh,ACCENT,0,{'clip-path':`url(#${id})`});const kh=P(5),kw=Math.trunc(sw2*30/100);box(sx+(sw2-kw)/2,sy+Math.min(sh-kh-P(8),Math.max(P(8),sh-fh+P(12))),kw,kh,ink(ACCENT),kh/2,{'fill-opacity':.7});
+   const fillC=d.hs_known&&Number(d.saturation)>=1?hsv(Number(d.hue),Math.max(Number(d.saturation),35)):d.kelvin>0?kelvinRgb(d.kelvin):ACCENT;  // As light_fill_color.
+   box(sx,sy+sh-fh,sw2,fh,fillC,0,{'clip-path':`url(#${id})`});const kh=P(5),kw=Math.trunc(sw2*30/100);box(sx+(sw2-kw)/2,sy+Math.min(sh-kh-P(8),Math.max(P(8),sh-fh+P(12))),kw,kh,ink(ACCENT),kh/2,{'fill-opacity':.7});
   };
   const buildClimate=(l,e,d,title)=>{
    const mode=d.hvac||d.state;let tgt=num(d.temperature);const range=!isFinite(tgt)&&isFinite(num(d.low))&&isFinite(num(d.high)),unit=d.unit||'°';  // As build_climate.

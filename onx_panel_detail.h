@@ -521,6 +521,18 @@ inline std::string light_structure(const std::string &e, const EntityDetailState
          std::to_string(s.min_color_temperature_kelvin) + '-' + std::to_string(s.max_color_temperature_kelvin) + '|' +
          std::to_string(light_mode ? light_mode() : 0) + '|' + std::to_string(onx_playlist::browser.open);
 }
+// Brightness fill colour: the light's own colour (or white temperature) when
+// Home Assistant reports one, otherwise the theme accent.
+inline uint32_t light_fill_color(const std::string &e, const EntityDetailState &d, const esphome::onx_storage::NormalLightState &s) {
+  float hue = std::isfinite(d.light_hue) ? d.light_hue : NAN, sat = std::isfinite(d.light_saturation) ? d.light_saturation : NAN;
+  const float packed = pending_value(e, "hs");
+  if (std::isfinite(packed)) { hue = std::floor(packed / 1000); sat = packed - hue * 1000; }
+  const float k = pending_value(e, "kelvin");
+  if (std::isfinite(k)) return onx_light::kelvin(int(k));
+  if (std::isfinite(hue) && std::isfinite(sat) && sat >= 1) return onx_light::hsv(hue, std::max(sat, 35.0f));
+  if (s.color_temperature_kelvin) return onx_light::kelvin(s.color_temperature_kelvin);
+  return accent();
+}
 __attribute__((noinline)) inline void build_light(const Layout &l, const std::string &e, const EntityDetailState &d, const std::string &title) {
   const auto s = light_state ? light_state(e) : esphome::onx_storage::NormalLightState{};
   const bool on = d.available && (s.is_on ? shown_state(e, "on") : shown_state(e, "off")) == "on";
@@ -583,6 +595,7 @@ __attribute__((noinline)) inline void build_light(const Layout &l, const std::st
     if (w->fill && !dragging) {
       const int h = int(w->sh * std::clamp(lv, 0.0f, 100.0f) / 100);
       lv_obj_set_pos(w->fill, 0, w->sh - h);
+      lv_obj_set_style_bg_color(w->fill, lv_color_hex(light_fill_color(e, *dd, st)), 0);
       lv_obj_set_size(w->fill, w->sw, h);
       if (w->knob) lv_obj_set_y(w->knob, std::clamp(w->sh - h + P(12), P(8), w->sh - P(5) - P(8)));
     }
@@ -759,7 +772,7 @@ __attribute__((noinline)) inline void build_light(const Layout &l, const std::st
     return;
   }
   const int fill_h = int(sh * std::clamp(level, 0.0f, 100.0f) / 100);
-  lv_obj_t *fill = box(track, 0, sh - fill_h, sw, fill_h, accent(), 0);
+  lv_obj_t *fill = box(track, 0, sh - fill_h, sw, fill_h, light_fill_color(e, d, s), 0);
   const int kh = P(5), kw = sw * 30 / 100;
   auto knob_y = [sh, kh](int h) { return std::clamp(sh - h + P(12), P(8), sh - kh - P(8)); };
   lv_obj_t *knob = box(track, (sw - kw) / 2, knob_y(fill_h), kw, kh, ink, kh / 2);

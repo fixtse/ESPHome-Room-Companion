@@ -99,7 +99,9 @@
     "brightness": 35,
     "color": true,
     "hue": 280
-   }
+   },
+   "hue": 280,
+   "saturation": 90
   },
   {
    "entity_id": "weather.home",

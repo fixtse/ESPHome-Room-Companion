@@ -148,6 +148,7 @@ inline void build(JsonObject root, const std::string &query_entity, const Contex
         panel["supports_ct"] = light.supports_color_temperature(); panel["supports_rgb"] = light.supports_rgb();
         panel["hue"] = std::isfinite(detail->light_hue) ? detail->light_hue : light.hue_degrees();
         panel["saturation"] = std::isfinite(detail->light_saturation) ? detail->light_saturation : 100.0f;
+        panel["hs_known"] = std::isfinite(detail->light_hue) && std::isfinite(detail->light_saturation);
         panel["light_temperature"] = detail->light_temperature;
         panel["light_mode"] = c.detail_light_mode;
       }

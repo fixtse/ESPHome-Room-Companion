@@ -128,6 +128,7 @@ script:
                   return "{% set ns = namespace(points=[]) %}{% for p in response.get('statistics', response).get('"+history_entity+"', [])[::"+stride+"][:73] %}{% set y = p.get('mean') if p.get('mean') is not none else p.get('state') %}{% set t = as_timestamp(p.get('start'), none) %}{% if y is number and t is number %}{% set ns.points = ns.points + [dict(t=t | int, y=y)] %}{% endif %}{% endfor %}{{ dict(points=ns.points) }}";
                 on_success:
                   - lambda: |-
+                      onx_panel_ui::request_render();  // Async data: redraw now, not on the 1 s tick.
                       const int i=onx_sensor_view::index(entity);if(i<0)return;
                       auto &s=onx_sensor_view::states[i];s.pending=false;
                       for(JsonObjectConst p:response["response"]["points"].as<JsonArrayConst>())
@@ -138,6 +139,7 @@ script:
                       id(refresh_normal_automation_detail_page).execute();
                 on_error:
                   - lambda: |-
+                      onx_panel_ui::request_render();  // Async data: redraw now, not on the 1 s tick.
                       const int i = onx_sensor_view::index(entity);
                       if (i >= 0) {
                         auto &s = onx_sensor_view::states[i];
@@ -177,6 +179,7 @@ script:
                   return "{% set ns = namespace(days=[]) %}{% for f in response.get('" + entity + "', {}).get('forecast', [])[:5] %}{% set ns.days = ns.days + [dict(date=f.get('datetime',''), condition=f.get('condition',''), high=f.get('temperature'), low=f.get('templow'), rain=f.get('precipitation_probability'))] %}{% endfor %}{{ dict(days=ns.days) }}";
                 on_success:
                   - lambda: |-
+                      onx_panel_ui::request_render();  // Async data: redraw now, not on the 1 s tick.
                       auto *d = custom_logic_entity_sub::entity_detail(entity);
                       if (!d) return;
                       d->forecast_pending = false;
@@ -197,6 +200,7 @@ script:
                       id(refresh_normal_automation_detail_page).execute();
                 on_error:
                   - lambda: |-
+                      onx_panel_ui::request_render();  // Async data: redraw now, not on the 1 s tick.
                       auto *d = custom_logic_entity_sub::entity_detail(entity);
                       if (d) { d->forecast_pending = false; d->forecast_failed = true; }
                       ESP_LOGW("weather", "%s: forecast request failed: %s", entity.c_str(), error.c_str());
@@ -1944,6 +1948,7 @@ script:
                 capture_response: true
                 on_success:
                   - lambda: |-
+                      onx_panel_ui::request_render();  // Async data: redraw now, not on the 1 s tick.
                       if(slot<0 || slot>=(int)custom_logic::CONFIGURABLE_DEVICE_SLOT_COUNT || entity!=onx_gesture::configs[slot].entity ||
                           onx_gesture::states[slot].token!=static_cast<uint32_t>(token))return;
                       const auto result=response["response"];
@@ -1954,6 +1959,7 @@ script:
                       onx_gesture::feedback(slot,text,result["unit"] | onx_gesture::states[slot].unit,millis(),true);
                 on_error:
                   - lambda: |-
+                      onx_panel_ui::request_render();  // Async data: redraw now, not on the 1 s tick.
                       if(slot>=0 && slot<(int)custom_logic::CONFIGURABLE_DEVICE_SLOT_COUNT && entity==onx_gesture::configs[slot].entity &&
                           onx_gesture::configs[slot].popup && onx_gesture::states[slot].token==static_cast<uint32_t>(token)) {
                         onx_gesture::states[slot].notice="Action failed";
@@ -2152,6 +2158,7 @@ script:
                 capture_response: true
                 on_success:
                   - lambda: |-
+                      onx_panel_ui::request_render();  // Async data: redraw now, not on the 1 s tick.
                       if(slot<0 || slot>=(int)custom_logic::CONFIGURABLE_DEVICE_SLOT_COUNT || entity!=onx_gesture::configs[slot].entity ||
                           !onx_gesture::configs[slot].press_responses ||
                           onx_gesture::states[slot].token!=static_cast<uint32_t>(token))return;
@@ -2164,6 +2171,7 @@ script:
                       id(refresh_normal_gesture_feedback).execute();
                 on_error:
                   - lambda: |-
+                      onx_panel_ui::request_render();  // Async data: redraw now, not on the 1 s tick.
                       if(slot<0 || slot>=(int)custom_logic::CONFIGURABLE_DEVICE_SLOT_COUNT || entity!=onx_gesture::configs[slot].entity ||
                           !onx_gesture::configs[slot].press_responses ||
                           onx_gesture::states[slot].token!=static_cast<uint32_t>(token))return;
