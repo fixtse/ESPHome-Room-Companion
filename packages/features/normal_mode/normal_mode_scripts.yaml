@@ -434,6 +434,8 @@ script:
           } else onx_panel_pages::hide();
 
 
+  # Detail state for the redesigned switch/plug screen (onx_panel_detail
+  # draws it); the legacy round page and its widgets were removed.
   - id: refresh_normal_switch_detail_page
     mode: restart
     then:
@@ -445,121 +447,26 @@ script:
                id(normal_device_detail_kind) != NORMAL_DEVICE_DETAIL_KIND_PLUG)) {
             return;
           }
-
-          lv_obj_add_flag(id(normal_device_wifi_online_widget), LV_OBJ_FLAG_HIDDEN);
-          lv_obj_add_flag(id(normal_device_wifi_offline_widget), LV_OBJ_FLAG_HIDDEN);
-          lv_obj_add_flag(id(normal_device_homeassistant_online_widget), LV_OBJ_FLAG_HIDDEN);
-          lv_obj_add_flag(id(normal_device_homeassistant_offline_widget), LV_OBJ_FLAG_HIDDEN);
-
-
-          int detail_index = id(normal_device_detail_index);
-          if (detail_index < 0) {
-            detail_index = 0;
-          }
-          if (detail_index > 19) {
-            detail_index = 19;
-          }
-
+          const int detail_index = std::clamp(id(normal_device_detail_index), 0, (int) custom_logic::CONFIGURABLE_DEVICE_SLOT_COUNT - 1);
           const std::string device_entity_id = id(ui_presenter)->get_normal_device_entity_id(detail_index);
-          std::string device_title = ha_entity_title_from_registry_cache(device_entity_id);
-          if (device_title.empty()) {
-            device_title = device_entity_id;
-          }
-
-          auto local_hmi_gpio_switch_state = [&](const std::string &entity_id, bool *state) -> bool {
-            switch (local_hmi_gpio_switch_io_from_entity_id(entity_id)) {
-              case custom_logic::PANEL_LOCAL_DASHBOARD:
-              case custom_logic::PANEL_LOCAL_ASSIST:
-                *state = onx_navigation::local_state && onx_navigation::local_state(local_hmi_gpio_switch_io_from_entity_id(entity_id));
-                return true;
-              default:
-                return false;
-            }
-          };
-
           bool is_on = id(app_storage)->get_normal_ui_device_state(detail_index);
-          const bool is_local_gpio_switch = local_hmi_gpio_switch_state(device_entity_id, &is_on);
-          if (is_local_gpio_switch) {
-            id(app_storage)->set_normal_ui_device_state(detail_index, is_on);
+          bool is_local_gpio_switch = false;
+          switch (local_hmi_gpio_switch_io_from_entity_id(device_entity_id)) {
+            case custom_logic::PANEL_LOCAL_DASHBOARD:
+            case custom_logic::PANEL_LOCAL_ASSIST:
+              is_local_gpio_switch = true;
+              is_on = onx_navigation::local_state && onx_navigation::local_state(local_hmi_gpio_switch_io_from_entity_id(device_entity_id));
+              id(app_storage)->set_normal_ui_device_state(detail_index, is_on);
+              break;
+            default:
+              break;
           }
           id(normal_device_detail_is_on) = is_on;
-          std::string state_text = is_on ? "ON" : "OFF";
+          id(normal_device_detail_online) = is_local_gpio_switch ||
+              (id(normal_device_online_mask) & (1ull << detail_index)) != 0;
 
-          lv_obj_t *page = id(normal_switch_page)->obj;
-          lv_obj_t *shell = id(normal_switch_detail_shell);
-          auto set_hidden = [](lv_obj_t *obj, bool hidden) {
-            if (hidden) {
-              lv_obj_add_flag(obj, LV_OBJ_FLAG_HIDDEN);
-            } else {
-              lv_obj_clear_flag(obj, LV_OBJ_FLAG_HIDDEN);
-            }
-          };
-
-          if (is_on) {
-            onx_render::style_bg_color(page, lv_color_hex(0x54524F), 0);
-            onx_render::style_bg_color(shell, lv_color_hex(0x54524F), 0);
-            onx_render::style_border_width(shell, 0, 0);
-            onx_render::style_text_color(id(normal_switch_detail_state), lv_color_hex(0xFFFFFF), 0);
-            onx_render::style_text_color(id(normal_switch_detail_title), lv_color_hex(0xFFFFFF), 0);
-          } else {
-            onx_render::style_bg_color(page, lv_color_hex(0x272727), 0);
-            onx_render::style_bg_color(shell, lv_color_hex(0x272727), 0);
-            onx_render::style_border_width(shell, 0, 0);
-            onx_render::style_text_color(id(normal_switch_detail_state), lv_color_hex(0xFFFFFF), 0);
-            onx_render::style_text_color(id(normal_switch_detail_title), lv_color_hex(0xD2D2D2), 0);
-          }
-          if (id(normal_device_detail_kind) == NORMAL_DEVICE_DETAIL_KIND_SWITCH) {
-            set_hidden(id(normal_device_detail_plug_on), true);
-            set_hidden(id(normal_device_detail_plug_off), true);
-            set_hidden(id(normal_device_detail_light_on), true);
-            set_hidden(id(normal_device_detail_light_off), true);
-            set_hidden(id(normal_device_detail_switch_on), !is_on);
-            set_hidden(id(normal_device_detail_switch_off), is_on);
-          } else if (id(normal_device_detail_kind) == NORMAL_DEVICE_DETAIL_KIND_PLUG) {
-            set_hidden(id(normal_device_detail_plug_on), !is_on);
-            set_hidden(id(normal_device_detail_plug_off), is_on);
-            set_hidden(id(normal_device_detail_light_on), true);
-            set_hidden(id(normal_device_detail_light_off), true);
-            set_hidden(id(normal_device_detail_switch_on), true);
-            set_hidden(id(normal_device_detail_switch_off), true);
-          }
-
-          lv_label_set_text(id(normal_switch_detail_state), state_text.c_str());
-          onx_render::label(id(normal_switch_detail_title), device_title.c_str());
-          lv_obj_t *sw = id(hmi_gui_switch);
-          if (is_on) {
-            lv_obj_add_state(sw, LV_STATE_CHECKED);
-          } else {
-            lv_obj_clear_state(sw, LV_STATE_CHECKED);
-          }
-          const bool is_online = is_local_gpio_switch ||
-                                 ((detail_index >= 0 && detail_index < (int)custom_logic::CONFIGURABLE_DEVICE_SLOT_COUNT)
-                                      ? ((id(normal_device_online_mask) & (1ull << detail_index)) != 0)
-                                      : true);
-          id(normal_device_detail_online) = is_online;
-          const bool show_connection_overlay = !is_local_gpio_switch &&
-                                               (!id(normal_wifi_connected) ||
-                                               !id(normal_ha_api_connected) ||
-                                               !is_online);
-          set_hidden(id(normal_switch_detail_offline_overlay), !show_connection_overlay);
-          const char *offline_text = !id(normal_wifi_connected)
-                                         ? "WiFi disconnected"
-                                         : (!id(normal_ha_api_connected) ? "Home Assistant\ndisconnected" : custom_logic_entity_sub::entity_offline_text(device_entity_id));
-          lv_label_set_text(id(normal_switch_detail_offline_text), offline_text);
-
-      - lambda: |-
-          if (!id(normal_device_detail_active) || (id(normal_device_detail_kind) != NORMAL_DEVICE_DETAIL_KIND_SWITCH && id(normal_device_detail_kind) != NORMAL_DEVICE_DETAIL_KIND_PLUG)) return;
-          lv_obj_add_flag(id(normal_device_detail_switch_on), LV_OBJ_FLAG_HIDDEN);
-          lv_obj_add_flag(id(normal_device_detail_switch_off), LV_OBJ_FLAG_HIDDEN);
-          lv_obj_add_flag(id(normal_device_detail_plug_on), LV_OBJ_FLAG_HIDDEN);
-          lv_obj_add_flag(id(normal_device_detail_plug_off), LV_OBJ_FLAG_HIDDEN);
-          lv_obj_add_flag(id(normal_device_detail_light_on), LV_OBJ_FLAG_HIDDEN);
-          lv_obj_add_flag(id(normal_device_detail_light_off), LV_OBJ_FLAG_HIDDEN);
-          const int slot = std::clamp(id(normal_device_detail_index), 0, 19);
-          id(apply_normal_entity_icon).execute(id(normal_switch_entity_icon),
-              id(ui_presenter)->get_normal_device_entity_id(slot),
-              id(ui_presenter)->get_normal_device_type(slot), id(normal_device_detail_is_on));
-
+  # Detail state for the redesigned automation/media/sensor screens
+  # (onx_panel_detail draws them); the legacy round page was removed.
   - id: refresh_normal_automation_detail_page
     mode: restart
     then:
@@ -571,21 +478,9 @@ script:
               id(normal_device_detail_kind) != NORMAL_DEVICE_DETAIL_KIND_AUTOMATION) {
             return;
           }
-
-          // Playlist input updates only the menu; avoid redrawing artwork and
-          // the entire player underneath it on every periodic refresh.
-          if (onx_playlist::browser.open) {
-            id(refresh_normal_playlist).execute();
-            return;
-          }
-
-          lv_obj_add_flag(id(normal_device_wifi_online_widget), LV_OBJ_FLAG_HIDDEN);
-          lv_obj_add_flag(id(normal_device_wifi_offline_widget), LV_OBJ_FLAG_HIDDEN);
-          lv_obj_add_flag(id(normal_device_homeassistant_online_widget), LV_OBJ_FLAG_HIDDEN);
-          lv_obj_add_flag(id(normal_device_homeassistant_offline_widget), LV_OBJ_FLAG_HIDDEN);
-
-          int detail_index = std::clamp(id(normal_device_detail_index), 0, 19);
+          const int detail_index = std::clamp(id(normal_device_detail_index), 0, (int) custom_logic::CONFIGURABLE_DEVICE_SLOT_COUNT - 1);
           const std::string entity_id = id(ui_presenter)->get_normal_device_entity_id(detail_index);
+          id(normal_device_detail_online) = (id(normal_device_online_mask) & (1ull << detail_index)) != 0;
           auto *media_state=custom_logic_entity_sub::entity_detail(entity_id);
           if(entity_id.rfind("media_player.",0)==0 && media_state &&
               media_state->media_player_off_transition_pending && media_state->received &&
@@ -597,170 +492,11 @@ script:
             id(exit_normal_switch_detail).execute();
             return;
           }
-          std::string title = ha_entity_title_from_registry_cache(entity_id);
-          if (title.empty()) {
-            title = entity_id.empty() ? "Automation" : entity_id;
-          }
-          onx_render::label(id(normal_automation_detail_title), title.c_str());
-          const bool timer_detail = custom_logic_entity_sub::is_timer_detail(entity_id);
-          auto *timer_state = custom_logic_entity_sub::entity_detail(entity_id);
-          if (timer_detail && timer_state != nullptr && !timer_state->timer_name.empty())
-            onx_render::label(id(normal_automation_detail_title), timer_state->timer_name.c_str());
-          if (timer_detail) {
-            lv_obj_clear_flag(id(normal_timer_detail_arc), LV_OBJ_FLAG_HIDDEN);
-            lv_obj_clear_flag(id(normal_timer_detail_countdown), LV_OBJ_FLAG_HIDDEN);
-            lv_obj_clear_flag(id(normal_timer_detail_status), LV_OBJ_FLAG_HIDDEN);
-            lv_obj_add_flag(id(normal_automation_detail_icon), LV_OBJ_FLAG_HIDDEN);
-            lv_obj_add_flag(id(normal_automation_detail_action), LV_OBJ_FLAG_HIDDEN);
-            id(refresh_normal_timer_detail).execute();
-          } else {
-            lv_obj_add_flag(id(normal_timer_detail_arc), LV_OBJ_FLAG_HIDDEN);
-            lv_obj_add_flag(id(normal_timer_detail_countdown), LV_OBJ_FLAG_HIDDEN);
-            lv_obj_add_flag(id(normal_timer_detail_status), LV_OBJ_FLAG_HIDDEN);
-            lv_obj_clear_flag(id(normal_automation_detail_icon), LV_OBJ_FLAG_HIDDEN);
-            lv_obj_clear_flag(id(normal_automation_detail_action), LV_OBJ_FLAG_HIDDEN);
-          }
+          if (onx_playlist::browser.open) { id(refresh_normal_playlist).execute(); return; }
           id(refresh_normal_media_cover).execute();
-          std::string last_trigger_text = "Never";
-          const auto now = id(ha_time).now();
-          if (now.is_valid()) {
-            last_trigger_text = custom_logic_entity_sub::automation_last_triggered_relative_text(
-                detail_index, entity_id, now.timestamp);
-          }
-          if (auto *detail = custom_logic_entity_sub::entity_detail(entity_id)) {
-            if (entity_id.rfind("climate.", 0) == 0) {
-              last_trigger_text = detail->state + "\nNow: " + detail->current;
-              if (std::isfinite(custom_logic_entity_sub::detail_number(detail->target)))
-                last_trigger_text += "\nSet: " + detail->target;
-              else
-                last_trigger_text += "\nRange: " + detail->low + " - " + detail->high;
-            } else if (entity_id.rfind("media_player.", 0) == 0) {
-              const float volume = custom_logic_entity_sub::detail_number(detail->volume);
-              last_trigger_text = std::string("Volume: ") +
-                                  (std::isfinite(volume) ? std::to_string(static_cast<int>(std::clamp(volume, 0.0f, 1.0f) * 100 + 0.5f)) + "%" : "--");
-            } else if (entity_id.rfind("weather.", 0) == 0) {
-              last_trigger_text = detail->state + "\n" + detail->target + detail->unit +
-                                  "\nHumidity: " + detail->humidity + "%";
-            } else {
-              last_trigger_text = detail->state;
-              if (!detail->unit.empty()) last_trigger_text += " " + detail->unit;
-            }
-          }
-          lv_obj_set_y(id(normal_automation_detail_action), onx_geom::S((entity_id.rfind("climate.", 0) == 0 || entity_id.rfind("weather.", 0) == 0 || entity_id.rfind("media_player.", 0) == 0) ? 126 : 148));
-          if (entity_id.rfind("media_player.", 0) == 0) lv_obj_set_y(id(normal_automation_detail_action), onx_geom::S(166));
-          if (onx_controls::handles(entity_id)) {
-            last_trigger_text = onx_controls::text(entity_id);
-            lv_obj_set_y(id(normal_automation_detail_action), onx_geom::S(46));
-            lv_obj_add_flag(id(normal_automation_detail_icon), LV_OBJ_FLAG_HIDDEN);
-            if (entity_id.rfind("media_player.", 0) == 0) {
-              const auto *detail = custom_logic_entity_sub::entity_detail(entity_id);
-              const auto key = detail == nullptr ? std::string("") : onx_controls::setting(*detail);
-              if (key == "volume_level") {
-                // Preserve artwork and metadata on the primary volume screen.
-                const auto split = last_trigger_text.find('\n');
-                const auto value_end = last_trigger_text.find('\n', split + 1);
-                last_trigger_text = "Volume: " + last_trigger_text.substr(split + 1, value_end - split - 1);
-                lv_obj_set_y(id(normal_automation_detail_action), onx_geom::S(166));
-                const auto feedback = onx_controls::feedback_text(entity_id);
-                onx_render::label(id(normal_media_artist),
-                    feedback.empty() ? (onx_media::has_playback(detail->state) ? detail->media_artist.c_str() : "") : feedback.c_str());
-              } else {
-                lv_obj_add_flag(id(normal_media_cover), LV_OBJ_FLAG_HIDDEN);
-                lv_obj_add_flag(id(normal_media_title), LV_OBJ_FLAG_HIDDEN);
-                lv_obj_add_flag(id(normal_media_artist), LV_OBJ_FLAG_HIDDEN);
-              }
-            }
-          }
-          onx_render::label(id(normal_automation_detail_action), last_trigger_text.c_str());
-          id(apply_normal_entity_icon).execute(id(normal_automation_detail_icon), entity_id,
-              id(ui_presenter)->get_normal_device_type(detail_index), false);
-          if (entity_id.rfind("media_player.", 0) == 0) {
-            lv_image_set_scale(id(normal_automation_detail_icon), 256);
-            const auto *media = custom_logic_entity_sub::entity_detail(entity_id);
-            if (media != nullptr && onx_controls::setting(*media) == "volume_level" &&
-                lv_obj_has_flag(id(normal_media_cover), LV_OBJ_FLAG_HIDDEN))
-              lv_obj_clear_flag(id(normal_automation_detail_icon), LV_OBJ_FLAG_HIDDEN);
-          }
-          if (!timer_detail && entity_id.rfind("media_player.", 0) != 0) {
-            lv_obj_clear_flag(id(normal_automation_detail_icon), LV_OBJ_FLAG_HIDDEN);
-            if (onx_controls::handles(entity_id)) {
-              lv_image_set_scale(id(normal_automation_detail_icon), 128);
-              lv_obj_set_y(id(normal_automation_detail_icon), onx_geom::S(-10));
-              lv_obj_set_y(id(normal_automation_detail_action), onx_geom::S(60));
-              onx_render::style_text_font(id(normal_automation_detail_action), id(fonts_MiSans_Medium_16)->get_lv_font(), 0);
-            } else {
-              lv_image_set_scale(id(normal_automation_detail_icon), 256);
-              lv_obj_set_y(id(normal_automation_detail_icon), onx_geom::S(40));
-              onx_render::style_text_font(id(normal_automation_detail_action), id(fonts_MiSans_Medium_18)->get_lv_font(), 0);
-            }
-          }
-          lv_obj_set_height(id(normal_automation_detail_action), LV_SIZE_CONTENT);
-          lv_label_set_long_mode(id(normal_automation_detail_action), LV_LABEL_LONG_WRAP);
-          if (entity_id.rfind("media_player.", 0) == 0)
-            onx_render::style_text_font(id(normal_automation_detail_action), id(fonts_MiSans_Medium_18)->get_lv_font(), 0);
-          // The same presentation model supplies the browser's live preview.
-          for (auto *label : {id(normal_detail_badge), id(normal_detail_context), id(normal_detail_hint)})
-            lv_obj_add_flag(label, LV_OBJ_FLAG_HIDDEN);
-          lv_obj_set_x(id(normal_automation_detail_icon), 0);
-          lv_obj_set_height(id(normal_automation_detail_title), onx_geom::S(25));
-          lv_obj_set_width(id(normal_automation_detail_title), onx_geom::S(180));
-          if (!timer_detail && entity_id.rfind("media_player.", 0) != 0) {
-            auto view = onx_detail_view::build(entity_id, title);
-            onx_entity_config::customize_control_view(detail_index,entity_id,view);
-            if(view.layout=="graph" && !onx_sensor_graph::panel_owned) onx_sensor_graph::render(lv_obj_get_parent(id(normal_automation_detail_action)),entity_id,id(ha_time).now().timestamp,onx_display_settings::current.media_color,id(fonts_MiSans_Medium_12)->get_lv_font());
-            auto line = [&](lv_obj_t *label, const onx_detail_view::Line &text) {
-              onx_render::label(label, text.text.c_str());
-              lv_obj_set_x(label, onx_geom::S(text.x)); lv_obj_set_y(label, onx_geom::S(text.y)); lv_obj_set_width(label, onx_geom::S(text.width));
-              onx_render::style_text_color(label, lv_color_hex(text.color), 0);
-              auto *font = text.size == 32 ? id(fonts_MiSans_Medium_32)->get_lv_font() :
-                           text.size == 24 ? id(fonts_MiSans_Medium_24)->get_lv_font() :
-                           text.size == 14 ? id(fonts_MiSans_Medium_14)->get_lv_font() :
-                           id(fonts_MiSans_Medium_16)->get_lv_font();
-              onx_render::style_text_font(label, font, 0);
-              if (text.text.empty()) lv_obj_add_flag(label, LV_OBJ_FLAG_HIDDEN);
-              else lv_obj_clear_flag(label, LV_OBJ_FLAG_HIDDEN);
-            };
-            line(id(normal_detail_badge), view.badge);
-            line(id(normal_automation_detail_action), view.value);
-            lv_obj_set_height(id(normal_automation_detail_action), onx_geom::S(40));
-            lv_label_set_long_mode(id(normal_automation_detail_action), LV_LABEL_LONG_DOT);
-            line(id(normal_detail_context), view.context);
-            line(id(normal_detail_hint), view.hint);
-            line(id(normal_automation_detail_title), view.name);
-            lv_obj_set_height(id(normal_detail_badge), onx_geom::S(view.badge.size + 6));
-            if (view.icon.empty()) lv_obj_add_flag(id(normal_automation_detail_icon), LV_OBJ_FLAG_HIDDEN);
-            lv_obj_set_height(id(normal_automation_detail_title), onx_geom::S(40));
-            lv_label_set_long_mode(id(normal_automation_detail_title), LV_LABEL_LONG_WRAP);
-            lv_obj_set_x(id(normal_automation_detail_icon), onx_geom::S(view.icon_x));
-            lv_obj_set_y(id(normal_automation_detail_icon), onx_geom::S(onx_detail_view::image_object_y(view.icon_y, view.icon_size)));
-            lv_image_set_scale(id(normal_automation_detail_icon), view.icon_size * 256 / 80);
-          } else {
-            lv_label_set_long_mode(id(normal_automation_detail_title), LV_LABEL_LONG_DOT);
-            lv_obj_set_y(id(normal_automation_detail_title), onx_geom::S(192));
-            onx_render::style_text_font(id(normal_automation_detail_title), id(fonts_MiSans_Medium_16)->get_lv_font(), 0);
-          }
-          id(apply_normal_media_style).execute();
-          id(refresh_normal_media_progress).execute();
 
-
-          const bool is_online = (id(normal_device_online_mask) & (1ull << detail_index)) != 0;
-          id(normal_device_detail_online) = is_online;
-          const bool show_connection_overlay =
-              !id(normal_wifi_connected) || !id(normal_ha_api_connected) || !is_online;
-          if (show_connection_overlay) {
-            lv_obj_clear_flag(id(normal_automation_detail_offline_overlay), LV_OBJ_FLAG_HIDDEN);
-          } else {
-            lv_obj_add_flag(id(normal_automation_detail_offline_overlay), LV_OBJ_FLAG_HIDDEN);
-          }
-          const char *offline_text = !id(normal_wifi_connected)
-                                         ? "WiFi disconnected"
-                                         : (!id(normal_ha_api_connected)
-                                                ? "Home Assistant\ndisconnected"
-                                                : (custom_logic_entity_sub::entity_detail(entity_id) == nullptr ||
-                                                   !custom_logic_entity_sub::entity_detail(entity_id)->received
-                                                       ? "Waiting for initial data\nPress to retry" : "Entity unavailable\nPress to retry"));
-          onx_render::label(id(normal_automation_detail_offline_text), offline_text);
-
+  # Detail state for the redesigned light screen (onx_panel_detail draws
+  # it); the legacy round page and its widgets were removed.
   - id: refresh_normal_light_detail_page
     mode: restart
     then:
@@ -771,41 +507,17 @@ script:
               id(normal_device_detail_kind) != NORMAL_DEVICE_DETAIL_KIND_LIGHT) {
             return;
           }
-
-          lv_obj_add_flag(id(normal_device_wifi_online_widget), LV_OBJ_FLAG_HIDDEN);
-          lv_obj_add_flag(id(normal_device_wifi_offline_widget), LV_OBJ_FLAG_HIDDEN);
-          lv_obj_add_flag(id(normal_device_homeassistant_online_widget), LV_OBJ_FLAG_HIDDEN);
-          lv_obj_add_flag(id(normal_device_homeassistant_offline_widget), LV_OBJ_FLAG_HIDDEN);
-
-
-          int detail_index = id(normal_device_detail_index);
-          if (detail_index < 0) {
-            detail_index = 0;
-          }
-          if (detail_index > 19) {
-            detail_index = 19;
-          }
-
-          const std::string device_entity_id = id(ui_presenter)->get_normal_device_entity_id(detail_index);
-          std::string device_title = ha_entity_title_from_registry_cache(device_entity_id);
-          if (device_title.empty()) {
-            device_title = device_entity_id;
-          }
-
+          const int detail_index = std::clamp(id(normal_device_detail_index), 0, (int) custom_logic::CONFIGURABLE_DEVICE_SLOT_COUNT - 1);
           auto detail_slot = id(app_storage)->normal_device_slot(detail_index);
           auto light_state = detail_slot.light();
-          bool is_on = light_state.is_on;
-          int brightness = (int) light_state.brightness_pct;
-          if (brightness < 0) brightness = 0;
-          if (brightness > 100) brightness = 100;
+          const bool is_on = light_state.is_on;
+          int brightness = std::clamp((int) light_state.brightness_pct, 0, 100);
           const int displayed_brightness = is_on ? brightness : 0;
           int last_nonzero = (int) light_state.last_nonzero_brightness_pct;
           if (last_nonzero < 1 || last_nonzero > 100) last_nonzero = 100;
-          const bool brightness_capable = light_state.custom_supports_brightness();
-          if (id(normal_device_detail_kind) == NORMAL_DEVICE_DETAIL_KIND_LIGHT && brightness_capable) {
+          if (light_state.custom_supports_brightness()) {
             if (is_on && brightness <= 0) {
               brightness = last_nonzero;
-              if (brightness < 1 || brightness > 100) brightness = 100;
               esphome::onx_storage::NormalLightStatePatch patch{};
               patch.has_brightness_pct = true;
               patch.brightness_pct = static_cast<uint8_t>(brightness);
@@ -822,191 +534,21 @@ script:
           id(normal_device_detail_light_brightness) = displayed_brightness;
           id(normal_device_detail_light_last_nonzero_brightness) = last_nonzero;
           id(normal_device_detail_is_on) = is_on;
-          std::string state_text = is_on ? "ON" : "OFF";
-          if (id(normal_device_detail_kind) == NORMAL_DEVICE_DETAIL_KIND_LIGHT && brightness_capable) {
-            state_text = is_on ? (std::to_string(displayed_brightness) + "%") : "OFF";
-          }
-
-          lv_obj_t *page = id(normal_light_page)->obj;
-          lv_obj_t *shell = id(normal_light_detail_shell);
-          auto set_hidden = [](lv_obj_t *obj, bool hidden) {
-            if (hidden) {
-              lv_obj_add_flag(obj, LV_OBJ_FLAG_HIDDEN);
-            } else {
-              lv_obj_clear_flag(obj, LV_OBJ_FLAG_HIDDEN);
-            }
-          };
-
-          if (is_on) {
-            onx_render::style_bg_color(page, lv_color_hex(0x54524F), 0);
-            onx_render::style_bg_color(shell, lv_color_hex(0x54524F), 0);
-            onx_render::style_border_width(shell, 0, 0);
-            onx_render::style_text_color(id(normal_light_detail_state), lv_color_hex(0xFFFFFF), 0);
-            onx_render::style_text_color(id(normal_light_detail_title), lv_color_hex(0xFFFFFF), 0);
-          } else {
-            onx_render::style_bg_color(page, lv_color_hex(0x272727), 0);
-            onx_render::style_bg_color(shell, lv_color_hex(0x272727), 0);
-            onx_render::style_border_width(shell, 0, 0);
-            onx_render::style_text_color(id(normal_light_detail_state), lv_color_hex(0xFFFFFF), 0);
-            onx_render::style_text_color(id(normal_light_detail_title), lv_color_hex(0xD2D2D2), 0);
-          }
-
-          set_hidden(id(normal_light_device_detail_switch_on), true);
-          set_hidden(id(normal_light_device_detail_switch_off), true);
-          set_hidden(id(normal_light_device_detail_plug_on), true);
-          set_hidden(id(normal_light_device_detail_plug_off), true);
-          set_hidden(id(normal_light_device_detail_light_on), !is_on);
-          set_hidden(id(normal_light_device_detail_light_off), is_on);
-
-          lv_label_set_text(id(normal_light_detail_state), state_text.c_str());
-          onx_render::label(id(normal_light_detail_title), device_title.c_str());
-          const bool is_light = id(normal_device_detail_kind) == NORMAL_DEVICE_DETAIL_KIND_LIGHT;
-          auto is_mode_enabled = [&](int mode) -> bool {
-            if (mode == 0) {
-              return light_state.custom_supports_brightness();
-            }
-            if (mode == 1) {
-              return light_state.custom_supports_color_temperature();
-            }
-            if (mode == 2) {
-              return light_state.custom_supports_rgb();
-            }
-            return false;
-          };
-          const bool mode_0_enabled = is_mode_enabled(0);
-          const bool mode_1_enabled = is_mode_enabled(1);
-          const bool mode_2_enabled = is_mode_enabled(2);
+          // Adjustable modes: brightness, colour temperature, colour.
+          const bool enabled[3] = {light_state.custom_supports_brightness(),
+                                   light_state.custom_supports_color_temperature(),
+                                   light_state.custom_supports_rgb()};
           int mode_count = 0;
-          for (int i = 0; i < 3; ++i) {
-            if (is_mode_enabled(i)) {
-              mode_count++;
-            }
-          }
+          for (bool e : enabled) mode_count += e;
           id(normal_detail_light_mode_count) = mode_count;
-          const bool has_adjustable_mode = mode_count > 0;
-          const bool mode_switching = is_light && has_adjustable_mode && !id(normal_clear_wifi_allowed);
-          auto set_mode_shell_layout = [&]() {
-            if (mode_switching) {
-              lv_obj_set_pos(id(normal_light_detail_mode_text_shell), 0, onx_geom::S(165));
-              lv_obj_set_size(id(normal_light_detail_mode_text_shell), onx_geom::S(90), onx_geom::S(26));
-            } else {
-              lv_obj_set_pos(id(normal_light_detail_mode_text_shell), 0, onx_geom::S(166));
-              lv_obj_set_size(id(normal_light_detail_mode_text_shell), onx_geom::S(90), onx_geom::S(23));
-            }
-          };
-          auto set_mode_icon_visual = [&](lv_obj_t *icon, lv_obj_t *img, bool active) {
-            const int size = mode_switching ? (active ? 26 : 23) : 20;
-            const uint16_t zoom = mode_switching ? (active ? 333 : 295) : 256;
-            lv_obj_set_size(icon, onx_geom::S(size), onx_geom::S(size));
-            onx_render::style_radius(icon, onx_geom::S(size / 2), 0);
-            lv_img_set_zoom(img, zoom);
-            lv_img_set_pivot(img, 10, 10);
-            lv_img_set_antialias(img, true);
-            onx_render::style_border_width(icon, active ? 3 : 0, 0);
-            onx_render::style_border_color(icon, lv_color_hex(0xFFFFFF), 0);
-          };
-          if (!is_mode_enabled(id(normal_detail_light_mode))) {
-            for (int mode = 0; mode < 3; ++mode) {
-              if (is_mode_enabled(mode)) {
-                id(normal_detail_light_mode) = mode;
-                break;
-              }
-            }
-          }
-          set_mode_shell_layout();
-          set_hidden(id(normal_light_detail_mode_text_shell), !is_light || !has_adjustable_mode);
-          set_hidden(id(normal_light_detail_mode_icon_brightness), !is_light || !mode_0_enabled);
-          set_hidden(id(normal_light_detail_mode_icon_cct), !is_light || !mode_1_enabled);
-          set_hidden(id(normal_light_detail_mode_icon_color), !is_light || !mode_2_enabled);
-          set_mode_icon_visual(id(normal_light_detail_mode_icon_brightness), id(normal_light_detail_mode_icon_brightness_img),
-                               is_light && mode_0_enabled && id(normal_detail_light_mode) == 0);
-          set_mode_icon_visual(id(normal_light_detail_mode_icon_cct), id(normal_light_detail_mode_icon_cct_img),
-                               is_light && mode_1_enabled && id(normal_detail_light_mode) == 1);
-          set_mode_icon_visual(id(normal_light_detail_mode_icon_color), id(normal_light_detail_mode_icon_color_img),
-                               is_light && mode_2_enabled && id(normal_detail_light_mode) == 2);
-
-          const bool show_cct_bar = is_light && mode_1_enabled && id(normal_detail_light_mode) == 1;
-          const bool show_rgb_bar = is_light && mode_2_enabled && id(normal_detail_light_mode) == 2;
-          set_hidden(id(normal_light_dimming_light_detail_arc),
-                     !is_light || !mode_0_enabled || id(normal_detail_light_mode) != 0);
-          if (is_light && mode_0_enabled) {
-            lv_arc_set_value(id(normal_light_dimming_light_detail_arc), std::clamp(displayed_brightness, 0, 100));
-          }
-          lv_obj_t *sw = id(hmi_gui_switch);
-          if (is_on) {
-            lv_obj_add_state(sw, LV_STATE_CHECKED);
-          } else {
-            lv_obj_clear_state(sw, LV_STATE_CHECKED);
-          }
-          const bool is_online = (detail_index >= 0 && detail_index < (int)custom_logic::CONFIGURABLE_DEVICE_SLOT_COUNT)
-                                     ? ((id(normal_device_online_mask) & (1ull << detail_index)) != 0)
-                                     : true;
-          id(normal_device_detail_online) = is_online;
-          const bool show_connection_overlay = !id(normal_wifi_connected) ||
-                                               !id(normal_ha_api_connected) ||
-                                               !is_online;
-          set_hidden(id(normal_light_detail_offline_overlay), !show_connection_overlay);
-          const char *offline_text = !id(normal_wifi_connected)
-                                         ? "WiFi disconnected"
-                                         : (!id(normal_ha_api_connected) ? "Home Assistant\ndisconnected" : custom_logic_entity_sub::entity_offline_text(device_entity_id));
-          lv_label_set_text(id(normal_light_detail_offline_text), offline_text);
-
-          set_hidden(id(normal_light_cct_gradient), !show_cct_bar);
-          set_hidden(id(normal_light_rgb_gradient), !show_rgb_bar);
-          set_hidden(id(normal_light_cct_value_arc), !show_cct_bar);
-          set_hidden(id(normal_light_rgb_value_arc), !show_rgb_bar);
-          lv_obj_set_style_img_opa(id(normal_light_cct_gradient), is_on ? LV_OPA_COVER : LV_OPA_40, 0);
-          lv_obj_set_style_img_opa(id(normal_light_rgb_gradient), is_on ? LV_OPA_COVER : LV_OPA_40, 0);
-          if (show_cct_bar) {
-            int value_pct = std::clamp<int>(detail_slot.light().color_temperature_step(), 0, 100);
-            id(normal_light_cct_value_pct) = value_pct;
-            lv_arc_set_value(id(normal_light_cct_value_arc), value_pct);
-          }
-          if (show_rgb_bar) {
-            int value_pct = (int) detail_slot.light().rgb_tick;
-            value_pct = std::clamp(value_pct, 0, esphome::onx_storage::RGB_TICKS - 1);
-            id(normal_light_rgb_value_pct) = value_pct;
-            lv_arc_set_value(id(normal_light_rgb_value_arc), value_pct);
-          }
-
-          const auto view=onx_detail_view::light_view(device_entity_id,device_title,detail_slot.light(),id(normal_detail_light_mode));
-          onx_render::style_bg_color(page,lv_color_hex(0x000000),0);
-          onx_render::style_bg_color(shell,lv_color_hex(0x000000),0);
-          onx_render::label(id(normal_light_control_label),view.badge.text.c_str());
-          set_hidden(id(normal_light_control_label),!is_on);
-          onx_render::label(id(normal_light_detail_state),view.value.text.c_str());
-          lv_obj_set_y(id(normal_light_detail_state),onx_geom::S(view.value.y));
-          lv_obj_set_width(id(normal_light_detail_state),onx_geom::S(view.value.width));
-          onx_render::style_text_align(id(normal_light_detail_state),LV_TEXT_ALIGN_CENTER,0);
-          onx_render::style_text_font(id(normal_light_detail_state),view.value.size==24?id(fonts_MiSans_Medium_24)->get_lv_font():id(fonts_MiSans_Medium_32)->get_lv_font(),0);
-          lv_obj_set_y(id(normal_light_detail_title),onx_geom::S(view.name.y));
-          lv_obj_set_width(id(normal_light_detail_title),onx_geom::S(view.name.width));
-          onx_render::style_text_font(id(normal_light_detail_title),id(fonts_MiSans_Medium_14)->get_lv_font(),0);
-          set_hidden(id(normal_light_dimming_light_detail_arc),!is_on || view.value_ring<0);
-          if(view.value_ring>=0)lv_arc_set_value(id(normal_light_dimming_light_detail_arc),view.value_ring/10);
-          onx_render::style_arc_color(id(normal_light_dimming_light_detail_arc),lv_color_hex(view.accent),LV_PART_INDICATOR);
-          set_hidden(id(normal_light_cct_gradient),!is_on || !show_cct_bar);
-          set_hidden(id(normal_light_rgb_gradient),!is_on || !show_rgb_bar);
-          set_hidden(id(normal_light_cct_value_arc),!is_on || !show_cct_bar);
-          set_hidden(id(normal_light_rgb_value_arc),!is_on || !show_rgb_bar);
-          lv_image_set_scale(id(normal_light_rgb_gradient),274);
-          lv_image_set_scale(id(normal_light_cct_gradient),274);
-          set_hidden(id(normal_light_detail_mode_text_shell),!is_on || !has_adjustable_mode);
-
-      - lambda: |-
-          if (!id(normal_device_detail_active) || (id(normal_device_detail_kind) != NORMAL_DEVICE_DETAIL_KIND_LIGHT)) return;
-          lv_obj_add_flag(id(normal_light_device_detail_switch_on), LV_OBJ_FLAG_HIDDEN);
-          lv_obj_add_flag(id(normal_light_device_detail_switch_off), LV_OBJ_FLAG_HIDDEN);
-          lv_obj_add_flag(id(normal_light_device_detail_plug_on), LV_OBJ_FLAG_HIDDEN);
-          lv_obj_add_flag(id(normal_light_device_detail_plug_off), LV_OBJ_FLAG_HIDDEN);
-          lv_obj_add_flag(id(normal_light_device_detail_light_on), LV_OBJ_FLAG_HIDDEN);
-          lv_obj_add_flag(id(normal_light_device_detail_light_off), LV_OBJ_FLAG_HIDDEN);
-          const int slot = std::clamp(id(normal_device_detail_index), 0, 19);
-          id(apply_normal_entity_icon).execute(id(normal_light_entity_icon),
-              id(ui_presenter)->get_normal_device_entity_id(slot),
-              id(ui_presenter)->get_normal_device_type(slot), id(normal_device_detail_is_on));
-          if(id(normal_device_detail_is_on))lv_obj_add_flag(id(normal_light_entity_icon),LV_OBJ_FLAG_HIDDEN);
-          else lv_obj_clear_flag(id(normal_light_entity_icon),LV_OBJ_FLAG_HIDDEN);
+          const int mode = id(normal_detail_light_mode);
+          if (mode < 0 || mode > 2 || !enabled[mode])
+            for (int m = 0; m < 3; ++m) if (enabled[m]) { id(normal_detail_light_mode) = m; break; }
+          if (enabled[1] && id(normal_detail_light_mode) == 1)
+            id(normal_light_cct_value_pct) = std::clamp<int>(light_state.color_temperature_step(), 0, 100);
+          if (enabled[2] && id(normal_detail_light_mode) == 2)
+            id(normal_light_rgb_value_pct) = std::clamp((int) light_state.rgb_tick, 0, esphome::onx_storage::RGB_TICKS - 1);
+          id(normal_device_detail_online) = (id(normal_device_online_mask) & (1ull << detail_index)) != 0;
 
   - id: update_normal_detail_exit_ready_flags
     mode: restart
@@ -1079,6 +621,8 @@ script:
               break;
           }
 
+  # Detail state for the redesigned cover screen (onx_panel_detail draws
+  # it); the legacy round page and its widgets were removed.
   - id: refresh_normal_curtain_detail_page
     mode: restart
     then:
@@ -1089,126 +633,13 @@ script:
               id(normal_device_detail_kind) != NORMAL_DEVICE_DETAIL_KIND_CURTAIN) {
             return;
           }
-
-          lv_obj_add_flag(id(normal_device_wifi_online_widget), LV_OBJ_FLAG_HIDDEN);
-          lv_obj_add_flag(id(normal_device_wifi_offline_widget), LV_OBJ_FLAG_HIDDEN);
-          lv_obj_add_flag(id(normal_device_homeassistant_online_widget), LV_OBJ_FLAG_HIDDEN);
-          lv_obj_add_flag(id(normal_device_homeassistant_offline_widget), LV_OBJ_FLAG_HIDDEN);
-
-
-          int detail_index = id(normal_device_detail_index);
-          if (detail_index < 0) {
-            detail_index = 0;
-          }
-          if (detail_index > 19) {
-            detail_index = 19;
-          }
-
-          const std::string device_entity_id = id(ui_presenter)->get_normal_device_entity_id(detail_index);
-          std::string device_title = ha_entity_title_from_registry_cache(device_entity_id);
-          if (device_title.empty()) {
-            device_title = device_entity_id;
-          }
-
+          const int detail_index = std::clamp(id(normal_device_detail_index), 0, (int) custom_logic::CONFIGURABLE_DEVICE_SLOT_COUNT - 1);
           if (!id(normal_device_detail_curtain_adjust_active)) {
             const int storage_position = std::clamp((int) id(app_storage)->get_normal_ui_device_position(detail_index), 0, 100);
             id(normal_device_detail_curtain_feedback_position) = storage_position;
             id(normal_device_detail_curtain_target_position) = storage_position;
           }
-
-          int display_position = id(normal_device_detail_curtain_feedback_position);
-          display_position = std::clamp(display_position, 0, 100);
-
-          auto set_hidden = [](lv_obj_t *obj, bool hidden) {
-            if (hidden) {
-              lv_obj_add_flag(obj, LV_OBJ_FLAG_HIDDEN);
-            } else {
-              lv_obj_clear_flag(obj, LV_OBJ_FLAG_HIDDEN);
-            }
-          };
-
-          lv_obj_t *page = id(normal_curtain_page)->obj;
-          lv_obj_t *shell = id(normal_curtain_detail_shell);
-          lv_obj_t *arc = id(normal_curtain_detail_arc);
-          lv_obj_t *target_arc = id(normal_curtain_detail_target_arc);
-          onx_render::style_bg_color(page, lv_color_hex(0x000000), 0);
-          onx_render::style_bg_color(shell, lv_color_hex(0x232323), 0);
-          onx_render::style_border_width(shell, 0, 0);
-          lv_arc_set_value(arc, display_position);
-          const int target_position = std::clamp(id(normal_device_detail_curtain_target_position), 0, 100);
-          lv_arc_set_value(target_arc, target_position);
-          set_hidden(id(normal_curtain_detail_target_arc), !id(normal_device_detail_curtain_adjust_active));
-
-          set_hidden(id(normal_curtain_detail_0_img), true);
-          set_hidden(id(normal_curtain_detail_100_img), true);
-          set_hidden(id(normal_curtain_detail_x_img), true);
-          if (display_position <= 0) {
-            set_hidden(id(normal_curtain_detail_0_img), false);
-          } else if (display_position >= 100) {
-            set_hidden(id(normal_curtain_detail_100_img), false);
-          } else {
-            set_hidden(id(normal_curtain_detail_x_img), false);
-          }
-
-          set_hidden(id(normal_curtain_detail_opening_on), true);
-          set_hidden(id(normal_curtain_detail_opening_off), false);
-          set_hidden(id(normal_curtain_detail_pause_on), true);
-          set_hidden(id(normal_curtain_detail_pause_off), false);
-          set_hidden(id(normal_curtain_detail_closing_on), true);
-          set_hidden(id(normal_curtain_detail_closing_off), false);
-
-          std::string state_text = std::to_string(display_position) + "%";
-          const uint32_t curtain_state_code = id(app_storage)->get_normal_ui_device_extra_u32(detail_index, 2);
-          if (curtain_state_code == 3) {
-            state_text = "Opening";
-            set_hidden(id(normal_curtain_detail_opening_on), false);
-            set_hidden(id(normal_curtain_detail_opening_off), true);
-            set_hidden(id(normal_curtain_detail_pause_on), true);
-            set_hidden(id(normal_curtain_detail_pause_off), false);
-          } else if (curtain_state_code == 4) {
-            state_text = "Closing";
-            set_hidden(id(normal_curtain_detail_closing_on), false);
-            set_hidden(id(normal_curtain_detail_closing_off), true);
-            set_hidden(id(normal_curtain_detail_pause_on), true);
-            set_hidden(id(normal_curtain_detail_pause_off), false);
-          } else {
-            set_hidden(id(normal_curtain_detail_pause_on), false);
-            set_hidden(id(normal_curtain_detail_pause_off), true);
-          }
-          if (display_position >= 100) {
-            state_text = "Open";
-          } else if (display_position <= 0) {
-            state_text = "Closed";
-          }
-          if (id(normal_device_detail_curtain_adjust_active) || 
-          (curtain_state_code == 3 || curtain_state_code == 4)) {
-            state_text += " -> " + std::to_string(target_position) + "%";
-          }
-
-          lv_label_set_text(id(normal_curtain_detail_state), state_text.c_str());
-          onx_render::label(id(normal_curtain_detail_title), device_title.c_str());
-          const bool is_online = (detail_index >= 0 && detail_index < (int)custom_logic::CONFIGURABLE_DEVICE_SLOT_COUNT)
-                                     ? ((id(normal_device_online_mask) & (1ull << detail_index)) != 0)
-                                     : true;
-          id(normal_device_detail_online) = is_online;
-          const bool show_connection_overlay = !id(normal_wifi_connected) ||
-                                               !id(normal_ha_api_connected) ||
-                                               !is_online;
-          set_hidden(id(normal_curtain_detail_offline_overlay), !show_connection_overlay);
-          const char *offline_text = !id(normal_wifi_connected)
-                                         ? "WiFi disconnected"
-                                         : (!id(normal_ha_api_connected) ? "Home Assistant\ndisconnected" : custom_logic_entity_sub::entity_offline_text(device_entity_id));
-          lv_label_set_text(id(normal_curtain_detail_offline_text), offline_text);
-
-      - lambda: |-
-          if (!id(normal_device_detail_active) || (id(normal_device_detail_kind) != NORMAL_DEVICE_DETAIL_KIND_CURTAIN)) return;
-          lv_obj_add_flag(id(normal_curtain_detail_0_img), LV_OBJ_FLAG_HIDDEN);
-          lv_obj_add_flag(id(normal_curtain_detail_100_img), LV_OBJ_FLAG_HIDDEN);
-          lv_obj_add_flag(id(normal_curtain_detail_x_img), LV_OBJ_FLAG_HIDDEN);
-          const int slot = std::clamp(id(normal_device_detail_index), 0, 19);
-          id(apply_normal_entity_icon).execute(id(normal_curtain_entity_icon),
-              id(ui_presenter)->get_normal_device_entity_id(slot),
-              id(ui_presenter)->get_normal_device_type(slot), id(normal_device_detail_is_on));
+          id(normal_device_detail_online) = (id(normal_device_online_mask) & (1ull << detail_index)) != 0;
 
   - id: refresh_normal_settings_detail_page
     mode: restart
@@ -1630,8 +1061,6 @@ script:
             - lambda: |-
                 const int index = std::clamp(detail_index, 0, 19);
                 id(normal_automation_press_feedback_active) = true;
-                lv_img_set_src(id(normal_automation_detail_icon),
-                               id(normal_device_automation_detail_press_img));
                 ESP_LOGI("normal_mode",
                          "automation trigger requested: index=%d entity_id=%s",
                          index,
@@ -1649,12 +1078,6 @@ script:
             - lambda: |-
                 const int index = std::clamp(detail_index, 0, 19);
                 id(normal_automation_press_feedback_active) = false;
-                if (id(normal_device_detail_active) &&
-                    id(normal_device_detail_kind) == NORMAL_DEVICE_DETAIL_KIND_AUTOMATION &&
-                    id(normal_device_detail_index) == index) {
-                  lv_img_set_src(id(normal_automation_detail_icon),
-                                 id(normal_device_automation_detail_img));
-                }
 
   - id: emit_normal_switch_or_light_control_event
     mode: restart
@@ -2064,7 +1487,7 @@ script:
             id(normal_device_detail_curtain_feedback_position) = feedback_position;
             id(normal_device_detail_curtain_target_position) = feedback_position;
             id(normal_device_detail_curtain_adjust_active) = false;
-            lv_scr_load(id(normal_curtain_page)->obj);
+            lv_scr_load(id(normal_detail_page)->obj);
             id(refresh_normal_curtain_detail_page).execute();
             return;
           }
@@ -2083,7 +1506,7 @@ script:
             id(normal_light_rgb_value_pct) = std::clamp(rgb_value_pct, 0, esphome::onx_storage::RGB_TICKS - 1);
             id(normal_clear_wifi_allowed) = true;
             ESP_LOGI("normal_mode", "light detail opened for index=%d", detail_index);
-            lv_scr_load(id(normal_light_page)->obj);
+            lv_scr_load(id(normal_detail_page)->obj);
             id(refresh_normal_light_detail_page).execute();
             return;
           }
@@ -2098,15 +1521,12 @@ script:
             }
             id(normal_automation_press_feedback_active) = false;
             ESP_LOGI("normal_mode", "automation detail opened for index=%d", detail_index);
-            // The redesigned detail (onx_panel_detail) replaces this page; the
-            // legacy round shell is never shown.
-            lv_obj_add_flag(id(normal_automation_detail_shell), LV_OBJ_FLAG_HIDDEN);
-            lv_scr_load(id(normal_automation_page)->obj);
+            lv_scr_load(id(normal_detail_page)->obj);
             id(refresh_normal_automation_detail_page).execute();
             return;
           }
           ESP_LOGI("normal_mode", "switch detail opened for index=%d", detail_index);
-          lv_scr_load(id(normal_switch_page)->obj);
+          lv_scr_load(id(normal_detail_page)->obj);
           id(refresh_normal_switch_detail_page).execute();
 
   - id: enter_normal_light_detail_mode_switching
@@ -2337,12 +1757,6 @@ script:
           }
           id(normal_device_detail_is_on) = new_state;
           id(hmi_switch_state) = new_state;
-          lv_obj_t *sw = id(hmi_gui_switch);
-          if (new_state) {
-            lv_obj_add_state(sw, LV_STATE_CHECKED);
-          } else {
-            lv_obj_clear_state(sw, LV_STATE_CHECKED);
-          }
           ESP_LOGI("normal_mode", "detail toggled: %s", new_state ? "ON" : "OFF");
       - script.execute: refresh_normal_switch_detail_page
 
@@ -2833,61 +2247,6 @@ script:
           id(normal_device_selected_index)=candidate;
           id(enter_normal_switch_detail).execute();
 
-  - id: refresh_normal_timer_detail
-    mode: restart
-    then:
-      - lambda: |-
-          if (id(screen_off_state) || !id(normal_device_detail_active) ||
-              id(normal_device_detail_kind) != NORMAL_DEVICE_DETAIL_KIND_AUTOMATION ||
-              !id(ui_presenter)->is_normal_mode_active() || id(ui_presenter)->is_standby_active()) return;
-          const auto entity = id(ui_presenter)->get_normal_device_entity_id(id(normal_device_detail_index));
-          auto *detail = custom_logic_entity_sub::entity_detail(entity);
-          if (!custom_logic_entity_sub::is_timer_detail(entity) || detail == nullptr) return;
-          onx_timer::View view;
-          if (detail->voice_timer) {
-            const uint32_t age = millis() - detail->timer_received_ms;
-            const bool fresh = detail->state != "active" || age < 5000;
-            if (fresh) view = onx_timer::view(detail->state, detail->voice_duration,
-                detail->voice_remaining, detail->voice_remaining + 1,
-                1.0 + age / 1000.0);
-          } else {
-            const auto now = id(ha_time).now();
-            time_t finish = 0;
-            const bool has_finish = custom_logic_entity_sub::parse_ha_datetime_epoch(detail->timer_finishes_at, &finish) ||
-                (detail->state == "idle" && custom_logic_entity_sub::parse_ha_datetime_epoch(detail->timer_last_finish, &finish));
-            // Interpolate between HA clock seconds for a smoothly shrinking ring.
-            static time_t last_epoch = 0;
-            static uint32_t clock_tick_ms = 0;
-            if (now.timestamp != last_epoch) {
-              last_epoch = now.timestamp;
-              clock_tick_ms = millis();
-            }
-            const double clock = now.is_valid() ? now.timestamp + (millis() - clock_tick_ms) / 1000.0 : 0;
-            view = onx_timer::view(detail->state, onx_timer::duration_seconds(detail->timer_duration),
-                onx_timer::duration_seconds(detail->timer_remaining), onx_timer::deadline_epoch(has_finish, finish), clock);
-          }
-          if (!id(normal_ha_api_connected) || !id(normal_device_detail_online)) view.ready = false;
-          const std::string text = view.ready ? onx_timer::countdown(view.seconds_left) : "--:--";
-          lv_label_set_text(id(normal_timer_detail_countdown), text.c_str());
-          const char *status = !view.ready ? "Syncing" : detail->state == "paused" ? "Paused" :
-                               detail->state == "ringing" ? "Time is up" : detail->state == "idle" ? "Idle" :
-                               view.seconds_left <= 0 ? "Time is up" : "Running";
-          lv_label_set_text(id(normal_timer_detail_status), status);
-          lv_arc_set_value(id(normal_timer_detail_arc), view.ready ? static_cast<int>(view.fraction * 1000) : 0);
-          time_t completed_at=0;
-          const auto current_time=id(ha_time).now();
-          const bool just_completed=detail->state=="idle" && current_time.is_valid() &&
-              custom_logic_entity_sub::parse_ha_datetime_epoch(detail->timer_last_finish, &completed_at) &&
-              current_time.timestamp>=completed_at && current_time.timestamp-completed_at<10;
-          const bool finished = view.ready && (just_completed || detail->state == "ringing" || (detail->state == "active" && view.seconds_left <= 0));
-          if (finished) lv_label_set_text(id(normal_timer_detail_status), "Time is up");
-          const auto color = onx_display_settings::current.media_color;
-          if (finished) lv_arc_set_value(id(normal_timer_detail_arc), 1000);
-          onx_render::style_arc_opa(id(normal_timer_detail_arc), finished && (millis()/350)%2 ? 60 : LV_OPA_COVER, LV_PART_INDICATOR);
-          onx_render::style_arc_color(id(normal_timer_detail_arc), lv_color_hex(color), LV_PART_INDICATOR);
-          onx_render::style_text_opa(id(normal_timer_detail_countdown),
-              finished ? static_cast<lv_opa_t>(160 + 95 * (0.5 + 0.5 * sin(millis() / 250.0))) : LV_OPA_COVER, 0);
-
   - id: emit_configured_press_action
     parameters:
       detail_index: int
@@ -3007,163 +2366,6 @@ script:
           }
           id(entity_icon_downloader)->bind(widget, onx_icon_state::selected_icon(entity), fallback, active);
 
-  - id: refresh_normal_media_overlay
-    then:
-      - lambda: |-
-          const auto entity = id(ui_presenter)->get_normal_device_entity_id(id(normal_device_detail_index));
-          const auto *detail = custom_logic_entity_sub::entity_detail(entity);
-          const bool active = id(normal_device_detail_active) &&
-              id(normal_device_detail_kind) == NORMAL_DEVICE_DETAIL_KIND_AUTOMATION &&
-              entity.rfind("media_player.", 0) == 0 && detail != nullptr && detail->available &&
-              (onx_media::has_playback(detail->state) || onx_media::transport.remaining_ms(entity, millis()) > 0) &&
-              id(normal_ha_api_connected) &&
-              id(normal_device_detail_online) && !id(screen_off_state) &&
-              id(ui_presenter)->is_normal_mode_active() && !id(ui_presenter)->is_standby_active() &&
-              !onx_playlist::browser.open &&
-              lv_obj_has_flag(id(normal_playlist_overlay), LV_OBJ_FLAG_HIDDEN) &&
-              !lv_obj_has_flag(id(normal_media_title), LV_OBJ_FLAG_HIDDEN);
-          onx_media::transport.observe(entity, active);
-          const auto overlay = active ? onx_media::transport.view(entity, detail->state, millis()) : onx_media::Overlay::NONE;
-          if (overlay == onx_media::Overlay::NONE) {
-            lv_obj_add_flag(id(normal_media_transport_overlay), LV_OBJ_FLAG_HIDDEN); return;
-          }
-          auto *icon = overlay == onx_media::Overlay::PAUSE ? id(media_overlay_pause_img) :
-                       overlay == onx_media::Overlay::PREVIOUS ? id(media_overlay_previous_img) : id(media_overlay_next_img);
-          onx_render::image(id(normal_media_transport_icon), icon->get_lv_image_dsc());
-          if (lv_obj_has_flag(id(normal_media_transport_overlay), LV_OBJ_FLAG_HIDDEN)) {
-            lv_obj_clear_flag(id(normal_media_transport_overlay), LV_OBJ_FLAG_HIDDEN);
-            lv_obj_move_foreground(id(normal_media_transport_overlay));
-          }
-
-  - id: refresh_normal_media_progress
-    then:
-      - lambda: |-
-          const auto entity = id(ui_presenter)->get_normal_device_entity_id(id(normal_device_detail_index));
-          #ifdef USE_ROOM_COMPANION
-          onx_render::style_opa(id(normal_media_progress_arc),entity.rfind("media_player.",0)==0?LV_OPA_TRANSP:LV_OPA_COVER,0);
-          #endif
-          auto *detail = custom_logic_entity_sub::entity_detail(entity);
-          const bool visible = id(normal_device_detail_active) && !id(screen_off_state) &&
-                               !onx_playlist::browser.open &&
-                               id(ui_presenter)->is_normal_mode_active() && !id(ui_presenter)->is_standby_active() &&
-                               id(normal_device_detail_kind) == NORMAL_DEVICE_DETAIL_KIND_AUTOMATION && detail != nullptr;
-          if (!visible) { lv_obj_add_flag(id(normal_media_progress_arc), LV_OBJ_FLAG_HIDDEN); return; }
-          if(entity.rfind("media_player.",0)!=0) {
-            auto numeric=onx_detail_view::build(entity,"");
-            onx_entity_config::customize_control_view(id(normal_device_detail_index),entity,numeric);
-            if(numeric.value_ring<0 || !id(normal_ha_api_connected) || !detail->available || !id(normal_device_detail_online)) {
-              lv_obj_add_flag(id(normal_media_progress_arc),LV_OBJ_FLAG_HIDDEN);return;
-            }
-            lv_arc_set_value(id(normal_media_progress_arc),numeric.value_ring);
-            onx_render::style_arc_color(id(normal_media_progress_arc),lv_color_hex(onx_display_settings::current.media_color),LV_PART_INDICATOR);
-            onx_render::style_arc_opa(id(normal_media_progress_arc),LV_OPA_COVER,LV_PART_INDICATOR);
-            lv_obj_clear_flag(id(normal_media_progress_arc),LV_OBJ_FLAG_HIDDEN);
-            return;
-          }
-          const auto now = id(ha_time).now();
-          // ESPHome wall time is whole seconds; retain the fractional part with millis()
-          // so a 100ms refresh never turns into a one-second stepping animation.
-          static time_t clock_second = 0;
-          static uint32_t clock_changed_ms = 0;
-          if (clock_second != now.timestamp) { clock_second = now.timestamp; clock_changed_ms = millis(); }
-          const double epoch = now.is_valid() ? static_cast<double>(now.timestamp) +
-                               (millis() - clock_changed_ms) / 1000.0 : NAN;
-          const auto view = detail->progress.view(millis(), epoch,
-              id(normal_ha_api_connected) && id(normal_device_detail_online) && detail->available);
-          if (!view.visible) { lv_obj_add_flag(id(normal_media_progress_arc), LV_OBJ_FLAG_HIDDEN); return; }
-          lv_obj_clear_flag(id(normal_media_progress_arc), LV_OBJ_FLAG_HIDDEN);
-          lv_arc_set_value(id(normal_media_progress_arc), view.permille);
-          onx_render::style_arc_color(id(normal_media_progress_arc),
-              lv_color_hex(onx_display_settings::current.media_color), LV_PART_INDICATOR);
-          onx_render::style_arc_opa(id(normal_media_progress_arc), detail->state == "paused" ? 153 : LV_OPA_COVER, LV_PART_INDICATOR);
-
-  - id: apply_normal_media_style
-    then:
-      - lambda: |-
-          const auto entity=id(ui_presenter)->get_normal_device_entity_id(id(normal_device_detail_index));
-          auto *detail=custom_logic_entity_sub::entity_detail(entity);
-          const bool media=id(normal_device_detail_active) &&
-              id(normal_device_detail_kind)==NORMAL_DEVICE_DETAIL_KIND_AUTOMATION &&
-              entity.rfind("media_player.",0)==0 && detail!=nullptr;
-          const bool material=media && onx_display_settings::media_style.material;
-          #ifdef USE_ROOM_COMPANION
-          if(media) {
-            for(auto *label:{id(normal_detail_badge),id(normal_detail_context),id(normal_detail_hint)})
-              lv_obj_add_flag(label,LV_OBJ_FLAG_HIDDEN);
-            lv_obj_set_height(id(normal_automation_detail_action),onx_geom::S(22));
-            lv_obj_set_height(id(normal_automation_detail_title),onx_geom::S(22));
-            lv_label_set_long_mode(id(normal_automation_detail_title),LV_LABEL_LONG_DOT);
-            // The redesigned media detail (onx_panel_detail) replaces this page.
-            lv_obj_add_flag(id(normal_automation_detail_shell),LV_OBJ_FLAG_HIDDEN);
-            return;
-          }
-          #endif
-          // Reset styling on shared labels before another entity uses this page.
-          for(auto *label:{id(normal_media_title),id(normal_media_artist),
-              id(normal_automation_detail_action),id(normal_automation_detail_title)}) {
-            onx_render::style_bg_opa(label,LV_OPA_TRANSP,0);
-            lv_obj_set_style_pad_left(label,0,0);
-            lv_obj_set_style_pad_right(label,0,0);
-            lv_obj_set_style_pad_top(label,0,0);
-            lv_obj_set_style_pad_bottom(label,0,0);
-          }
-          if(!media)return;
-          auto *cover=id(normal_media_cover);
-          const int source_width=id(media_cover_image)->get_width();
-          const int source_height=id(media_cover_image)->get_height();
-          // Cover the full circle, using the shorter dimension to avoid gutters.
-          // Classic still fits the entire image into its original 100px area.
-          const int dimension=material?std::min(source_width,source_height):std::max(source_width,source_height);
-          const int scale=dimension>0?(material?(onx_geom::S(240)*256+dimension-1)/dimension:onx_geom::S(100)*256/dimension):256;
-          lv_image_set_pivot(cover,0,0);
-          lv_image_set_scale(cover,scale);
-          const int width=source_width*scale/256,height=source_height*scale/256;
-          onx_render::align(cover,LV_ALIGN_TOP_LEFT,(onx_geom::S(240)-width)/2,material?(onx_geom::S(240)-height)/2:onx_geom::S(18));
-          lv_obj_set_style_clip_corner(id(normal_automation_detail_shell),true,0);
-          lv_obj_set_x(id(normal_automation_detail_icon),0);
-          lv_obj_set_y(id(normal_automation_detail_icon),onx_geom::S(material?30:18));
-          if(material)lv_image_set_scale(id(normal_automation_detail_icon),256);
-          lv_obj_set_y(id(normal_media_title),onx_geom::S(material?136:122));
-          lv_obj_set_width(id(normal_media_title),onx_geom::S(196));
-          lv_obj_set_height(id(normal_media_title),onx_geom::S(21));
-          lv_obj_set_y(id(normal_media_artist),onx_geom::S(material?160:144));
-          lv_obj_set_width(id(normal_media_artist),onx_geom::S(196));
-          lv_obj_set_height(id(normal_media_artist),onx_geom::S(20));
-          lv_obj_set_y(id(normal_automation_detail_action),onx_geom::S(material?184:166));
-          lv_obj_set_y(id(normal_automation_detail_title),onx_geom::S(material?206:192));
-          lv_obj_set_width(id(normal_automation_detail_action),onx_geom::S(196));
-          lv_obj_set_width(id(normal_automation_detail_title),onx_geom::S(180));
-          onx_render::style_text_font(id(normal_automation_detail_action),
-              material?id(fonts_MiSans_Medium_14)->get_lv_font():id(fonts_MiSans_Medium_18)->get_lv_font(),0);
-          onx_render::style_text_font(id(normal_automation_detail_title),
-              material?id(fonts_MiSans_Medium_14)->get_lv_font():id(fonts_MiSans_Medium_16)->get_lv_font(),0);
-          // The pause/next/previous icon is centered in the artwork area above the
-          // track details (classic: over the cover; full-screen art: above the title).
-          lv_obj_set_x(id(normal_media_transport_overlay),0);
-          lv_obj_set_y(id(normal_media_transport_overlay),onx_geom::S(material?56:44));
-          if(material) {
-            auto backing=[&](lv_obj_t *label,int maximum) {
-              const auto *font=lv_obj_get_style_text_font(label,LV_PART_MAIN);
-              lv_point_t size;
-              lv_text_get_size(&size,lv_label_get_text(label),font,0,0,LV_COORD_MAX,LV_TEXT_FLAG_NONE);
-              lv_obj_set_width(label,std::min(maximum,static_cast<int>(size.x)+12));
-              lv_obj_set_height(label,font->line_height+4);
-              lv_obj_set_style_pad_left(label,onx_geom::S(6),0);
-              lv_obj_set_style_pad_right(label,onx_geom::S(6),0);
-              lv_obj_set_style_pad_top(label,onx_geom::S(2),0);
-              lv_obj_set_style_pad_bottom(label,onx_geom::S(2),0);
-              onx_render::style_radius(label,onx_geom::S(7),0);
-              onx_render::style_bg_color(label,lv_color_hex(0x14171D),0);
-              onx_render::style_bg_opa(label,lv_label_get_text(label)[0]?178:LV_OPA_TRANSP,0);
-              lv_label_set_long_mode(label,LV_LABEL_LONG_DOT);
-            };
-            backing(id(normal_media_title),200);
-            backing(id(normal_media_artist),188);
-            backing(id(normal_automation_detail_action),160);
-            backing(id(normal_automation_detail_title),112);
-            lv_obj_move_to_index(cover,0);
-          }
-
   - id: refresh_normal_media_cover
     then:
       - lambda: |-
@@ -3180,17 +2382,6 @@ script:
           std::string origin = custom_logic::build_ha_http_state_url(id(ha_host).state, "media_player.cover");
           const auto path = origin.find("/api/states/");
           if (path != std::string::npos) origin.resize(path);
-          lv_obj_set_y(id(normal_automation_detail_icon), onx_geom::S(media ? 18 : 40));
-          if (media) {
-            onx_render::label(id(normal_media_title), onx_media::display_text(onx_media::has_playback(detail->state) ? (detail->media_title.empty() ? detail->state : detail->media_title) : "Nothing playing").c_str());
-            onx_render::label(id(normal_media_artist), onx_media::display_text(onx_media::has_playback(detail->state) ? detail->media_artist : "").c_str());
-            lv_obj_clear_flag(id(normal_media_title), LV_OBJ_FLAG_HIDDEN);
-            lv_obj_clear_flag(id(normal_media_artist), LV_OBJ_FLAG_HIDDEN);
-          } else {
-            lv_obj_add_flag(id(normal_media_transport_overlay), LV_OBJ_FLAG_HIDDEN);
-            lv_obj_add_flag(id(normal_media_title), LV_OBJ_FLAG_HIDDEN);
-            lv_obj_add_flag(id(normal_media_artist), LV_OBJ_FLAG_HIDDEN);
-          }
           const bool playable = (media || main_art) && detail != nullptr && detail->available && id(normal_ha_api_connected) &&
               (main_art || id(normal_device_detail_online)) && !id(screen_off_state) && !id(sleep_mode_state) &&
               !id(ui_presenter)->is_standby_active() && onx_media::has_playback(detail->state);
@@ -3200,8 +2391,6 @@ script:
           }
           if (!playable && onx_media::downloading) {
             // Detach the LVGL source before release invalidates the pixel buffer.
-            lv_obj_add_flag(id(normal_media_cover), LV_OBJ_FLAG_HIDDEN);
-            onx_render::image(id(normal_media_cover), id(fallback_music_note_img)->get_lv_image_dsc());
             if (onx_media::detach_main_artwork) onx_media::detach_main_artwork();
             lv_image_cache_drop(id(media_cover_image)->get_lv_image_dsc());
             lv_image_header_cache_drop(id(media_cover_image)->get_lv_image_dsc());
@@ -3214,13 +2403,6 @@ script:
             onx_runtime::record("artwork_cancelled", entity);
           }
           const bool ready = !desired.empty() && desired == onx_media::ready_url;
-          if (ready && !main_art) {
-            onx_render::image(id(normal_media_cover), id(media_cover_image)->get_lv_image_dsc());
-            lv_obj_clear_flag(id(normal_media_cover), LV_OBJ_FLAG_HIDDEN);
-            lv_obj_add_flag(id(normal_automation_detail_icon), LV_OBJ_FLAG_HIDDEN);
-          } else {
-            lv_obj_add_flag(id(normal_media_cover), LV_OBJ_FLAG_HIDDEN);
-          }
           if (desired.empty() || ready || onx_media::downloading ||
               !id(normal_ha_api_connected) || (!main_art && !id(normal_device_detail_online)) ||
               id(screen_off_state) || id(ui_presenter)->is_standby_active()) return;
@@ -3243,8 +2425,7 @@ script:
             return;
           }
           onx_media::retry_at_ms = 0;
-          // Hidden LVGL widgets still retain their source. Detach it explicitly.
-          onx_render::image(id(normal_media_cover), id(fallback_music_note_img)->get_lv_image_dsc());
+          // The detail's artwork image still holds the old buffer; detach it.
           if (onx_media::detach_main_artwork) onx_media::detach_main_artwork();
           lv_image_cache_drop(id(media_cover_image)->get_lv_image_dsc());
           lv_image_header_cache_drop(id(media_cover_image)->get_lv_image_dsc());
@@ -3290,7 +2471,6 @@ script:
                         entity_id: !lambda return id(ui_presenter)->get_normal_device_entity_id(detail_index);
             - lambda: |-
                 onx_media::transport.show(id(ui_presenter)->get_normal_device_entity_id(detail_index), previous, millis());
-            - script.execute: refresh_normal_media_overlay
 
   - id: emit_normal_playlist_action
     parameters:
@@ -3316,6 +2496,7 @@ script:
                   entity_id: !lambda return action;
 
             - script.execute: show_normal_action_sent
+  # Quick-action browser state; the redesigned details draw the list.
   - id: refresh_normal_playlist
     then:
       - lambda: |-
@@ -3331,76 +2512,6 @@ script:
               !id(screen_off_state) && !id(sleep_mode_state);
           const bool active = list != nullptr && page && id(normal_device_detail_online) && id(normal_ha_api_connected);
           if (!active || (browser.open && browser.entity != entity)) browser.clear();
-          // The redesigned details draw quick actions themselves (full screen).
-          if (onx_panel_detail::active) { lv_obj_add_flag(id(normal_playlist_overlay), LV_OBJ_FLAG_HIDDEN); return; }
-          const uint32_t held = millis() - id(key_press_started_ms);
-          const bool pressing = page && id(key_btn).state && !id(key_long_press_handled) &&
-              !id(detail_long_press_exit_fired) && held >= onx_playlist::CUE_MS &&
-              !id(normal_device_detail_curtain_adjust_active);
-          const bool holding = active && pressing;
-          // Without a list the same cue counts down to closing the page.
-          const bool closing = !active && pressing && held < 688 && onx_display_settings::hold_cue.show;
-          if (!closing && (!active || (!browser.open && !holding))) {
-            lv_obj_add_flag(id(normal_playlist_overlay), LV_OBJ_FLAG_HIDDEN); return;
-          }
-          // The menu and its hold cue own the foreground, even if playback
-          // feedback changes before the next transport refresh.
-          lv_obj_add_flag(id(normal_media_transport_overlay), LV_OBJ_FLAG_HIDDEN);
-          // Lives on the top layer so it also covers switch, light and cover pages.
-          if (lv_obj_get_parent(id(normal_playlist_overlay)) != lv_layer_top())
-            lv_obj_set_parent(id(normal_playlist_overlay), lv_layer_top());
-          if (lv_obj_has_flag(id(normal_playlist_overlay), LV_OBJ_FLAG_HIDDEN)) {
-            lv_obj_clear_flag(id(normal_playlist_overlay), LV_OBJ_FLAG_HIDDEN);
-            lv_obj_move_foreground(id(normal_playlist_overlay));
-          }
-          if (closing) {
-            lv_obj_add_flag(id(normal_playlist_roller)->obj, LV_OBJ_FLAG_HIDDEN);
-            lv_obj_clear_flag(id(normal_playlist_rows), LV_OBJ_FLAG_HIDDEN);
-            onx_render::label(id(normal_playlist_heading), "Closing");
-            onx_render::label(id(normal_playlist_rows), "Hold to close");
-            lv_obj_add_flag(id(normal_playlist_hint), LV_OBJ_FLAG_HIDDEN);
-            lv_obj_clear_flag(id(normal_playlist_hold_bar), LV_OBJ_FLAG_HIDDEN);
-            lv_bar_set_value(id(normal_playlist_hold_bar), std::min<uint32_t>(100, (held - onx_playlist::CUE_MS) * 100 / (688 - onx_playlist::CUE_MS)), LV_ANIM_OFF);
-            onx_render::style_bg_color(id(normal_playlist_hold_bar), lv_color_hex(0xFF8A65), LV_PART_INDICATOR);
-            return;
-          }
-          if (holding) lv_obj_add_flag(id(normal_playlist_roller)->obj, LV_OBJ_FLAG_HIDDEN);
-          else lv_obj_clear_flag(id(normal_playlist_roller)->obj, LV_OBJ_FLAG_HIDDEN);
-          if (holding) {
-            lv_obj_clear_flag(id(normal_playlist_hint),LV_OBJ_FLAG_HIDDEN);
-            lv_obj_clear_flag(id(normal_playlist_rows), LV_OBJ_FLAG_HIDDEN);
-            const bool ready = held >= onx_playlist::OPEN_MS;
-            onx_render::label(id(normal_playlist_heading), ready ? "Release now" : "Keep holding");
-            onx_render::label(id(normal_playlist_rows), ready ? (browser.open ? "Close quick actions" : "Open quick actions") : "Quick actions");
-            onx_render::label(id(normal_playlist_hint), ready ? "Keep holding to close" : "Release to cancel");
-            lv_obj_clear_flag(id(normal_playlist_hold_bar), LV_OBJ_FLAG_HIDDEN);
-            const uint32_t progress = ready ?
-                std::min<uint32_t>(100, (held - onx_playlist::OPEN_MS) * 100 / (onx_playlist::BACK_MS - onx_playlist::OPEN_MS)) :
-                std::min<uint32_t>(100, (held - onx_playlist::CUE_MS) * 100 / (onx_playlist::OPEN_MS - onx_playlist::CUE_MS));
-            lv_bar_set_value(id(normal_playlist_hold_bar), progress, LV_ANIM_OFF);
-            onx_render::style_bg_color(id(normal_playlist_hold_bar), lv_color_hex(ready ? 0x62D49B : 0x62B0FF), LV_PART_INDICATOR);
-          } else {
-            browser.selected = std::clamp(browser.selected, 0, static_cast<int>(list->count)-1);
-            const int i = browser.selected;
-            std::string options;
-            for(size_t j=0;j<list->count;++j) {
-              if(j)options+="\n";
-              options+=onx_media::display_text(list->entries[j].name);
-            }
-            auto *roller=id(normal_playlist_roller)->obj;
-            static lv_obj_t *styled_roller=nullptr;
-            if(styled_roller!=roller) {
-              onx_render::settings_roller(roller,id(fonts_MiSans_Medium_16)->get_lv_font(),
-                  id(fonts_MiSans_Medium_18)->get_lv_font(),false);
-              styled_roller=roller;
-            }
-            if(options!=lv_roller_get_options(roller))lv_roller_set_options(roller,options.c_str(),LV_ROLLER_MODE_NORMAL);
-            if(lv_roller_get_selected(roller)!=i)lv_roller_set_selected(roller,i,LV_ANIM_OFF);
-            onx_render::label(id(normal_playlist_heading), "Quick actions");
-            lv_obj_add_flag(id(normal_playlist_rows), LV_OBJ_FLAG_HIDDEN);
-            lv_obj_add_flag(id(normal_playlist_hint),LV_OBJ_FLAG_HIDDEN);
-            lv_obj_add_flag(id(normal_playlist_hold_bar), LV_OBJ_FLAG_HIDDEN);
-          }
 
   - id: show_normal_action_sent
     then:

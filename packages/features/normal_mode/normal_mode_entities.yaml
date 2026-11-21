@@ -879,36 +879,6 @@ image:
     transparency: alpha_channel
     resize: ${ (15 * (ui_scale | float)) | round | int }x${ (15 * (ui_scale | float)) | round | int }
   - platform: file
-    file: "../../../assets/vector.svg"
-    id: vector_img
-    type: RGB565
-    transparency: alpha_channel
-    resize: ${ (28 * (ui_scale | float)) | round | int }x${ (19 * (ui_scale | float)) | round | int }
-  - platform: file
-    file: "../../../assets/icon_edit.svg"
-    id: icon_edit_img
-    type: RGB565
-    transparency: alpha_channel
-    resize: ${ (24 * (ui_scale | float)) | round | int }x${ (24 * (ui_scale | float)) | round | int }
-  - platform: file
-    file: "../../../assets/emojione_monotone_digit_one.svg"
-    id: emojione_monotone_digit_one_img
-    type: RGB565
-    transparency: alpha_channel
-    resize: ${ (16 * (ui_scale | float)) | round | int }x${ (16 * (ui_scale | float)) | round | int }
-  - platform: file
-    file: "../../../assets/emojione_monotone_digit_three.svg"
-    id: emojione_monotone_digit_three_img
-    type: RGB565
-    transparency: alpha_channel
-    resize: ${ (16 * (ui_scale | float)) | round | int }x${ (16 * (ui_scale | float)) | round | int }
-  - platform: file
-    file: "../../../assets/emojione_monotone_digit_two.svg"
-    id: emojione_monotone_digit_two_img
-    type: RGB565
-    transparency: alpha_channel
-    resize: ${ (16 * (ui_scale | float)) | round | int }x${ (16 * (ui_scale | float)) | round | int }
-  - platform: file
     file: "../../../assets/weather/weather_unknown.svg"
     id: standby_weather_icon_unknown_img
     type: RGB565
@@ -1017,60 +987,6 @@ image:
     transparency: alpha_channel
     resize: ${ (15 * (ui_scale | float)) | round | int }x${ (15 * (ui_scale | float)) | round | int }
   - platform: file
-    file: "../../../assets/plug_off.svg"
-    id: normal_device_icon_plug_off_img
-    type: RGB565
-    transparency: alpha_channel
-    resize: ${ (64 * (ui_scale | float)) | round | int }x${ (64 * (ui_scale | float)) | round | int }
-  - platform: file
-    file: "../../../assets/device_list_plug.svg"
-    id: normal_device_icon_plug_img
-    type: RGB565
-    transparency: alpha_channel
-    resize: ${ (64 * (ui_scale | float)) | round | int }x${ (64 * (ui_scale | float)) | round | int }
-  - platform: file
-    file: "../../../assets/device_list_plug_on.svg"
-    id: normal_device_icon_plug_on_img
-    type: RGB565
-    transparency: alpha_channel
-    resize: ${ (64 * (ui_scale | float)) | round | int }x${ (64 * (ui_scale | float)) | round | int }
-  - platform: file
-    file: "../../../assets/plug_det_off.svg"
-    id: normal_device_detail_plug_off_img
-    type: RGB565
-    transparency: alpha_channel
-    resize: ${ (69 * (ui_scale | float)) | round | int }x${ (69 * (ui_scale | float)) | round | int }
-  - platform: file
-    file: "../../../assets/device_list_light.svg"
-    id: normal_device_icon_light_img
-    type: RGB565
-    transparency: alpha_channel
-    resize: ${ (67 * (ui_scale | float)) | round | int }x${ (58 * (ui_scale | float)) | round | int }
-  - platform: file
-    file: "../../../assets/device_list_light_on.svg"
-    id: normal_device_icon_light_on_img
-    type: RGB565
-    transparency: alpha_channel
-    resize: ${ (61 * (ui_scale | float)) | round | int }x${ (58 * (ui_scale | float)) | round | int }
-  - platform: file
-    file: "../../../assets/device_list_curtain.svg"
-    id: normal_device_icon_curtain_img
-    type: RGB565
-    transparency: alpha_channel
-    resize: ${ (70 * (ui_scale | float)) | round | int }x${ (70 * (ui_scale | float)) | round | int }
-  - platform: file
-    file: "../../../assets/device_list_curtain_open.svg"
-    id: normal_device_icon_curtain_open_img
-    type: RGB565
-    transparency: alpha_channel
-    resize: ${ (68 * (ui_scale | float)) | round | int }x${ (65 * (ui_scale | float)) | round | int }
-  - platform: file
-    file: "../../../assets/device_list_curtain_closed.svg"
-    id: normal_device_icon_curtain_closed_img
-    type: RGB565
-    transparency: alpha_channel
-    resize: ${ (68 * (ui_scale | float)) | round | int }x${ (65 * (ui_scale | float)) | round | int }
-  - platform: file
     file: "../../../assets/settings.svg"
     id: normal_device_icon_settings_img
     type: RGB565
@@ -1095,78 +1011,6 @@ image:
     transparency: alpha_channel
     resize: ${ (14 * (ui_scale | float)) | round | int }x${ (14 * (ui_scale | float)) | round | int }
   - platform: file
-    file: "../../../assets/plug_det_on.svg"
-    id: normal_device_detail_plug_on_img
-    type: RGB565
-    transparency: alpha_channel
-    resize: ${ (69 * (ui_scale | float)) | round | int }x${ (69 * (ui_scale | float)) | round | int }
-  - platform: file
-    file: "../../../assets/device_list_switch.svg"
-    id: normal_device_icon_switch_img
-    type: RGB565
-    transparency: alpha_channel
-    resize: ${ (49 * (ui_scale | float)) | round | int }x${ (67 * (ui_scale | float)) | round | int }
-  - platform: file
-    file: "../../../assets/device_list_switch_on.svg"
-    id: normal_device_icon_switch_on_img
-    type: RGB565
-    transparency: alpha_channel
-    resize: ${ (49 * (ui_scale | float)) | round | int }x${ (67 * (ui_scale | float)) | round | int }
-  - platform: file
-    file: "../../../assets/automation.svg"
-    id: normal_device_automation_img
-    type: RGB565
-    transparency: alpha_channel
-    resize: ${ (56 * (ui_scale | float)) | round | int }x${ (61 * (ui_scale | float)) | round | int }
-  - platform: file
-    file: "../../../assets/automation_detail.svg"
-    id: normal_device_automation_detail_img
-    type: RGB565
-    transparency: alpha_channel
-    resize: ${ (67 * (ui_scale | float)) | round | int }x${ (74 * (ui_scale | float)) | round | int }
-  - platform: file
-    file: "../../../assets/automation_detail_press.svg"
-    id: normal_device_automation_detail_press_img
-    type: RGB565
-    transparency: alpha_channel
-    resize: ${ (67 * (ui_scale | float)) | round | int }x${ (74 * (ui_scale | float)) | round | int }
-  - platform: file
-    file: "../../../assets/switch_det_on.svg"
-    id: normal_device_detail_switch_on_img
-    type: RGB565
-    transparency: alpha_channel
-    resize: ${ (52 * (ui_scale | float)) | round | int }x${ (72 * (ui_scale | float)) | round | int }
-  - platform: file
-    file: "../../../assets/switch_det_off.svg"
-    id: normal_device_detail_switch_off_img
-    type: RGB565
-    transparency: alpha_channel
-    resize: ${ (52 * (ui_scale | float)) | round | int }x${ (72 * (ui_scale | float)) | round | int }
-  - platform: file
-    file: "../../../assets/light_det_on.svg"
-    id: normal_device_detail_light_on_img
-    type: RGB565
-    transparency: alpha_channel
-    resize: ${ (74 * (ui_scale | float)) | round | int }x${ (71 * (ui_scale | float)) | round | int }
-  - platform: file
-    file: "../../../assets/light_det_off.svg"
-    id: normal_device_detail_light_off_img
-    type: RGB565
-    transparency: alpha_channel
-    resize: ${ (74 * (ui_scale | float)) | round | int }x${ (62 * (ui_scale | float)) | round | int }
-  - platform: file
-    file: "../../../assets/light_cct_gradient.svg"
-    id: normal_light_cct_gradient_img
-    type: RGB565
-    transparency: alpha_channel
-    resize: ${ (224 * (ui_scale | float)) | round | int }x${ (224 * (ui_scale | float)) | round | int }
-  - platform: file
-    file: "../../../assets/light_rgb_gradient.svg"
-    id: normal_light_rgb_gradient_img
-    type: RGB565
-    transparency: alpha_channel
-    resize: ${ (224 * (ui_scale | float)) | round | int }x${ (224 * (ui_scale | float)) | round | int }
-  - platform: file
     file: "../../../assets/light_mode_icon_bright.svg"
     id: normal_light_mode_icon_bright_img
     type: RGB565
@@ -1184,60 +1028,6 @@ image:
     type: RGB565
     transparency: alpha_channel
     resize: ${ (20 * (ui_scale | float)) | round | int }x${ (20 * (ui_scale | float)) | round | int }
-  - platform: file
-    file: "../../../assets/curtain_0%.svg"
-    id: normal_device_detail_curtain_0_img
-    type: RGB565
-    transparency: alpha_channel
-    resize: ${ (68 * (ui_scale | float)) | round | int }x${ (65 * (ui_scale | float)) | round | int }
-  - platform: file
-    file: "../../../assets/curtain_100%.svg"
-    id: normal_device_detail_curtain_100_img
-    type: RGB565
-    transparency: alpha_channel
-    resize: ${ (68 * (ui_scale | float)) | round | int }x${ (65 * (ui_scale | float)) | round | int }
-  - platform: file
-    file: "../../../assets/curtain_x%.svg"
-    id: normal_device_detail_curtain_x_img
-    type: RGB565
-    transparency: alpha_channel
-    resize: ${ (77 * (ui_scale | float)) | round | int }x${ (74 * (ui_scale | float)) | round | int }
-  - platform: file
-    file: "../../../assets/curtain_opening.svg"
-    id: normal_device_detail_curtain_opening_img
-    type: RGB565
-    transparency: alpha_channel
-    resize: ${ (27 * (ui_scale | float)) | round | int }x${ (23 * (ui_scale | float)) | round | int }
-  - platform: file
-    file: "../../../assets/curtain_pause.svg"
-    id: normal_device_detail_curtain_pause_img
-    type: RGB565
-    transparency: alpha_channel
-    resize: ${ (14 * (ui_scale | float)) | round | int }x${ (23 * (ui_scale | float)) | round | int }
-  - platform: file
-    file: "../../../assets/curtain_closing.svg"
-    id: normal_device_detail_curtain_closing_img
-    type: RGB565
-    transparency: alpha_channel
-    resize: ${ (23 * (ui_scale | float)) | round | int }x${ (23 * (ui_scale | float)) | round | int }
-  - platform: file
-    file: "../../../assets/curtain_no_opening.svg"
-    id: normal_device_detail_curtain_no_opening_img
-    type: RGB565
-    transparency: alpha_channel
-    resize: ${ (27 * (ui_scale | float)) | round | int }x${ (23 * (ui_scale | float)) | round | int }
-  - platform: file
-    file: "../../../assets/curtain_no_pause.svg"
-    id: normal_device_detail_curtain_no_pause_img
-    type: RGB565
-    transparency: alpha_channel
-    resize: ${ (14 * (ui_scale | float)) | round | int }x${ (23 * (ui_scale | float)) | round | int }
-  - platform: file
-    file: "../../../assets/curtain_no_closing.svg"
-    id: normal_device_detail_curtain_no_closing_img
-    type: RGB565
-    transparency: alpha_channel
-    resize: ${ (23 * (ui_scale | float)) | round | int }x${ (23 * (ui_scale | float)) | round | int }
 
   - platform: file
     file: "../../../assets/entity_icons/power-plug.svg"
@@ -1342,24 +1132,6 @@ image:
     type: RGB565
     transparency: alpha_channel
 
-  - platform: file
-    file: "../../../assets/media_controls/pause.svg"
-    id: media_overlay_pause_img
-    resize: ${ (32 * (ui_scale | float)) | round | int }x${ (32 * (ui_scale | float)) | round | int }
-    type: RGB565
-    transparency: alpha_channel
-  - platform: file
-    file: "../../../assets/media_controls/next.svg"
-    id: media_overlay_next_img
-    resize: ${ (32 * (ui_scale | float)) | round | int }x${ (32 * (ui_scale | float)) | round | int }
-    type: RGB565
-    transparency: alpha_channel
-  - platform: file
-    file: "../../../assets/media_controls/previous.svg"
-    id: media_overlay_previous_img
-    resize: ${ (32 * (ui_scale | float)) | round | int }x${ (32 * (ui_scale | float)) | round | int }
-    type: RGB565
-    transparency: alpha_channel
 
   - platform: file
     file: "../../../assets/feedback/action_sent.svg"

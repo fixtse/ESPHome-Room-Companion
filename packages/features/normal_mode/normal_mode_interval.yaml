@@ -153,7 +153,10 @@ interval:
                      (id(normal_device_detail_kind) == NORMAL_DEVICE_DETAIL_KIND_LIGHT) &&
                      !id(ui_presenter)->is_standby_active();
           then:
-            - lvgl.page.show: normal_light_page
+            - lambda: |-
+                // Every detail kind shares one empty backing screen; the
+                // redesigned detail (onx_panel_detail) is drawn above it.
+                if (lv_scr_act() != id(normal_detail_page)->obj) lv_scr_load(id(normal_detail_page)->obj);
             - script.execute: refresh_normal_light_detail_page
       - if:
           condition:
@@ -167,7 +170,10 @@ interval:
                      id(normal_device_detail_kind) == NORMAL_DEVICE_DETAIL_KIND_CURTAIN &&
                      !id(ui_presenter)->is_standby_active();
           then:
-            - lvgl.page.show: normal_curtain_page
+            - lambda: |-
+                // Every detail kind shares one empty backing screen; the
+                // redesigned detail (onx_panel_detail) is drawn above it.
+                if (lv_scr_act() != id(normal_detail_page)->obj) lv_scr_load(id(normal_detail_page)->obj);
             - script.execute: refresh_normal_curtain_detail_page
       - if:
           condition:
@@ -251,11 +257,10 @@ interval:
                      id(normal_device_detail_kind) == NORMAL_DEVICE_DETAIL_KIND_AUTOMATION &&
                      !id(ui_presenter)->is_standby_active();
           then:
-            - if:
-                condition:
-                  lambda: return lv_scr_act() != id(normal_automation_page)->obj;
-                then:
-                  - lvgl.page.show: normal_automation_page
+            - lambda: |-
+                // Every detail kind shares one empty backing screen; the
+                // redesigned detail (onx_panel_detail) is drawn above it.
+                if (lv_scr_act() != id(normal_detail_page)->obj) lv_scr_load(id(normal_detail_page)->obj);
             - script.execute: refresh_normal_automation_detail_page
       - if:
           condition:
@@ -270,7 +275,10 @@ interval:
                       id(normal_device_detail_kind) == NORMAL_DEVICE_DETAIL_KIND_PLUG) &&
                      !id(ui_presenter)->is_standby_active();
           then:
-            - lvgl.page.show: normal_switch_page
+            - lambda: |-
+                // Every detail kind shares one empty backing screen; the
+                // redesigned detail (onx_panel_detail) is drawn above it.
+                if (lv_scr_act() != id(normal_detail_page)->obj) lv_scr_load(id(normal_detail_page)->obj);
             - script.execute: refresh_normal_switch_detail_page
       - if:
           condition:
@@ -291,12 +299,9 @@ interval:
   # Animate only the currently visible timer; all other pages keep their cadence.
   - interval: 100ms
     then:
-      - script.execute: refresh_normal_timer_detail
       - lambda: |-
           // The worker has its own 15 s network budget plus decode time; only catch hangs.
           if (onx_media::downloading && millis() - onx_media::requested_ms >= 25000) {
-            lv_obj_add_flag(id(normal_media_cover), LV_OBJ_FLAG_HIDDEN);
-            onx_render::image(id(normal_media_cover), id(fallback_music_note_img)->get_lv_image_dsc());
             lv_image_cache_drop(id(media_cover_image)->get_lv_image_dsc());
             lv_image_header_cache_drop(id(media_cover_image)->get_lv_image_dsc());
             if (onx_media::detach_main_artwork) onx_media::detach_main_artwork();
@@ -316,9 +321,7 @@ interval:
           }
           if (onx_media::artwork_refresh_pending) {
             onx_media::artwork_refresh_pending = false;
-            id(refresh_normal_automation_detail_page).execute();
+            id(refresh_normal_media_cover).execute();
           }
-      - script.execute: refresh_normal_media_progress
-      - script.execute: refresh_normal_media_overlay
       - script.execute: refresh_normal_playlist
       - script.execute: refresh_normal_action_feedback
