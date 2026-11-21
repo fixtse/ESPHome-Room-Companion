@@ -2381,6 +2381,13 @@ inline bool persist_device_config_to_normal_ui_storage(size_t slot, const Inferr
   if (!is_configurable_device_slot(slot) || normal_ui_storage == nullptr) {
     return false;
   }
+  // Every slot's state fields below are written in one NVS commit, not one per
+  // field and slot (that stalled boot past the task watchdog on a full panel).
+  struct StateBatch {
+    esphome::onx_storage::OnxStorage *storage;
+    explicit StateBatch(esphome::onx_storage::OnxStorage *s) : storage(s) { storage->begin_state_batch(); }
+    ~StateBatch() { storage->end_state_batch(); }
+  } state_batch(normal_ui_storage);
 
   auto devices_buffer=make_ram_allocated<std::array<esphome::onx_storage::NormalUiDeviceConfig, CONFIGURABLE_DEVICE_SLOT_COUNT>>();
   auto configs_buffer=make_ram_allocated<std::array<InferredNormalDeviceConfig, CONFIGURABLE_DEVICE_SLOT_COUNT>>();

@@ -1100,7 +1100,18 @@ bool OnxStorage::save_normal_ui_config_() {
   return true;
 }
 
+bool OnxStorage::end_state_batch() {
+  if (this->state_batch_depth_ == 0) return true;
+  if (--this->state_batch_depth_ != 0 || !this->state_batch_dirty_) return true;
+  this->state_batch_dirty_ = false;
+  return this->save_normal_ui_states_();
+}
+
 bool OnxStorage::save_normal_ui_states_() {
+  if (this->state_batch_depth_ != 0) {
+    this->state_batch_dirty_ = true;
+    return true;
+  }
   StoredNormalUiStateV2 stored_state{};
   for (size_t i = 0; i < this->normal_ui_device_states_.size(); i++) {
     stored_state.states[i] = this->normal_ui_device_states_[i];

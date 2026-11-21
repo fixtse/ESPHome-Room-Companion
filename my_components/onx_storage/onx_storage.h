@@ -153,7 +153,17 @@ class OnxStorage : public Component {
   uint32_t get_sleep_timeout_ms() const;
   bool set_sleep_mode_config(bool enabled, uint16_t start_minute, uint16_t end_minute, uint32_t timeout_ms);
 
+  // Group many device-state changes into one NVS write. While a batch is open
+  // (batches nest), state setters only update RAM; closing the outermost batch
+  // saves, syncs and verifies once. Persisting one slot's config used to commit
+  // the whole state blob per slot and per field, and boot persists every slot,
+  // so a full panel stalled the loop past the task watchdog (boot loop).
+  void begin_state_batch() { ++this->state_batch_depth_; }
+  bool end_state_batch();
+
  protected:
+  uint16_t state_batch_depth_{0};
+  bool state_batch_dirty_{false};
   void load_defaults_();
   bool save_factory_wifi_();
   bool save_auth_record_();
