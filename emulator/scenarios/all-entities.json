@@ -87,7 +87,7 @@
    "state": "off",
    "light": {
     "on": false,
-    "brightness": 0
+    "brightness": 10
    }
   },
   {
@@ -374,6 +374,14 @@
    "kind": "two",
    "entities": [
     "light.living_room",
+    "climate.calentador"
+   ]
+  },
+  {
+   "name": "light-off",
+   "kind": "two",
+   "entities": [
+    "light.kitchen",
     "climate.calentador"
    ]
   },

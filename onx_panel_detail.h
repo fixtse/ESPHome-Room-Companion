@@ -2667,6 +2667,18 @@ inline void card_light(lv_obj_t *c, const Tile &t, const EntityDetailState &d) {
   if (d.available) sw_toggle = toggle(c, r.w - pad - P(54), pad + P(7), on, [e]() { light_toggle(e); });
   const int sh = P(40), sy = r.h - pad - sh;
   const int vy = pad + cs + P(8);
+  // Compact card (the 2.8" split page): no room for the large value, so the
+  // status line carries the brightness and the bar keeps the last level,
+  // dimmed, while the light is off.
+  const bool compact = dimmable && sy - vy < line(fonts.big);
+  auto status = [](bool now_on, const esphome::onx_storage::NormalLightState &st, float lv, bool available) {
+    if (!available) return std::string("Unavailable");
+    std::string out = now_on ? "On" : "Off";
+    const float shown = now_on ? lv : st.brightness_pct;
+    if (shown > 0) out += " · " + pct(shown);
+    return out;
+  };
+  if (compact && context) onx_render::label(context, status(on, s, level, d.available).c_str());
   lv_obj_t *value = nullptr, *fill = nullptr, *knob = nullptr;
   const int sw = r.w - 2 * pad;
   if (!dimmable) {
@@ -2687,10 +2699,12 @@ inline void card_light(lv_obj_t *c, const Tile &t, const EntityDetailState &d) {
   }
   lv_obj_t *track = box(c, pad, sy, sw, sh, INSET(), P(12));
   lv_obj_set_style_clip_corner(track, true, 0);
-  const int fw = int(sw * std::clamp(level, 0.0f, 100.0f) / 100);
+  const float bar = compact && !on ? s.brightness_pct : level;
+  const int fw = int(sw * std::clamp(bar, 0.0f, 100.0f) / 100);
   fill = box(track, 0, 0, fw, sh, accent(), 0);
+  if (compact && !on) lv_obj_set_style_bg_opa(fill, LV_OPA_30, 0);
   knob = box(track, std::clamp(fw - P(9), P(4), sw - P(8)), P(9), P(4), sh - P(18), 0x101418, P(2));
-  card_patch = [e, chip, chip_view, context, sw_toggle, value, fill, knob, sw, sh](const Tile &) {
+  card_patch = [e, chip, chip_view, context, sw_toggle, value, fill, knob, sw, sh, compact, status](const Tile &) {
     if (dragging || !light_state) return true;  // The finger owns the slider.
     const auto st = light_state(e);
     const bool now_on = light_shown_on(e);
@@ -2700,20 +2714,23 @@ inline void card_light(lv_obj_t *c, const Tile &t, const EntityDetailState &d) {
     if (std::isfinite(want)) lv = want;
     patch_chip(chip, chip_view, now_on);
     patch_toggle(sw_toggle, now_on);
-    if (context) {
+    if (context && compact) onx_render::label(context, status(now_on, st, lv, true).c_str());
+    else if (context) {
       std::string ctx = now_on ? "On" : "Off";
       if (now_on && st.color_temperature_kelvin > 0 && st.supports_color_temperature())
         ctx += " · " + std::to_string(st.color_temperature_kelvin) + " K";
       onx_render::label(context, ctx.c_str());
     }
     if (value) onx_render::label(value, pct(lv).c_str());
-    const int w = int(sw * std::clamp(lv, 0.0f, 100.0f) / 100);
+    const float bar = compact && !now_on ? st.brightness_pct : lv;
+    const int w = int(sw * std::clamp(bar, 0.0f, 100.0f) / 100);
     lv_obj_set_size(fill, w, sh);
+    lv_obj_set_style_bg_opa(fill, compact && !now_on ? LV_OPA_30 : LV_OPA_COVER, 0);
     lv_obj_set_x(knob, std::clamp(w - P(9), P(4), sw - P(8)));
     return true;
   };
   if (!d.available) return;
-  drag(track, [e, track, fill, knob, value, sw, sh](lv_point_t p, bool commit) {
+  drag(track, [e, track, fill, knob, value, context, compact, sw, sh](lv_point_t p, bool commit) {
     lv_area_t a;
     lv_obj_get_coords(track, &a);
     const int v = std::clamp(int(std::lround((p.x - a.x1) * 100.0f / sw)), 1, 100);
@@ -2721,6 +2738,8 @@ inline void card_light(lv_obj_t *c, const Tile &t, const EntityDetailState &d) {
     lv_obj_set_size(fill, w, sh);
     lv_obj_set_x(knob, std::clamp(w - P(9), P(4), sw - P(8)));
     if (value) lv_label_set_text(value, pct(v).c_str());
+    if (compact && context) lv_label_set_text(context, ("On · " + pct(v)).c_str());
+    lv_obj_set_style_bg_opa(fill, LV_OPA_COVER, 0);
     if (!commit) return;
     set_pending(e, "brightness", v);
     request(e, "light.turn_on", "brightness_pct", std::to_string(v), "panel_brightness");
