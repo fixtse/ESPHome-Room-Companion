@@ -45,6 +45,11 @@ lvgl:
           hidden: true
           text_font: ${symbol_font}
           text: ""
+      # ESPHome compiles only the LVGL widget types the YAML uses. The redesigned
+      # screens create arcs in C++ (timers, rings), and no YAML arc remains.
+      - arc:
+          id: panel_arc_ref
+          hidden: true
   displays:
     - lcd_display
   # Touch reaches LVGL only for overlays (notification centre); the base pages
