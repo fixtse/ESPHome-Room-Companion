@@ -1168,16 +1168,6 @@ script:
             id(ui_presenter)->notify_user_activity();
             if (onx_navigation::scroll_dock(steps)) id(refresh_normal_device_page).execute();
           });
-          // 60 FPS dock-follow horizontal page drag feedback (commits on release/flick).
-          id(touch_input)->set_page_drag(
-              [](int dx) {
-                if (!onx_navigation::visible || onx_notification_ui::owns_screen()) return;
-                onx_navigation::drag_page(dx);
-              },
-              [](int dx, uint32_t ms) {
-                if (!onx_navigation::visible || onx_notification_ui::owns_screen()) return false;
-                return onx_navigation::release_page_drag(dx, ms);
-              });
           id(touch_input)->set_passthrough_fn([](int x, int y) {
             onx_notification_ui::hide_toast_unless(x, y);
             return onx_panel_ui::hit(x, y) || onx_notification_ui::bell_hit(x, y) || onx_notification_ui::timer_chip_hit(x, y) || onx_notification_ui::toast_hit(x,y);
