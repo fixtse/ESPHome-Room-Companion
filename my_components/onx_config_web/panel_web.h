@@ -16,7 +16,9 @@ static const char PANEL_JS[] = R"ONXPANEL(
  document.head.append(style);
 
  // Same request protocol as the main page.
+ // Same request protocol as the main page; use its retrying client once loaded.
  async function rpc(values){
+  if(globalThis.ONX_RPC)return globalThis.ONX_RPC(values);
   const post=await fetch('/panel/api',{method:'POST',cache:'no-store',headers:{'Content-Type':'application/x-www-form-urlencoded','X-Onx-Token':window.ONX_TOKEN},body:new URLSearchParams(values)});
   const queued=await post.json();if(!post.ok||queued.error)throw Error(queued.error||'The panel could not complete this request');
   for(let i=0;i<60;i++){
@@ -653,13 +655,19 @@ static const char PANEL_JS[] = R"ONXPANEL(
    leads.add(first);
   }
   if(pageConfigs.some(p=>p.icon&&p.icon!=='entity'&&!ICON_RE.test(p.icon))){status('Icons use the mdi:name form, for example mdi:sofa.');return false}
-  const a=app();if(!a)return false;const target=editorTarget,list=structuredClone(pageConfigs);
-  try{await uploadImages(list)}catch(error){status(error.message);a.message?.(error.message,true);return false}
+  const a=app();if(!a)return false;
+  return a.hold?a.hold(()=>commitPages(a)):commitPages(a);
+ }
+ async function commitPages(a){
+  const target=editorTarget,list=structuredClone(pageConfigs);
+  saving=true;renderPageEditor();a.progress?.(1,10);
+  try{if(imageIds(list).some(id=>artPending.has(id)))a.message?.('Uploading page images…');await uploadImages(list)}catch(error){status(error.message);a.message?.(error.message,true);return false}
+  finally{saving=false}
   if(target)target.pages=list;
   if(!await a.saveAll())return false;
   if(target){savedPages=JSON.stringify(pageConfigs);touch();return true}
   if(!dirtyPages()){a.message?.('Changes saved.');touch();return true}
-  saving=true;renderPageEditor();
+  saving=true;renderPageEditor();a.progress?.(9,10);a.message?.('Saving the page list ('+list.length+' page'+(list.length===1?'':'s')+')…');
   try{const result=await rpc({op:'panel_pages_save',data:JSON.stringify({pages:list})});pageConfigs=normalize(result.pages);savedPages=panelPages=JSON.stringify(pageConfigs);pageError='';status('');a.message?.('Changes saved.');return true}
   catch(error){status(error.message);a.message?.(error.message+' The pages were not changed.',true);return false}
   finally{saving=false;touch()}
@@ -685,7 +693,7 @@ static const char PANEL_JS[] = R"ONXPANEL(
   editorActive=active;editorEntity=e;
   if(!focusMember())renderPageEditor();
  };
- rpc({op:'panel_pages'}).then(result=>{panelPages=JSON.stringify(normalize(result.pages));pagesLoaded=true;if(!editorTarget){pageConfigs=JSON.parse(panelPages);savedPages=panelPages;selectedPage=0;selectedPos=Math.max(0,pageConfigs[0]?.entities.findIndex(Boolean)??0)}if(!focusMember())touch()}).catch(error=>{pageError='Could not load pages: '+error.message;renderPageEditor()});
+ rpc({op:'panel_pages'}).then(result=>{panelPages=JSON.stringify(normalize(result.pages));pagesLoaded=true;if(!editorTarget){pageConfigs=JSON.parse(panelPages);savedPages=panelPages;selectedPage=0;selectedPos=Math.max(0,pageConfigs[0]?.entities.findIndex(Boolean)??0)}focusMember();touch()}).catch(error=>{pageError='Could not load pages: '+error.message;renderPageEditor()});
  // Mirrors onx_panel_layout::geometry (portrait and landscape).
  globalThis.ONX_PANEL_GEOMETRY=(kind,w,h,detail=false,rows=2,columns=2)=>{
   const top=detail?12:40,bottom=detail?12:52,gap=8,pad=12,body=h-top-bottom,inner=w-pad*2;

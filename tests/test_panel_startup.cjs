@@ -73,6 +73,7 @@ const raw=(file,tag)=>fs.readFileSync('my_components/onx_config_web/'+file,'utf8
 
   assert.equal(await page.locator('#gesture-pressResponses').count(),1,'The shortcut result checkbox must survive the panel script');
   assert.match(await page.locator('#gesture-pressResponses').locator('xpath=..').innerText(),/after the shortcut runs/);
+  await page.locator('#slots .page-item').nth(1).waitFor({timeout:12000});
   assert.equal(await page.locator('#slots .page-item').count(),2,'Pages are listed');
   await page.locator('[data-page="entities"]').click();
   assert.equal(await page.locator('#page-grid [data-member]').count(),1,'The first page shows its layout');

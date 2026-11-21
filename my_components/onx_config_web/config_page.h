@@ -71,6 +71,11 @@ main{width:100%;max-width:1320px;margin:0 auto;padding:26px 32px 40px;flex:1}
 .status.error{border-color:color-mix(in oklab,var(--error) 45%,var(--line));color:var(--error)}
 .status.error:before{background:var(--error);box-shadow:0 0 0 4px color-mix(in oklab,var(--error) 18%,transparent)}
 .status:empty{display:none}
+.status.working{overflow:hidden}
+.status.working:after{content:"";position:absolute;left:0;bottom:0;height:3px;width:var(--p,0%);background:var(--accent);transition:width .25s ease}
+.status.working:before{animation:onx-pulse 1s ease-in-out infinite alternate}
+@keyframes onx-pulse{to{opacity:.35}}
+@media (prefers-reduced-motion:reduce){.status.working:before{animation:none}.status.working:after{transition:none}}
 #draft-notice{max-width:1256px;width:calc(100% - 64px);margin:16px auto 0;padding:14px 16px;background:var(--wash);border:1px solid color-mix(in oklab,var(--accent) 40%,var(--line));border-radius:12px;display:flex;gap:12px;align-items:center;justify-content:space-between;flex-wrap:wrap}
 footer{font-size:12.5px;color:var(--muted);padding:18px 32px 26px;text-align:center}
 footer a{color:var(--muted);text-decoration:none;font-weight:550}
