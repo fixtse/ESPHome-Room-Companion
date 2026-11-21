@@ -232,7 +232,12 @@
    "entity_id": "sensor.phone_battery",
    "name": "Phone battery",
    "state": "18",
-   "unit": "%"
+   "unit": "%",
+   "secondary": {
+    "entity": "sensor.phone_battery_state",
+    "text": "{value}",
+    "value": "Charging"
+   }
   },
   {
    "entity_id": "sensor.washer_status",
@@ -243,7 +248,24 @@
    "entity_id": "sensor.power_usage",
    "name": "Power usage",
    "state": "1243.5",
-   "unit": "W"
+   "unit": "W",
+   "history": [
+    420,
+    380,
+    360,
+    900,
+    1500,
+    1320,
+    640,
+    580,
+    1210,
+    1800,
+    1650,
+    980,
+    760,
+    1100,
+    1243.5
+   ]
   },
   {
    "entity_id": "binary_sensor.hall_motion",
@@ -297,7 +319,12 @@
    "entity_id": "sensor.codex_5_hour",
    "name": "Codex 5 hour",
    "state": "87",
-   "unit": "%"
+   "unit": "%",
+   "secondary": {
+    "entity": "sensor.codex_5_hour_reset",
+    "text": "Resets {relative}",
+    "in": 7380
+   }
   },
   {
    "entity_id": "light.porch",
@@ -448,6 +475,75 @@
    "entities": [
     "sensor.codex_5_hour",
     "media_player.bedroom"
+   ]
+  },
+  {
+   "name": "stack-hero",
+   "kind": "stack",
+   "stack": [
+    "chips",
+    "full"
+   ],
+   "entities": [
+    "sensor.washer_status",
+    "sensor.phone_battery",
+    "binary_sensor.hall_motion",
+    "climate.office"
+   ]
+  },
+  {
+   "name": "stack-board",
+   "kind": "stack",
+   "stack": [
+    "chips",
+    "full",
+    "split"
+   ],
+   "entities": [
+    "input_select.house_mode",
+    "sensor.living_humidity",
+    "binary_sensor.front_door",
+    "sensor.power_usage",
+    "sensor.codex_5_hour",
+    "input_number.target_humidity"
+   ]
+  },
+  {
+   "name": "stack-list",
+   "kind": "stack",
+   "stack": [
+    "compact",
+    "compact",
+    "compact",
+    "compact",
+    "compact",
+    "compact"
+   ],
+   "entities": [
+    "select.washer_program",
+    "input_boolean.guest_mode",
+    "switch.desk_lamp",
+    "scene.movie_night",
+    "cover.office_blind",
+    "sensor.codex_5_hour"
+   ]
+  },
+  {
+   "name": "stack-mixed",
+   "kind": "stack",
+   "stack": [
+    "chips",
+    "full",
+    "compact",
+    "compact"
+   ],
+   "entities": [
+    "weather.home",
+    "",
+    "",
+    "media_player.living_room_speaker",
+    "light.porch",
+    "script.good_night"
    ]
   }
  ]

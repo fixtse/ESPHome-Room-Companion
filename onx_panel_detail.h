@@ -87,6 +87,8 @@ struct Tile {
   int ring{-1};
   Rect r{};
   bool compact{false}, key{false}, icon_only{false};
+  bool chip{false};  // Stack chip strip: icon and reading in a pill.
+  bool slot{false};  // Stack position: an empty one shows a faint placeholder.
   uint64_t artwork{0};
   uint8_t effect{0};  // Action-grid icon animation while on: 1 pulse, 2 blink, 3 spin.
 };
@@ -2800,7 +2802,8 @@ inline void card_climate(lv_obj_t *c, const Tile &t, const EntityDetailState &d)
   const int label_y = cy - line(vf) / 2 - line(fonts.small) + P(6);
   if (label_y >= pad + cs) text(c, "Target", fonts.small, MUTED(), 0, label_y, r.w, LV_TEXT_ALIGN_CENTER);
   text(c, value, vf, TEXT(), 0, cy - line(vf) / 2 + P(4), r.w, LV_TEXT_ALIGN_CENTER);
-  if (!d.available || !(d.features & 1)) return;
+  // Single targets (feature 1) and low/high ranges (feature 2) both step.
+  if (!d.available || !(d.features & 3)) return;
   const std::string e = t.entity;
   auto stepper = [e, range](int direction) {
     custom_logic_entity_sub::select_control_entity(e);
@@ -3231,13 +3234,86 @@ inline void card_generic(lv_obj_t *c, const Tile &t, const EntityDetailState *d)
   const bool switchable = available && (domain == "switch" || domain == "input_boolean" || domain == "automation" ||
                                         domain == "fan" || domain == "siren");
   const bool runnable = available && (domain == "scene" || domain == "script" || domain == "button" || domain == "input_button");
+  // Numbers: the value between −/+ steppers along the bottom, as the climate
+  // card, so a tap changes it without opening the detail.
+  if (available && (domain == "number" || domain == "input_number") && std::isfinite(num(d->state))) {
+    // Short cards (split rows) leave out the chip so the name keeps its width.
+    const bool slim = r.h < P(150) || r.w < P(200);  // Split rows and half-width cards.
+    const int head = slim ? line(fonts.body) + P(4) : cs;
+    int bs = std::min(P(52), r.h - 2 * pad - head - P(4));
+    if (bs >= P(30)) {
+      if (slim) text(c, t.name, fit(t.name, r.w - 2 * pad, {fonts.body, fonts.small}), TEXT(), pad, pad, r.w - 2 * pad);
+      else { chip_icon(c, e, pad, pad, cs, true); titled(c, t, tx, pad + P(2), r.w - tx - pad); }
+      const int by = r.h - pad - bs;
+      const std::string v = onx_detail_view::compact(d->state);
+      const std::string u = d->unit;
+      // Tall cards: a large value in the middle; short ones keep it in the row.
+      const int mid_top = pad + head + P(8);
+      const bool tall = by - mid_top >= line(fonts.big) + P(8);
+      const bool hero = tall && by - mid_top >= line(fonts.hero) + P(8) && hero_text(v);
+      const lv_font_t *vf = tall ? (hero ? fonts.hero : fonts.big) : fit(v + u, r.w - 2 * pad - 2 * bs - P(16), {fonts.big, fonts.title, fonts.body});
+      const int vy = tall ? mid_top + (by - mid_top - line(vf)) / 2 : by + (bs - line(vf)) / 2;
+      int uw = u.empty() ? 0 : text_width(u, fonts.small) + P(4);
+      const int vw = text_width(v, vf) + 1;
+      if (!tall) {  // Between the buttons: drop the unit, then narrow the buttons.
+        if (vw + uw > r.w - 2 * pad - 2 * bs - P(8)) uw = 0;
+        bs = std::max(P(30), std::min(bs, (r.w - 2 * pad - vw - P(8)) / 2));
+      }
+      const int vx = (r.w - vw - uw) / 2;
+      text(c, v, vf, TEXT(), vx, vy, vw);
+      if (uw) text(c, u, fonts.small, MUTED(), vx + vw + P(4), vy + line(vf) - line(fonts.small) - P(4), uw);
+      const int bcy = by + (r.h - pad - by) / 2;  // The row the value is centred in.
+      auto stepper = [e](int direction) {
+        custom_logic_entity_sub::select_control_entity(e);
+        custom_logic_entity_sub::control_setting = "state";
+        onx_controls::rotate(e, direction);
+      };
+      circle(c, pad + bs / 2, bcy, bs, INSET(), LV_SYMBOL_MINUS, TEXT(), [stepper]() { stepper(-1); });
+      circle(c, r.w - pad - bs / 2, bcy, bs, INSET(), LV_SYMBOL_PLUS, TEXT(), [stepper]() { stepper(1); });
+      return;
+    }
+  }
+  // Sensors with a graph: the reading beside the name, the graph below and
+  // the range, min and max under the graph.
+  if (available && domain == "sensor" && std::isfinite(num(d->state))) {
+    auto history = card_history(e);
+    // Short cards: one header line without the chip, and no stats line.
+    const bool slim = r.h < P(170);
+    const int head = slim ? line(fonts.title) : cs;
+    const int gy = pad + head + (slim ? P(6) : P(10)), sy = r.h - pad - line(fonts.small), gb = slim ? r.h - pad : sy - P(6);
+    if (history.size() >= 2 && gb - gy >= P(30)) {
+      const std::string v = onx_detail_view::compact(d->state), u = d->unit;
+      const int uw = u.empty() ? 0 : text_width(u, fonts.small) + P(4);
+      const int nx = slim ? pad : tx;
+      const lv_font_t *vf = slim ? fonts.title : fit(v, (r.w - tx - pad) / 2, {fonts.big, fonts.title, fonts.body});
+      const int vw = text_width(v, vf) + 1, vx = r.w - pad - uw - vw, vy = pad + (head - line(vf)) / 2;
+      if (slim) text(c, t.name, fonts.body, SOFT_TEXT(), nx, pad + (head - line(fonts.body)) / 2, vx - P(10) - nx);
+      else { chip_icon(c, e, pad, pad, cs, t.on); titled(c, t, tx, pad + P(2), vx - P(10) - tx); }
+      text(c, v, vf, TEXT(), vx, vy, vw);
+      if (uw) text(c, u, fonts.small, MUTED(), vx + vw + P(4), vy + line(vf) - line(fonts.small) - P(3), uw);
+      const float delta = history.back().value - history.front().value;
+      const Chart *ch = chart(c, pad, gy, r.w - 2 * pad, gb - gy, e, std::move(history), accent(), true);
+      if (ch && !slim) {
+        const int i = onx_sensor_view::index(e);
+        std::string stats = onx_sensor_view::states[i].range_label() + "  ·  min " + fmt(ch->lo, 1) + "  ·  max " + fmt(ch->hi, 1);
+        text(c, stats, fonts.small, MUTED(), pad, sy, r.w - 2 * pad);
+        const std::string change = std::string(delta > 0 ? "+" : "-") + fmt(std::fabs(delta), 1);
+        // The change only when it fits beside the stats.
+        if (std::fabs(delta) >= 0.05f && text_width(stats, fonts.small) + text_width(change, fonts.small) + P(12) <= r.w - 2 * pad)
+          text(c, std::string(delta > 0 ? "+" : "-") + fmt(std::fabs(delta), 1), fonts.small, accent(), pad, sy, r.w - 2 * pad,
+               LV_TEXT_ALIGN_RIGHT);
+      }
+      return;
+    }
+  }
   // Percentages in a short card: a ring with the value, the name beside it and
   // a sparkline below the name.
   const float pv = d != nullptr ? num(d->state) : NAN;
   if (available && !switchable && d->unit == "%" && std::isfinite(pv) && pv >= 0 && pv <= 100 && r.h < P(300) &&
       r.h >= P(110)) {
     const int tw = r.w - 2 * pad;
-    const int nl = lines_for(t.name, fonts.title, tw, 2);
+    // The 2.8" keeps the title to one line so the ring has room.
+    const int nl = lines_for(t.name, fonts.title, tw, std::min(W, H) < 320 ? 1 : 2);
     text(c, t.name, fonts.title, TEXT(), pad, pad, tw, LV_TEXT_ALIGN_LEFT, nl);
     const int top = pad + nl * line(fonts.title) + P(10);
     const int avail = r.h - pad - top;
@@ -3448,10 +3524,54 @@ inline void card_generic(lv_obj_t *c, const Tile &t, const EntityDetailState *d)
   if (bar) level(c, pad, bottom + P(10), r.w - 2 * pad, P(12), t.ring / 1000.0f);
 }
 
+// A compact row's direct control: a toggle for on/off entities, a run button
+// for scenes, scripts and buttons. Returns its left edge, or the right padding.
+inline int row_control(lv_obj_t *c, const Tile &t, const EntityDetailState *d, int pad) {
+  const Rect r = t.r;
+  if (d == nullptr || !d->available || r.w < P(180)) return r.w - pad;
+  const std::string e = t.entity, domain = e.substr(0, e.find('.'));
+  const int th = P(30);
+  if (domain == "light" || domain == "switch" || domain == "input_boolean" || domain == "fan" ||
+      domain == "automation" || domain == "siren") {
+    const bool on = domain == "light" ? light_shown_on(e) : shown_state(e, d->state) == "on";
+    const int x = r.w - pad - P(54);
+    toggle(c, x, (r.h - th) / 2, on, [e, domain]() {
+      if (domain == "light") { light_toggle(e); return; }
+      const auto *dd = custom_logic_entity_sub::entity_detail(e);
+      const bool now_on = dd != nullptr && shown_state(e, dd->state) == "on";
+      request(e, domain + ".toggle", "", now_on ? "off" : "on", "state");
+    });
+    return x;
+  }
+  if (domain == "scene" || domain == "script" || domain == "button" || domain == "input_button") {
+    const int s = std::min(P(36), r.h - P(10));
+    circle(c, r.w - pad - s / 2, r.h / 2, s, soft(), LV_SYMBOL_PLAY, accent(), [e, domain]() {
+      if (domain == "script") request(e, "script.turn_on", "", "on", "panel_run");
+      else onx_controls::press(e);
+    });
+    return r.w - pad - s;
+  }
+  return r.w - pad;
+}
 // One line: icon, name, value (with a smaller unit) on the right.
 inline void card_row(lv_obj_t *c, const Tile &t, const EntityDetailState *d) {
   const Rect r = t.r;
   const int pad = P(14), is = P(24);
+  const int right = row_control(c, t, d, pad);
+  if (right < r.w - pad) {
+    // A control instead of the reading: the name and its state beside the icon.
+    icon(c, t.entity, pad + is / 2, r.h / 2, is, t.on ? accent() : SOFT_TEXT());
+    const int nx = pad + is + P(12), nw = right - P(10) - nx;
+    const std::string state = t.context.empty() ? t.value : t.context;
+    if (r.h >= line(fonts.body) + line(fonts.small) + P(8) && !state.empty()) {
+      const int y = (r.h - line(fonts.body) - line(fonts.small)) / 2;
+      text(c, t.name, fonts.body, TEXT(), nx, y, nw);
+      text(c, state, fonts.small, MUTED(), nx, y + line(fonts.body), nw);
+    } else {
+      text(c, t.name, fonts.body, TEXT(), nx, (r.h - line(fonts.body)) / 2, nw);
+    }
+    return;
+  }
   const bool binary = has_prefix(t.entity, "binary_sensor.");
   icon(c, t.entity, pad + is / 2, r.h / 2, is, accent());
   const bool numeric = d != nullptr && d->available && std::isfinite(num(d->state));
@@ -3479,7 +3599,15 @@ inline void card_row(lv_obj_t *c, const Tile &t, const EntityDetailState *d) {
       }
     }
   }
-  text(c, t.name, fonts.small, SOFT_TEXT(), nx, (r.h - line(fonts.small)) / 2, name_end - nx);
+  // The secondary sensor's text (e.g. "Resets in 2 hours") under the name
+  // when the row has room for two lines.
+  if (!t.context.empty() && r.h >= 2 * line(fonts.small) + P(8)) {
+    const int ny = (r.h - 2 * line(fonts.small)) / 2;
+    text(c, t.name, fonts.small, SOFT_TEXT(), nx, ny, name_end - nx);
+    text(c, t.context, fonts.small, MUTED(), nx, ny + line(fonts.small), name_end - nx);
+  } else {
+    text(c, t.name, fonts.small, SOFT_TEXT(), nx, (r.h - line(fonts.small)) / 2, name_end - nx);
+  }
   text(c, value, vf, binary ? accent() : TEXT(), vx, vy, vw);
   if (uw) text(c, unit, fonts.small, MUTED(), vx + vw + P(4), vy + line(vf) - line(fonts.small) - P(2), uw);
 }
@@ -3489,6 +3617,42 @@ inline void card_row(lv_obj_t *c, const Tile &t, const EntityDetailState *d) {
 // falls through to the shared press action, which opens the settings menu.
 constexpr const char *SETTINGS = "[Local] Settings";
 inline const void *settings_icon = nullptr;
+// A stack chip: the entity's icon and its reading in a pill; the name joins
+// when the chip is wide. Binary sensors that are on (open, detected) and
+// entities that are on take the accent so alerts stand out. A tap opens the
+// detail like any card.
+inline void card_chip(lv_obj_t *c, const Tile &t, const EntityDetailState *d) {
+  const Rect r = t.r;
+  const bool available = d != nullptr && d->available;
+  const bool numeric = available && std::isfinite(num(d->state));
+  const bool lit = available && t.on;
+  if (lit) lv_obj_set_style_bg_color(c, lv_color_hex(soft()), 0);
+  const int is = std::min(P(18), r.h - P(16)), px = std::min(P(10), r.h / 4);
+  std::string value = !available ? std::string("—") : numeric ? onx_detail_view::compact(d->state) : t.value;
+  if (value.empty()) value = t.context.empty() ? "—" : t.context;
+  // A text state that does not fit: the icon alone, centred (the accent still
+  // marks "on"); the detail has the words.
+  if (!numeric && available && text_width(value, fonts.body) > r.w - 2 * px - is - P(6)) {
+    icon(c, t.entity, r.w / 2, r.h / 2, is, lit ? accent() : SOFT_TEXT());
+    return;
+  }
+  icon(c, t.entity, px + is / 2, r.h / 2, is, lit ? accent() : available ? SOFT_TEXT() : MUTED());
+  // The reading comes first: the unit goes when both do not fit.
+  const int x = px + is + P(6), w = r.w - x - px;
+  std::string unit = numeric ? d->unit : "";
+  int uw = unit.empty() ? 0 : text_width(unit, fonts.small) + P(2);
+  if (text_width(value, fonts.body) + 1 + uw > w) { unit.clear(); uw = 0; }
+  const int vw = std::min(text_width(value, fonts.body) + 1, w - uw);
+  int nx = x;
+  if (w - vw - uw >= P(72)) {  // Room for the name before the reading.
+    const int nw = w - vw - uw - P(8);
+    text(c, t.name, fonts.small, MUTED(), x, (r.h - line(fonts.small)) / 2, nw);
+    nx = x + w - vw - uw;
+  }
+  const int vy = (r.h - line(fonts.body)) / 2;
+  text(c, value, fonts.body, lit ? accent() : TEXT(), nx, vy, vw);
+  if (uw) text(c, unit, fonts.small, MUTED(), nx + vw + P(2), vy + line(fonts.body) - line(fonts.small) - P(1), uw);
+}
 inline void card_settings(lv_obj_t *c, const Tile &t) {
   const Rect r = t.r;
   const int is = std::min(P(96), r.h / 3), title_h = line(fonts.title), gap = P(14);
@@ -3802,8 +3966,14 @@ __attribute__((noinline)) inline void build_card(const Tile &t) {
       text(c, t.badge, fonts.small, t.on ? accent() : MUTED(), kl.label_x, kl.badge_y, kl.label_w, LV_TEXT_ALIGN_CENTER, 1);
     return;
   }
-  lv_obj_t *c = box(root, t.r.x, t.r.y, t.r.w, t.r.h, CARD(), t.compact ? P(14) : P(18));
+  if (t.r.w <= 0 || t.r.h <= 0) return;  // An empty stack chip.
+  if (t.slot && t.entity.empty()) {
+    box(root, t.r.x, t.r.y, t.r.w, t.r.h, onx_display_settings::mix(CARD(), BG(), 45), t.chip ? t.r.h / 2 : t.compact ? P(14) : P(18));
+    return;
+  }
+  lv_obj_t *c = box(root, t.r.x, t.r.y, t.r.w, t.r.h, CARD(), t.chip ? t.r.h / 2 : t.compact ? P(14) : P(18));
   lv_obj_set_style_clip_corner(c, false, 0);
+  if (t.chip) { card_chip(c, t, d); return; }
   if (t.compact) { card_row(c, t, d); return; }
   if (t.entity == SETTINGS) card_settings(c, t);
   else if (ready && has_prefix(t.entity, "weather.")) card_weather(c, t, *d);
@@ -3925,7 +4095,8 @@ inline void compute_main_signatures(const std::vector<Tile> &tiles, std::string 
     v.value.text = t.value; v.context.text = t.context; v.name.text = t.name; v.value_ring = t.ring;
     const std::string place = std::to_string(t.r.x) + ',' + std::to_string(t.r.y) + ',' + std::to_string(t.r.w) + ',' +
                               std::to_string(t.r.h) + ',' + std::to_string(t.compact) + ',' + std::to_string(t.key) + ',' +
-                              std::to_string(t.icon_only) + ',' + std::to_string(t.effect) + ',' + std::to_string(t.artwork);
+                              std::to_string(t.icon_only) + ',' + std::to_string(t.effect) + ',' + std::to_string(t.artwork) + ',' +
+                              std::to_string(t.chip) + std::to_string(t.slot);
     std::string full = "#" + place + ',' + std::to_string(t.on) + ',' + t.badge + ',' + signature(t.entity, d, v, t.name);
     // These cards show relative event times independently of the header clock.
     if (!t.key && (runnable_entity(t.entity) || has_prefix(t.entity, "binary_sensor.")))
@@ -3934,7 +4105,7 @@ inline void compute_main_signatures(const std::vector<Tile> &tiles, std::string 
     // in place (card patches); everything else in the signature rebuilds.
     std::string shape = full;
     const bool ready = d != nullptr && d->received && d->available;
-    if (ready && !t.key && !t.compact && !t.artwork) {
+    if (ready && !t.key && !t.compact && !t.chip && !t.artwork) {
       const auto domain = t.entity.substr(0, t.entity.find('.'));
       if (domain == "light" && light_state) {
         const auto st = light_state(t.entity);

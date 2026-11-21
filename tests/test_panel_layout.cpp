@@ -64,4 +64,30 @@ int main() {
   std::strcpy(p.members[2],p.members[1]);assert(!valid(p));
   std::strcpy(p.members[2],"light.other");assert(!valid(p));
   Kind kind;assert(!parse("bogus",kind));assert(parse("two_controls",kind)&&kind==Kind::TWO_CONTROLS);
+  assert(parse("stack",kind)&&kind==Kind::STACK && std::strcmp(name(Kind::STACK),"stack")==0);
+  // Stacks: packed rows, cell counts and limits.
+  const auto board=stack_code({Row::CHIPS,Row::FULL,Row::SPLIT});
+  assert(stack_rows(board)==3 && stack_cells(board)==6 && valid_stack(board));
+  assert(stack_row_of(board,2)==Row::CHIPS && stack_row_of(board,3)==Row::FULL && stack_row_of(board,5)==Row::SPLIT && stack_row_of(board,6)==Row::NONE);
+  assert(!valid_stack(0) && !valid_stack(15625));
+  assert(!valid_stack(stack_code({Row::CHIPS,Row::CHIPS,Row::CHIPS,Row::CHIPS,Row::CHIPS,Row::CHIPS})));  // 18 cells.
+  assert(valid_stack(stack_code({Row::COMPACT,Row::COMPACT,Row::COMPACT,Row::COMPACT,Row::COMPACT,Row::COMPACT})));
+  for(auto [w,h]:{std::pair{240,320},std::pair{320,480},std::pair{480,320},std::pair{320,240}}) {
+    const int dock=52;
+    for(auto code:{board,stack_code({Row::FULL}),stack_code({Row::CHIPS,Row::FULL}),stack_code({Row::FULL,Row::COMPACT,Row::COMPACT,Row::COMPACT}),
+                   stack_code({Row::COMPACT,Row::COMPACT,Row::COMPACT,Row::COMPACT,Row::COMPACT,Row::COMPACT}),
+                   stack_code({Row::CHIPS,Row::CHIPS,Row::SPLIT,Row::SPLIT,Row::COMPACT,Row::FULL}),stack_code({Row::CHIPS})}) {
+      const auto boxes=stack_geometry(code,w,h);const int n=stack_cells(code);
+      for(int i=0;i<n;++i) {
+        const auto r=boxes[i];
+        assert(r.w>0 && r.h>0 && r.x>=12 && r.x+r.w<=w-12 && r.y>=MAIN_TOP && r.y+r.h<=h-dock);
+        for(int j=0;j<i;++j){const auto o=boxes[j];assert(r.x>=o.x+o.w || o.x>=r.x+r.w || r.y>=o.y+o.h || o.y>=r.y+r.h);}
+      }
+      bool flex=false;for(int i=0;i<stack_rows(code);++i)flex|=stack_row(code,i)==Row::FULL||stack_row(code,i)==Row::SPLIT;
+      if(flex)assert(boxes[n-1].y+boxes[n-1].h==h-dock || stack_row(code,stack_rows(code)-1)!=Row::FULL);
+    }
+    // Chips spread over the filled ones; empty chips get no area.
+    const auto spread=stack_geometry(board,w,h,false,0b111010);
+    assert(spread[0].w==0 && spread[2].w==0 && spread[1].x==12 && spread[1].x+spread[1].w==w-12);
+  }
 }

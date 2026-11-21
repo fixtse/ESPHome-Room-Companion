@@ -72,8 +72,18 @@ inline bool loaded=false;
 // Set when entries change (slot save, preset, import); reconciled lazily.
 inline bool dirty=true;
 inline int size_of(Kind k){return k==Kind::TWO_CONTROLS?2:k==Kind::CONTROL_SENSORS?4:1;}
+inline uint16_t stack_code(const StoredPage &page){return uint16_t(page.rows|(page.cols<<8));}
 inline int size_of(const StoredPage &page) {
-  return Kind(page.kind)==Kind::ACTION_GRID ? page.rows*page.cols : size_of(Kind(page.kind));
+  const Kind k=Kind(page.kind);
+  return k==Kind::ACTION_GRID ? page.rows*page.cols : k==Kind::STACK ? onx_panel_layout::stack_cells(stack_code(page)) : size_of(k);
+}
+// Positions with an entity (stack chip strips spread over the filled ones).
+inline uint32_t filled_mask(const StoredPage &page) {
+  uint32_t m=0;for(int i=0;i<size_of(page);++i)if(page.entries[i]!=NO_ENTRY)m|=1u<<i;return m;
+}
+inline std::array<onx_panel_layout::Rect,MAX_CELLS> page_geometry(const StoredPage *p,int w,int h,bool detail) {
+  if(p && Kind(p->kind)==Kind::STACK)return onx_panel_layout::stack_geometry(stack_code(*p),w,h,detail,filled_mask(*p));
+  return onx_panel_layout::geometry(p?Kind(p->kind):Kind::SINGLE,w,h,detail,p?p->rows:2,p?p->cols:2);
 }
 inline uint8_t lead(const StoredPage &page) {
   for(int i=0;i<size_of(page);++i)if(page.entries[i]!=NO_ENTRY)return page.entries[i];
@@ -217,7 +227,8 @@ inline void reconcile(StoredPages &list) {
   int out=0;
   for(int p=0;p<list.count;++p) {
     auto page=list.pages[p];
-    const bool grid=Kind(page.kind)==Kind::ACTION_GRID;
+    // Grids and stacks keep their gaps; fixed layouts fall apart into singles.
+    const bool grid=Kind(page.kind)==Kind::ACTION_GRID || Kind(page.kind)==Kind::STACK;
     const int n=size_of(page);
     bool complete=true;
     for(int i=0;i<n;++i) {
@@ -315,7 +326,9 @@ inline bool load() {
   for(int i=0;i<stored.count;++i) {
     auto &p=stored.pages[i];
     p.name[48]=0;p.icon[64]=0;
-    if(p.kind>uint8_t(Kind::ACTION_GRID) || !onx_panel_layout::grid_axis(p.rows) || !onx_panel_layout::grid_axis(p.cols)) {
+    const bool ok=p.kind==uint8_t(Kind::STACK) ? onx_panel_layout::valid_stack(stack_code(p))
+                 : p.kind<=uint8_t(Kind::ACTION_GRID) && onx_panel_layout::grid_axis(p.rows) && onx_panel_layout::grid_axis(p.cols);
+    if(!ok) {
       p.kind=0;p.rows=2;p.cols=2;
     }
   }
@@ -389,6 +402,10 @@ inline void encode(JsonArray out) {
     item["layout"]=onx_panel_layout::name(Kind(page.kind));
     if(page.carousel_artwork)item["carousel_artwork"]=onx_panel_artwork::key(artwork_id(stored,page,-1));
     if(Kind(page.kind)==Kind::ACTION_GRID){item["rows"]=page.rows;item["columns"]=page.cols;}
+    if(Kind(page.kind)==Kind::STACK) {
+      auto rows=item["stack"].to<JsonArray>();const auto code=stack_code(page);
+      for(int r=0;r<onx_panel_layout::stack_rows(code);++r)rows.add(onx_panel_layout::row_name(onx_panel_layout::stack_row(code,r)));
+    }
     auto entities=item["entities"].to<JsonArray>();
     for(int i=0;i<size_of(page);++i)entities.add(entry_entity(page.entries[i]));
     if(std::any_of(page.artwork.begin(),page.artwork.begin()+size_of(page),[](uint8_t i){return (i&ART_INDEX)!=0;})) {
@@ -590,6 +607,18 @@ inline std::string rpc(const std::string &op,const std::string &data,const std::
           return R"({"error":"Choose 1–4 rows and columns"})";
         page.rows=rows;page.cols=cols;
       }
+      if(kind==Kind::STACK) {
+        auto rows=item["stack"].as<JsonArrayConst>();
+        if(rows.isNull() || rows.size()<1 || rows.size()>size_t(onx_panel_layout::MAX_ROWS))return R"({"error":"A stack has 1–6 rows"})";
+        uint32_t code=0,m=1;
+        for(JsonVariantConst r:rows) {
+          onx_panel_layout::Row row;
+          if(!onx_panel_layout::parse_row(r | "",row))return R"({"error":"Stack rows are full, split, compact or chips"})";
+          code+=uint32_t(row)*m;m*=5;
+        }
+        if(!onx_panel_layout::valid_stack(uint16_t(code)))return R"({"error":"A stack holds at most 16 entities"})";
+        page.rows=uint8_t(code&0xFF);page.cols=uint8_t(code>>8);
+      }
       if(!resolve_artwork(next,page,-1,item["carousel_artwork"] | ""))
         return R"({"error":"Carousel image is unavailable. Re-upload it before saving."})";
       auto entities=item["entities"].as<JsonArrayConst>();
@@ -601,7 +630,7 @@ inline std::string rpc(const std::string &op,const std::string &data,const std::
       if(entities.size()!=size_t(size_of(page)))return R"({"error":"The number of positions must match the layout"})";
       for(int i=0;i<size_of(page);++i) {
         const std::string entity=entities[i] | "";const int entry=configured(entity);
-        if(entity.empty() && kind==Kind::ACTION_GRID)continue;
+        if(entity.empty() && (kind==Kind::ACTION_GRID || kind==Kind::STACK))continue;
         if(entry<0)return "{\"error\":\"Save the page entities before the pages\"}";
         // Reuse is fine (same entry, same subscription), but a carousel stop
         // needs one leading entity and a page shows an entity once.
@@ -613,7 +642,7 @@ inline std::string rpc(const std::string &op,const std::string &data,const std::
         if(flags[i] | false)page.artwork[i]|=ICON_ONLY;
       }
       const auto first=lead(page);
-      if(first==NO_ENTRY)return R"({"error":"Place at least one action on each grid"})";
+      if(first==NO_ENTRY)return kind==Kind::STACK ? R"({"error":"Place at least one entity on each stack"})" : R"({"error":"Place at least one action on each grid"})";
       if(!item["animation"].isNull()) {
         if(kind!=Kind::ACTION_GRID || !item["animation"].is<JsonObjectConst>())return R"({"error":"Icon animations are set on action grids"})";
         for(JsonPairConst fx:item["animation"].as<JsonObjectConst>()) {
@@ -853,6 +882,10 @@ inline std::vector<onx_panel_detail::Tile> main_tiles(const std::string &entity,
     onx_panel_detail::Tile t;
     t.entity=cell;t.name=onx_media::display_text(v.name);t.value=v.value;t.context=v.context;
     t.on=v.on;t.ring=v.ring;t.r={r.x,r.y,r.w,r.h};t.compact=kind==Kind::CONTROL_SENSORS && i>0;
+    if(kind==Kind::STACK) {
+      const auto row=onx_panel_layout::stack_row_of(stack_code(*p),i);
+      t.compact=row==onx_panel_layout::Row::COMPACT;t.chip=row==onx_panel_layout::Row::CHIPS;t.slot=true;
+    }
     t.key=kind==Kind::ACTION_GRID;
     if (t.key && !cell.empty()) t.badge = grid_badge(cell, v, custom_logic_entity_sub::entity_detail(cell));
     t.icon_only=p && t.key && (p->artwork[i]&ICON_ONLY);
@@ -886,7 +919,7 @@ template<typename Bind> void render(const std::string &entity,int width,int heig
   const auto kind=p?Kind(p->kind):Kind::SINGLE;
   action_grid=kind==Kind::ACTION_GRID;
   page_lead=entity;
-  rects=onx_panel_layout::geometry(kind,width,height,detail,p?p->rows:2,p?p->cols:2);
+  rects=page_geometry(p,width,height,detail);
   count=p?size_of(*p):1;
   for(int i=0;i<count;++i)entities[i]=p?entry_entity(p->entries[i]):entity;
   lv_obj_set_size(layer,width,height);lv_obj_set_pos(layer,0,0);
@@ -929,7 +962,7 @@ inline bool prewarm(const std::string &entity, int width, int height) {
   if (!layer || entity.empty() || !onx_panel_detail::bind_icon) return false;
   const auto *p = led_by(entity);
   const auto kind = p ? Kind(p->kind) : Kind::SINGLE;
-  const auto areas = onx_panel_layout::geometry(kind, width, height, false, p ? p->rows : 2, p ? p->cols : 2);
+  const auto areas = page_geometry(p, width, height, false);
   return onx_panel_detail::prewarm_main_page(layer, entity, main_tiles(entity, p, kind, areas), width, height);
 }
 // The panel's own Assist timers: full screen, above the dock.
@@ -954,6 +987,7 @@ inline bool tap(int x,int y,bool held=false) {
   for(int i=0;i<count;++i) {
     const auto r=rects[i];if(x>=r.x && x<r.x+r.w && y>=r.y && y<r.y+r.h) {
       const auto &entity=entities[i];
+      if(entity.empty())return true;
       if(configured(entity)<0)return true;
       onx_panel_ui::request_render();
       if(action_grid && !held) {

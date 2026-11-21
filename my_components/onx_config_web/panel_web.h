@@ -38,10 +38,32 @@ static const char PANEL_JS[] = R"ONXPANEL(
  //   panel_pages -> {pages:[{name,icon,layout,entities:[...]}]}
  //   panel_pages_save data=JSON {pages:[...]} (whole list: order, add, delete)
  // Presets carry their own page list; it is edited here and stored with the preset.
- const LAYOUTS={single:{n:1,label:'Full',hint:'One entity',slots:['Full screen']},two_controls:{n:2,label:'Split',hint:'Two entities',slots:['First','Second']},control_sensors:{n:4,label:'Large + 3',hint:'Three compact sensors',slots:['Large','Compact 1','Compact 2','Compact 3']},action_grid:{label:'Action grid',hint:'Adjustable rows and columns',n:4}};
+ const LAYOUTS={single:{n:1,label:'Full',hint:'One entity',slots:['Full screen']},two_controls:{n:2,label:'Split',hint:'Two entities',slots:['First','Second']},control_sensors:{n:4,label:'Large + 3',hint:'Three compact sensors',slots:['Large','Compact 1','Compact 2','Compact 3']},action_grid:{label:'Action grid',hint:'Adjustable rows and columns',n:4},stack:{label:'Stack',hint:'Rows you add, remove and reorder'}};
  const gridLayout='action_grid',isGrid=p=>p.layout===gridLayout;
+ // Stack pages: up to six rows of cards, split pairs, compact rows and chip
+ // strips (onx_panel_layout.h). The fixed layouts are stacks too, so adding a
+ // row to any page turns it into a stack with the same entities.
+ const STACK='stack',isStack=p=>p.layout===STACK,openLayout=p=>isGrid(p)||isStack(p),MAX_ROWS=6;
+ const ROWS={full:{n:1,label:'Card'},split:{n:2,label:'Split pair'},compact:{n:1,label:'Compact row'},chips:{n:3,label:'Chips'}};
+ const stackCells=rows=>rows.reduce((n,r)=>n+ROWS[r].n,0);
+ const validStack=rows=>Array.isArray(rows)&&rows.length>=1&&rows.length<=MAX_ROWS&&rows.every(r=>Object.hasOwn(ROWS,r))&&stackCells(rows)<=16;
+ const rowsOf=p=>isStack(p)?p.stack:p.layout==='two_controls'?['full','full']:p.layout==='control_sensors'?['full','compact','compact','compact']:['full'];
+ const PRESETS=[
+  {key:'stack:chips,full',label:'Card + chips',hint:'Readings above one card',stack:['chips','full']},
+  {key:'stack:chips,full,split',label:'Sensor board',hint:'Chips, a card and a pair',stack:['chips','full','split']},
+  {key:'stack:compact,compact,compact,compact,compact',label:'List',hint:'Rows with toggles and readings',stack:['compact','compact','compact','compact','compact']}];
+ const shapeOf=p=>isStack(p)?'stack:'+p.stack.join(','):p.layout;
+ const sizeOf=p=>isGrid(p)?p.rows*p.columns:isStack(p)?stackCells(p.stack):LAYOUTS[p.layout].n;
+ // {row, type, index} of a position.
+ const rowAt=(p,i)=>{const rows=rowsOf(p);for(let k=0;k<rows.length;k++){if(i<ROWS[rows[k]].n)return {row:k,type:rows[k],index:i};i-=ROWS[rows[k]].n}return null};
+ const rowStart=(rows,k)=>stackCells(rows.slice(0,k));
  const lead=p=>p.entities.find(Boolean)||'';
- const position=(p,i)=>isGrid(p)?'Row '+(Math.floor(i/p.columns)+1)+', column '+(i%p.columns+1):LAYOUTS[p.layout].slots[i];
+ const position=(p,i)=>{
+  if(isGrid(p))return 'Row '+(Math.floor(i/p.columns)+1)+', column '+(i%p.columns+1);
+  if(!isStack(p))return LAYOUTS[p.layout].slots[i];
+  const at=rowAt(p,i);if(!at)return '';
+  return 'Row '+(at.row+1)+' · '+(at.type==='chips'?'Chip '+(at.index+1):at.type==='split'?(at.index?'Right':'Left'):ROWS[at.type].label);
+ };
  const artId=/^[0-9a-f]{14}$/;
  const axis=n=>Number.isInteger(n)&&n>=1&&n<=4?n:2;
  const DEFAULT_ICONS={sensor:'chart-line',binary_sensor:'checkbox-marked-circle-outline',media_player:'music-note',weather:'weather-partly-cloudy',climate:'thermostat',timer:'timer-outline',light:'lightbulb',switch:'toggle-switch',cover:'window-shutter',fan:'fan',script:'script-text',automation:'robot',number:'numeric',input_number:'numeric',select:'format-list-bulleted',input_select:'format-list-bulleted',button:'gesture-tap-button',input_button:'gesture-tap-button',scene:'palette'};
@@ -138,10 +160,11 @@ static const char PANEL_JS[] = R"ONXPANEL(
  const status=t=>{$('page-layout-status').textContent=t||''};
  const singles=list=>list.filter(s=>s.entity&&s.timerHidden!=='1').map(s=>({name:'',icon:'',layout:'single',entities:[s.entity]}));
  const normalize=list=>(Array.isArray(list)?list:[]).map(p=>{
-  const layout=Object.hasOwn(LAYOUTS,p?.layout)?p.layout:'single',rows=axis(p?.rows),columns=axis(p?.columns);
-  const grid=layout===gridLayout,n=grid?rows*columns:LAYOUTS[layout].n;
+  let layout=Object.hasOwn(LAYOUTS,p?.layout)?p.layout:'single';const rows=axis(p?.rows),columns=axis(p?.columns);
+  if(layout===STACK&&!validStack(p?.stack))layout='single';
+  const grid=layout===gridLayout,stack=layout===STACK?[...p.stack]:null,n=grid?rows*columns:stack?stackCells(stack):LAYOUTS[layout].n;
   const ids=Array.isArray(p?.entities)?p.entities:[p?.entity,...(p?.members||[])];
-  return {name:String(p?.name||''),icon:String(p?.icon||''),layout,...(grid?{rows,columns}:{}),entities:Array.from({length:n},(_,i)=>String(ids[i]||'')),...artFields(p,n),...(grid&&p?.icon_only?.some(x=>x===true)?{icon_only:Array.from({length:n},(_,i)=>iconOnly(p,i))}:{}),...(artId.test(p?.carousel_artwork||'')?{carousel_artwork:p.carousel_artwork}:{}),...animationField(p,grid,ids.slice(0,n))};
+  return {name:String(p?.name||''),icon:String(p?.icon||''),layout,...(grid?{rows,columns}:{}),...(stack?{stack}:{}),entities:Array.from({length:n},(_,i)=>String(ids[i]||'')),...artFields(p,n),...(grid&&p?.icon_only?.some(x=>x===true)?{icon_only:Array.from({length:n},(_,i)=>iconOnly(p,i))}:{}),...(artId.test(p?.carousel_artwork||'')?{carousel_artwork:p.carousel_artwork}:{}),...animationField(p,grid,ids.slice(0,n))};
  });
  const used=()=>editorSlots.filter(s=>s.entity).length;
  // Re-render through the app so save/discard states and the preview follow.
@@ -197,15 +220,15 @@ static const char PANEL_JS[] = R"ONXPANEL(
  function removeAt(page,pos){const e=page.entities[pos];page.entities[pos]='';updateArt(page,pos,'');setIconOnly(page,pos,false);release(e);touch()}
  function pickFor(page,pos){const small=pos>0&&page.layout==='control_sensors';app()?.pick(x=>!small||compact(x),item=>place(page,pos,item))}
  function cell(page,pos,r,w,h){
-  const e=page.entities[pos]||'',small=pos>0&&page.layout==='control_sensors',role=position(page,pos);
-  const c=el('div','page-cell'+(small?' compact':'')+(isGrid(page)?' action-key'+(iconOnly(page,pos)?' icon-only':''):'')+(e?'':' empty'));c.dataset.member=pos;
+  const e=page.entities[pos]||'',small=pos>0&&page.layout==='control_sensors',role=position(page,pos),at=isStack(page)?rowAt(page,pos):null;
+  const c=el('div','page-cell'+(small||at?.type==='compact'?' compact':'')+(at?.type==='chips'?' compact chip':'')+(isGrid(page)?' action-key'+(iconOnly(page,pos)?' icon-only':''):'')+(e?'':' empty'));c.dataset.member=pos;
   c.style.cssText='left:'+r.x/w*100+'%;top:'+r.y/h*100+'%;width:'+r.w/w*100+'%;height:'+r.h/h*100+'%';
   c.setAttribute('aria-current',String(view==='page'&&pos===selectedPos));
   const main=el('button','cell-main');main.type='button';main.disabled=editorBusy;
   if(e){const url=artUrl(positionArt(page,pos)),image=url?el('img','mdi art-preview'):mdi(iconOf(e));
    if(url){image.src=url;image.alt=''}
    main.append(image,el('strong','',nameOf(e)),el('small','',e));main.setAttribute('aria-label',role+': '+nameOf(e));main.onclick=()=>selectPos(pos)}
-  else{main.append(mdi('mdi:plus-circle-outline'),el('strong','',small?'Add a sensor':isGrid(page)?'':'Add entity'));main.setAttribute('aria-label','Add an entity to '+role);main.onclick=()=>{selectPos(pos);pickFor(page,pos)}}
+  else{main.append(mdi('mdi:plus-circle-outline'),el('strong','',small?'Add a sensor':isGrid(page)||at?.type==='chips'?'':'Add entity'));main.setAttribute('aria-label','Add an entity to '+role);main.onclick=()=>{selectPos(pos);pickFor(page,pos)}}
   c.append(el('small','cell-tag',role),main);
   if(e){
    const tools=el('div','cell-tools'),swap=tool('Replace '+nameOf(e),'M4 7h13l-3-3M20 17H7l3 3'),rm=tool('Remove '+nameOf(e)+' from this page','m6 6 12 12M18 6 6 18',true);
@@ -224,19 +247,87 @@ static const char PANEL_JS[] = R"ONXPANEL(
  $('page-grid').addEventListener('dragend',ev=>{if(ev.dataTransfer.dropEffect==='none'&&ev.target.isConnected&&ev.target.dataset?.member!==undefined){const p=pageConfigs[selectedPage];if(p)removeAt(p,+ev.target.dataset.member)}});
  let lastSettings={};
  const screen=()=>globalThis.ONX_PANEL_SCREEN?.(lastSettings)||{width:320,height:480};
- function thumb(kind){
+ function thumb(kind,stack){
   const {width:w,height:h}=screen(),s=document.createElementNS('http://www.w3.org/2000/svg','svg');s.setAttribute('viewBox','0 0 '+w+' '+h);s.setAttribute('aria-hidden','true');if(w>h)s.classList.add('wide');
-  s.innerHTML='<rect class="frame" x="5" y="5" width="'+(w-10)+'" height="'+(h-10)+'" rx="36"/>'+globalThis.ONX_PANEL_GEOMETRY(kind,w,h).map(r=>'<rect x="'+r.x+'" y="'+r.y+'" width="'+r.w+'" height="'+r.h+'" rx="18"/>').join('');return s;
+  s.innerHTML='<rect class="frame" x="5" y="5" width="'+(w-10)+'" height="'+(h-10)+'" rx="36"/>'+globalThis.ONX_PANEL_GEOMETRY(kind,w,h,false,stack).filter(r=>r.w>0).map(r=>'<rect x="'+r.x+'" y="'+r.y+'" width="'+r.w+'" height="'+r.h+'" rx="'+Math.min(18,r.h/2)+'"/>').join('');return s;
+ }
+ // Fixed layouts, the stack presets, your own stack, and the action grid.
+ function layoutOptions(p){
+  const fixed=['single','two_controls','control_sensors'].map(k=>({key:k,layout:k,...LAYOUTS[k]}));
+  const own=isStack(p)&&!PRESETS.some(o=>o.key===shapeOf(p));
+  return [...fixed,...PRESETS.map(o=>({...o,layout:STACK})),
+   {key:own?shapeOf(p):'stack:custom',layout:STACK,stack:own?p.stack:rowsOf(p),label:'Custom stack',hint:own?p.stack.length+(p.stack.length===1?' row':' rows')+' · edit the rows below':'Start from this page’s rows'},
+   {key:gridLayout,layout:gridLayout,...LAYOUTS[gridLayout]}];
  }
  function renderLayouts(p){
-  $('page-kind').replaceChildren(...Object.entries(LAYOUTS).map(([value,l])=>{
-   const label=el('label','layout-option'),input=el('input');input.type='radio';input.name='page-kind';input.value=value;input.checked=p.layout===value;input.disabled=editorBusy||saving;
-   input.onchange=()=>setLayout(value);const text=el('span');text.append(el('b','',l.label),el('small','',l.hint));label.append(input,thumb(value),text);return label}));
+  $('page-kind').replaceChildren(...layoutOptions(p).map(o=>{
+   const label=el('label','layout-option'),input=el('input');input.type='radio';input.name='page-kind';input.value=o.key;input.checked=shapeOf(p)===o.key;input.disabled=editorBusy||saving;
+   input.onchange=()=>o.layout===STACK?setStack(o.stack):setLayout(o.layout);const text=el('span');text.append(el('b','',o.label),el('small','',o.hint));label.append(input,thumb(o.layout,o.stack),text);return label}));
+ }
+ // Entities move with their rows. `map` lists, for each new position, the old
+ // position it takes its entity from (-1: empty). Anything not carried over
+ // leaves the page.
+ function remap(p,stack,map){
+  const old=p.entities,oldArt=old.map((_,i)=>positionArt(p,i));
+  p.layout=STACK;p.stack=stack;delete p.rows;delete p.columns;delete p.icon_only;delete p.animation;
+  p.entities=map.map(i=>i>=0?old[i]||'':'');
+  if(p.artwork||oldArt.some(Boolean)){p.artwork=map.map(i=>i>=0?oldArt[i]||'':'');if(!p.artwork.some(Boolean))delete p.artwork}
+  const dropped=old.filter(e=>e&&!p.entities.includes(e)),names=dropped.map(nameOf);for(const e of dropped)release(e);
+  const was=old[selectedPos];selectedPos=Math.max(0,was&&p.entities.includes(was)?p.entities.indexOf(was):Math.min(selectedPos,p.entities.length-1));
+  status(names.length?names.join(', ')+(names.length===1?' was':' were')+' removed from this page.':'');if(!focusMember())touch();
+ }
+ // A preset or custom stack from any page: cards take the controls first,
+ // chips and compact rows the sensors, then whatever is left fills the gaps.
+ function setStack(stack){
+  const p=pageConfigs[selectedPage];if(!p||(isStack(p)&&shapeOf(p)==='stack:'+stack.join(',')))return;
+  const kinds=stack.flatMap(r=>Array(ROWS[r].n).fill(r)),map=kinds.map(()=>-1),taken=new Set();
+  const place=fits=>{for(const [j,k] of kinds.entries()){if(map[j]>=0||!fits(k))continue;const i=p.entities.findIndex((e,i)=>e&&!taken.has(i)&&fits(k,e));if(i<0)continue;map[j]=i;taken.add(i)}};
+  place((k,e)=>(k==='full'||k==='split')&&(e===undefined||!compact(e)));
+  place((k,e)=>(k==='chips'||k==='compact')&&(e===undefined||compact(e)));
+  place(()=>true);
+  remap(p,[...stack],map);
+ }
+ // Row operations from the row editor; fixed layouts become stacks.
+ function editRows(fn){
+  const p=pageConfigs[selectedPage];if(!p||isGrid(p))return;
+  const rows=rowsOf(p),groups=rows.map((r,k)=>Array.from({length:ROWS[r].n},(_,j)=>rowStart(rows,k)+j));
+  const next=fn(rows.map((type,k)=>({type,from:groups[k]})));
+  if(!next||!next.length||next.length>MAX_ROWS)return;
+  const stack=next.map(r=>r.type);if(stackCells(stack)>16){status('A page holds at most 16 entities.');return}
+  // A narrower row keeps its first entities; a wider one adds empty positions.
+  const map=next.flatMap(r=>Array.from({length:ROWS[r.type].n},(_,j)=>r.from[j]??-1));
+  // Retyping a split or chip row into a single position keeps any filled one.
+  for(const r of next)if(ROWS[r.type].n<r.from.length){const pos=rowStart(stack,next.indexOf(r)),keep=r.from.filter(i=>p.entities[i]).slice(0,ROWS[r.type].n);keep.forEach((i,j)=>map[pos+j]=i)}
+  remap(p,stack,map);
+ }
+ function renderRows(p){
+  const box=$('stack-rows');if(!box)return;box.hidden=!p||isGrid(p);if(box.hidden)return;
+  const rows=rowsOf(p),locked=editorBusy||saving;
+  const list=el('ol','stack-row-list');
+  rows.forEach((type,k)=>{
+   const li=el('li','stack-row'),pick=el('select');pick.setAttribute('aria-label','Row '+(k+1)+' type');pick.disabled=locked;
+   for(const [value,r] of Object.entries(ROWS)){const o=el('option','',r.label+(r.n>1?' ('+r.n+')':''));o.value=value;o.selected=value===type;pick.append(o)}
+   pick.onchange=()=>editRows(list=>{list[k].type=pick.value;return list});
+   const up=tool('Move row '+(k+1)+' up','M12 19V5m-6 6 6-6 6 6'),down=tool('Move row '+(k+1)+' down','M12 5v14m-6-6 6 6 6-6'),rm=tool('Remove row '+(k+1),'m6 6 12 12M18 6 6 18',true);
+   up.disabled=locked||k===0;down.disabled=locked||k===rows.length-1;rm.disabled=locked||rows.length===1;
+   up.onclick=()=>editRows(list=>{[list[k-1],list[k]]=[list[k],list[k-1]];return list});
+   down.onclick=()=>editRows(list=>{[list[k+1],list[k]]=[list[k],list[k+1]];return list});
+   rm.onclick=()=>editRows(list=>{list.splice(k,1);return list});
+   li.append(el('b','',String(k+1)),pick,up,down,rm);list.append(li);
+  });
+  const add=el('div','stack-add'),type=el('select');type.setAttribute('aria-label','New row type');
+  for(const [value,r] of Object.entries(ROWS)){const o=el('option','',r.label);o.value=value;o.selected=value==='compact';type.append(o)}
+  const where=el('select');where.setAttribute('aria-label','Where to add the row');for(const [v,t] of [['end','at the bottom'],['start','at the top']]){const o=el('option','',t);o.value=v;where.append(o)}
+  const go=el('button','', '+ Add row');go.type='button';
+  const full=rows.length>=MAX_ROWS;go.disabled=type.disabled=where.disabled=locked||full;
+  go.onclick=()=>editRows(list=>{const r={type:type.value,from:[]};where.value==='start'?list.unshift(r):list.push(r);return list});
+  add.append(go,type,where,el('small','',full?'Six rows at most.':isStack(p)?'':'Changing rows turns this page into a stack.'));
+  box.replaceChildren(el('small','stack-title','Rows'),list,add);
  }
  function setLayout(kind){
   const p=pageConfigs[selectedPage];if(!p||p.layout===kind)return;
   const n=LAYOUTS[kind].n,dropped=p.entities.slice(n).filter(Boolean);
-  p.layout=kind;
+  p.layout=kind;delete p.stack;
   if(isGrid(p)){p.rows=2;p.columns=2}else{delete p.rows;delete p.columns;delete p.icon_only;delete p.animation}
   p.entities=Array.from({length:n},(_,i)=>p.entities[i]||'');
   if(p.artwork)p.artwork=p.artwork.slice(0,n).concat(Array(Math.max(0,n-p.artwork.length)).fill(''));
@@ -272,7 +363,7 @@ static const char PANEL_JS[] = R"ONXPANEL(
   const {width:w,height:h}=screen(),grid=$('page-grid');grid.className='page-grid'+(w>h?' wide':'');grid.style.aspectRatio=w+'/'+h;
   const top=el('div','page-chrome top');top.append(el('span','',new Date().toLocaleTimeString(undefined,{hour:'2-digit',minute:'2-digit'})),mdi('mdi:bell-outline'));
   const bottom=el('div','page-chrome bottom');for(const [i,q] of pageConfigs.entries()){const m=pageGlyph(q);if(i===selectedPage)m.classList.add('here');bottom.append(m)}
-  grid.replaceChildren(top,...globalThis.ONX_PANEL_GEOMETRY(p.layout,w,h,false,p.rows,p.columns).map((r,i)=>cell(p,i,r,w,h)),bottom);
+  grid.replaceChildren(top,...globalThis.ONX_PANEL_GEOMETRY(p.layout,w,h,false,isStack(p)?p.stack:p.rows,p.columns).map((r,i)=>cell(p,i,r,w,h)),bottom);
   drawLiveCanvas();
  }
  // The page as the panel draws it, under the editable positions.
@@ -291,7 +382,7 @@ static const char PANEL_JS[] = R"ONXPANEL(
   globalThis.ONX_PANEL_PREVIEW(svg,slot,liveView,views,'main',a?.settings?.()||lastSettings);
  }
  function pageButton(p,i,savedList){
-  const b=el('button','page-item');b.type='button';const meta=(isGrid(p)?p.rows+' × '+p.columns+' grid':LAYOUTS[p.layout].label)+' · '+p.entities.filter(Boolean).length+'/'+p.entities.length;
+  const b=el('button','page-item');b.type='button';const meta=(isGrid(p)?p.rows+' × '+p.columns+' grid':isStack(p)?(PRESETS.find(o=>o.key===shapeOf(p))?.label||p.stack.length+'-row stack'):LAYOUTS[p.layout].label)+' · '+p.entities.filter(Boolean).length+'/'+p.entities.length;
   const box=el('span','slot-icon');box.append(pageGlyph(p));const text=el('span','item-text');text.append(el('span','',pageTitle(p,i)),el('small','',meta));
   b.append(el('b','',String(i+1)),box,text);
   const dirty=JSON.stringify(savedList[i])!==JSON.stringify(p)||p.entities.some(e=>{const j=slotOf(e);return j>=0&&app()?.dirtyAt?.(j)});if(dirty)b.append(el('span','dirty-dot','●'));
@@ -327,14 +418,14 @@ static const char PANEL_JS[] = R"ONXPANEL(
   const p=view==='page'?pageConfigs[selectedPage]:null;
   $('pages-empty').hidden=!(view==='page'&&!p);
   for(const id of ['page-head','page-layouts','page-canvas'])$(id).hidden=!p;
-  $('grid-size').hidden=!p||!isGrid(p);
+  $('grid-size').hidden=!p||!isGrid(p);if(!p||isGrid(p))$('stack-rows').hidden=true;
   if(p){
    if(isGrid(p)){$('grid-rows').value=p.rows;$('grid-columns').value=p.columns;$('grid-rows').disabled=$('grid-columns').disabled=locked}
    const name=$('page-name');if(document.activeElement!==name)name.value=p.name;name.placeholder=lead(p)?nameOf(lead(p)):'Living room';name.disabled=locked;
    displayArt(setIcon($('page-icon-preview'),pageIcon(p)),p.carousel_artwork);$('page-icon-button').setAttribute('aria-label','Carousel icon: '+(p.carousel_artwork?'custom image':p.icon==='entity'?'first entity icon':p.icon||'default icon')+'. Choose another');$('page-icon-button').disabled=locked;
    $('page-up').disabled=locked||selectedPage===0;$('page-down').disabled=locked||selectedPage>=pageConfigs.length-1;$('delete-page').disabled=locked;
    const {width:w,height:h}=screen();
-   const kindKey=JSON.stringify([p.layout,locked,w,h]);if(drawn.kind!==kindKey){drawn.kind=kindKey;renderLayouts(p)}
+   const kindKey=JSON.stringify([shapeOf(p),locked,w,h]);if(drawn.kind!==kindKey){drawn.kind=kindKey;renderLayouts(p);renderRows(p)}
    const canvasKey=JSON.stringify([p,pageConfigs.map(pageIcon),selectedPage,selectedPos,view,locked,w,h,p.entities.map(e=>e&&nameOf(e)+'|'+iconOf(e))]);
    if(drawn.canvas!==canvasKey){drawn.canvas=canvasKey;renderCanvas(p)}
   }
@@ -646,10 +737,10 @@ static const char PANEL_JS[] = R"ONXPANEL(
  async function savePages(){
   const leads=new Set();
   for(const [i,p] of pageConfigs.entries()){
-   const first=lead(p),missing=isGrid(p)?!first:p.entities.some(e=>!e);
+   const first=lead(p),missing=openLayout(p)?!first:p.entities.some(e=>!e);
    if(missing||leads.has(first)){
     view='page';selectedPage=i;selectedPos=Math.max(0,p.entities.findIndex(e=>missing?!e:e===first));touch();
-    status(missing?(isGrid(p)?'Place at least one action on the grid.':'Fill every position on “'+pageTitle(p,i)+'”, or choose a smaller layout.'):'Each page needs a different first assigned entity.');
+    status(missing?(isGrid(p)?'Place at least one action on the grid.':isStack(p)?'Place at least one entity on “'+pageTitle(p,i)+'”.':'Fill every position on “'+pageTitle(p,i)+'”, or choose a smaller layout.'):'Each page needs a different first assigned entity.');
     return false;
    }
    leads.add(first);
@@ -709,8 +800,11 @@ static const char PANEL_JS[] = R"ONXPANEL(
  };
  rpc({op:'panel_pages'}).then(result=>{panelPages=JSON.stringify(normalize(result.pages));pagesLoaded=true;if(!editorTarget){pageConfigs=JSON.parse(panelPages);savedPages=panelPages;selectedPage=0;selectedPos=Math.max(0,pageConfigs[0]?.entities.findIndex(Boolean)??0)}focusMember();touch()}).catch(error=>{pageError='Could not load pages: '+error.message;renderPageEditor()});
  // Mirrors onx_panel_layout::geometry (portrait and landscape).
+ // Stacks pass their rows as `rows` and, optionally, which positions are
+ // filled as `columns` (chips spread over the filled ones).
  globalThis.ONX_PANEL_GEOMETRY=(kind,w,h,detail=false,rows=2,columns=2)=>{
   const top=detail?12:40,bottom=detail?12:52,gap=8,pad=12,body=h-top-bottom,inner=w-pad*2;
+  if(kind===STACK)return stackGeometry(rows,w,h,detail,Array.isArray(columns)?columns:null);
   if(kind===gridLayout){
    const usableW=w-16-gap*(columns-1),usableH=body-6-4-gap*(rows-1);  // As onx_panel_layout.h (GRID_TOP 6, GRID_BOTTOM 4).
    return Array.from({length:rows*columns},(_,i)=>{
@@ -728,6 +822,32 @@ static const char PANEL_JS[] = R"ONXPANEL(
   if(kind==='control_sensors'){const main=Math.floor((body-gap)*55/100),row=Math.floor((body-main-gap*3)/3);rects[0].h=main;for(let i=0;i<3;i++)rects.push({x:pad,y:top+main+gap+i*(row+gap),w:inner,h:row})}
   return rects;
  };
+ // Mirrors onx_panel_layout::stack_geometry (integer arithmetic included).
+ function stackGeometry(stack,w,h,detail,filled){
+  const top=detail?12:40,bottom=detail?12:52,gap=8,pad=12,body=h-top-bottom,inner=w-pad*2,div=(a,b)=>Math.trunc(a/b);
+  const small=Math.min(w,h)<320,n=stack.length,out=[],has=i=>!filled||!!filled[i];
+  let ch=small?32:42,rh=small?42:56;const rowMax=small?56:76;
+  const flex=stack.filter(r=>r==='full'||r==='split').length,chips=stack.filter(r=>r==='chips').length,rows=n-flex-chips,free=body-gap*(n-1);
+  let fh=0;
+  if(flex){
+   fh=div(free-chips*ch-rows*rh,flex);const minFlex=small?72:96;
+   if(fh<minFlex&&rows+chips){const fixed=Math.max(div(free,4),free-flex*minFlex),want=chips*ch+rows*rh;ch=div(ch*fixed,want);rh=div(rh*fixed,want);fh=div(free-chips*ch-rows*rh,flex)}
+  }else if(rows)rh=Math.min(rowMax,div(free-chips*ch,rows));
+  else ch=Math.min(ch,div(free,chips));
+  if(!flex&&rows+chips&&chips*ch+rows*rh>free){const want=chips*ch+rows*rh;ch=div(ch*free,want);rh=div(rh*free,want)}
+  let y=top,pos=0,seen=0;
+  for(const r of stack){
+   let rhh=r==='chips'?ch:r==='compact'?rh:fh;
+   if((r==='full'||r==='split')&&++seen===flex)rhh=fh+free-chips*ch-rows*rh-flex*fh;
+   if(r==='split'){const half=div(inner-gap,2);out.push({x:pad,y,w:half,h:rhh},{x:pad+half+gap,y,w:inner-half-gap,h:rhh})}
+   else if(r==='chips'){
+    const count=[0,1,2].filter(k=>has(pos+k)).length,cw=count?div(inner-gap*(count-1),count):0;let x=pad,k2=0;
+    for(let k=0;k<3;k++){if(!has(pos+k)){out.push({x,y,w:0,h:0});continue}const ww=++k2===count?pad+inner-x:cw;out.push({x,y,w:ww,h:rhh});x+=ww+gap}
+   }else out.push({x:pad,y,w:inner,h:rhh});
+   pos+=ROWS[r].n;y+=rhh+gap;
+  }
+  return out;
+ }
  // Accent tints, as onx_display_settings::mix().
  const mix=(a,b,weight)=>{const p=c=>parseInt(c.slice(1),16),x=p(a),y=p(b);let out=0;for(const shift of [0,8,16]){const ca=(x>>shift)&255,cb=(y>>shift)&255;out|=Math.floor((ca*weight+cb*(100-weight)+50)/100)<<shift}return '#'+out.toString(16).padStart(6,'0')};
  // The panel reports its native (portrait) size; the selected orientation turns it.
@@ -1227,7 +1347,7 @@ static const char PANEL_JS[] = R"ONXPANEL(
    const big=r.h>=P(260)&&heroText(value),vf=big?F.hero:F.big,cy=big?Math.trunc((pad+cs+by+bs)/2):by+bs/2;
    const labelY=cy-vf.lh/2-F.small.lh+P(6);if(labelY>=pad+cs)text('Target',F.small,MUTED,r.x,r.y+labelY,r.w,'center');  // As card_climate: no overlap with the header.
    text(value,vf,TEXT,r.x,r.y+cy-vf.lh/2+P(4),r.w,'center');
-   if(d.available===false||!(d.features&1))return;circle(r.x+pad+bs/2,r.y+by+bs/2,bs,INSET,'minus',TEXT);circle(r.x+r.w-pad-bs/2,r.y+by+bs/2,bs,INSET,'plus',TEXT);
+   if(d.available===false||!(d.features&3))return;circle(r.x+pad+bs/2,r.y+by+bs/2,bs,INSET,'minus',TEXT);circle(r.x+r.w-pad-bs/2,r.y+by+bs/2,bs,INSET,'plus',TEXT);
   };
   const cardMedia=(t,d,v)=>{
    const r=t.r,pad=P(14),bh=P(48),playing=v?.playing||d.state==='playing',by=r.h-pad-bh,bar=P(6),progH=bar+P(4)+F.small.lh,progY=by-P(10)-progH,metaH=F.small.lh+F.title.lh+F.small.lh;
@@ -1244,8 +1364,35 @@ static const char PANEL_JS[] = R"ONXPANEL(
   const cardGeneric=(t,d,v)=>{
    const r=t.r,e=t.entity,domain=e.split('.')[0],pad=P(14),cs=P(44),tx=pad+cs+P(12),available=d.available!==false&&!!v;
    const switchable=available&&['switch','input_boolean','automation','fan','siren'].includes(domain),runnable=available&&['scene','script','button','input_button'].includes(domain),pv=num(d.state),hst=history(v);
+   // As card_generic: numbers between −/+ steppers.
+   if(available&&(domain==='number'||domain==='input_number')&&isFinite(pv)){
+    const slim=r.h<P(150)||r.w<P(200),head=slim?F.body.lh+P(4):cs;let bs=Math.min(P(52),r.h-2*pad-head-P(4));
+    if(bs>=P(30)){
+     if(slim)text(t.name,fit(t.name,r.w-2*pad,[F.body,F.small]),TEXT,r.x+pad,r.y+pad,r.w-2*pad);else{chipIcon(e,r.x+pad,r.y+pad,cs,true);titled(t,r.x+tx,r.y+pad+P(2),r.w-tx-pad)}
+     const by=r.h-pad-bs,v=compact(d.state),u=d.unit||'',midTop=pad+head+P(8),tall=by-midTop>=F.big.lh+P(8),hero=tall&&by-midTop>=F.hero.lh+P(8)&&heroText(v);
+     const vf=tall?(hero?F.hero:F.big):fit(v+u,r.w-2*pad-2*bs-P(16),[F.big,F.title,F.body]),vy=tall?midTop+Math.trunc((by-midTop-vf.lh)/2):by+Math.trunc((bs-vf.lh)/2);
+     let uw=u?width(u,F.small)+P(4):0;const vw=width(v,vf)+1;
+     if(!tall){if(vw+uw>r.w-2*pad-2*bs-P(8))uw=0;bs=Math.max(P(30),Math.min(bs,Math.trunc((r.w-2*pad-vw-P(8))/2)))}
+     const vx=Math.trunc((r.w-vw-uw)/2),bcy=by+Math.trunc((r.h-pad-by)/2);
+     text(v,vf,TEXT,r.x+vx,r.y+vy,vw);if(uw)text(u,F.small,MUTED,r.x+vx+vw+P(4),r.y+vy+vf.lh-F.small.lh-P(4),uw);
+     circle(r.x+pad+bs/2,r.y+bcy,bs,INSET,'minus',TEXT);circle(r.x+r.w-pad-bs/2,r.y+bcy,bs,INSET,'plus',TEXT);return;
+    }
+   }
+   // As card_generic: graph sensors show the reading beside the name.
+   if(available&&domain==='sensor'&&isFinite(pv)){
+    const slim=r.h<P(170),head=slim?F.title.lh:cs,gy=pad+head+(slim?P(6):P(10)),sy=r.h-pad-F.small.lh,gb=slim?r.h-pad:sy-P(6);
+    if(hst.points.length>=2&&gb-gy>=P(30)){
+     const v=compact(d.state),u=d.unit||'',uw=u?width(u,F.small)+P(4):0,nx=slim?pad:tx,vf=slim?F.title:fit(v,Math.trunc((r.w-tx-pad)/2),[F.big,F.title,F.body]),vw=width(v,vf)+1,vx=r.w-pad-uw-vw,vy=pad+Math.trunc((head-vf.lh)/2);
+     if(slim)text(t.name,F.body,SOFT,r.x+nx,r.y+pad+Math.trunc((head-F.body.lh)/2),vx-P(10)-nx);else{chipIcon(e,r.x+pad,r.y+pad,cs,t.on);titled(t,r.x+tx,r.y+pad+P(2),vx-P(10)-tx)}
+     text(v,vf,TEXT,r.x+vx,r.y+vy,vw);if(uw)text(u,F.small,MUTED,r.x+vx+vw+P(4),r.y+vy+vf.lh-F.small.lh-P(3),uw);
+     const delta=hst.points.at(-1).value-hst.points[0].value,ch=chart(hst.points,hst.now,hst.range,r.x+pad,r.y+gy,r.w-2*pad,gb-gy,ACCENT,true);
+     if(ch&&!slim){const stats=rangeLabel(hst.range)+'  ·  min '+fmt(ch.lo,1)+'  ·  max '+fmt(ch.hi,1),change=(delta>0?'+':'-')+fmt(Math.abs(delta),1);text(stats,F.small,MUTED,r.x+pad,r.y+sy,r.w-2*pad);
+      if(Math.abs(delta)>=0.05&&width(stats,F.small)+width(change,F.small)+P(12)<=r.w-2*pad)text(change,F.small,ACCENT,r.x+pad,r.y+sy,r.w-2*pad,'right')}
+     return;
+    }
+   }
    if(available&&!switchable&&d.unit==='%'&&isFinite(pv)&&pv>=0&&pv<=100&&r.h<P(300)&&r.h>=P(110)){
-    const tw=r.w-2*pad,nl=linesFor(t.name,F.title,tw,2);text(t.name,F.title,TEXT,r.x+pad,r.y+pad,tw,'left',nl);
+    const tw=r.w-2*pad,nl=linesFor(t.name,F.title,tw,Math.min(W,H)<320?1:2);text(t.name,F.title,TEXT,r.x+pad,r.y+pad,tw,'left',nl);
     const top=pad+nl*F.title.lh+P(10),avail=r.h-pad-top,size=Math.min(avail,Math.trunc(r.w*34/100)),aw=Math.max(P(8),Math.trunc(size/10)),cx=r.x+pad+size/2,cy=r.y+top+avail/2;
     arc(cx,cy,size,aw,0,360,CONTROL,false);if(pv>0)arc(cx,cy,size,aw,270,270+Math.min(pv,99.99)*3.6,ACCENT);
     const val=fmt(pv,pv<10?1:0)+'%',vf=fit(val,size-2*aw-P(8),[F.big,F.title,F.body,F.small]);text(val,vf,TEXT,r.x+pad,cy-vf.lh/2,size,'center');
@@ -1277,13 +1424,44 @@ static const char PANEL_JS[] = R"ONXPANEL(
    const hero=bottom-vy>=F.hero.lh&&numeric&&heroSafe(value),vh=hero?F.hero.lh:F.big.lh;reading(value,unit,r.x+pad,r.y+bottom-vh,r.w-2*pad,hero);
    if(bar)level(r.x+pad,r.y+bottom+P(10),r.w-2*pad,P(12),t.ring/1000);
   };
+  // As row_control: a toggle or run button replaces a compact row's reading.
+  const rowControl=(t,d,pad)=>{
+   const r=t.r,domain=t.entity.split('.')[0];
+   if(d.available===false||!t.v||r.w<P(180))return r.w-pad;
+   if(['light','switch','input_boolean','fan','automation','siren'].includes(domain)){const x=r.w-pad-P(54);toggle(r.x+x,r.y+(r.h-P(30))/2,d.state==='on');return x}
+   if(['scene','script','button','input_button'].includes(domain)){const sz=Math.min(P(36),r.h-P(10));circle(r.x+r.w-pad-sz/2,r.y+r.h/2,sz,TINT,'play',ACCENT);return r.w-pad-sz}
+   return r.w-pad;
+  };
+  // As card_chip.
+  const cardChip=(t,d)=>{
+   const r=t.r,available=d.available!==false&&!!t.v,numeric=available&&isFinite(num(d.state)),lit=available&&t.on;
+   const is=Math.min(P(18),r.h-P(16)),px=Math.min(P(10),Math.trunc(r.h/4));
+   let value=!available?'—':numeric?compact(d.state):t.value;if(!value)value=t.context||'—';
+   if(!numeric&&available&&width(value,F.body)>r.w-2*px-is-P(6)){icon(t.entity,r.x+r.w/2,r.y+r.h/2,is,lit?ACCENT:SOFT);return}
+   icon(t.entity,r.x+px+is/2,r.y+r.h/2,is,lit?ACCENT:available?SOFT:MUTED);
+   const x=px+is+P(6),w=r.w-x-px;let unit=numeric?d.unit||'':'',uw=unit?width(unit,F.small)+P(2):0;if(width(value,F.body)+1+uw>w){unit='';uw=0}const vw=Math.min(width(value,F.body)+1,w-uw);
+   let nx=x;
+   if(w-vw-uw>=P(72)){text(t.name,F.small,MUTED,r.x+x,r.y+(r.h-F.small.lh)/2,w-vw-uw-P(8));nx=x+w-vw-uw}
+   const vy=(r.h-F.body.lh)/2;text(value,F.body,lit?ACCENT:TEXT,r.x+nx,r.y+vy,vw);
+   if(uw)text(unit,F.small,MUTED,r.x+nx+vw+P(2),r.y+vy+F.body.lh-F.small.lh-P(1),uw);
+  };
   const cardRow=(t,d,v)=>{
-   const r=t.r,pad=P(14),is=P(24),binary=t.entity.startsWith('binary_sensor.');icon(t.entity,r.x+pad+is/2,r.y+r.h/2,is,ACCENT);
+   const r=t.r,pad=P(14),is=P(24),binary=t.entity.startsWith('binary_sensor.');
+   const right=rowControl(t,d,pad);
+   if(right<r.w-pad){
+    icon(t.entity,r.x+pad+is/2,r.y+r.h/2,is,t.on?ACCENT:SOFT);
+    const nx=pad+is+P(12),nw=right-P(10)-nx,state=t.context||t.value;
+    if(r.h>=F.body.lh+F.small.lh+P(8)&&state){const y=(r.h-F.body.lh-F.small.lh)/2;text(t.name,F.body,TEXT,r.x+nx,r.y+y,nw);text(state,F.small,MUTED,r.x+nx,r.y+y+F.body.lh,nw)}
+    else text(t.name,F.body,TEXT,r.x+nx,r.y+(r.h-F.body.lh)/2,nw);
+    return;
+   }
+   icon(t.entity,r.x+pad+is/2,r.y+r.h/2,is,ACCENT);
    const numeric=d.available!==false&&isFinite(num(d.state)),value=numeric?compact(d.state):t.value,unit=numeric?d.unit||'':'',uw=unit?width(unit,F.small)+P(4):0,vf=F.body,vw=Math.min(width(value,vf)+1,r.w/2),vx=r.w-pad-uw-vw,nx=pad+is+P(12),vy=(r.h-vf.lh)/2;
    let end=vx-P(8);const sw=Math.min(P(64),Math.trunc(r.w/5)),sh=Math.min(P(22),r.h-P(12)),hst=history(v);
    if(numeric&&end-nx-sw-P(8)>=P(64)){if(chart(hst.points,hst.now,hst.range,r.x+end-sw,r.y+(r.h-sh)/2,sw,sh,ACCENT,false))end-=sw+P(10)}
    else if(binary&&(d.changes||[]).length){const a=ago(d.changes[0].at,now),aw=width(a,F.small)+1;if(end-nx-aw-P(8)>=P(64)){text(a,F.small,MUTED,r.x+end-aw,r.y+(r.h-F.small.lh)/2,aw);end-=aw+P(10)}}
-   text(t.name,F.small,SOFT,r.x+nx,r.y+(r.h-F.small.lh)/2,end-nx);text(value,vf,binary?ACCENT:TEXT,r.x+vx,r.y+vy,vw);if(uw)text(unit,F.small,MUTED,r.x+vx+vw+P(4),r.y+vy+vf.lh-F.small.lh-P(2),uw);
+   if(t.context&&r.h>=2*F.small.lh+P(8)){const ny=Math.trunc((r.h-2*F.small.lh)/2);text(t.name,F.small,SOFT,r.x+nx,r.y+ny,end-nx);text(t.context,F.small,MUTED,r.x+nx,r.y+ny+F.small.lh,end-nx)}
+   else text(t.name,F.small,SOFT,r.x+nx,r.y+(r.h-F.small.lh)/2,end-nx);text(value,vf,binary?ACCENT:TEXT,r.x+vx,r.y+vy,vw);if(uw)text(unit,F.small,MUTED,r.x+vx+vw+P(4),r.y+vy+vf.lh-F.small.lh-P(2),uw);
   };
   // As animate_icon on the panel: only while the entity is on.
   const animateKey=(t,p)=>{const fx=animationOf(p,t.entity),img=target.lastElementChild;if(t.on&&fx!=='none'&&img?.tagName==='image'){img.classList.add('fx-'+fx);img.dataset.animation=fx}};
@@ -1336,12 +1514,14 @@ static const char PANEL_JS[] = R"ONXPANEL(
    if(showBadge)text(badge,F.small,t.on?ACCENT:MUTED,r.x+px,r.y+topY+is+gap+Math.max(1,lines.length)*lh,r.w-2*px,'center',1);
   };
   const renderMain=()=>{
-   const p=pageFor(slot.entity),ids=p.ids,rects=globalThis.ONX_PANEL_GEOMETRY(p.layout,W,H,false,p.rows,p.columns),grid=p.layout===gridLayout;
+   const p=pageFor(slot.entity),ids=p.ids,stacked=p.layout===STACK,grid=p.layout===gridLayout;
+   const rects=globalThis.ONX_PANEL_GEOMETRY(p.layout,W,H,false,stacked?p.stack:p.rows,stacked?ids.map(Boolean):p.columns);
    const tiles=rects.map((r,i)=>{const e=ids[i]||'',v=viewOf(e),c=v?{...v,...v.carousel}:null,lines=c?.lines||[],d=v?.panel||{};
     const name=e===slot.entity?(slot.name||lines[4]?.text||e):(editorSlots.find(s=>s.entity===e)?.name||v?.lines?.[4]?.text||e);
     let context=lines[2]?.text||'';if(/^(sensor|binary_sensor)\./.test(e)&&lines[4]?.text&&lines[4].text!==name)context=lines[4].text;
     const st=d.state,on=d.available!==false&&(['on','playing','open','opening','active'].includes(st)||(e.startsWith('climate.')&&st&&st!=='off'));
-    return {entity:e,name,value:lines[1]?.text||'',context,ring:c?.value_ring??-1,on,r,compact:p.layout==='control_sensors'&&i>0,key:grid,v,d,art:artUrl(positionArt(p,i))}});
+    return {entity:e,name,value:lines[1]?.text||'',context,ring:c?.value_ring??-1,on,r,compact:p.layout==='control_sensors'&&i>0,key:grid,v,d,art:artUrl(positionArt(p,i)),
+     ...(stacked?(at=>({compact:at?.type==='compact',chip:at?.type==='chips',slot:true}))(rowAt(p,i)):{})}});
    if(tiles.length){const cb=tiles[0].r.y;  // As refresh_carousel_clock: every main page, grids included.
    if(cb>=F.clock.lh)text(clock(now),F.clock,TEXT,P(16),(cb-F.clock.lh)/2,W/4)}
    // Status icons (Wi-Fi, Home Assistant) and the bell.
@@ -1349,7 +1529,11 @@ static const char PANEL_JS[] = R"ONXPANEL(
    glyph('mdi:bell-outline',W-4-22,sy,P(26),TEXT);
    tiles.forEach((t,i)=>{currentArt=t.art;
     if(t.key){cardKey(t,t.d,i,p);currentArt='';return}
-    box(t.r.x,t.r.y,t.r.w,t.r.h,CARD,t.compact?P(14):P(18),{'data-panel-item':t.entity});
+    if(t.r.w<=0||t.r.h<=0){currentArt='';return}  // An empty stack chip.
+    const rad=t.chip?t.r.h/2:t.compact?P(14):P(18);
+    if(t.slot&&!t.entity){box(t.r.x,t.r.y,t.r.w,t.r.h,mix(CARD,BG,45),rad,{'data-panel-item':i});currentArt='';return}
+    box(t.r.x,t.r.y,t.r.w,t.r.h,t.chip&&t.on&&t.d.available!==false?TINT:CARD,rad,{'data-panel-item':t.entity});
+    if(t.chip){cardChip(t,t.d);currentArt='';return}
     if(!t.entity){currentArt='';return}
     const ready=!!t.v&&t.d.available!==false;
     if(t.compact)cardRow(t,t.d,t.v);

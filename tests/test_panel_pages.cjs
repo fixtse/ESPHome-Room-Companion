@@ -90,7 +90,7 @@ const {chromium}=require('playwright');
   // The rail lists pages; the editor shows the selected page.
   assert.equal(await page.locator('#slots-heading').textContent(),'Pages');
   assert.equal(await page.locator('#slots .page-item').count(),1);
-  assert.equal(await page.locator('#page-kind input').count(),4,'Layouts are chosen from visual cards');
+  assert.equal(await page.locator('#page-kind input').count(),8,'Layouts are chosen from visual cards (fixed, stack presets, custom stack, grid)');
   // Two entities: drag one in from the entity list; page name and carousel icon.
   await layout('two_controls');assert.equal(await page.locator('#page-grid [data-member]').count(),2);
   await page.evaluate(()=>dropEntity(1,{entity:'switch.fan',name:'Fan'}));
@@ -137,6 +137,23 @@ const {chromium}=require('playwright');
   assert.equal(await save(),true);
   assert.deepEqual(payloads.at(-1).pages.map(p=>p.entities[0]),['light.kitchen','sensor.co2']);
   await page.click('#delete-page');
+  // Stacks: a preset places controls on cards and sensors in chips; rows are
+  // added and removed with their entities.
+  await page.click('#add-page');
+  await page.evaluate(()=>dropEntity(0,{entity:'switch.fan',name:'Fan'}));
+  await layout('stack:chips,full,split');
+  assert.equal(await page.locator('#page-grid [data-member]').count(),6);
+  assert.equal(await page.locator('#page-grid .page-cell.chip').count(),3,'Chip strips show three chip positions');
+  assert.deepEqual(await page.evaluate(()=>ONX_PAGES.get().at(-1).entities),['','','','switch.fan','',''],'The control moves to the card');
+  await page.evaluate(()=>dropEntity(0,{entity:'binary_sensor.door',name:'Door'}));
+  await page.click('#stack-rows .stack-add button');
+  assert.equal(await page.locator('#stack-rows .stack-row').count(),4,'Add row appends a row');
+  assert.equal(await page.locator('#page-grid [data-member]').count(),7);
+  await page.locator('#stack-rows .stack-row').first().locator('button.danger').click();
+  assert.match(await status(),/Door was removed/,'Removing a row takes its entities off the page');
+  assert.equal(await save(),true);
+  assert.deepEqual(payloads.at(-1).pages.at(-1),{name:'',icon:'',layout:'stack',stack:['full','split','compact'],entities:['switch.fan','','','']});
+  await page.click('#delete-page');
   // Timers can be registered without any page.
   await page.evaluate(()=>{nextPick={entity:'timer.tea',name:'Tea'}});await page.click('#add-timer');
   assert.equal(await page.evaluate(()=>lastAccept('light.x')),false);
@@ -146,7 +163,7 @@ const {chromium}=require('playwright');
   assert(!(await page.evaluate(()=>ONX_PAGES.saved())).some(p=>p.entities.includes('timer.tea')));
   await page.click('[data-timer="timer.tea"]');assert.equal(await page.locator('#timer-list li').count(),0);
   // Incomplete pages are not saved.
-  await page.click('#add-page');assert.equal(await save(),false);assert.match(await status(),/Fill every position/);assert.equal(payloads.length,3);
+  await page.click('#add-page');assert.equal(await save(),false);assert.match(await status(),/Fill every position/);assert.equal(payloads.length,4);
   await page.click('#delete-page');
   await page.evaluate(()=>{ONX_PANEL_EDITOR(testSlots,1,false,()=>{});ONX_PANEL_EDITOR(testSlots,0,false,testDraw);testDraw()});
   assert.equal(await page.locator('#page-kind input:checked').getAttribute('value'),'control_sensors');assert.deepEqual(await page.evaluate(()=>ONX_PAGES.saved()[0].icon),'mdi:sofa');

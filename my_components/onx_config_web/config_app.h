@@ -481,11 +481,12 @@ function validatePages(input,list){
  if(!Array.isArray(input)||input.length>MAX_SLOTS)throw Error('Invalid page list.');
  const have=new Set(list.map(s=>s.entity).filter(Boolean)),used=new Set(),leads=new Set(),sizes={single:1,two_controls:2,control_sensors:4};
  return input.filter(p=>!Array.isArray(p?.entities)||!p.entities.some(retiredPanelGpio)).map(p=>{
-  const grid=p?.layout==='action_grid',rows=p?.rows,columns=p?.columns;
+  const grid=p?.layout==='action_grid',rows=p?.rows,columns=p?.columns,stack=p?.layout==='stack'?p.stack:null,cells={full:1,split:2,compact:1,chips:3};
   if(grid&&![rows,columns].every(n=>Number.isInteger(n)&&n>=1&&n<=4))throw Error('Choose 1–4 rows and columns.');
-  const n=grid?rows*columns:(Object.hasOwn(sizes,p?.layout)?sizes[p.layout]:0);
+  if(p?.layout==='stack'&&(!Array.isArray(stack)||stack.length<1||stack.length>6||!stack.every(r=>Object.hasOwn(cells,r))||stack.reduce((n,r)=>n+cells[r],0)>16))throw Error('A stack has 1–6 rows of full, split, compact or chips.');
+  const n=grid?rows*columns:stack?stack.reduce((n,r)=>n+cells[r],0):(Object.hasOwn(sizes,p?.layout)?sizes[p.layout]:0);
   if(!n||!Array.isArray(p.entities)||p.entities.length!==n||typeof (p.name??'')!=='string'||typeof (p.icon??'')!=='string')throw Error('Invalid page in configuration.');
-  const assigned=grid?p.entities.filter(e=>e!==''):p.entities,first=assigned[0];
+  const assigned=grid||stack?p.entities.filter(e=>e!==''):p.entities,first=assigned[0];
   if(!first||new Set(assigned).size!==assigned.length||assigned.some(e=>!have.has(e))||leads.has(first))throw Error('A page uses a missing entity, repeats one, or shares its leading entity.');
   leads.add(first);for(const e of assigned)used.add(e);
   const artwork=p.artwork,carousel=p.carousel_artwork,iconOnly=p.icon_only;
@@ -494,7 +495,7 @@ function validatePages(input,list){
   if(carousel!==undefined&&(typeof carousel!=='string'||!/^[0-9a-f]{14}$/.test(carousel)))throw Error('Invalid carousel image reference.');
   if(artwork!==undefined&&(!Array.isArray(artwork)||artwork.length!==n||
    artwork.some((id,i)=>typeof id!=='string'||(id&&(!/^[0-9a-f]{14}$/.test(id)||!p.entities[i])))))throw Error('Invalid page image references.');
-  return {name:(p.name||'').slice(0,48),icon:p.icon||'',layout:p.layout,...(grid?{rows,columns}:{}),entities:[...p.entities],...(artwork?.some(Boolean)?{artwork:[...artwork]}:{}),...(carousel?{carousel_artwork:carousel}:{}),...(iconOnly?.some(Boolean)?{icon_only:[...iconOnly]}:{})};
+  return {name:(p.name||'').slice(0,48),icon:p.icon||'',layout:p.layout,...(grid?{rows,columns}:{}),...(stack?{stack:[...stack]}:{}),entities:[...p.entities],...(artwork?.some(Boolean)?{artwork:[...artwork]}:{}),...(carousel?{carousel_artwork:carousel}:{}),...(iconOnly?.some(Boolean)?{icon_only:[...iconOnly]}:{})};
  }).concat(singlePages(list.filter(s=>s.entity&&!used.has(s.entity))));
 }
 function validateDocument(value){if(![1,2].includes(value?.schema))throw Error('Unsupported configuration version.');const slots=validateSlots(value.slots);return {slots,settings:validateSettings(value.settings),pages:validatePages(value.pages,slots)}}

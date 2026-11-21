@@ -236,7 +236,7 @@ std::vector<Shot> load_scenario(const std::string &path) {
         lights[id] = st;
       } else if (k == "media_position" || k == "media_duration" || k == "lyrics" || k == "artwork") {
         // Handled below, once the state is known.
-      } else if (k != "entity_id" && k != "name" && k != "unavailable" && k != "detail" && k != "cover_presets" && k != "cover_presets_enabled") set_field(d, k, kv.value());
+      } else if (k != "entity_id" && k != "name" && k != "unavailable" && k != "detail" && k != "history" && k != "secondary" && k != "cover_presets" && k != "cover_presets_enabled") set_field(d, k, kv.value());
     }
     // Media position (seconds) and synced lyrics (LRC text, as the lyrics blueprint sends).
     if (e["media_duration"].is<float>()) d.progress.set_duration(e["media_duration"].as<float>());
@@ -245,6 +245,41 @@ std::vector<Shot> load_scenario(const std::string &path) {
       d.progress.set_position(e["media_position"].as<float>(), lvgl_emu::now_ms());
     }
     if (e["artwork"] == "demo") demo_artwork.insert(id);
+    // "secondary": {"entity", "text", "value", "unit", "in": seconds} models the
+    // entry's secondary sensor (e.g. a reset time shown as "{relative}").
+    if (e["secondary"].is<JsonObjectConst>()) {
+      const auto sec = e["secondary"].as<JsonObjectConst>();
+      auto &cfg = onx_sensor_view::configs[slot];
+      if (!cfg.primary[0]) std::snprintf(cfg.primary, sizeof(cfg.primary), "%s", id.c_str());
+      std::snprintf(cfg.secondary, sizeof(cfg.secondary), "%s", (sec["entity"] | "sensor.secondary"));
+      std::snprintf(cfg.text, sizeof(cfg.text), "%s", (sec["text"] | "{value}"));
+      auto &st = onx_sensor_view::states[slot];
+      st.bind(cfg);
+      st.received = st.available = true;
+      st.value = sec["value"] | ""; st.unit = sec["unit"] | "";
+      if (sec["in"].is<int>()) st.secondary_epoch = std::time(nullptr) + sec["in"].as<int>();
+    }
+    // "history": [values...] turns the entity's graph option on, with the values
+    // spread evenly over the last 12 h (oldest first).
+    if (e["history"].is<JsonArrayConst>()) {
+      auto &cfg = onx_sensor_view::configs[slot];
+      std::snprintf(cfg.primary, sizeof(cfg.primary), "%s", id.c_str());
+      cfg.graph = 1;
+      auto &st = onx_sensor_view::states[slot];
+      st.bind(cfg);
+      st.received = st.available = st.requested = true;
+      st.requested_ms = lvgl_emu::now_ms();
+      // Interpolated to the firmware's 72 buckets so the chart sees no gaps.
+      std::vector<float> values;
+      for (JsonVariantConst v : e["history"].as<JsonArrayConst>()) values.push_back(v.as<float>());
+      const uint32_t now = uint32_t(std::time(nullptr));
+      if (values.size() >= 2)
+        for (int k = 0; k < 72; ++k) {
+          const float f = k * float(values.size() - 1) / 71.0f;
+          const size_t a = size_t(f), b = std::min(a + 1, values.size() - 1);
+          st.sample(now - (71 - k) * (st.range_seconds / 72), values[a] + (values[b] - values[a]) * (f - a));
+        }
+    }
     if (e["lyrics"].is<const char *>()) onx_lyrics::set(id, d.media_title, e["lyrics"].as<std::string>());
     if (registry.count < custom_logic::MAX_HA_ENTITY_COUNT) {
       auto &r = registry.entities[registry.count++];
@@ -267,8 +302,17 @@ std::vector<Shot> load_scenario(const std::string &path) {
     page = {};
     const std::string kind = p["kind"] | "single";
     page.kind = uint8_t(kind == "two" ? onx_panel_layout::Kind::TWO_CONTROLS : kind == "sensors" ? onx_panel_layout::Kind::CONTROL_SENSORS
-                        : kind == "grid" ? onx_panel_layout::Kind::ACTION_GRID : onx_panel_layout::Kind::SINGLE);
+                        : kind == "grid" ? onx_panel_layout::Kind::ACTION_GRID : kind == "stack" ? onx_panel_layout::Kind::STACK
+                        : onx_panel_layout::Kind::SINGLE);
     page.rows = p["rows"] | 2; page.cols = p["cols"] | 2;
+    if (kind == "stack") {  // "stack": ["chips", "full", "split", "compact", ...]
+      uint32_t code = 0, m = 1;
+      for (JsonVariantConst r : p["stack"].as<JsonArrayConst>()) {
+        onx_panel_layout::Row row;
+        if (onx_panel_layout::parse_row(r.as<std::string>(), row)) { code += uint32_t(row) * m; m *= 5; }
+      }
+      page.rows = uint8_t(code & 0xFF); page.cols = uint8_t(code >> 8);
+    }
     int i = 0;
     for (JsonVariantConst id : p["entities"].as<JsonArrayConst>()) if (i < onx_panel_layout::MAX_CELLS) page.entries[i++] = entry_of(id.as<std::string>());
     std::snprintf(page.name, sizeof(page.name), "%s", (p["name"] | ""));
@@ -324,8 +368,13 @@ void write_preview(const Shot &shot) {
     const auto kind = onx_panel_layout::Kind(p.kind);
     page["name"] = p.name; page["icon"] = p.icon;
     page["layout"] = kind == onx_panel_layout::Kind::TWO_CONTROLS ? "two_controls" : kind == onx_panel_layout::Kind::CONTROL_SENSORS ? "control_sensors"
-                     : kind == onx_panel_layout::Kind::ACTION_GRID ? "action_grid" : "single";
+                     : kind == onx_panel_layout::Kind::ACTION_GRID ? "action_grid" : kind == onx_panel_layout::Kind::STACK ? "stack" : "single";
     if (kind == onx_panel_layout::Kind::ACTION_GRID) { page["rows"] = p.rows; page["columns"] = p.cols; }
+    if (kind == onx_panel_layout::Kind::STACK) {
+      auto rows = page["stack"].to<JsonArray>();
+      const auto code = onx_panel_pages::stack_code(p);
+      for (int r = 0; r < onx_panel_layout::stack_rows(code); ++r) rows.add(onx_panel_layout::row_name(onx_panel_layout::stack_row(code, r)));
+    }
     auto entities = page["entities"].to<JsonArray>();
     for (int e = 0; e < onx_panel_pages::size_of(p); ++e) entities.add(onx_panel_pages::entry_entity(p.entries[e]));
   }
