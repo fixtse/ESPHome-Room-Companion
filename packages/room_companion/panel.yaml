@@ -328,7 +328,11 @@ interval:
                 onx_timer::countdown(soonest) + (count > 1 ? " +" + std::to_string(count - 1) : std::string()));
           }
           // Media detail rearranged for the tall screen.
-          if (lv_scr_act() == id(normal_automation_page)->obj) {
+          // The legacy shell stays hidden under redesigned detail screens.
+          if (lv_scr_act() == id(normal_automation_page)->obj && entity_detail && onx_panel_detail::supports(entity)) {
+            lv_obj_add_flag(id(normal_automation_detail_shell), LV_OBJ_FLAG_HIDDEN);
+          } else if (lv_scr_act() == id(normal_automation_page)->obj) {
+            lv_obj_remove_flag(id(normal_automation_detail_shell), LV_OBJ_FLAG_HIDDEN);
             onx_panel_ui::sync_media({id(normal_automation_detail_shell), id(normal_media_cover), id(normal_media_title),
                                       id(normal_media_artist), id(normal_media_progress_arc),
                                       id(normal_media_transport_overlay), id(normal_automation_detail_icon),

@@ -2098,6 +2098,10 @@ script:
             }
             id(normal_automation_press_feedback_active) = false;
             ESP_LOGI("normal_mode", "automation detail opened for index=%d", detail_index);
+            // The redesigned detail (onx_panel_detail) covers this page; hide the
+            // legacy round media shell before the first frame so it never flashes.
+            if (onx_panel_detail::supports(weather_entity)) lv_obj_add_flag(id(normal_automation_detail_shell), LV_OBJ_FLAG_HIDDEN);
+            else lv_obj_remove_flag(id(normal_automation_detail_shell), LV_OBJ_FLAG_HIDDEN);
             lv_scr_load(id(normal_automation_page)->obj);
             id(refresh_normal_automation_detail_page).execute();
             return;
