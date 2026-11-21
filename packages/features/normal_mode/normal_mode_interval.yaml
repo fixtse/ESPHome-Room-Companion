@@ -288,7 +288,10 @@ interval:
                      id(normal_ha_added) &&
                      id(normal_page_index) == 0 &&
                      !id(normal_device_detail_active) &&
-                     !id(ui_presenter)->is_standby_active();
+                     !id(ui_presenter)->is_standby_active() &&
+                     // Only to recover the carousel screen: the 16 ms render pass
+                     // already redraws it (re-showing it cost ~29 ms per second).
+                     lv_scr_act() != id(normal_panel_page)->obj;
           then:
             - script.execute:
                 id: show_normal_device_entry_page

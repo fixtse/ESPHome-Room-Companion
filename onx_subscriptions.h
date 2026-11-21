@@ -43,6 +43,8 @@
 #endif
 
 namespace onx_subs {
+// Bumped on every Home Assistant state update (any entity, any attribute).
+inline uint32_t state_revision = 0;
 
 enum class Kind : uint8_t { PRIMARY = 1, SECONDARY = 2, GESTURE = 3, WEATHER = 4 };
 using Owner = uint16_t;
@@ -173,6 +175,7 @@ class Registry {
   }
 
   void dispatch(Entry &entry, esphome::StringRef value) {
+    ++state_revision;  // The carousel redraws only when something changed.
     ++this->dispatching_;
     // Index loop: the vector is not resized while dispatching_ > 0.
     for (size_t i = 0; i < entry.listeners.size(); ++i) {

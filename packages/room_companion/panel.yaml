@@ -243,6 +243,7 @@ interval:
       - lambda: |-
           static uint32_t last_pass = 0;
           if (!onx_panel_ui::render_requested && millis() - last_pass < 100) return;
+          const bool requested = onx_panel_ui::render_requested;
           onx_panel_ui::render_requested = false;
           last_pass = millis();
           if (onx_panel_pages::layer == nullptr) return;
@@ -306,9 +307,24 @@ interval:
           // Media keeps its specialised artwork/transport view. Main pages and
           // generic details use the entire rectangle, without the round ring.
           if (normal && !entity.empty() && ((!detail && id(normal_page_index)==0) || entity_detail)) {
-            onx_panel_pages::render(entity, onx_panel_ui::width, onx_panel_ui::height, detail, [](lv_obj_t *icon, const std::string &target) {
-              id(apply_normal_entity_icon).execute(icon,target,"",false);
-            });
+            // The carousel rebuilds every card's view and signature (~16 ms on the
+            // 3.5-inch panel), so it redraws only after a tap, a Home Assistant state
+            // change, a page switch, or once a second for slower sources (icon and
+            // artwork downloads, stored light state, settings, the clock). Media
+            // progress still moves on every pass. Details always redraw.
+            static uint32_t seen_revision = 0, last_full_ms = 0;
+            static std::string last_carousel;
+            const bool full = detail || requested || onx_subs::state_revision != seen_revision ||
+                              entity != last_carousel || millis() - last_full_ms >= 1000;
+            if (full) {
+              seen_revision = onx_subs::state_revision; last_full_ms = millis();
+              last_carousel = detail ? std::string() : entity;
+              onx_panel_pages::render(entity, onx_panel_ui::width, onx_panel_ui::height, detail, [](lv_obj_t *icon, const std::string &target) {
+                id(apply_normal_entity_icon).execute(icon,target,"",false);
+              });
+            } else {
+              onx_panel_detail::tick_media_progress();
+            }
           } else if (normal && !detail && id(normal_page_index)==0 && lv_scr_act() == id(normal_panel_page)->obj) {
             onx_panel_pages::render_settings(onx_panel_ui::width, onx_panel_ui::height);
           } else onx_panel_pages::hide();

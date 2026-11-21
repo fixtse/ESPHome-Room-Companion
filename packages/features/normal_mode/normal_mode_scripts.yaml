@@ -1780,6 +1780,13 @@ script:
           id(key_long_press_handled) = true;
           id(normal_clear_wifi_allowed) = true;
           id(normal_device_detail_online) = true;
+          // Return to the page the detail was opened from before the carousel is
+          // drawn; selecting it on a later pass briefly showed the first page.
+          if (!onx_panel_pages::parent_entity.empty()) {
+            const int config = onx_panel_pages::configured(onx_panel_pages::parent_entity);
+            onx_panel_pages::parent_entity.clear();
+            if (config >= 0) id(normal_device_selected_index) = custom_logic::normal_ui_slot_for_device_config_slot(config);
+          }
           ESP_LOGI("normal_mode", "detail closed");
       - script.execute:
           id: show_normal_device_entry_page
@@ -2337,9 +2344,12 @@ script:
   - id: refresh_normal_playlist
     then:
       - lambda: |-
+          auto &browser = onx_playlist::browser;
+          // Runs every 100 ms; without an open detail there is nothing to track
+          // (looking up the quick-action lists cost ~2.5 ms per call).
+          if (!id(normal_device_detail_active)) { if (browser.open) browser.clear(); return; }
           const auto entity = id(ui_presenter)->get_normal_device_entity_id(id(normal_device_detail_index));
           const auto *list = onx_entity_config::playlists_for_ui(id(normal_device_detail_index), entity);
-          auto &browser = onx_playlist::browser;
           const int kind = id(normal_device_detail_kind);
           const bool page = id(normal_device_detail_active) &&
               (kind == NORMAL_DEVICE_DETAIL_KIND_AUTOMATION || kind == NORMAL_DEVICE_DETAIL_KIND_SWITCH ||
