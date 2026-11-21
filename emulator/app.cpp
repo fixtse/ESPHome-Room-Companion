@@ -410,6 +410,14 @@ lvgl_emu::App lvgl_emu_app(const lvgl_emu::Args &args) {
   const std::string scenario = args.get("scenario", rc::root + "/emulator/scenarios/demo.json");
   rc::board = rc::load_board(model);
   rc::model_name = model;
+  // --landscape 1: the panel turned a quarter (native 480x320 or 320x240), as
+  // the orientation setting does; shots are named 28L-/35L-.
+  if (args.get("landscape", "") == "1") {
+    const int old_h = rc::board.height;
+    std::swap(rc::board.width, rc::board.height);
+    rc::board.strip_center_y = rc::board.height - (old_h - rc::board.strip_center_y);
+    rc::model_name = model + "L";
+  }
   rc::preview_dir = args.get("preview");
   if (!rc::preview_dir.empty()) std::system(("mkdir -p '" + rc::preview_dir + "'").c_str());
   std::printf("%s: %dx%d ui_scale=%.4f font_scale=%.4f dock y=%d icon=%d marker=%d symbols=%s\n", rc::board.model.c_str(),
@@ -418,7 +426,7 @@ lvgl_emu::App lvgl_emu_app(const lvgl_emu::Args &args) {
   lvgl_emu::App app;
   app.width = rc::board.width;
   app.height = rc::board.height;
-  app.name = model;
+  app.name = rc::model_name;
   app.setup = rc::setup;
   app.screens = [scenario]() {
     std::vector<lvgl_emu::Screen> screens;

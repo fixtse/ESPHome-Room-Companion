@@ -4,7 +4,8 @@
 # configuration preview of each screen, and writes side-by-side sheets.
 # Run on devserv under the task lease, from any checkout:
 #
-#   emulator/render.sh [--scenario FILE] [--model 28|35] [--only TEXT] [--no-compare]
+#   emulator/render.sh [--scenario FILE] [--model 28|35] [--only TEXT] [--no-compare] [--landscape]
+#   (--landscape adds 28L-/35L- renders of the quarter-turned panel)
 #
 # Output (emulator/out/):
 #   28-NN-<screen>.png, 35-NN-<screen>.png   device renders
@@ -19,12 +20,14 @@ scenario=emulator/scenarios/all-entities.json
 models=(28 35)
 only=()
 compare=1
+landscape=0
 while [ $# -gt 0 ]; do
   case "$1" in
     --scenario) scenario="$2"; shift 2 ;;
     --model) models=("$2"); shift 2 ;;
     --only) only=(--only "$2"); shift 2 ;;
     --no-compare) compare=0; shift ;;
+    --landscape) landscape=1; shift ;;
     *) sed -n '2,20p' "$0"; exit 2 ;;
   esac
 done
@@ -49,6 +52,7 @@ run sh -c "cmake -S emulator -B emulator/build -DCMAKE_BUILD_TYPE=Release ${cmak
 rm -rf emulator/out
 for model in "${models[@]}"; do
   run emulator/build/rc-emulator --model "$model" --scenario "$scenario" --out emulator/out --preview emulator/out/preview "${only[@]}"
+  if [ "$landscape" = 1 ]; then run emulator/build/rc-emulator --model "$model" --landscape 1 --scenario "$scenario" --out emulator/out --preview emulator/out/preview "${only[@]}"; fi
 done
 if [ "$compare" = 1 ]; then
   docker run --rm --name "rc-emulator-compare-$$" -u "$(id -u):$(id -g)" -e HOME=/tmp -v "$PWD":/src -w /src \

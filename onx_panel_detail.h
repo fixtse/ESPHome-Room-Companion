@@ -2997,15 +2997,17 @@ __attribute__((noinline)) inline void build_media(const Layout &l, const std::st
   const int bh = P(64), by = bottom - bh;
   transport(root, x + w / 2, by + bh / 2, P(52), bh, P(28), e, playing);
   // Position: bar, then elapsed / total underneath.
-  const int bar = P(6), prog_h = bar + P(6) + line(fonts.small), prog_y = by - (tight ? P(4) : P(16)) - prog_h;
+  // The 2.8" lets the time labels' empty lower line space reach toward the buttons.
+  const int bar = P(6), lab = tight ? P(3) : P(6), prog_h = bar + lab + line(fonts.small),
+            prog_y = by - (tight ? -P(2) : P(16)) - prog_h;
   {
     MediaProgress m;
     m.entity = e; m.w = w; m.h = bar; m.remaining = false;
     m.group = box(root, x, prog_y, w, prog_h, BG(), 0, LV_OPA_TRANSP);
     box(m.group, 0, 0, w, bar, TRACK(), bar / 2);
     m.fill = box(m.group, 0, 0, bar, bar, accent(), bar / 2);
-    m.elapsed = text(m.group, "", fonts.small, MUTED(), 0, bar + P(6), w / 2);
-    m.total = text(m.group, "", fonts.small, MUTED(), w / 2, bar + P(6), w / 2, LV_TEXT_ALIGN_RIGHT);
+    m.elapsed = text(m.group, "", fonts.small, MUTED(), 0, bar + lab, w / 2);
+    m.total = text(m.group, "", fonts.small, MUTED(), w / 2, bar + lab, w / 2, LV_TEXT_ALIGN_RIGHT);
     lv_obj_add_flag(m.group, LV_OBJ_FLAG_HIDDEN);
     media_progress.push_back(m);
   }

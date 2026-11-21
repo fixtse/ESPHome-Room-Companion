@@ -859,11 +859,11 @@ static const char PANEL_JS[] = R"ONXPANEL(
    return false;
   };
   const transport=(cx,cy,side,main,gap,playing)=>{circle(cx-main/2-gap-side/2,cy,side,INSET,'prev',TEXT,{'data-media-button':'previous'});circle(cx,cy,main,ACCENT,playing?'pause':'play',TEXT,{'data-media-button':'play'});circle(cx+main/2+gap+side/2,cy,side,INSET,'next',TEXT,{'data-media-button':'next'})};
-  const progressBar=(v,x,y,w,remaining)=>{
+  const progressBar=(v,x,y,w,remaining,lab)=>{
    const bar=P(6),pr=v?.progress;if(!(pr>=0))return;  // The panel hides the bar until there is a position.
    box(x,y,w,bar,remaining?CONTROL:TRACK,bar/2,{'data-media-bar':''});
    if(pr>=0){box(x,y,Math.max(bar,w*pr/1000),bar,ACCENT,bar/2);const d=num(v?.panel?.duration),s=isFinite(d)?d*pr/1000:NaN,dur=t=>isFinite(t)?Math.floor(t/60)+':'+String(Math.floor(t%60)).padStart(2,'0'):'';
-    if(isFinite(d)){text(dur(s),F.small,MUTED,x,y+bar+P(remaining?4:6),w/2);text(remaining?'-'+dur(d-s):dur(d),F.small,MUTED,x+w/2,y+bar+P(remaining?4:6),w/2,'right')}}
+    if(isFinite(d)){const ly=y+bar+(lab??P(remaining?4:6));text(dur(s),F.small,MUTED,x,ly,w/2);text(remaining?'-'+dur(d-s):dur(d),F.small,MUTED,x+w/2,ly,w/2,'right')}}
   };
   const now=Date.now()/1000;
   const history=v=>({points:(v?.graph||[]).map(p=>({t:p.t,value:p.value})).filter(p=>isFinite(p.value)),now:v?.graph_now||now,range:v?.panel?.history_range||43200});
@@ -1109,7 +1109,7 @@ static const char PANEL_JS[] = R"ONXPANEL(
     const nw=width('100',F.body)+P(4),sx=x+P(12)+iw+P(14),sw=w-(sx-x)-nw-P(24),th=P(6),ks=P(22);text(String(p),F.body,TEXT,x+w-P(12)-nw,vy+(vh-F.body.lh)/2,nw,'right');
     box(sx,vy+(vh-th)/2,sw,th,TRACK,th/2);box(sx,vy+(vh-th)/2,Math.max(th,sw*p/100),th,ACCENT,th/2);add(node('circle',{cx:sx+Math.max(ks/2,Math.min(sw-ks/2,sw*p/100)),cy:vy+vh/2,r:ks/2,fill:TEXT}));bottom=vy-(tight?P(8):P(14))}
    const bh=P(64),by=bottom-bh;transport(x+w/2,by+bh/2,P(52),bh,P(28),playing);
-   const bar=P(6),progH=bar+P(6)+F.small.lh,progY=by-(tight?P(4):P(16))-progH;progressBar(v,x,progY,w,false);
+   const bar=P(6),progH=bar+(tight?P(3):P(6))+F.small.lh,progY=by-(tight?-P(2):P(16))-progH;progressBar(v,x,progY,w,false,tight?P(3):undefined);
    // The media view's context/hint lines carry the title and artist too (onx_detail_view).
    const ln=v?.lines||[],name=playback&&(d.title||ln[2]?.text)?(d.title||ln[2].text):playback?label(d.state):'Nothing playing',sub=playback?d.artist||ln[3]?.text||'':'',tf=fit(name,w,[F.title,F.body]);
    const subY=progY-(tight?P(6):P(12))-F.body.lh,titleY=subY-tf.lh;text(name,tf,TEXT,x,titleY,w,'center');if(sub)text(sub,F.body,MUTED,x,subY,w,'center');
