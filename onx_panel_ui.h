@@ -309,6 +309,7 @@ inline void slide_progress_start(uint32_t duration) {
   if (slide_progress == nullptr) return;
   lv_anim_delete(slide_progress, slide_progress_step);
   slide_progress_step(slide_progress, width);
+  lv_obj_set_style_bg_color(slide_progress, lv_color_hex(onx_display_settings::accent()), 0);
   lv_obj_move_foreground(slide_progress);
   lv_anim_t a;
   lv_anim_init(&a);
@@ -464,8 +465,7 @@ inline void create_slideshow(lv_obj_t *standby_page, const lv_font_t *time_font,
   slide_progress = lv_obj_create(slide_layer);
   lv_obj_remove_style_all(slide_progress);
   lv_obj_remove_flag(slide_progress, static_cast<lv_obj_flag_t>(LV_OBJ_FLAG_SCROLLABLE | LV_OBJ_FLAG_CLICKABLE));
-  lv_obj_set_style_bg_opa(slide_progress, LV_OPA_70, 0);
-  lv_obj_set_style_bg_color(slide_progress, lv_color_hex(0xFFFFFF), 0);
+  lv_obj_set_style_bg_opa(slide_progress, LV_OPA_COVER, 0);
   lv_obj_set_size(slide_progress, 0, S(3));
   lv_obj_align(slide_progress, LV_ALIGN_BOTTOM_LEFT, 0, 0);
   show(slide_layer, false);
