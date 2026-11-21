@@ -322,7 +322,7 @@ interval:
             static uint32_t last_inputs = 0;
             uint32_t inputs = 2166136261u;
             auto mix = [&inputs](uint32_t v) { inputs = (inputs ^ v) * 16777619u; };
-            mix(onx_subs::any_revision); mix(custom_logic::entity_revision); mix(onx_panel_pages::seen_revision);
+            mix(custom_logic::entity_revision); mix(onx_panel_pages::seen_revision);
             mix(onx_display_settings::accent()); mix(onx_display_settings::background());
             mix(uint32_t(std::time(nullptr) / 60)); mix(onx_lyrics::store().version);
             for (char c : onx_media::ready_url) mix(uint8_t(c));
@@ -937,7 +937,14 @@ script:
           onx_panel_detail::run_quick_action = [](const std::string &action) { id(emit_normal_playlist_action).execute(action); };
           onx_panel_detail::request_history = [](const std::string &entity) { id(request_normal_sensor_history).execute(entity); };
           onx_subs::shown = [](const std::string &entity) {
-            for (int i = 0; i < onx_panel_pages::count; ++i) if (onx_panel_pages::entities[i] == entity) return true;
+            // Entities on the current page, the second entity a card shows
+            // (sensor text, a switch's power reading) and the main player.
+            for (int i = 0; i < onx_panel_pages::count; ++i) {
+              const auto &e = onx_panel_pages::entities[i];
+              if (e == entity) return true;
+              const int s = onx_sensor_view::index(e);
+              if (s >= 0 && entity == onx_sensor_view::configs[s].secondary) return true;
+            }
             return entity == onx_media::main_entity;
           };
           onx_panel_ui::has_quick_actions = []() {
