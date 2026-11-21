@@ -18,14 +18,14 @@ blueprint:
         entity:
           filter:
             - domain: media_player
-    panel_action:
-      name: Panel lyrics action
-      description: >
-        The panel's ESPHome action, `esphome.<device name>_set_lyrics`
-        (Developer tools → Actions lists it).
-      default: esphome.onx3248g035_set_lyrics
+    panels:
+      name: Room Companion panels
+      description: The panels that show this player's lyrics.
       selector:
-        text:
+        device:
+          multiple: true
+          filter:
+            - integration: esphome
 
 mode: restart
 max_exceeded: silent
@@ -42,7 +42,12 @@ triggers:
     event: start
 
 variables:
-  panel_action: !input panel_action
+  panel_devices: !input panels
+  # ESPHome names a device's actions after its node name, which Home Assistant
+  # shows as the device name (e.g. "ONX3248G035 dbbc54" → esphome.onx3248g035_dbbc54_set_lyrics).
+  # Renaming the device in Home Assistant does not change it.
+  panel_actions: >-
+    {% set ns = namespace(out=[]) %}{% for d in ([panel_devices] if panel_devices is string else panel_devices) %}{% set n = device_attr(d, 'name') %}{% if n %}{% set ns.out = ns.out + ['esphome.' ~ (n | slugify) ~ '_set_lyrics'] %}{% endif %}{% endfor %}{{ ns.out }}
   title: "{{ state_attr(player, 'media_title') or '' }}"
   artist: "{{ state_attr(player, 'media_artist') or '' }}"
   album: "{{ state_attr(player, 'media_album_name') or '' }}"
@@ -53,8 +58,12 @@ actions:
       - condition: template
         value_template: "{{ title == '' or artist == '' or states(player) in ['off', 'idle', 'standby', 'unavailable'] }}"
     then:
-      - action: "{{ panel_action }}"
-        data: { entity_id: "{{ player }}", title: "", lrc: "" }
+      - repeat:
+          for_each: "{{ panel_actions }}"
+          sequence:
+            - action: "{{ repeat.item }}"
+              data: { entity_id: "{{ player }}", title: "", lrc: "" }
+              continue_on_error: true
       - stop: Nothing playing
   # One request per track (LRCLIB asks clients not to send parallel requests).
   - action: rest_command.room_companion_lrclib
@@ -69,8 +78,12 @@ actions:
   # The track may have changed while waiting; `mode: restart` usually catches it.
   - condition: template
     value_template: "{{ state_attr(player, 'media_title') == title }}"
-  - action: "{{ panel_action }}"
-    data:
-      entity_id: "{{ player }}"
-      title: "{{ title }}"
-      lrc: "{{ lrc }}"
+  - repeat:
+      for_each: "{{ panel_actions }}"
+      sequence:
+        - action: "{{ repeat.item }}"
+          data:
+            entity_id: "{{ player }}"
+            title: "{{ title }}"
+            lrc: "{{ lrc }}"
+          continue_on_error: true

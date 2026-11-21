@@ -1,3 +1,4 @@
+#include <set>
 // Room Companion on esphome-lvgl-emulator (https://github.com/fixtse/esphome-lvgl-emulator):
 // renders the shared panel code, the same headers the firmware compiles, for
 // the 2.8" (ONX2432G028) and 3.5" (ONX3248G035) panels. See README.md.
@@ -153,6 +154,25 @@ void set_field(custom_logic_entity_sub::EntityDetailState &d, const std::string 
   } else std::fprintf(stderr, "scenario: unknown entity field %s\n", k.c_str());
 }
 
+// A generated 96x96 RGB565 cover: warm and cool blobs on a dark field.
+std::set<std::string> demo_artwork;
+const lv_image_dsc_t &demo_cover() {
+  static std::vector<uint16_t> px(96 * 96);
+  static lv_image_dsc_t d{};
+  if (d.data) return d;
+  auto blob = [](int x, int y, int cx, int cy, int r) { const int dx = x - cx, dy = y - cy; return std::max(0, 255 - (dx * dx + dy * dy) * 255 / (r * r)); };
+  for (int y = 0; y < 96; ++y)
+    for (int x = 0; x < 96; ++x) {
+      const int a = blob(x, y, 24, 30, 40), b = blob(x, y, 74, 70, 44), c = blob(x, y, 70, 18, 26);
+      const int r = std::min(255, 20 + a + c / 2), g = std::min(255, 16 + a / 3 + b / 2 + c / 2), bl = std::min(255, 40 + b);
+      px[y * 96 + x] = uint16_t((r >> 3) << 11 | (g >> 2) << 5 | (bl >> 3));
+    }
+  d.header.magic = LV_IMAGE_HEADER_MAGIC; d.header.cf = LV_COLOR_FORMAT_RGB565;
+  d.header.w = d.header.h = 96; d.header.stride = 192;
+  d.data_size = px.size() * 2; d.data = reinterpret_cast<const uint8_t *>(px.data());
+  return d;
+}
+
 JsonDocument scenario_doc;  // Kept for the web preview data.
 // Light state the firmware keeps in panel storage (by entity), from a scenario's
 // "light": {"on", "brightness", "kelvin", "min_kelvin", "max_kelvin", "color", "hue"}.
@@ -206,7 +226,7 @@ std::vector<Shot> load_scenario(const std::string &path) {
         st.rgb_tick = uint8_t((int(l["hue"] | 0) / esphome::onx_storage::RGB_TICK_DEGREES) % esphome::onx_storage::RGB_TICKS);
         st.capability_mask = 1 | (l["brightness"].is<int>() ? 2 : 0) | (l["kelvin"].is<int>() ? 4 : 0) | ((l["color"] | false) ? 8 : 0);
         lights[id] = st;
-      } else if (k == "media_position" || k == "media_duration" || k == "lyrics") {
+      } else if (k == "media_position" || k == "media_duration" || k == "lyrics" || k == "artwork") {
         // Handled below, once the state is known.
       } else if (k != "entity_id" && k != "name" && k != "unavailable" && k != "detail" && k != "cover_presets" && k != "cover_presets_enabled") set_field(d, k, kv.value());
     }
@@ -216,6 +236,7 @@ std::vector<Shot> load_scenario(const std::string &path) {
       d.progress.set_state(d.state, lvgl_emu::now_ms());
       d.progress.set_position(e["media_position"].as<float>(), lvgl_emu::now_ms());
     }
+    if (e["artwork"] == "demo") demo_artwork.insert(id);
     if (e["lyrics"].is<const char *>()) onx_lyrics::set(id, d.media_title, e["lyrics"].as<std::string>());
     if (registry.count < custom_logic::MAX_HA_ENTITY_COUNT) {
       auto &r = registry.entities[registry.count++];
@@ -356,6 +377,10 @@ void setup() {
                              font("fonts_MiSans_Medium_32"), symbol_font(), font("fonts_MiSans_Medium_64"),
                              font("fonts_MiSans_Medium_12"), font("fonts_MiSans_Bold_14")};
   onx_panel_detail::light_state = light_of;
+  // "artwork": "demo" gives a player a generated cover (no downloads here).
+  onx_panel_detail::artwork_source = [](const std::string &entity) -> const void * {
+    return demo_artwork.count(entity) ? &demo_cover() : nullptr;
+  };
   // As panel.yaml: the configured entities that are timers.
   onx_panel_detail::timer_entities = []() {
     std::vector<std::string> out;

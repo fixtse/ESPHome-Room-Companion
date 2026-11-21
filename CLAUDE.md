@@ -66,6 +66,15 @@ compiles the firmware's own UI headers against LVGL 9.6.0 with the firmware's
 It reads screen sizes, scales, dock geometry and the symbol font from the same
 board YAML.
 
+**Preview first.** Unless a change is logic only (no effect on anything drawn),
+the emulator preview comes first. Render the affected screens with
+`emulator/render.sh --only <screen>` on both panels, then show the 2.8" and 3.5"
+PNGs to the user before starting the full validation run or firmware compiles.
+Iterate on the design with these quick renders. Compile firmware only after the
+preview looks right, and re-render after every visual change. If the emulator
+can't show the change (for example downloaded artwork), add a scenario field or
+stub so it can, rather than skipping the preview.
+
 ```sh
 emulator/render.sh                                  # all entity types, both panels
 emulator/render.sh --model 28 --only climate        # one panel, matching screens

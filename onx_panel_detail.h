@@ -2748,6 +2748,102 @@ inline void card_climate(lv_obj_t *c, const Tile &t, const EntityDetailState &d)
   circle(c, r.w - pad - bs / 2, by + bs / 2, bs, INSET(), LV_SYMBOL_PLUS, TEXT(), [stepper]() { stepper(1); });
 }
 
+// Lyrics backdrop: the artwork averaged down to 16x16 and drawn stretched with
+// smoothing, which reads as a soft out-of-focus glow. Computed once per build
+// (a few hundred microseconds); the stretch is LVGL's bilinear image transform.
+struct LyricBackdrop { lv_image_dsc_t dsc{}; uint16_t px[16 * 16]{}; };
+inline LyricBackdrop &lyric_backdrop() { static LyricBackdrop b; return b; }
+inline bool pixel_rgb(const lv_image_dsc_t *d, int x, int y, int &r, int &g, int &b) {
+  const int w = d->header.w, bpp = lv_color_format_get_size(static_cast<lv_color_format_t>(d->header.cf));
+  const int stride = d->header.stride ? d->header.stride : w * bpp;
+  const uint8_t *row = d->data + y * stride;
+  switch (d->header.cf) {
+    case LV_COLOR_FORMAT_RGB565:
+    case LV_COLOR_FORMAT_RGB565A8: {
+      const uint16_t c = row[x * 2] | (row[x * 2 + 1] << 8);
+      r = (c >> 11) << 3; g = ((c >> 5) & 63) << 2; b = (c & 31) << 3; return true;
+    }
+    case LV_COLOR_FORMAT_RGB888: b = row[x * 3]; g = row[x * 3 + 1]; r = row[x * 3 + 2]; return true;
+    case LV_COLOR_FORMAT_ARGB8888:
+    case LV_COLOR_FORMAT_XRGB8888: b = row[x * 4]; g = row[x * 4 + 1]; r = row[x * 4 + 2]; return true;
+    default: return false;
+  }
+}
+inline const lv_image_dsc_t *make_backdrop(const void *source) {
+  const auto *d = static_cast<const lv_image_dsc_t *>(source);
+  if (d == nullptr || d->data == nullptr || d->header.w < 16 || d->header.h < 16) return nullptr;
+  auto &bd = lyric_backdrop();
+  const int w = d->header.w, h = d->header.h;
+  int probe_r, probe_g, probe_b;
+  if (!pixel_rgb(d, 0, 0, probe_r, probe_g, probe_b)) return nullptr;
+  for (int cy = 0; cy < 16; ++cy)
+    for (int cx = 0; cx < 16; ++cx) {
+      // Every second pixel of the cell is enough for an average.
+      int r = 0, g = 0, b = 0, n = 0;
+      for (int y = cy * h / 16; y < (cy + 1) * h / 16; y += 2)
+        for (int x = cx * w / 16; x < (cx + 1) * w / 16; x += 2) {
+          int pr, pg, pb;
+          pixel_rgb(d, x, y, pr, pg, pb);
+          r += pr; g += pg; b += pb; ++n;
+        }
+      n = std::max(1, n);
+      bd.px[cy * 16 + cx] = uint16_t(((r / n) >> 3) << 11 | ((g / n) >> 2) << 5 | ((b / n) >> 3));
+    }
+  bd.dsc.header.magic = LV_IMAGE_HEADER_MAGIC;
+  bd.dsc.header.cf = LV_COLOR_FORMAT_RGB565;
+  bd.dsc.header.w = bd.dsc.header.h = 16;
+  bd.dsc.header.stride = 32;
+  bd.dsc.data_size = sizeof(bd.px);
+  bd.dsc.data = reinterpret_cast<const uint8_t *>(bd.px);
+  // The pixels change in place: drop any cached copy of the old track's glow.
+  lv_image_cache_drop(&bd.dsc);
+  return &bd.dsc;
+}
+
+// Synced lyrics in the media detail's artwork space: the current line in full
+// (wrapped, centred), with the previous and next lines above and below when
+// they fit whole. Re-laid out only when the line changes.
+struct LyricView { std::string entity; lv_obj_t *prev{nullptr}, *cur{nullptr}, *next{nullptr}; int w{0}, h{0}, shown{-2}; };
+inline LyricView lyric_view;
+// Sets a label's text, font and height (at most `rows` lines, the last one
+// ending in "…" when cut); returns the height.
+inline int lyric_label(lv_obj_t *l, const std::string &s, const lv_font_t *f, int w, int rows) {
+  lv_obj_set_style_text_font(l, f, 0);
+  lv_label_set_text(l, s.c_str());
+  const int n = s.empty() || rows < 1 ? 0 : lines_for(s, f, w, rows);
+  lv_label_set_long_mode(l, LV_LABEL_LONG_DOT);
+  lv_obj_set_size(l, w, std::max(1, n * line(f)));
+  if (n == 0) lv_obj_add_flag(l, LV_OBJ_FLAG_HIDDEN); else lv_obj_remove_flag(l, LV_OBJ_FLAG_HIDDEN);
+  return n * line(f);
+}
+inline void tick_lyrics(float seconds, bool visible) {
+  auto &v = lyric_view;
+  if (v.cur == nullptr) return;
+  const int i = visible ? onx_lyrics::index_at(seconds) : -1;
+  if (i == v.shown) return;
+  v.shown = i;
+  std::string cur = onx_lyrics::line(i);
+  if (cur.empty()) cur = i < 0 ? "" : "\xC2\xB7 \xC2\xB7 \xC2\xB7";  // Instrumental gap.
+  const int gap = P(8), sl = line(fonts.small);
+  // The current line is always whole, in the largest font that keeps it to
+  // two rows (any rows for the smallest) and leaves a row for each neighbour.
+  const lv_font_t *cf = fonts.small;
+  for (const lv_font_t *f : {fonts.title, fonts.body}) {
+    const int n = lines_for(cur, f, v.w, 24);
+    if (n <= 2 && n * line(f) <= v.h - 2 * (gap + sl)) { cf = f; break; }
+  }
+  if (lines_for(cur, cf, v.w, 24) * line(cf) > v.h - 2 * (gap + sl) &&
+      lines_for(cur, fonts.body, v.w, 24) * line(fonts.body) <= v.h) cf = fonts.body;
+  const int ch = std::min(v.h, lyric_label(v.cur, cur, cf, v.w, 24)), cy = (v.h - ch) / 2;
+  lv_obj_set_pos(v.cur, 0, cy);
+  // Neighbours in the small font, cut to the rows left above and below.
+  const int room = (v.h - ch) / 2 - gap;
+  const int ph = lyric_label(v.prev, onx_lyrics::line(i - 1), fonts.small, v.w, room / sl);
+  lv_obj_set_pos(v.prev, 0, cy - gap - ph);
+  lyric_label(v.next, onx_lyrics::line(i + 1), fonts.small, v.w, room / sl);
+  lv_obj_set_pos(v.next, 0, cy + ch + gap);
+}
+
 // Live media position on main cards; moved every refresh without a rebuild.
 struct MediaProgress { std::string entity; lv_obj_t *group{nullptr}, *fill{nullptr}, *elapsed{nullptr}, *total{nullptr}; int w{0}, h{0}; bool remaining{true}; };
 inline std::vector<MediaProgress> media_progress;
@@ -2774,22 +2870,6 @@ inline void tick_media_progress() {
       tick_lyrics(v.seconds, v.visible);
     }
   }
-}
-
-// Synced lyrics over the media detail artwork: previous, current, next line.
-struct LyricView { std::string entity; lv_obj_t *prev{nullptr}, *cur{nullptr}, *next{nullptr}; int shown{-2}; };
-inline LyricView lyric_view;
-inline void tick_lyrics(float seconds, bool visible) {
-  auto &v = lyric_view;
-  if (v.cur == nullptr) return;
-  const int i = visible ? onx_lyrics::index_at(seconds) : -1;
-  if (i == v.shown) return;
-  v.shown = i;
-  std::string cur = onx_lyrics::line(i);
-  if (cur.empty()) cur = i < 0 ? "" : "\xC2\xB7 \xC2\xB7 \xC2\xB7";  // Instrumental gap.
-  lv_label_set_text(v.prev, onx_lyrics::line(i - 1).c_str());
-  lv_label_set_text(v.cur, cur.c_str());
-  lv_label_set_text(v.next, onx_lyrics::line(i + 1).c_str());
 }
 
 // Round transport: dark previous/next circles around a larger accent play.
@@ -2871,6 +2951,8 @@ __attribute__((noinline)) inline void build_media(const Layout &l, const std::st
   const int x = wide() ? pad + side_art + P(16) : pad, w = wide() ? W - x - pad : W - 2 * pad;
   const bool playing = shown_state(e, d.state) == "playing", playback = onx_media::has_playback(d.state);
   int bottom = l.ctl.bottom();
+  // The 2.8" panel packs the controls tighter to leave room for the artwork/lyrics.
+  const bool tight = std::min(W, H) < 320 && !wide();
   // Volume row.
   const bool volume = (d.features & 4) != 0;
   if (volume) {
@@ -2909,13 +2991,13 @@ __attribute__((noinline)) inline void build_media(const Layout &l, const std::st
       std::snprintf(buf, sizeof(buf), "%.2f", v / 100.0f);
       request(e, "media_player.volume_set", "volume_level", buf, "panel_volume");
     });
-    bottom = vy - P(14);
+    bottom = vy - (tight ? P(8) : P(14));
   }
   // Transport.
   const int bh = P(64), by = bottom - bh;
   transport(root, x + w / 2, by + bh / 2, P(52), bh, P(28), e, playing);
   // Position: bar, then elapsed / total underneath.
-  const int bar = P(6), prog_h = bar + P(6) + line(fonts.small), prog_y = by - P(16) - prog_h;
+  const int bar = P(6), prog_h = bar + P(6) + line(fonts.small), prog_y = by - (tight ? P(4) : P(16)) - prog_h;
   {
     MediaProgress m;
     m.entity = e; m.w = w; m.h = bar; m.remaining = false;
@@ -2932,16 +3014,57 @@ __attribute__((noinline)) inline void build_media(const Layout &l, const std::st
                                                               : playback ? label(d.state) : "Nothing playing";
   const std::string sub = playback ? onx_media::display_text(d.media_artist) : "";
   const lv_font_t *tf = fit(name, w, {fonts.title, fonts.body});
-  const int sub_y = prog_y - P(12) - line(fonts.body), title_y = sub_y - line(tf);
+  const int sub_y = prog_y - (tight ? P(6) : P(12)) - line(fonts.body), title_y = sub_y - line(tf);
   text(root, name, tf, TEXT(), x, title_y, w, LV_TEXT_ALIGN_CENTER);
   if (!sub.empty()) text(root, sub, fonts.body, MUTED(), x, sub_y, w, LV_TEXT_ALIGN_CENTER);
+  const int top = pad, room = title_y - (tight ? P(8) : P(12)) - top;
+  onx_media::main_entity = e;
+  const bool lyrics = playback && onx_lyrics::available(e, d.media_title);
+  auto toggle = [](lv_event_t *) { if (allowed()) { onx_lyrics::toggle(); built_signature.clear(); } };
+  // Synced lyrics (optional blueprint) take the artwork's whole column; a tap
+  // shows the artwork again.
+  if (lyrics && onx_lyrics::shown(e, d.media_title)) {
+    detach_artwork();
+    const int ry = wide() ? pad : top + header_reserve, rh = wide() ? H - 2 * pad : room - header_reserve;
+    const int rx = wide() ? pad : x, rw = wide() ? side_art : w;
+    auto *panel = box(root, rx, ry, rw, rh, CARD(), P(14));
+    lv_obj_add_flag(panel, LV_OBJ_FLAG_CLICKABLE);
+    on(panel, LV_EVENT_CLICKED, toggle);
+    if (const auto *glow = make_backdrop(artwork_source ? artwork_source(e) : nullptr)) {
+      lv_obj_set_style_clip_corner(panel, true, 0);
+      auto *img = lv_image_create(panel);
+      lv_obj_remove_flag(img, LV_OBJ_FLAG_CLICKABLE);
+      lv_image_set_src(img, glow);
+      lv_image_set_antialias(img, true);
+      // Stretched over the panel (16x16 pixels, so the stretch is the blur).
+      // A margin past the clipped corners hides the soft edge rows.
+      const int m = P(24);
+      lv_obj_set_pos(img, -m, -m);
+      lv_obj_set_size(img, rw + 2 * m, rh + 2 * m);
+      lv_image_set_inner_align(img, LV_IMAGE_ALIGN_STRETCH);
+      // Darken so the lyrics stay readable on any cover.
+      box(panel, 0, 0, rw, rh, BG(), 0, LV_OPA_50);
+    }
+    const int lp = P(12);
+    auto *area = box(panel, lp, lp, rw - 2 * lp, rh - 2 * lp, CARD(), 0, LV_OPA_TRANSP);
+    lyric_view = LyricView{e};
+    lyric_view.w = rw - 2 * lp; lyric_view.h = rh - 2 * lp;
+    auto make = [&](uint32_t color) {
+      auto *l = text(area, "", fonts.body, color, 0, 0);
+      lv_label_set_long_mode(l, LV_LABEL_LONG_WRAP);
+      lv_obj_set_style_text_align(l, LV_TEXT_ALIGN_CENTER, 0);
+      return l;
+    };
+    lyric_view.prev = make(MUTED()); lyric_view.cur = make(TEXT()); lyric_view.next = make(SOFT_TEXT());
+    tick_media_progress();
+    return;
+  }
   // Artwork fills the space above, square and centred.
-  const int top = pad, room = title_y - P(12) - top;
   const int art = wide() ? side_art : std::max(P(48), std::min({P(220), w - 2 * header_reserve, room}));
   const int ax = wide() ? pad : (W - art) / 2, ay = wide() ? (H - art) / 2 : top + std::max(0, (room - art) / 2);
   auto *frame = box(root, ax, ay, art, art, CONTROL(), P(14));
   lv_obj_set_style_clip_corner(frame, true, 0);
-  onx_media::main_entity = e;
+  if (lyrics) { lv_obj_add_flag(frame, LV_OBJ_FLAG_CLICKABLE); on(frame, LV_EVENT_CLICKED, toggle); }
   const void *source = artwork_source ? artwork_source(e) : nullptr;
   if (source) {
     if (!main_artwork) main_artwork = lv_image_create(lv_layer_top());
@@ -2956,24 +3079,6 @@ __attribute__((noinline)) inline void build_media(const Layout &l, const std::st
       lv_obj_center(main_artwork);
     }
   } else icon(root, e, ax + art / 2, ay + art / 2, art * 40 / 100, playing ? accent() : SOFT_TEXT());
-  // Synced lyrics (optional blueprint) cover the artwork; a tap shows it again.
-  if (playback && onx_lyrics::available(e, d.media_title)) {
-    lv_obj_add_flag(frame, LV_OBJ_FLAG_CLICKABLE);
-    on(frame, LV_EVENT_CLICKED, [](lv_event_t *) { if (allowed()) { onx_lyrics::toggle(); built_signature.clear(); } });
-    if (onx_lyrics::shown(e, d.media_title)) {
-      auto *veil = box(frame, 0, 0, art, art, CARD(), 0, LV_OPA_80);
-      lv_obj_remove_flag(veil, LV_OBJ_FLAG_CLICKABLE);
-      const int lp = P(12), lw = art - 2 * lp;
-      const lv_font_t *cf = art >= P(200) ? fonts.title : fonts.body;
-      const int ch = line(cf) * 3, cy = (art - ch) / 2;
-      lyric_view = LyricView{e};
-      lyric_view.prev = text(veil, "", fonts.small, MUTED(), lp, std::max(0, cy - P(6) - 2 * line(fonts.small)), lw, LV_TEXT_ALIGN_CENTER, 2);
-      lyric_view.cur = text(veil, "", cf, TEXT(), lp, cy, lw, LV_TEXT_ALIGN_CENTER, 3);
-      lv_label_set_long_mode(lyric_view.cur, LV_LABEL_LONG_WRAP);
-      lv_obj_set_style_text_align(lyric_view.cur, LV_TEXT_ALIGN_CENTER, 0);
-      lyric_view.next = text(veil, "", fonts.small, SOFT_TEXT(), lp, cy + ch + P(6), lw, LV_TEXT_ALIGN_CENTER, 2);
-    }
-  }
   tick_media_progress();
 }
 

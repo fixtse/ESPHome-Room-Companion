@@ -1101,24 +1101,33 @@ static const char PANEL_JS[] = R"ONXPANEL(
   };
   const buildMedia=(l,e,d,title,v,quick)=>{
    const pad=P(16),sideArt=wide?Math.min(H-2*pad,Math.trunc(W*42/100)):0,x=wide?pad+sideArt+P(16):pad,w=wide?W-x-pad:W-2*pad,reserve=quick?P(44)+P(8):0;
-   const playing=v?.playing||d.state==='playing',playback=['playing','paused','buffering','on'].includes(d.state)||v?.playing;let bottom=bottomOf(l.ctl);
+   const playing=v?.playing||d.state==='playing',playback=['playing','paused','buffering','on'].includes(d.state)||v?.playing;let bottom=bottomOf(l.ctl);const tight=Math.min(W,H)<320&&!wide;  // As build_media: tighter controls on the 2.8".
    if(quick&&!wide)bottom=H-pad;
    if(d.features&4){const vh=P(48),vy=bottom-vh,p=Math.max(0,Math.min(100,Math.round(num(d.volume)*100)||0));
     // As build_media: whenever volume is supported.
     box(x,vy,w,vh,CARD,P(14),{'data-media-volume':''});const iw=Math.round(F.symbol.size*1.07);symbol('volume',x+P(12)+iw/2,vy+vh/2,SOFT);  // As build_media: glyph, then a gap.
     const nw=width('100',F.body)+P(4),sx=x+P(12)+iw+P(14),sw=w-(sx-x)-nw-P(24),th=P(6),ks=P(22);text(String(p),F.body,TEXT,x+w-P(12)-nw,vy+(vh-F.body.lh)/2,nw,'right');
-    box(sx,vy+(vh-th)/2,sw,th,TRACK,th/2);box(sx,vy+(vh-th)/2,Math.max(th,sw*p/100),th,ACCENT,th/2);add(node('circle',{cx:sx+Math.max(ks/2,Math.min(sw-ks/2,sw*p/100)),cy:vy+vh/2,r:ks/2,fill:TEXT}));bottom=vy-P(14)}
+    box(sx,vy+(vh-th)/2,sw,th,TRACK,th/2);box(sx,vy+(vh-th)/2,Math.max(th,sw*p/100),th,ACCENT,th/2);add(node('circle',{cx:sx+Math.max(ks/2,Math.min(sw-ks/2,sw*p/100)),cy:vy+vh/2,r:ks/2,fill:TEXT}));bottom=vy-(tight?P(8):P(14))}
    const bh=P(64),by=bottom-bh;transport(x+w/2,by+bh/2,P(52),bh,P(28),playing);
-   const bar=P(6),progH=bar+P(6)+F.small.lh,progY=by-P(16)-progH;progressBar(v,x,progY,w,false);
+   const bar=P(6),progH=bar+P(6)+F.small.lh,progY=by-(tight?P(4):P(16))-progH;progressBar(v,x,progY,w,false);
    // The media view's context/hint lines carry the title and artist too (onx_detail_view).
    const ln=v?.lines||[],name=playback&&(d.title||ln[2]?.text)?(d.title||ln[2].text):playback?label(d.state):'Nothing playing',sub=playback?d.artist||ln[3]?.text||'':'',tf=fit(name,w,[F.title,F.body]);
-   const subY=progY-P(12)-F.body.lh,titleY=subY-tf.lh;text(name,tf,TEXT,x,titleY,w,'center');if(sub)text(sub,F.body,MUTED,x,subY,w,'center');
-   const room=titleY-P(12)-pad,art=wide?sideArt:Math.max(P(48),Math.min(P(220),w-2*reserve,room)),ax=wide?pad:(W-art)/2,ay=wide?(H-art)/2:pad+Math.max(0,(room-art)/2);
+   const subY=progY-(tight?P(6):P(12))-F.body.lh,titleY=subY-tf.lh;text(name,tf,TEXT,x,titleY,w,'center');if(sub)text(sub,F.body,MUTED,x,subY,w,'center');
+   const room=titleY-(tight?P(8):P(12))-pad,ly=playback&&Array.isArray(d.lyrics)?d.lyrics:null;
+   // As build_media: synced lyrics take the artwork's column; the current line
+   // in full, the previous and next lines in the rows left.
+   if(ly){const ry=wide?pad:pad+reserve,rh=wide?H-2*pad:room-reserve,rx=wide?pad:x,rw=wide?sideArt:w,lp=P(12),lw=rw-2*lp,lh=rh-2*lp;
+    box(rx,ry,rw,rh,CARD,P(14),{'data-media-lyrics':''});
+    // As build_media: the cover, out of focus and darkened, behind the lyrics.
+    try{const u=new URL(v?.artwork);if(['http:','https:'].includes(u.protocol)){const id='lyr-'+Math.random().toString(36).slice(2),clip=node('clipPath',{id});clip.append(node('rect',{x:rx,y:ry,width:rw,height:rh,rx:P(14)}));add(clip);
+     const g=add(node('g',{'clip-path':`url(#${id})`}));g.append(node('image',{href:u.href,x:rx-P(20),y:ry-P(20),width:rw+P(40),height:rh+P(40),preserveAspectRatio:'none',style:`filter:blur(${P(18)}px)`,'data-lyrics-backdrop':''}));
+     add(node('rect',{x:rx,y:ry,width:rw,height:rh,rx:P(14),fill:BG,'fill-opacity':0.5}))}}catch{}
+    const gap=P(8),sl=F.small.lh,rows=(s,f,n)=>s&&n>0?wrap(s,f,lw,n).length:0,cur=ly[1]||'';let cf=[F.title,F.body].find(f=>{const n=rows(cur,f,24);return n<=2&&n*f.lh<=lh-2*(gap+sl)})||F.small;if(rows(cur,cf,24)*cf.lh>lh-2*(gap+sl)&&rows(cur,F.body,24)*F.body.lh<=lh)cf=F.body;
+    const ch=Math.min(lh,rows(cur,cf,24)*cf.lh),cy=Math.trunc((lh-ch)/2),top=ry+lp,space=Math.trunc((lh-ch)/2)-gap,n=Math.trunc(space/sl);text(cur,cf,TEXT,rx+lp,top+cy,lw,'center',24);
+    const ph=rows(ly[0],F.small,n)*sl;if(ph)text(ly[0],F.small,MUTED,rx+lp,top+cy-gap-ph,lw,'center',n);
+    if(rows(ly[2],F.small,n))text(ly[2],F.small,SOFT,rx+lp,top+cy+ch+gap,lw,'center',n);return}
+   const art=wide?sideArt:Math.max(P(48),Math.min(P(220),w-2*reserve,room)),ax=wide?pad:(W-art)/2,ay=wide?(H-art)/2:pad+Math.max(0,(room-art)/2);
    if(!artwork(v?.artwork,ax,ay,art,P(14)))icon(e,ax+art/2,ay+art/2,Math.trunc(art*40/100),playing?ACCENT:SOFT);
-   // As build_media: synced lyrics veil the artwork (previous, current, next).
-   const ly=playback&&Array.isArray(d.lyrics)?d.lyrics:null;
-   if(ly){const lp=P(12),lw=art-2*lp,cf=art>=P(200)?F.title:F.body,ch=cf.lh*3,cy=ay+(art-ch)/2;add(node('rect',{x:ax,y:ay,width:art,height:art,rx:P(14),fill:CARD,'fill-opacity':0.8}));
-    text(ly[0]||'',F.small,MUTED,ax+lp,Math.max(ay,cy-P(6)-2*F.small.lh),lw,'center',2);text(ly[1]||'',cf,TEXT,ax+lp,cy,lw,'center',3);text(ly[2]||'',F.small,SOFT,ax+lp,cy+ch+P(6),lw,'center',2)}
   };
   const renderDetail=()=>{
    const e=slot.entity,v=view,d={...(v?.panel||{})},title=slot.name||v?.lines?.[4]?.text||e,l=layout(),quick=(d.actions||[]).length;

@@ -1,6 +1,7 @@
 # Synced lyrics (optional)
 
-The media screen can show synced lyrics over the album art: the previous line,
+The media screen can show synced lyrics in place of the album art, over a soft,
+blurred copy of the cover: the previous line,
 the current line, and the next one. It works with Spotify and any other Home
 Assistant media player that reports the title, artist, duration and position.
 It's off until you install the blueprint below.
@@ -34,10 +35,10 @@ Tap the lyrics to show the artwork again. They return on the next track.
 
 3. Create an automation from **Room Companion synced lyrics**:
    - **Media player:** your Spotify player, for example `media_player.spotify_you`.
-   - **Panel lyrics action:** `esphome.<device name>_set_lyrics`. To find it,
-     search for `set_lyrics` in Developer tools → Actions.
+   - **Room Companion panels:** pick one or more panels from the ESPHome
+     device list.
 
-   Using several panels or players? Create one automation for each pair.
+   Have more than one player? Create one automation for each.
 
 ## Notes
 
