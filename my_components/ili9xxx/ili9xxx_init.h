@@ -218,6 +218,11 @@ static const uint8_t PROGMEM INITCMD_ST7796[] = {
   ILI9XXX_INVCTR, 1, 0x01,              //Inversion Control [01]
   ILI9XXX_DFUNCTR, 3, 0x80, 0x02, 0x3B,  // Display Function Control [80 02 3B] .kbv SS=1, NL=480
   ILI9XXX_ETMOD, 1, 0xC6,              //Entry Mode      [06]
+  // Gamma (positive/negative), as TFT_eSPI and LCDWiki's ST7796S init. Without
+  // it the panel used its power-on curve, which lifted dark and mid tones: the
+  // same colours looked lighter/yellower than on the 2.8" ST7789V (2026-11-21).
+  0xE0, 14, 0xF0, 0x09, 0x0B, 0x06, 0x04, 0x15, 0x2F, 0x54, 0x42, 0x3C, 0x17, 0x14, 0x18, 0x1B,
+  0xE1, 14, 0xE0, 0x09, 0x0B, 0x06, 0x04, 0x03, 0x2B, 0x43, 0x42, 0x3B, 0x16, 0x14, 0x17, 0x1B,
 
   ILI9XXX_CSCON, 1, 0x69,              //?? lock manufacturer commands
   ILI9XXX_CSCON, 1, 0x3C,              //
