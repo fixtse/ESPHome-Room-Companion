@@ -24,7 +24,7 @@ inline bool motion_asset(const uint8_t *data,size_t size) {
 }
 inline bool valid_size(size_t size) { return size==LEGACY_BYTES || size==BYTES; }
 inline size_t encoded_size(size_t size) { return (size+2)/3*4; }
-constexpr size_t LIMIT=40;
+constexpr size_t LIMIT=96;
 constexpr char NAMESPACE[]="rc_art";
 
 inline std::string key(uint64_t id) {

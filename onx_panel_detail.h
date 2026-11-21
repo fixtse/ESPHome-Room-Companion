@@ -1,5 +1,6 @@
 #pragma once
 #include "onx_panel_artwork.h"
+#include "onx_grid_cache.h"
 // Redesigned rectangular detail screens (touch panels only).
 //
 // Every entity detail fills the whole screen: there is no header bar, the
@@ -80,6 +81,15 @@ inline int W = 320, H = 480;
 inline int P(int v) { return v * std::min(W, H) / 320; }
 inline bool wide() { return W > H; }
 struct Rect { int x, y, w, h; int right() const { return x + w; } int bottom() const { return y + h; } };
+struct Tile {
+  std::string entity, name, value, context, badge;
+  bool on{false};
+  int ring{-1};
+  Rect r{};
+  bool compact{false}, key{false}, icon_only{false};
+  uint64_t artwork{0};
+  uint8_t effect{0};  // Action-grid icon animation while on: 1 pulse, 2 blink, 3 spin.
+};
 struct Layout { Rect head, vis, ctl; };
 // Portrait: name/context, a visual block, controls below.
 // Landscape: the visual column on the left, name and controls on the right.
@@ -257,12 +267,48 @@ inline void interactive(lv_obj_t *obj, bool feedback = true) {
 // reports touch-down/up here so the card under the finger reacts at once.
 inline lv_obj_t *pressed_card = nullptr;
 inline bool main_mode = false;
+inline bool grid_cached_mode = false;
+inline onx_grid_cache::GridPage *active_grid_page = nullptr;
+inline lv_obj_t *grid_image = nullptr;
+inline lv_obj_t *grid_press_overlay = nullptr;
+inline std::vector<Tile> grid_tiles;
+inline std::array<const void *, 16> grid_bound_srcs{};
+inline std::array<lv_obj_t *, 16> grid_overlay_objs{};
+inline int key_radius(const Rect &r) { return std::min(P(14), std::min(r.w, r.h) / 4); }
 inline void press_at(int x, int y, bool pressed) {
+  if (grid_press_overlay != nullptr) {
+    lv_obj_add_flag(grid_press_overlay, LV_OBJ_FLAG_HIDDEN);
+  }
   if (pressed_card != nullptr) {
     lv_obj_remove_state(pressed_card, LV_STATE_USER_1);
     pressed_card = nullptr;
   }
   if (!pressed || root == nullptr || !active || !main_mode || lv_obj_has_flag(root, LV_OBJ_FLAG_HIDDEN)) return;
+  if (grid_cached_mode) {
+    for (const auto &t : grid_tiles) {
+      if (t.entity.empty()) continue;
+      if (x < t.r.x || x >= t.r.x + t.r.w || y < t.r.y || y >= t.r.y + t.r.h) continue;
+      if (grid_press_overlay == nullptr) {
+        grid_press_overlay = lv_obj_create(root);
+        lv_obj_remove_flag(grid_press_overlay, static_cast<lv_obj_flag_t>(LV_OBJ_FLAG_SCROLLABLE | LV_OBJ_FLAG_CLICKABLE));
+        lv_obj_set_style_pad_all(grid_press_overlay, 0, 0);
+        lv_obj_set_style_shadow_width(grid_press_overlay, 0, 0);
+        lv_obj_set_style_outline_width(grid_press_overlay, 0, 0);
+      }
+      const int rad = key_radius(t.r);
+      lv_obj_set_pos(grid_press_overlay, t.r.x, t.r.y);
+      lv_obj_set_size(grid_press_overlay, t.r.w, t.r.h);
+      lv_obj_set_style_radius(grid_press_overlay, rad, 0);
+      lv_obj_set_style_bg_color(grid_press_overlay, lv_color_hex(onx_display_settings::light_background() ? 0x000000 : 0xFFFFFF), 0);
+      lv_obj_set_style_bg_opa(grid_press_overlay, LV_OPA_20, 0);
+      lv_obj_set_style_border_width(grid_press_overlay, std::max(2, P(2)), 0);
+      lv_obj_set_style_border_color(grid_press_overlay, lv_color_hex(accent()), 0);
+      lv_obj_remove_flag(grid_press_overlay, LV_OBJ_FLAG_HIDDEN);
+      lv_obj_move_foreground(grid_press_overlay);
+      return;
+    }
+    return;
+  }
   const lv_point_t p{x, y};
   for (int i = static_cast<int>(lv_obj_get_child_count(root)) - 1; i >= 0; --i) {
     lv_obj_t *c = lv_obj_get_child(root, i);
@@ -2305,22 +2351,13 @@ __attribute__((noinline)) inline void build_weather(const std::string &e, const 
 // sensors) are drawn with the same widgets and rebuild rules as the details.
 // Cards carry direct controls (toggles, brightness, target, transport); a tap
 // elsewhere on a card opens its detail (onx_panel_pages::tap).
-struct Tile {
-  std::string entity, name, value, context;
-  bool on{false};
-  int ring{-1};
-  Rect r{};
-  bool compact{false}, key{false}, icon_only{false};
-  uint64_t artwork{0};
-  uint8_t effect{0};  // Action-grid icon animation while on: 1 pulse, 2 blink, 3 spin.
-};
 inline uint32_t INSET() {return CONTROL();}  // Surfaces inside a card (same as CONTROL()).
 // Entity icons are bound by the icon downloader, which keeps one binding per
 // widget: a fixed pool of image objects is re-parented on every rebuild
 // instead of creating new widgets.
 inline std::function<void(lv_obj_t *, const std::string &)> bind_icon;
 inline std::function<void(lv_obj_t *)> unbind_icon;
-struct IconUse { lv_obj_t *image; std::string entity; int cx, cy, size; const void *src; bool custom, on; lv_obj_t *view{nullptr}; };
+struct IconUse { lv_obj_t *image; std::string entity; int cx, cy, size; const void *src; bool custom, on; lv_obj_t *view{nullptr}; uint64_t artwork_id{0}; };
 // Icons arrive at about 107 px and are shown at 20-60 px. Drawing them with
 // lv_image_set_scale makes LVGL transform the bitmap on every redraw, so each
 // icon is downscaled once into its own small white+alpha bitmap (`view`); the
@@ -2338,11 +2375,9 @@ inline bool icon_alpha(const lv_image_dsc_t *d, int x, int y, uint8_t &a) {
   }
 }
 inline bool scale_icon(lv_obj_t *view, const void *src, int size) {
-  if (view == nullptr || src == nullptr || size <= 0 || lv_image_src_get_type(src) != LV_IMAGE_SRC_VARIABLE) return false;
-  const auto *d = static_cast<const lv_image_dsc_t *>(src);
-  const int w = d->header.w, h = d->header.h;
-  uint8_t probe;
-  if (w <= 0 || h <= 0 || !icon_alpha(d, 0, 0, probe)) return false;
+  if (view == nullptr || src == nullptr || size <= 0) return false;
+  const auto *sa = onx_grid_cache::get_scaled_alpha(src, size);
+  if (sa == nullptr || sa->alpha == nullptr || sa->w <= 0 || sa->h <= 0) return false;
   auto *s = static_cast<ScaledIcon *>(lv_obj_get_user_data(view));
   if (s == nullptr) {
     s = new (std::nothrow) ScaledIcon();
@@ -2353,26 +2388,18 @@ inline bool scale_icon(lv_obj_t *view, const void *src, int size) {
       if (si) { heap_caps_free(si->pixels); delete si; }
     }, LV_EVENT_DELETE, nullptr);
   }
-  // Fit the longer side into `size`, keeping the aspect ratio.
-  const int ow = std::max(1, w >= h ? size : size * w / h), oh = std::max(1, h >= w ? size : size * h / w);
+  const int ow = sa->w, oh = sa->h;
   if (s->pixels == nullptr || s->size < ow * oh) {
     heap_caps_free(s->pixels);
     s->pixels = static_cast<uint8_t *>(heap_caps_malloc(size_t(ow) * oh * 4, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT));
     s->size = s->pixels ? ow * oh : 0;
     if (s->pixels == nullptr) return false;
   }
-  // Area average of the source alpha; colour is white (recoloured by style).
-  for (int y = 0; y < oh; ++y) {
-    const int y0 = y * h / oh, y1 = std::max(y0 + 1, (y + 1) * h / oh);
-    for (int x = 0; x < ow; ++x) {
-      const int x0 = x * w / ow, x1 = std::max(x0 + 1, (x + 1) * w / ow);
-      uint32_t sum = 0, n = 0;
-      for (int yy = y0; yy < y1; ++yy)
-        for (int xx = x0; xx < x1; ++xx) { uint8_t a = 0; icon_alpha(d, xx, yy, a); sum += a; ++n; }
-      uint8_t *px = s->pixels + (size_t(y) * ow + x) * 4;
-      px[0] = px[1] = px[2] = 255;
-      px[3] = n ? sum / n : 0;
-    }
+  const size_t total = size_t(ow) * oh;
+  for (size_t i = 0; i < total; ++i) {
+    uint8_t *px = s->pixels + i * 4;
+    px[0] = px[1] = px[2] = 255;
+    px[3] = sa->alpha[i];
   }
   s->dsc.header.magic = LV_IMAGE_HEADER_MAGIC;
   s->dsc.header.cf = LV_COLOR_FORMAT_ARGB8888;
@@ -2380,7 +2407,7 @@ inline bool scale_icon(lv_obj_t *view, const void *src, int size) {
   s->dsc.header.h = oh;
   s->dsc.header.stride = ow * 4;
   s->dsc.data = s->pixels;
-  s->dsc.data_size = size_t(ow) * oh * 4;
+  s->dsc.data_size = total * 4;
   lv_image_cache_drop(&s->dsc);
   lv_image_set_src(view, &s->dsc);
   lv_image_set_pivot(view, ow / 2, oh / 2);
@@ -2389,7 +2416,6 @@ inline bool scale_icon(lv_obj_t *view, const void *src, int size) {
   return true;
 }
 inline std::array<lv_obj_t *, 16> icon_pool{};
-inline onx_memory::StateArray<onx_panel_artwork::Image,16> artwork_cache;
 inline uint64_t card_artwork=0;
 inline bool card_on=false;
 inline std::string animated_key;
@@ -2457,9 +2483,10 @@ inline void icon(lv_obj_t *parent, const std::string &e, int cx, int cy, int siz
   lv_obj_remove_flag(img, LV_OBJ_FLAG_HIDDEN);
   bool custom=false;
   if(card_artwork) {
-    auto &art=artwork_cache[index];
-    custom=art.load(card_artwork);
-    if(custom)lv_image_set_src(img,art.frame(card_on,animation_elapsed(e)));
+    if (auto *art = onx_grid_cache::get_artwork(card_artwork)) {
+      custom = true;
+      lv_image_set_src(img, art->frame(card_on, animation_elapsed(e)));
+    }
   }
   if(!custom) {
     bind_icon(img, e);
@@ -2474,9 +2501,11 @@ inline void icon(lv_obj_t *parent, const std::string &e, int cx, int cy, int siz
     lv_obj_set_style_image_recolor(view, lv_color_hex(color), 0);
     lv_obj_set_style_image_recolor_opa(view, LV_OPA_COVER, 0);
   }
-  icon_uses.push_back({img, e, cx, cy, size, nullptr, custom, card_on, view});
+  icon_uses.push_back({img, e, cx, cy, size, nullptr, custom, card_on, view, custom ? card_artwork : 0});
   place_icon(icon_uses.back());
 }
+// Forward declaration for grid-cache single-tile refresh when async icons arrive.
+inline void refresh_grid_icons();
 // Grid-key icon animations (onx_panel_pages::Effect), run by LVGL on the icon
 // image alone so only that area redraws.
 inline void animate_icon(lv_obj_t *img, uint8_t effect) {
@@ -2510,12 +2539,15 @@ inline void animate_icon(lv_obj_t *img, uint8_t effect) {
 }
 // Re-binds each frame so downloaded icons replace the fallbacks.
 inline void refresh_icons() {
+  if (grid_cached_mode) { refresh_grid_icons(); return; }
   if (!bind_icon) return;
   for (size_t i=0;i<icon_uses.size();++i) {
     auto &u=icon_uses[i];
     if(u.custom) {
-      const auto *next=artwork_cache[i].frame(u.on,animation_elapsed(u.entity));
-      if(next!=u.src){lv_image_set_src(u.image,next);place_icon(u);}
+      if (auto *art = onx_grid_cache::get_artwork(u.artwork_id)) {
+        const auto *next = art->frame(u.on, animation_elapsed(u.entity));
+        if (next != u.src) { lv_image_set_src(u.image, next); place_icon(u); }
+      }
       continue;
     }
     bind_icon(u.image, u.entity);
@@ -3481,39 +3513,297 @@ inline void card_settings(lv_obj_t *c, const Tile &t) {
   text(c, "Wi-Fi, display and Home Assistant", fonts.small, MUTED(), P(14), y, r.w - P(28), LV_TEXT_ALIGN_CENTER);
 }
 
+struct GridKeyLayout {
+  int rad{0}, px{0}, py{0}, lh{0};
+  int icon_cx{0}, icon_cy{0}, icon_size{0};
+  int label_x{0}, label_w{0}, label_y{0}, badge_y{0}, max_lines{1};
+  bool show_badge{false}, show_dot{false}, horizontal{false};
+  std::vector<std::string> lines;
+};
+
+inline GridKeyLayout layout_grid_key(const Tile &t) {
+  GridKeyLayout l{};
+  const Rect &r = t.r;
+  l.rad = key_radius(r);
+  l.show_dot = t.on && r.w >= P(56) && r.h >= P(40) && !(t.icon_only && t.artwork);
+  if (t.icon_only) {
+    l.icon_cx = r.w / 2;
+    l.icon_cy = r.h / 2;
+    l.icon_size = t.artwork ? std::max(r.w, r.h) : std::min(P(64), std::min(r.w, r.h) * 64 / 100);
+    return l;
+  }
+  l.px = r.w < P(76) ? P(5) : P(8);
+  l.py = r.h < P(68) ? P(4) : P(7);
+  l.lh = fonts.small ? line(fonts.small) : 16;
+  const int ih = std::max(1, r.h - 2 * l.py);
+  // Wide, shallow landscape tiles (e.g. 2.8" landscape 4x4) switch to icon-left + label-right.
+  if (r.h < l.lh + P(24) && r.w >= r.h * 3 / 2) {
+    l.horizontal = true;
+    l.px = P(6);
+    l.icon_size = std::clamp(r.h - P(12), P(14), P(24));
+    const int gap = P(5);
+    l.icon_cx = l.px + l.icon_size / 2;
+    l.icon_cy = r.h / 2;
+    l.label_x = l.px + l.icon_size + gap;
+    const int right_pad = l.show_dot ? P(10) : l.px;
+    l.label_w = std::max(1, r.w - l.label_x - right_pad);
+    l.max_lines = 1;
+    l.lines = onx_grid_cache::wrap_lines(t.name, fonts.small, l.label_w, 1);
+    l.label_y = (r.h - l.lh) / 2;
+    return l;
+  }
+  l.label_x = l.px;
+  l.label_w = std::max(1, r.w - 2 * l.px);
+  const bool tall_badge = r.w >= P(108) && r.h >= P(122);
+  const bool wide_badge = r.w >= P(140) && r.h >= P(92);
+  l.show_badge = !t.badge.empty() && (tall_badge || wide_badge);
+  const int badge_h = l.show_badge ? l.lh : 0;
+  l.max_lines = (r.h >= P(82) && ih >= l.lh * 2 + badge_h + (l.show_badge ? P(38) : P(24))) ? 2 : 1;
+  l.lines = onx_grid_cache::wrap_lines(t.name, fonts.small, l.label_w, l.max_lines);
+  const int nlines = std::max<int>(1, int(l.lines.size()));
+  const int text_h = nlines * l.lh + badge_h;
+  const int gap = r.h < P(68) ? P(3) : r.h < P(110) ? P(5) : P(8);
+  const int max_icon_h = std::max(P(18), ih - text_h - gap);
+  l.icon_size = std::min({P(44), std::min(l.label_w, r.h) * 44 / 100, max_icon_h});
+  const int block_h = l.icon_size + gap + text_h;
+  const int nudge = r.h >= P(100) ? P(2) : 0;
+  const int top_y = std::max(l.py, (r.h - block_h) / 2 - nudge);
+  l.icon_cx = r.w / 2;
+  l.icon_cy = top_y + l.icon_size / 2;
+  l.label_y = top_y + l.icon_size + gap;
+  l.badge_y = l.label_y + nlines * l.lh;
+  return l;
+}
+
+inline std::string icon_src_token(const void *src) {
+  if (!src) return "0";
+  if (lv_image_src_get_type(src) == LV_IMAGE_SRC_FILE) return std::string("F:") + static_cast<const char *>(src);
+  return std::to_string(reinterpret_cast<uintptr_t>(src));
+}
+
+inline void sync_grid_overlay(size_t idx, const Tile &t, const void *src, bool ready) {
+  if (idx >= grid_overlay_objs.size()) return;
+  if (grid_overlay_objs[idx]) {
+    lv_anim_delete(grid_overlay_objs[idx], nullptr);
+    lv_obj_delete(grid_overlay_objs[idx]);
+    grid_overlay_objs[idx] = nullptr;
+  }
+  if (!root || t.entity.empty()) return;
+  const auto kl = layout_grid_key(t);
+  const bool anim_icon = t.on && t.effect != 0 && !t.artwork && src != nullptr;
+  const bool emoji_label = !t.icon_only && onx_grid_cache::needs_emoji_overlay(t.name);
+  if (!anim_icon && !emoji_label) return;
+  const uint32_t icon_rgb = t.on ? accent() : ready ? TEXT() : MUTED();
+  const uint32_t label_rgb = t.on ? TEXT() : ready ? SOFT_TEXT() : MUTED();
+  lv_obj_t *holder = lv_obj_create(root);
+  lv_obj_remove_flag(holder, static_cast<lv_obj_flag_t>(LV_OBJ_FLAG_SCROLLABLE | LV_OBJ_FLAG_CLICKABLE));
+  lv_obj_set_pos(holder, t.r.x, t.r.y);
+  lv_obj_set_size(holder, t.r.w, t.r.h);
+  lv_obj_set_style_bg_opa(holder, LV_OPA_TRANSP, 0);
+  lv_obj_set_style_border_width(holder, 0, 0);
+  lv_obj_set_style_pad_all(holder, 0, 0);
+  grid_overlay_objs[idx] = holder;
+  if (anim_icon) {
+    lv_obj_t *img = lv_image_create(holder);
+    lv_obj_remove_flag(img, static_cast<lv_obj_flag_t>(LV_OBJ_FLAG_CLICKABLE | LV_OBJ_FLAG_SCROLLABLE));
+    lv_obj_set_style_image_recolor(img, lv_color_hex(icon_rgb), 0);
+    lv_obj_set_style_image_recolor_opa(img, LV_OPA_COVER, 0);
+    if (scale_icon(img, src, kl.icon_size)) {
+      const auto *sd = &static_cast<ScaledIcon *>(lv_obj_get_user_data(img))->dsc;
+      lv_obj_set_pos(img, kl.icon_cx - int(sd->header.w) / 2, kl.icon_cy - int(sd->header.h) / 2);
+    } else {
+      lv_image_set_src(img, src);
+      lv_image_header_t h{};
+      if (lv_image_decoder_get_info(src, &h) == LV_RESULT_OK && h.w && h.h) {
+        lv_image_set_pivot(img, h.w / 2, h.h / 2);
+        lv_image_set_scale(img, std::max<int>(16, kl.icon_size * 256 / std::max<int>(h.w, h.h)));
+        lv_obj_set_pos(img, kl.icon_cx - int(h.w) / 2, kl.icon_cy - int(h.h) / 2);
+      }
+    }
+    animate_icon(img, t.effect);
+  }
+  if (emoji_label) {
+    text(holder, t.name, fonts.small, label_rgb, kl.label_x, kl.label_y, kl.label_w,
+         kl.horizontal ? LV_TEXT_ALIGN_LEFT : LV_TEXT_ALIGN_CENTER, kl.max_lines);
+  }
+}
+
+inline void rasterize_grid_tile(onx_grid_cache::GridPage &page, size_t idx, const Tile &t, const void *src, bool ready) {
+  using namespace onx_grid_cache;
+  const int bw = page.w, bh = page.h;
+  const int bx = t.r.x, by = t.r.y - page.top_y;
+  fill_rect(page.pixels, bw, bh, bx, by, t.r.w, t.r.h, pack565(BG()));
+  const auto kl = layout_grid_key(t);
+  if (t.entity.empty()) {
+    draw_rounded_box(page.pixels, bw, bh, bx, by, t.r.w, t.r.h, kl.rad,
+                     onx_display_settings::mix(CARD(), BG(), 45), 255, 0, 0);
+    return;
+  }
+  const uint32_t fill_rgb = t.on ? soft() : ready ? CONTROL() : CARD();
+  const int border_w = t.on ? std::max(2, P(2)) : ready ? 1 : 0;
+  const uint32_t border_rgb = t.on ? onx_display_settings::mix(accent(), BG(), 68)
+                                   : onx_display_settings::mix(TEXT(), BG(), 18);
+  const uint32_t icon_rgb = t.on ? accent() : ready ? TEXT() : MUTED();
+  const uint32_t label_rgb = t.on ? TEXT() : ready ? SOFT_TEXT() : MUTED();
+
+  if (t.icon_only && t.artwork) {
+    draw_rounded_box(page.pixels, bw, bh, bx, by, t.r.w, t.r.h, kl.rad, fill_rgb, 255, 0, 0);
+    if (src && lv_image_src_get_type(src) == LV_IMAGE_SRC_VARIABLE) {
+      const int side = std::max(t.r.w, t.r.h);
+      blit_rgb565_scaled(page.pixels, bw, bh, static_cast<const lv_image_dsc_t *>(src),
+                         bx + t.r.w / 2, by + t.r.h / 2, side, side, bx, by, t.r.w, t.r.h, kl.rad);
+    }
+    if (t.on) {
+      draw_rounded_box(page.pixels, bw, bh, bx, by, t.r.w, t.r.h, kl.rad, 0, 0, border_w, accent());
+    }
+    return;
+  }
+
+  draw_rounded_box(page.pixels, bw, bh, bx, by, t.r.w, t.r.h, kl.rad, fill_rgb, 255, border_w, border_rgb);
+  if (kl.show_dot) {
+    const float dr = std::max(2.5f, P(6) / 2.0f);
+    const int ins = std::min(t.r.w, t.r.h) < P(72) ? P(8) : P(10);
+    draw_disc(page.pixels, bw, bh, float(bx + t.r.w - ins), float(by + ins), dr, accent());
+  }
+
+  const Clip tile_clip{bx + border_w, by + border_w, bx + t.r.w - border_w, by + t.r.h - border_w};
+  const bool anim_icon = t.on && t.effect != 0 && !t.artwork && src != nullptr;
+  if (!anim_icon && src != nullptr) {
+    if (t.artwork && lv_image_src_get_type(src) == LV_IMAGE_SRC_VARIABLE) {
+      const int ar = std::min(P(8), kl.icon_size / 5);
+      const int ax = bx + kl.icon_cx - kl.icon_size / 2, ay = by + kl.icon_cy - kl.icon_size / 2;
+      blit_rgb565_scaled(page.pixels, bw, bh, static_cast<const lv_image_dsc_t *>(src),
+                         bx + kl.icon_cx, by + kl.icon_cy, kl.icon_size, kl.icon_size,
+                         ax, ay, kl.icon_size, kl.icon_size, ar);
+    } else if (const auto *sa = get_scaled_alpha(src, kl.icon_size)) {
+      blend_alpha_icon(page.pixels, bw, bh, *sa, bx + kl.icon_cx, by + kl.icon_cy, icon_rgb, tile_clip);
+    }
+  }
+
+  if (!t.icon_only && fonts.small) {
+    if (!needs_emoji_overlay(t.name)) {
+      if (kl.horizontal) {
+        draw_text_aligned(page.pixels, bw, bh, kl.lines, fonts.small, label_rgb,
+                          bx + kl.label_x, by + kl.label_y, kl.label_w, false, tile_clip);
+      } else {
+        draw_text_centered(page.pixels, bw, bh, kl.lines, fonts.small, label_rgb,
+                           bx + kl.label_x, by + kl.label_y, kl.label_w, tile_clip);
+      }
+    }
+    if (kl.show_badge) {
+      draw_text_centered(page.pixels, bw, bh, {t.badge}, fonts.small, t.on ? accent() : MUTED(),
+                         bx + kl.label_x, by + kl.badge_y, kl.label_w, tile_clip);
+    }
+  }
+  (void)idx;
+}
+
+inline const void *resolve_grid_icon(size_t idx, const Tile &t) {
+  if (t.entity.empty() || idx >= icon_pool.size()) return nullptr;
+  if (t.artwork) {
+    if (auto *art = onx_grid_cache::get_artwork(t.artwork))
+      return art->frame(t.on, animation_elapsed(t.entity));
+    return nullptr;
+  }
+  if (!bind_icon) return nullptr;
+  auto *&img = icon_pool[idx];
+  if (img == nullptr) {
+    img = lv_image_create(lv_layer_top());
+    lv_obj_remove_flag(img, static_cast<lv_obj_flag_t>(LV_OBJ_FLAG_CLICKABLE | LV_OBJ_FLAG_SCROLLABLE));
+  }
+  if (lv_obj_get_parent(img) != lv_layer_top()) lv_obj_set_parent(img, lv_layer_top());
+  lv_obj_add_flag(img, LV_OBJ_FLAG_HIDDEN);
+  bind_icon(img, t.entity);
+  return lv_image_get_src(img);
+}
+
+inline uint64_t grid_tile_sig(const Tile &t, const void *src, bool ready) {
+  uint64_t h = 14695981039346656037ull;
+  auto mix = [&](uint64_t v) { h ^= v; h *= 1099511628211ull; };
+  auto mix_str = [&](const std::string &s) {
+    mix(0xFFu);
+    for (unsigned char c : s) mix(c);
+  };
+  mix_str(t.entity);
+  mix_str(t.name);
+  mix_str(t.badge);
+  mix(uint64_t(t.on) | (uint64_t(ready) << 1) | (uint64_t(t.icon_only) << 2) | (uint64_t(t.effect) << 4));
+  mix(uint64_t(uint16_t(t.r.x)) | (uint64_t(uint16_t(t.r.y)) << 16) |
+      (uint64_t(uint16_t(t.r.w)) << 32) | (uint64_t(uint16_t(t.r.h)) << 48));
+  mix(t.artwork);
+  if (src && lv_image_src_get_type(src) == LV_IMAGE_SRC_FILE) {
+    for (const char *p = static_cast<const char *>(src); *p; ++p) mix(static_cast<unsigned char>(*p));
+  } else {
+    mix(reinterpret_cast<uintptr_t>(src));
+  }
+  return h ? h : 1ull;
+}
+
+inline void refresh_grid_icons() {
+  if (!grid_cached_mode || !active_grid_page || !grid_image) return;
+  bool any_dirty = false;
+  for (size_t i = 0; i < grid_tiles.size() && i < icon_pool.size(); ++i) {
+    const auto &t = grid_tiles[i];
+    if (t.entity.empty()) continue;
+    const void *src = resolve_grid_icon(i, t);
+    if (src == grid_bound_srcs[i]) continue;
+    const auto *d = custom_logic_entity_sub::entity_detail(t.entity);
+    const bool ready = d != nullptr && d->received && d->available;
+    rasterize_grid_tile(*active_grid_page, i, t, src, ready);
+    sync_grid_overlay(i, t, src, ready);
+    grid_bound_srcs[i] = src;
+    active_grid_page->tile_sigs[i] = grid_tile_sig(t, src, ready);
+    if (!any_dirty) { lv_image_cache_drop(&active_grid_page->dsc); any_dirty = true; }
+    lv_area_t area{t.r.x, t.r.y, t.r.x + t.r.w - 1, t.r.y + t.r.h - 1};
+    lv_obj_invalidate_area(grid_image, &area);
+  }
+}
+
 __attribute__((noinline)) inline void build_card(const Tile &t) {
-  // Grid keys are small, so they use the stronger control surface (and a
-  // tint while on) to read as cards on the page background.
-  lv_obj_t *c = box(root, t.r.x, t.r.y, t.r.w, t.r.h, t.key ? (t.on ? soft() : CONTROL()) : CARD(),
-                    t.key ? P(14) : t.compact ? P(14) : P(18));
-  lv_obj_set_style_clip_corner(c, false, 0);
   const auto *d = custom_logic_entity_sub::entity_detail(t.entity);
   const bool ready = d != nullptr && d->received && d->available;
   if (t.key) {
+    const auto kl = layout_grid_key(t);
     if (t.entity.empty()) {
-      lv_obj_set_style_bg_opa(c, LV_OPA_40, 0);
+      box(root, t.r.x, t.r.y, t.r.w, t.r.h, onx_display_settings::mix(CARD(), BG(), 45), kl.rad);
       return;
     }
-    const int pad = P(4), name_height = line(fonts.small);
-    const uint32_t color = t.on ? accent() : ready ? TEXT() : MUTED();
-    if(t.icon_only) {
-      if(t.artwork)lv_obj_set_style_clip_corner(c,true,0);
-      icon(c,t.entity,t.r.w/2,t.r.h/2,t.artwork?std::max(t.r.w,t.r.h):std::min(t.r.w,t.r.h)*86/100,color);
-      if(t.on && t.effect && !icon_uses.empty())animate_icon(shown_icon(icon_uses.back()),t.effect);
-      if(t.artwork && t.on) {
-        auto *frame=box(c,0,0,t.r.w,t.r.h,CARD(),P(9),LV_OPA_TRANSP);
-        lv_obj_set_style_border_width(frame,P(2),0);
-        lv_obj_set_style_border_color(frame,lv_color_hex(accent()),0);
+    const uint32_t fill_rgb = t.on ? soft() : ready ? CONTROL() : CARD();
+    const int border_w = t.on ? std::max(2, P(2)) : ready ? 1 : 0;
+    const uint32_t border_rgb = t.on ? onx_display_settings::mix(accent(), BG(), 68)
+                                     : onx_display_settings::mix(TEXT(), BG(), 18);
+    lv_obj_t *c = box(root, t.r.x, t.r.y, t.r.w, t.r.h, fill_rgb, kl.rad);
+    lv_obj_set_style_clip_corner(c, t.icon_only && t.artwork, 0);
+    if (!(t.icon_only && t.artwork) && border_w > 0) {
+      lv_obj_set_style_border_width(c, border_w, 0);
+      lv_obj_set_style_border_color(c, lv_color_hex(border_rgb), 0);
+    }
+    const uint32_t icon_rgb = t.on ? accent() : ready ? TEXT() : MUTED();
+    const uint32_t label_rgb = t.on ? TEXT() : ready ? SOFT_TEXT() : MUTED();
+    if (kl.show_dot) {
+      const int ds = std::max(5, P(6)), ins = std::min(t.r.w, t.r.h) < P(72) ? P(8) : P(10);
+      box(c, t.r.w - ins - ds / 2, ins - ds / 2, ds, ds, accent(), LV_RADIUS_CIRCLE);
+    }
+    if (t.icon_only) {
+      icon(c, t.entity, kl.icon_cx, kl.icon_cy, kl.icon_size, icon_rgb);
+      if (t.on && t.effect && !icon_uses.empty()) animate_icon(shown_icon(icon_uses.back()), t.effect);
+      if (t.artwork && t.on) {
+        auto *frame = box(c, 0, 0, t.r.w, t.r.h, CARD(), kl.rad, LV_OPA_TRANSP);
+        lv_obj_set_style_border_width(frame, border_w, 0);
+        lv_obj_set_style_border_color(frame, lv_color_hex(accent()), 0);
       }
       return;
     }
-    icon(c, t.entity, t.r.w / 2, (t.r.h - name_height - pad) / 2,
-         std::min(P(44), std::min(t.r.w,t.r.h) * 40 / 100), color);
+    icon(c, t.entity, kl.icon_cx, kl.icon_cy, kl.icon_size, icon_rgb);
     if (t.on && t.effect && !icon_uses.empty()) animate_icon(shown_icon(icon_uses.back()), t.effect);
-    text(c, t.name, fonts.small, color, pad, t.r.h - name_height - pad,
-         t.r.w - 2 * pad, LV_TEXT_ALIGN_CENTER);
+    text(c, t.name, fonts.small, label_rgb, kl.label_x, kl.label_y, kl.label_w,
+         kl.horizontal ? LV_TEXT_ALIGN_LEFT : LV_TEXT_ALIGN_CENTER, kl.max_lines);
+    if (kl.show_badge)
+      text(c, t.badge, fonts.small, t.on ? accent() : MUTED(), kl.label_x, kl.badge_y, kl.label_w, LV_TEXT_ALIGN_CENTER, 1);
     return;
   }
+  lv_obj_t *c = box(root, t.r.x, t.r.y, t.r.w, t.r.h, CARD(), t.compact ? P(14) : P(18));
+  lv_obj_set_style_clip_corner(c, false, 0);
   if (t.compact) { card_row(c, t, d); return; }
   if (t.entity == SETTINGS) card_settings(c, t);
   else if (ready && has_prefix(t.entity, "weather.")) card_weather(c, t, *d);
@@ -3538,6 +3828,9 @@ inline void ensure_root(lv_obj_t *parent) {
 inline void clear(bool invalidate_root = true);
 inline std::string signature(const std::string &e, const EntityDetailState *d, const onx_detail_view::View &v,
                              const std::string &title);
+inline std::string built_main_structure;
+inline std::vector<std::string> built_tile_sigs;
+inline std::string main_page_key;
 inline void build_main_cards(const std::vector<Tile> &tiles) {
   card_patches.clear();
   for (const auto &t : tiles) {
@@ -3551,6 +3844,73 @@ inline void build_main_cards(const std::vector<Tile> &tiles) {
   card_artwork = 0;
 }
 
+inline bool render_grid_cached(const std::vector<Tile> &tiles) {
+  if (tiles.empty() || tiles.size() > 16) return false;
+  int min_y = H, max_y = 0;
+  for (const auto &t : tiles) {
+    min_y = std::min(min_y, t.r.y);
+    max_y = std::max(max_y, t.r.bottom());
+  }
+  min_y = std::clamp(min_y, 0, H);
+  max_y = std::clamp(max_y, min_y + 1, H);
+  const int buf_h = max_y - min_y;
+  uint32_t pal_sig = 2166136261u;
+  auto mix32 = [&](uint32_t v) { pal_sig ^= v; pal_sig *= 16777619u; };
+  mix32(BG()); mix32(accent()); mix32(uint32_t(W)); mix32(uint32_t(H));
+  const std::string cache_key = !main_page_key.empty() ? main_page_key : tiles[0].entity;
+  bool full_redraw = false;
+  auto *page = onx_grid_cache::acquire_page(cache_key, W, buf_h, min_y, pal_sig, int(tiles.size()), full_redraw);
+  if (!page) return false;
+
+  const bool mounting = !grid_cached_mode || active_grid_page != page || grid_image == nullptr;
+  if (mounting) {
+    clear(!main_mode);
+    main_mode = true;
+    grid_cached_mode = true;
+    active_grid_page = page;
+    grid_image = lv_image_create(root);
+    lv_obj_remove_flag(grid_image, static_cast<lv_obj_flag_t>(LV_OBJ_FLAG_CLICKABLE | LV_OBJ_FLAG_SCROLLABLE));
+    lv_obj_set_pos(grid_image, 0, min_y);
+    lv_obj_set_size(grid_image, W, buf_h);
+    lv_image_set_src(grid_image, &page->dsc);
+  }
+  grid_tiles = tiles;
+  if (full_redraw) {
+    onx_grid_cache::fill_rect(page->pixels, page->w, page->h, 0, 0, page->w, page->h, onx_grid_cache::pack565(BG()));
+  }
+
+  bool any_tile_dirty = false;
+  for (size_t i = 0; i < tiles.size(); ++i) {
+    const auto &t = tiles[i];
+    const auto *d = custom_logic_entity_sub::entity_detail(t.entity);
+    const bool ready = d != nullptr && d->received && d->available;
+    const void *src = resolve_grid_icon(i, t);
+    const uint64_t tsig = grid_tile_sig(t, src, ready);
+    grid_bound_srcs[i] = src;
+    if (full_redraw || page->tile_sigs[i] != tsig) {
+      rasterize_grid_tile(*page, i, t, src, ready);
+      sync_grid_overlay(i, t, src, ready);
+      page->tile_sigs[i] = tsig;
+      if (!full_redraw && !mounting) {
+        if (!any_tile_dirty) { lv_image_cache_drop(&page->dsc); any_tile_dirty = true; }
+        lv_area_t area{t.r.x, t.r.y, t.r.x + t.r.w - 1, t.r.y + t.r.h - 1};
+        lv_obj_invalidate_area(grid_image, &area);
+      } else {
+        any_tile_dirty = true;
+      }
+    } else if (mounting) {
+      sync_grid_overlay(i, t, src, ready);
+    }
+  }
+  page->valid = true;
+  if (full_redraw || (mounting && any_tile_dirty)) {
+    lv_image_cache_drop(&page->dsc);
+    lv_image_set_src(grid_image, &page->dsc);
+    lv_obj_invalidate(grid_image);
+  }
+  return true;
+}
+
 // Draws or keeps the cards for the current page.
 inline void render_main(lv_obj_t *parent, const std::vector<Tile> &tiles, int width, int height) {
   ensure_root(parent);
@@ -3560,6 +3920,10 @@ inline void render_main(lv_obj_t *parent, const std::vector<Tile> &tiles, int wi
   lv_obj_remove_flag(root, LV_OBJ_FLAG_HIDDEN);
   active = true;
   if (dragging) return;
+  if (!tiles.empty() && tiles[0].key && render_grid_cached(tiles)) {
+    built_signature.clear();
+    return;
+  }
   std::string head = "main|" + std::to_string(W) + 'x' + std::to_string(H) + '|' + std::to_string(accent()) + '|' + std::to_string(BG());
   std::string sig = head, structure = head;
   std::vector<std::string> tile_sigs;
@@ -3571,9 +3935,9 @@ inline void render_main(lv_obj_t *parent, const std::vector<Tile> &tiles, int wi
     const std::string place = std::to_string(t.r.x) + ',' + std::to_string(t.r.y) + ',' + std::to_string(t.r.w) + ',' +
                               std::to_string(t.r.h) + ',' + std::to_string(t.compact) + ',' + std::to_string(t.key) + ',' +
                               std::to_string(t.icon_only) + ',' + std::to_string(t.effect) + ',' + std::to_string(t.artwork);
-    std::string full = "#" + place + ',' + std::to_string(t.on) + ',' + signature(t.entity, d, v, t.name);
+    std::string full = "#" + place + ',' + std::to_string(t.on) + ',' + t.badge + ',' + signature(t.entity, d, v, t.name);
     // These cards show relative event times independently of the header clock.
-    if (runnable_entity(t.entity) || has_prefix(t.entity, "binary_sensor."))
+    if (!t.key && (runnable_entity(t.entity) || has_prefix(t.entity, "binary_sensor.")))
       full += '|' + std::to_string(now > 1600000000 ? now / 60 : 0);
     // Light and switch cards change on/off, brightness and their context line
     // in place (card patches); everything else in the signature rebuilds.
@@ -3601,10 +3965,8 @@ inline void render_main(lv_obj_t *parent, const std::vector<Tile> &tiles, int wi
     structure += shape;
     tile_sigs.push_back(std::move(full));
   }
-  if (sig == built_signature && main_mode) { refresh_icons(); tick_media_progress(); return; }
-  static std::string built_main_structure;
-  static std::vector<std::string> built_tile_sigs;
-  if (main_mode && structure == built_main_structure && card_patches.size() == tiles.size() &&
+  if (sig == built_signature && main_mode && !grid_cached_mode) { refresh_icons(); tick_media_progress(); return; }
+  if (main_mode && !grid_cached_mode && structure == built_main_structure && card_patches.size() == tiles.size() &&
       built_tile_sigs.size() == tiles.size()) {
     bool patched = true;
     for (size_t i = 0; i < tiles.size() && patched; ++i)
@@ -3685,8 +4047,17 @@ inline void detach_graph() {
 }
 inline void clear(bool invalidate_root) {
   pressed_card = nullptr;
+  grid_press_overlay = nullptr;
+  grid_image = nullptr;
+  active_grid_page = nullptr;
+  grid_cached_mode = false;
+  grid_tiles.clear();
+  grid_bound_srcs.fill(nullptr);
+  grid_overlay_objs.fill(nullptr);
   patch = nullptr;
   card_patches.clear();
+  built_main_structure.clear();
+  built_tile_sigs.clear();
   built_structure.clear();
   timer_visuals.clear();
   timer_screen_active = false;
@@ -3722,10 +4093,13 @@ inline void hide() {
   if (root != nullptr) lv_obj_add_flag(root, LV_OBJ_FLAG_HIDDEN);
 }
 
-// Save only recently visited main pages. Media and custom artwork use shared
-// mutable image storage, so those pages keep the regular rebuild path.
+// Save recently visited non-grid main pages (action grids keep their flat
+// RGB565 framebuffers in onx_grid_cache::grid_pages instead). Media uses
+// shared mutable artwork storage so it keeps the regular rebuild path.
 struct RetainedPage {
-  std::string key, signature;
+  std::string key, signature, main_structure;
+  std::vector<std::string> tile_sigs;
+  std::vector<CardPatch> patches;
   lv_obj_t *root{nullptr};
   decltype(targets) touch_targets;
   decltype(actions) callbacks;
@@ -3733,9 +4107,8 @@ struct RetainedPage {
   decltype(icon_pool) icons{};
   decltype(icon_uses) image_uses;
 };
-inline std::array<RetainedPage, 2> retained_pages;
+inline std::array<RetainedPage, 6> retained_pages;
 inline size_t next_retained_page = 0;
-inline std::string main_page_key;
 
 inline void delete_page_widgets(lv_obj_t *page_root, const decltype(icon_pool) &icons) {
   for (auto *icon : icons) {
@@ -3748,8 +4121,7 @@ inline void delete_page_widgets(lv_obj_t *page_root, const decltype(icon_pool) &
 
 inline void leave_main_page() {
   if (main_page_key.empty()) return;
-  const bool retain = main_mode && root && !dragging && onx_media::main_entity.empty() &&
-                      std::none_of(icon_uses.begin(), icon_uses.end(), [](const IconUse &icon) { return icon.custom; });
+  const bool retain = main_mode && !grid_cached_mode && root && !dragging && onx_media::main_entity.empty();
   if (!retain) {
     main_page_key.clear();
     return;
@@ -3763,7 +4135,8 @@ inline void leave_main_page() {
   auto &slot = retained_pages[next_retained_page];
   next_retained_page = (next_retained_page + 1) % retained_pages.size();
   delete_page_widgets(slot.root, slot.icons);
-  slot = {std::move(main_page_key), std::move(built_signature), root, std::move(targets), std::move(actions),
+  slot = {std::move(main_page_key), std::move(built_signature), std::move(built_main_structure),
+          std::move(built_tile_sigs), std::move(card_patches), root, std::move(targets), std::move(actions),
           std::move(charts), icon_pool, std::move(icon_uses)};
   main_page_key.clear();
   root = nullptr;
@@ -3788,6 +4161,9 @@ inline void activate_main_page(const std::string &key) {
   delete_page_widgets(root, icon_pool);
   root = saved.root;
   built_signature = std::move(saved.signature);
+  built_main_structure = std::move(saved.main_structure);
+  built_tile_sigs = std::move(saved.tile_sigs);
+  card_patches = std::move(saved.patches);
   targets = std::move(saved.touch_targets);
   actions = std::move(saved.callbacks);
   charts = std::move(saved.chart_data);

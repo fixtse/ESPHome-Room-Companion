@@ -40,7 +40,7 @@ namespace onx_presets {
 static const char *const TAG = "onx_presets";
 constexpr size_t MAX_PRESETS = 8;
 constexpr size_t MAX_NAME = 32;
-constexpr size_t MAX_BYTES = 32768;
+constexpr size_t MAX_BYTES = 65536;
 constexpr size_t SLOT_COUNT = onx_memory::ENTRY_COUNT;
 // Shown by the Home Assistant select when the slots match no stored preset.
 inline const char *const CUSTOM = "Custom";
@@ -225,7 +225,8 @@ inline void encode_current(JsonArray slots) {
   onx_entity_config::load_playlists();
   onx_entity_config::load_gestures();
   custom_logic::load_ha_entities_if_needed();
-  for (size_t i = 0; i < SLOT_COUNT; ++i) onx_entity_config::encode_slot(i, slots.add<JsonObject>());
+  const size_t n = onx_entity_config::serialized_slot_count();
+  for (size_t i = 0; i < n; ++i) onx_entity_config::encode_slot(i, slots.add<JsonObject>());
 }
 
 // Builds the save request the configuration page would send for one slot.
@@ -484,12 +485,14 @@ inline std::string apply(const std::string &raw_name) {
     auto current = custom_logic::make_psram_json_document();
     JsonArray now = current.to<JsonArray>();
     encode_current(now);
-    for (size_t i = 0; i < SLOT_COUNT; ++i) {
+    const size_t compare_count = std::min(SLOT_COUNT, std::max<size_t>(slots.size(), now.size()));
+    for (size_t i = 0; i < compare_count; ++i) {
       // Slots missing from an older preset are cleared.
       JsonObjectConst wanted = i < slots.size() ? slots[i].as<JsonObjectConst>() : JsonObjectConst();
+      JsonObjectConst current_slot = i < now.size() ? now[i].as<JsonObjectConst>() : JsonObjectConst();
       esphome::onx_config_web::Query query;
       if (wanted.isNull() || custom_logic::is_retired_panel_gpio(wanted["entity"] | std::string())) {
-        if ((now[i]["entity"] | std::string()).empty()) continue;
+        if (current_slot.isNull() || (current_slot["entity"] | std::string()).empty()) continue;
         query.op = "save";
         query.slot = static_cast<int>(i);
         query.icon_override = "0";
@@ -500,7 +503,11 @@ inline std::string apply(const std::string &raw_name) {
       }
       if (!slot_query(i, wanted, query)) return "Slot " + std::to_string(i + 1) + " of the preset is invalid";
       esphome::onx_config_web::Query present;
-      slot_query(i, now[i].as<JsonObjectConst>(), present);
+      if (!current_slot.isNull()) slot_query(i, current_slot, present);
+      else {
+        JsonDocument empty_doc;
+        slot_query(i, empty_doc.to<JsonObject>(), present);
+      }
       if (same_query(query, present)) continue;
       queries.push_back(std::move(query));
     }

@@ -45,7 +45,7 @@ static const char PANEL_JS[] = R"ONXPANEL(
  const artId=/^[0-9a-f]{14}$/;
  const axis=n=>Number.isInteger(n)&&n>=1&&n<=4?n:2;
  const DEFAULT_ICONS={sensor:'chart-line',binary_sensor:'checkbox-marked-circle-outline',media_player:'music-note',weather:'weather-partly-cloudy',climate:'thermostat',timer:'timer-outline',light:'lightbulb',switch:'toggle-switch',cover:'window-shutter',fan:'fan',script:'script-text',automation:'robot',number:'numeric',input_number:'numeric',select:'format-list-bulleted',input_select:'format-list-bulleted',button:'gesture-tap-button',input_button:'gesture-tap-button',scene:'palette'};
- const MAX_ENTRIES=40,ICON_RE=/^mdi:[a-z0-9-]{1,76}$/;
+ const MAX_ENTRIES=250,ICON_RE=/^mdi:[a-z0-9-]{1,76}$/;
  const compact=e=>/^(sensor|binary_sensor)\./.test(e);
  const isTimer=e=>/^(timer|sensor)\./.test(e);
  let pageConfigs=[],savedPages='[]',panelPages='[]',pagesLoaded=false,pageError='',editorSlots=[],editorActive=-1,editorEntity='',editorBusy=false,editorTarget=null,selectedPage=0,selectedPos=0,timerEntity='',view='page',saving=false,redraw=()=>{};
@@ -316,7 +316,7 @@ static const char PANEL_JS[] = R"ONXPANEL(
   if(view==='timer'&&!editorSlots.some(s=>s.entity===timerEntity&&s.timerHidden==='1')){view='page'}
   const names=pageConfigs.map(p=>p.entities.map(e=>e&&nameOf(e)+'|'+iconOf(e)+'|'+(app()?.dirtyAt?.(slotOf(e))?1:0)));
   patch('slots',JSON.stringify([pageConfigs,savedPages,names,view,selectedPage,locked,pagesLoaded,pageError,!!editorTarget]),()=>[...(pageConfigs.length?pageConfigs.map((p,i)=>pageButton(p,i,savedList)):[el('p','empty-note',pagesLoaded||editorTarget?'No pages yet.':pageError||'Loading pages…')]),newPageDrop()]);
-  $('slot-capacity').textContent=used()+'/'+MAX_ENTRIES+' entities';$('slot-capacity').title=used()+' of '+MAX_ENTRIES+' entity entries in use (pages and timers)';
+  const count=used();$('slot-capacity').textContent=count+' entit'+(count===1?'y':'ies');$('slot-capacity').title=count+' entity entries in use (pages and timers; up to '+MAX_ENTRIES+')';
   const timers=editorSlots.filter(s=>s.entity&&s.timerHidden==='1');
   patch('timer-list',JSON.stringify([timers.map(t=>t.entity+'|'+nameOf(t.entity)),view,timerEntity,locked]),()=>timers.map(t=>{
    const li=el('li'),open=el('button'),box=el('span','slot-icon');open.type='button';box.append(mdi(iconOf(t.entity)));
@@ -634,7 +634,7 @@ static const char PANEL_JS[] = R"ONXPANEL(
   },
   import(data,pages){
    if(data===undefined)return;
-   if(!data||typeof data!=='object'||Array.isArray(data)||Object.keys(data).length>40)throw Error('Invalid image collection.');
+   if(!data||typeof data!=='object'||Array.isArray(data)||Object.keys(data).length>96)throw Error('Invalid image collection.');
    for(const id of imageIds(pages))if(Object.hasOwn(data,id)){
     if(!artId.test(id)||typeof data[id]!=='string'||![4268,artSide*artSide*8/3].includes(data[id].length))throw Error('Invalid page image.');
     artUrls.set(id,rgb565Url(data[id]));artData.set(id,data[id]);artPending.add(id);
@@ -668,7 +668,21 @@ static const char PANEL_JS[] = R"ONXPANEL(
   if(target){savedPages=JSON.stringify(pageConfigs);touch();return true}
   if(!dirtyPages()){a.message?.('Changes saved.');touch();return true}
   saving=true;renderPageEditor();a.progress?.(9,10);a.message?.('Saving the page list ('+list.length+' page'+(list.length===1?'':'s')+')…');
-  try{const result=await rpc({op:'panel_pages_save',data:JSON.stringify({pages:list})});pageConfigs=normalize(result.pages);savedPages=panelPages=JSON.stringify(pageConfigs);pageError='';status('');a.message?.('Changes saved.');return true}
+  async function sendPageList(list){
+   const raw=JSON.stringify({pages:list});
+   if(encodeURIComponent(raw).length<=3500)return rpc({op:'panel_pages_save',data:raw});
+   const chars=Array.from(raw),utf8=new TextEncoder(),total=utf8.encode(raw).length;
+   let index=0,offset=0,result=null;
+   while(index<chars.length){
+    let end=Math.min(chars.length,index+1500);
+    while(end>index+1&&encodeURIComponent(chars.slice(index,end).join('')).length>3000)end=index+Math.max(1,Math.floor((end-index)*0.75));
+    const data=chars.slice(index,end).join('');
+    result=await rpc({op:'panel_pages_put',offset,total,data});
+    offset+=utf8.encode(data).length;index=end;
+   }
+   return result;
+  }
+  try{const result=await sendPageList(list);pageConfigs=normalize(result.pages);savedPages=panelPages=JSON.stringify(pageConfigs);pageError='';status('');a.message?.('Changes saved.');return true}
   catch(error){status(error.message);a.message?.(error.message+' The pages were not changed.',true);return false}
   finally{saving=false;touch()}
  }
@@ -1273,11 +1287,53 @@ static const char PANEL_JS[] = R"ONXPANEL(
   };
   // As animate_icon on the panel: only while the entity is on.
   const animateKey=(t,p)=>{const fx=animationOf(p,t.entity),img=target.lastElementChild;if(t.on&&fx!=='none'&&img?.tagName==='image'){img.classList.add('fx-'+fx);img.dataset.animation=fx}};
+  const gridBadge=(e,d,on)=>{
+   if(!e||d.available===false||!viewOf(e))return '';
+   if(e.startsWith('light.'))return on&&d.dimmable!==false&&Number(d.brightness)>0?Math.round(Number(d.brightness))+'%':'';
+   if(e.startsWith('fan.')){const p=num(d.percentage);return on&&isFinite(p)&&p>0?Math.round(p)+'%':''}
+   if(e.startsWith('cover.')){const p=num(d.position);return isFinite(p)?Math.round(p)+'%':''}
+   if(e.startsWith('climate.')){if(!on)return 'Off';const t=num(d.temperature);if(isFinite(t))return compact(t)+'°';const lo=num(d.target_low??d.low),hi=num(d.target_high??d.high);return isFinite(lo)&&isFinite(hi)?compact(lo)+'–'+compact(hi)+'°':''}
+   if(/^(sensor|number|input_number)\./.test(e)){const n=num(d.state);if(!isFinite(n))return '';const out=present(d.state,d.unit);return out.length<=10?out:''}
+   return '';
+  };
   const cardKey=(t,d,i,p)=>{
-   const r=t.r,ready=d.available!==false&&!!viewOf(t.entity);box(r.x,r.y,r.w,r.h,t.entity?(t.on?TINT:CONTROL):mix(CARD,BG,40),P(14),{'data-panel-item':i});if(!t.entity)return;
-   const color=t.on?ACCENT:ready?TEXT:MUTED,only=iconOnly(p,i);
-   if(only){if(currentArt){add(node('image',{href:currentArt,x:r.x,y:r.y,width:r.w,height:r.h,preserveAspectRatio:'xMidYMid slice',style:'clip-path:inset(0 round '+P(14)+'px)'}));if(t.on)box(r.x+1,r.y+1,r.w-2,r.h-2,'none',P(14),{stroke:ACCENT,'stroke-width':P(2)})}else{icon(t.entity,r.x+r.w/2,r.y+r.h/2,Math.trunc(Math.min(r.w,r.h)*86/100),color);animateKey(t,p)}return}
-   const pad=P(4),nh=F.small.lh;icon(t.entity,r.x+r.w/2,r.y+(r.h-nh-pad)/2,Math.min(P(44),Math.trunc(Math.min(r.w,r.h)*40/100)),color);animateKey(t,p);text(t.name,F.small,color,r.x+pad,r.y+r.h-nh-pad,r.w-2*pad,'center');
+   const r=t.r,rad=Math.min(P(14),Math.trunc(Math.min(r.w,r.h)/4)),ready=d.available!==false&&!!viewOf(t.entity);
+   if(!t.entity){box(r.x,r.y,r.w,r.h,mix(CARD,BG,45),rad,{'data-panel-item':i});return}
+   const fill=t.on?TINT:ready?CONTROL:CARD,bw=t.on?Math.max(2,P(2)):ready?1:0,bc=t.on?mix(ACCENT,BG,68):mix(TEXT,BG,18);
+   const only=iconOnly(p,i);
+   const borderAttrs=bw?{stroke:bc,'stroke-width':bw}:{};
+   if(only&&currentArt){
+    box(r.x,r.y,r.w,r.h,fill,rad,{'data-panel-item':i});
+    add(node('image',{href:currentArt,x:r.x,y:r.y,width:r.w,height:r.h,preserveAspectRatio:'xMidYMid slice',style:'clip-path:inset(0 round '+rad+'px)'}));
+    if(t.on)box(r.x+bw/2,r.y+bw/2,r.w-bw,r.h-bw,'none',Math.max(0,rad-bw/2),{stroke:ACCENT,'stroke-width':bw});
+    return;
+   }
+   box(r.x+bw/2,r.y+bw/2,r.w-bw,r.h-bw,fill,Math.max(0,rad-bw/2),{'data-panel-item':i,...borderAttrs});
+   const iconColor=t.on?ACCENT:ready?TEXT:MUTED,labelColor=t.on?TEXT:ready?SOFT:MUTED;
+   const showDot=t.on&&r.w>=P(56)&&r.h>=P(40);
+   if(showDot){const dr=Math.max(2.5,P(6)/2),ins=Math.min(r.w,r.h)<P(72)?P(8):P(10);add(node('circle',{cx:r.x+r.w-ins,cy:r.y+ins,r:dr,fill:ACCENT}))}
+   if(only){
+    icon(t.entity,r.x+r.w/2,r.y+r.h/2,Math.min(P(64),Math.trunc(Math.min(r.w,r.h)*64/100)),iconColor);animateKey(t,p);
+    return;
+   }
+   const px=r.w<P(76)?P(5):P(8),py=r.h<P(68)?P(4):P(7),lh=F.small.lh,ih=r.h-2*py;
+   if(r.h<lh+P(24)&&r.w>=r.h*3/2){
+    const hpx=P(6),is=Math.max(P(14),Math.min(P(24),r.h-P(12))),lx=hpx+is+P(5),lw=Math.max(1,r.w-lx-(showDot?P(10):hpx));
+    icon(t.entity,r.x+hpx+is/2,r.y+r.h/2,is,iconColor);animateKey(t,p);
+    text(t.name,F.small,labelColor,r.x+lx,r.y+(r.h-lh)/2,lw,'left',1);
+    return;
+   }
+   const badge=gridBadge(t.entity,d,t.on),showBadge=!!badge&&((r.w>=P(108)&&r.h>=P(122))||(r.w>=P(140)&&r.h>=P(92)));
+   const badgeH=showBadge?lh:0,maxLines=(r.h>=P(82)&&ih>=lh*2+badgeH+(showBadge?P(38):P(24)))?2:1;
+   const lines=wrap(t.name,F.small,r.w-2*px,maxLines);
+   const textH=Math.max(1,lines.length)*lh+badgeH;
+   const gap=r.h<P(68)?P(3):r.h<P(110)?P(5):P(8);
+   const maxIconH=Math.max(P(18),ih-textH-gap);
+   const is=Math.min(P(44),Math.trunc(Math.min(r.w-2*px,r.h)*44/100),maxIconH);
+   const blockH=is+gap+textH,nudge=r.h>=P(100)?P(2):0,topY=Math.max(py,Math.trunc((r.h-blockH)/2)-nudge);
+   icon(t.entity,r.x+r.w/2,r.y+topY+is/2,is,iconColor);animateKey(t,p);
+   text(t.name,F.small,labelColor,r.x+px,r.y+topY+is+gap,r.w-2*px,'center',maxLines);
+   if(showBadge)text(badge,F.small,t.on?ACCENT:MUTED,r.x+px,r.y+topY+is+gap+Math.max(1,lines.length)*lh,r.w-2*px,'center',1);
   };
   const renderMain=()=>{
    const p=pageFor(slot.entity),ids=p.ids,rects=globalThis.ONX_PANEL_GEOMETRY(p.layout,W,H,false,p.rows,p.columns),grid=p.layout===gridLayout;

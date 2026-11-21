@@ -3,12 +3,49 @@
 #include <array>
 #include <cstddef>
 #include <cstdint>
+#include <cstdlib>
+#include <new>
 #include <string>
+#include <vector>
+#ifdef USE_ESP32
+#include <esp_heap_caps.h>
+#endif
 
 #include "esphome/core/component.h"
+#include "esphome/core/helpers.h"
 #include "esphome/core/preferences.h"
 
 namespace esphome::onx_storage {
+
+template<typename T> struct PsramAllocator {
+  using value_type = T;
+  constexpr PsramAllocator() noexcept = default;
+  template<typename U> constexpr PsramAllocator(const PsramAllocator<U> &) noexcept {}
+  T *allocate(size_t n) {
+    if (n == 0) return nullptr;
+    const size_t bytes = n * sizeof(T);
+#ifdef USE_ESP32
+    void *p = heap_caps_malloc(bytes, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
+    if (!p) p = heap_caps_malloc(bytes, MALLOC_CAP_8BIT);
+    if (!p) std::abort();
+    return static_cast<T *>(p);
+#else
+    return static_cast<T *>(::operator new(bytes));
+#endif
+  }
+  void deallocate(T *p, size_t) noexcept {
+    if (!p) return;
+#ifdef USE_ESP32
+    heap_caps_free(p);
+#else
+    ::operator delete(p);
+#endif
+  }
+  template<typename U> bool operator==(const PsramAllocator<U> &) const noexcept { return true; }
+  template<typename U> bool operator!=(const PsramAllocator<U> &) const noexcept { return false; }
+};
+
+template<typename T> using PsramVector = std::vector<T, PsramAllocator<T>>;
 
 class OnxStorage;
 
@@ -124,7 +161,10 @@ class OnxStorage : public Component {
   bool set_auth_record(const std::string &auth_code, const std::string &auth_sha256);
 
   bool reset_normal_mode_config();
-  bool set_normal_ui_config(const std::array<NormalUiDeviceConfig, 40> &devices);
+  bool set_normal_ui_config(const std::vector<NormalUiDeviceConfig> &devices);
+  template<size_t N> bool set_normal_ui_config(const std::array<NormalUiDeviceConfig, N> &devices) {
+    return this->set_normal_ui_config(std::vector<NormalUiDeviceConfig>(devices.begin(), devices.end()));
+  }
   const std::string &get_normal_ui_device_title(size_t index) const;
   const std::string &get_normal_ui_device_type(size_t index) const;
   const std::string &get_normal_ui_device_entity_id(size_t index) const;
@@ -171,11 +211,14 @@ class OnxStorage : public Component {
   bool save_normal_ui_states_();
   bool save_power_policy_();
 
+  void ensure_device_capacity_(size_t count);
+  void ensure_state_capacity_(size_t count);
+
   static constexpr size_t FACTORY_SSID_MAX_LENGTH = 64;
   static constexpr size_t FACTORY_PASSWORD_MAX_LENGTH = 64;
   static constexpr size_t AUTH_CODE_MAX_LENGTH = 32;
   static constexpr size_t AUTH_SHA256_MAX_LENGTH = 64;
-  static constexpr size_t NORMAL_UI_DEVICE_MAX_COUNT = 40;
+  static constexpr size_t NORMAL_UI_DEVICE_MAX_COUNT = 250;
   static constexpr size_t NORMAL_UI_TITLE_MAX_LENGTH = 128;
   static constexpr size_t NORMAL_UI_ICON_MAX_LENGTH = 16;
   static constexpr size_t NORMAL_UI_ENTITY_ID_MAX_LENGTH = 128;
@@ -185,8 +228,8 @@ class OnxStorage : public Component {
   std::string factory_password_;
   std::string auth_code_;
   std::string auth_sha256_;
-  std::array<NormalUiDeviceConfig, NORMAL_UI_DEVICE_MAX_COUNT> normal_ui_devices_{};
-  std::array<NormalUiDeviceState, NORMAL_UI_DEVICE_MAX_COUNT> normal_ui_device_states_{};
+  PsramVector<NormalUiDeviceConfig> normal_ui_devices_;
+  PsramVector<NormalUiDeviceState> normal_ui_device_states_;
   uint32_t standby_timeout_ms_{300000};
   uint32_t sleep_timeout_ms_{60000};
   uint16_t sleep_window_start_minute_{0};

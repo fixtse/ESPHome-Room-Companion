@@ -161,8 +161,13 @@ static const uint32_t NORMAL_UI_PREF_KEY = fnv1_hash("onx-storage-normal-ui-conf
 static const uint32_t NORMAL_UI_STATE_PREF_KEY = fnv1_hash("onx-storage-normal-ui-state-v4");
 static const uint32_t NORMAL_UI_STATE_LEGACY_PREF_KEY = fnv1_hash("onx-storage-normal-ui-state");
 static const uint32_t POWER_POLICY_PREF_KEY = fnv1_hash("onx-storage-power-policy-v1");
+static const char *const NORMAL_UI_CFG_V4_KEY = "onx_ui_cfg_v4";
+static const char *const NORMAL_UI_ST_V5_KEY = "onx_ui_st_v5";
+static constexpr uint32_t NORMAL_UI_CFG_V4_MAGIC = 0x4F4E5844;  // ONXD
+static constexpr uint32_t NORMAL_UI_ST_V5_MAGIC = 0x4F4E5853;   // ONXS
 static constexpr uint32_t POWER_POLICY_MAGIC = 0x4F4E5850;  // ONXP
-static constexpr size_t NORMAL_UI_DEVICE_MAX_COUNT = 40;  // v3 config / v4 state; v2/v3 held 20
+static constexpr size_t NORMAL_UI_DEVICE_MAX_COUNT = 250;
+static constexpr size_t LEGACY_V3_DEVICE_COUNT = 40;
 static constexpr size_t NORMAL_UI_TITLE_MAX_LENGTH = 128;
 static constexpr size_t NORMAL_UI_ICON_MAX_LENGTH = 16;
 static constexpr size_t NORMAL_UI_ENTITY_ID_MAX_LENGTH = 128;
@@ -178,13 +183,13 @@ struct StoredAuthRecord {
 };
 
 struct StoredNormalUiConfig {
-  char titles[NORMAL_UI_DEVICE_MAX_COUNT][NORMAL_UI_TITLE_MAX_LENGTH + 1];
-  char types[NORMAL_UI_DEVICE_MAX_COUNT][NORMAL_UI_ICON_MAX_LENGTH + 1];
-  char entity_ids[NORMAL_UI_DEVICE_MAX_COUNT][NORMAL_UI_ENTITY_ID_MAX_LENGTH + 1];
+  char titles[LEGACY_V3_DEVICE_COUNT][NORMAL_UI_TITLE_MAX_LENGTH + 1];
+  char types[LEGACY_V3_DEVICE_COUNT][NORMAL_UI_ICON_MAX_LENGTH + 1];
+  char entity_ids[LEGACY_V3_DEVICE_COUNT][NORMAL_UI_ENTITY_ID_MAX_LENGTH + 1];
 };
 
 struct StoredNormalUiStateV2 {
-  NormalUiDeviceState states[NORMAL_UI_DEVICE_MAX_COUNT];
+  NormalUiDeviceState states[LEGACY_V3_DEVICE_COUNT];
 };
 
 struct StoredNormalUiStateLegacy {
@@ -203,6 +208,37 @@ struct StoredPowerPolicy {
 };
 
 #ifdef USE_ESP32
+static bool erase_nvs_named_key(const char *key_str, const char *label) {
+  nvs_handle_t handle;
+  esp_err_t err = nvs_open("esphome", NVS_READWRITE, &handle);
+  if (err != ESP_OK) return false;
+  err = nvs_erase_key(handle, key_str);
+  bool ok = (err == ESP_OK || err == ESP_ERR_NVS_NOT_FOUND);
+  if (!ok) ESP_LOGW(TAG, "normal mode storage reset: failed to erase %s NVS key '%s': %s", label, key_str, esp_err_to_name(err));
+  if (nvs_commit(handle) != ESP_OK) ok = false;
+  nvs_close(handle);
+  return ok;
+}
+static bool read_nvs_blob(const char *key_str, PsramVector<uint8_t> &out) {
+  nvs_handle_t handle;
+  if (nvs_open("esphome", NVS_READONLY, &handle) != ESP_OK) return false;
+  size_t len = 0;
+  bool ok = nvs_get_blob(handle, key_str, nullptr, &len) == ESP_OK && len > 0;
+  if (ok) {
+    out.resize(len);
+    ok = out.size() == len && nvs_get_blob(handle, key_str, out.data(), &len) == ESP_OK;
+  }
+  nvs_close(handle);
+  return ok;
+}
+static bool write_nvs_blob(const char *key_str, const uint8_t *data, size_t len) {
+  nvs_handle_t handle;
+  if (nvs_open("esphome", NVS_READWRITE, &handle) != ESP_OK) return false;
+  esp_err_t err = nvs_set_blob(handle, key_str, data, len);
+  if (err == ESP_OK) err = nvs_commit(handle);
+  nvs_close(handle);
+  return err == ESP_OK;
+}
 static bool erase_preference_key(uint32_t key, const char *label) {
   nvs_handle_t handle;
   esp_err_t err = nvs_open("esphome", NVS_READWRITE, &handle);
@@ -455,77 +491,137 @@ void OnxStorage::setup() {
 
   this->auth_provisioned_ = !this->auth_code_.empty();
 
-  auto ui_buffer=allocate_record<StoredNormalUiConfig>();
-  if(!ui_buffer) {ESP_LOGE(TAG,"Not enough memory for UI configuration");return;}
-  auto &stored_normal_ui=*ui_buffer;
-  bool restored_ui=this->normal_ui_pref_.load(&stored_normal_ui);
-  if(!restored_ui) {
-    // 20-entry layout from before pages.
-    struct Config20 {char titles[20][NORMAL_UI_TITLE_MAX_LENGTH+1];char types[20][NORMAL_UI_ICON_MAX_LENGTH+1];char entity_ids[20][NORMAL_UI_ENTITY_ID_MAX_LENGTH+1];};
-    auto pref=global_preferences->make_preference<Config20>(fnv1_hash("onx-storage-normal-ui-config-v2"),true);
-    auto old=allocate_record<Config20>();
-    if(old && pref.load(old.get())) {
-      for(size_t i=0;i<20;++i) {
-        memcpy(stored_normal_ui.titles[i],old->titles[i],sizeof(old->titles[i]));
-        memcpy(stored_normal_ui.types[i],old->types[i],sizeof(old->types[i]));
-        memcpy(stored_normal_ui.entity_ids[i],old->entity_ids[i],sizeof(old->entity_ids[i]));
+  bool restored_ui = false;
+#ifdef USE_ESP32
+  {
+    PsramVector<uint8_t> blob;
+    if (read_nvs_blob(NORMAL_UI_CFG_V4_KEY, blob) && blob.size() >= 6) {
+      uint32_t magic = 0;
+      uint16_t count = 0;
+      memcpy(&magic, blob.data(), 4);
+      memcpy(&count, blob.data() + 4, 2);
+      if (magic == NORMAL_UI_CFG_V4_MAGIC && count <= NORMAL_UI_DEVICE_MAX_COUNT) {
+        size_t pos = 6;
+        bool valid = true;
+        PsramVector<NormalUiDeviceConfig> loaded;
+        loaded.resize(count);
+        auto read_str = [&](std::string &dst, size_t max_len) -> bool {
+          if (pos >= blob.size()) return false;
+          const size_t n = blob[pos++];
+          if (n > max_len || pos + n > blob.size()) return false;
+          dst.assign(reinterpret_cast<const char *>(blob.data() + pos), n);
+          pos += n;
+          return true;
+        };
+        for (size_t i = 0; i < count && valid; ++i) {
+          valid = read_str(loaded[i].title, NORMAL_UI_TITLE_MAX_LENGTH) &&
+                  read_str(loaded[i].type, NORMAL_UI_ICON_MAX_LENGTH) &&
+                  read_str(loaded[i].entity_id, NORMAL_UI_ENTITY_ID_MAX_LENGTH);
+          if (valid) loaded[i].type = normalize_device_type(loaded[i].type);
+        }
+        if (valid && pos == blob.size()) {
+          this->normal_ui_devices_ = std::move(loaded);
+          restored_ui = true;
+        }
       }
-      restored_ui=true;
     }
   }
-  if(!restored_ui) {
-    struct LegacyConfig {char titles[10][NORMAL_UI_TITLE_MAX_LENGTH+1];char types[10][NORMAL_UI_ICON_MAX_LENGTH+1];char entity_ids[10][NORMAL_UI_ENTITY_ID_MAX_LENGTH+1];};
-    auto pref=global_preferences->make_preference<LegacyConfig>(fnv1_hash("onx-storage-normal-ui-config"),true);
-    auto legacy_buffer=allocate_record<LegacyConfig>();
-    if(!legacy_buffer) {ESP_LOGE(TAG,"Not enough memory to migrate UI configuration");return;}
-    auto &legacy=*legacy_buffer;
-    if(pref.load(&legacy)) {
-      for(size_t i=0;i<10;++i) {
-        memcpy(stored_normal_ui.titles[i],legacy.titles[i],sizeof(legacy.titles[i]));
-        memcpy(stored_normal_ui.types[i],legacy.types[i],sizeof(legacy.types[i]));
-        memcpy(stored_normal_ui.entity_ids[i],legacy.entity_ids[i],sizeof(legacy.entity_ids[i]));
+#endif
+  if (!restored_ui) {
+    auto ui_buffer = allocate_record<StoredNormalUiConfig>();
+    if (!ui_buffer) { ESP_LOGE(TAG, "Not enough memory for UI configuration"); return; }
+    auto &stored_normal_ui = *ui_buffer;
+    bool restored_legacy = this->normal_ui_pref_.load(&stored_normal_ui);
+    if (!restored_legacy) {
+      struct Config20 { char titles[20][NORMAL_UI_TITLE_MAX_LENGTH + 1]; char types[20][NORMAL_UI_ICON_MAX_LENGTH + 1]; char entity_ids[20][NORMAL_UI_ENTITY_ID_MAX_LENGTH + 1]; };
+      auto pref = global_preferences->make_preference<Config20>(fnv1_hash("onx-storage-normal-ui-config-v2"), true);
+      auto old = allocate_record<Config20>();
+      if (old && pref.load(old.get())) {
+        for (size_t i = 0; i < 20; ++i) {
+          memcpy(stored_normal_ui.titles[i], old->titles[i], sizeof(old->titles[i]));
+          memcpy(stored_normal_ui.types[i], old->types[i], sizeof(old->types[i]));
+          memcpy(stored_normal_ui.entity_ids[i], old->entity_ids[i], sizeof(old->entity_ids[i]));
+        }
+        restored_legacy = true;
       }
-      restored_ui=true;
     }
-  }
-  if (restored_ui) {
-    for (size_t i = 0; i < this->normal_ui_devices_.size(); i++) {
-      this->normal_ui_devices_[i].title = load_string_from_buffer(stored_normal_ui.titles[i]);
-      this->normal_ui_devices_[i].type = normalize_device_type(load_string_from_buffer(stored_normal_ui.types[i]));
-      this->normal_ui_devices_[i].entity_id = load_string_from_buffer(stored_normal_ui.entity_ids[i]);
+    if (!restored_legacy) {
+      struct LegacyConfig { char titles[10][NORMAL_UI_TITLE_MAX_LENGTH + 1]; char types[10][NORMAL_UI_ICON_MAX_LENGTH + 1]; char entity_ids[10][NORMAL_UI_ENTITY_ID_MAX_LENGTH + 1]; };
+      auto pref = global_preferences->make_preference<LegacyConfig>(fnv1_hash("onx-storage-normal-ui-config"), true);
+      auto legacy_buffer = allocate_record<LegacyConfig>();
+      if (legacy_buffer && pref.load(legacy_buffer.get())) {
+        for (size_t i = 0; i < 10; ++i) {
+          memcpy(stored_normal_ui.titles[i], legacy_buffer->titles[i], sizeof(legacy_buffer->titles[i]));
+          memcpy(stored_normal_ui.types[i], legacy_buffer->types[i], sizeof(legacy_buffer->types[i]));
+          memcpy(stored_normal_ui.entity_ids[i], legacy_buffer->entity_ids[i], sizeof(legacy_buffer->entity_ids[i]));
+        }
+        restored_legacy = true;
+      }
+    }
+    if (restored_legacy) {
+      size_t count = 0;
+      for (size_t i = 0; i < LEGACY_V3_DEVICE_COUNT; ++i) {
+        if (stored_normal_ui.entity_ids[i][0] || stored_normal_ui.titles[i][0]) count = i + 1;
+      }
+      this->normal_ui_devices_.resize(count);
+      for (size_t i = 0; i < count; ++i) {
+        this->normal_ui_devices_[i].title = load_string_from_buffer(stored_normal_ui.titles[i]);
+        this->normal_ui_devices_[i].type = normalize_device_type(load_string_from_buffer(stored_normal_ui.types[i]));
+        this->normal_ui_devices_[i].entity_id = load_string_from_buffer(stored_normal_ui.entity_ids[i]);
+      }
     }
   }
 
-  for (size_t i = 0; i < this->normal_ui_device_states_.size(); i++) {
-    clear_device_state(this->normal_ui_device_states_[i]);
-  }
-
-  StoredNormalUiStateV2 stored_state{};
-  bool restored_state=this->normal_ui_state_pref_.load(&stored_state);
-  if(!restored_state) {
-    struct State20 {NormalUiDeviceState states[20];};
-    auto pref=global_preferences->make_preference<State20>(fnv1_hash("onx-storage-normal-ui-state-v3"),true);
-    State20 old{};
-    if(pref.load(&old)) {std::copy(std::begin(old.states),std::end(old.states),std::begin(stored_state.states));restored_state=true;}
-  }
-  if(!restored_state) {
-    struct LegacyStateV2 {NormalUiDeviceState states[10];};
-    auto pref=global_preferences->make_preference<LegacyStateV2>(fnv1_hash("onx-storage-normal-ui-state-v2"),true);
-    LegacyStateV2 legacy{};
-    if(pref.load(&legacy)) {
-      std::copy(std::begin(legacy.states),std::end(legacy.states),std::begin(stored_state.states));
-      restored_state=true;
+  this->normal_ui_device_states_.clear();
+  bool restored_state = false;
+#ifdef USE_ESP32
+  {
+    PsramVector<uint8_t> blob;
+    if (read_nvs_blob(NORMAL_UI_ST_V5_KEY, blob) && blob.size() >= 6) {
+      uint32_t magic = 0;
+      uint16_t count = 0;
+      memcpy(&magic, blob.data(), 4);
+      memcpy(&count, blob.data() + 4, 2);
+      if (magic == NORMAL_UI_ST_V5_MAGIC && count <= NORMAL_UI_DEVICE_MAX_COUNT &&
+          blob.size() == 6 + size_t(count) * sizeof(NormalUiDeviceState)) {
+        this->normal_ui_device_states_.resize(count);
+        if (count > 0) memcpy(this->normal_ui_device_states_.data(), blob.data() + 6, size_t(count) * sizeof(NormalUiDeviceState));
+        restored_state = true;
+      }
     }
   }
-  if (restored_state) {
-    for (size_t i = 0; i < this->normal_ui_device_states_.size(); i++) {
-      this->normal_ui_device_states_[i] = stored_state.states[i];
+#endif
+  if (!restored_state) {
+    auto stored_state = allocate_record<StoredNormalUiStateV2>();
+    bool restored_legacy = stored_state && this->normal_ui_state_pref_.load(stored_state.get());
+    if (!restored_legacy && stored_state) {
+      struct State20 { NormalUiDeviceState states[20]; };
+      auto pref = global_preferences->make_preference<State20>(fnv1_hash("onx-storage-normal-ui-state-v3"), true);
+      State20 old{};
+      if (pref.load(&old)) {
+        std::copy(std::begin(old.states), std::end(old.states), std::begin(stored_state->states));
+        restored_legacy = true;
+      }
     }
-  } else {
-    StoredNormalUiStateLegacy legacy_state{};
-    if (this->normal_ui_state_legacy_pref_.load(&legacy_state)) {
-      for (size_t i = 0; i < 10; i++) {
-        set_device_power(this->normal_ui_device_states_[i], legacy_state.states[i] != 0);
+    if (!restored_legacy && stored_state) {
+      struct LegacyStateV2 { NormalUiDeviceState states[10]; };
+      auto pref = global_preferences->make_preference<LegacyStateV2>(fnv1_hash("onx-storage-normal-ui-state-v2"), true);
+      LegacyStateV2 legacy{};
+      if (pref.load(&legacy)) {
+        std::copy(std::begin(legacy.states), std::end(legacy.states), std::begin(stored_state->states));
+        restored_legacy = true;
+      }
+    }
+    if (restored_legacy && stored_state) {
+      this->normal_ui_device_states_.assign(std::begin(stored_state->states), std::end(stored_state->states));
+    } else {
+      StoredNormalUiStateLegacy legacy_state{};
+      if (this->normal_ui_state_legacy_pref_.load(&legacy_state)) {
+        this->normal_ui_device_states_.resize(10);
+        for (size_t i = 0; i < 10; i++) {
+          clear_device_state(this->normal_ui_device_states_[i]);
+          set_device_power(this->normal_ui_device_states_[i], legacy_state.states[i] != 0);
+        }
       }
     }
   }
@@ -619,15 +715,23 @@ bool OnxStorage::set_auth_record(const std::string &auth_code, const std::string
   return false;
 }
 
+void OnxStorage::ensure_device_capacity_(size_t count) {
+  if (count > NORMAL_UI_DEVICE_MAX_COUNT) count = NORMAL_UI_DEVICE_MAX_COUNT;
+  if (this->normal_ui_devices_.size() < count) this->normal_ui_devices_.resize(count);
+}
+
+void OnxStorage::ensure_state_capacity_(size_t count) {
+  if (count > NORMAL_UI_DEVICE_MAX_COUNT) count = NORMAL_UI_DEVICE_MAX_COUNT;
+  if (this->normal_ui_device_states_.size() < count) {
+    const size_t old_size = this->normal_ui_device_states_.size();
+    this->normal_ui_device_states_.resize(count);
+    for (size_t i = old_size; i < count; ++i) clear_device_state(this->normal_ui_device_states_[i]);
+  }
+}
+
 bool OnxStorage::reset_normal_mode_config() {
-  for (auto &device : this->normal_ui_devices_) {
-    device.title.clear();
-    device.type.clear();
-    device.entity_id.clear();
-  }
-  for (auto &state : this->normal_ui_device_states_) {
-    clear_device_state(state);
-  }
+  this->normal_ui_devices_.clear();
+  this->normal_ui_device_states_.clear();
   this->standby_timeout_ms_ = 300000;
   this->sleep_timeout_ms_ = 60000;
   this->sleep_window_start_minute_ = 0;
@@ -636,6 +740,8 @@ bool OnxStorage::reset_normal_mode_config() {
 
   bool ok = true;
 #ifdef USE_ESP32
+  ok = erase_nvs_named_key(NORMAL_UI_CFG_V4_KEY, "normal UI config v4") && ok;
+  ok = erase_nvs_named_key(NORMAL_UI_ST_V5_KEY, "normal UI state v5") && ok;
   ok = erase_preference_key(fnv1_hash("onx-storage-normal-ui-config"), "old normal UI config") && ok;
   ok = erase_preference_key(fnv1_hash("onx-storage-normal-ui-state-v2"), "old normal UI state") && ok;
   ok = erase_preference_key(fnv1_hash("onx-storage-normal-ui-config-v2"), "20-entry normal UI config") && ok;
@@ -653,18 +759,21 @@ bool OnxStorage::reset_normal_mode_config() {
   return ok;
 }
 
-bool OnxStorage::set_normal_ui_config(const std::array<NormalUiDeviceConfig, 40> &devices) {
+bool OnxStorage::set_normal_ui_config(const std::vector<NormalUiDeviceConfig> &devices) {
   const auto previous_devices = this->normal_ui_devices_;
-  for (size_t i = 0; i < this->normal_ui_devices_.size(); i++) {
+  size_t count = std::min(devices.size(), NORMAL_UI_DEVICE_MAX_COUNT);
+  while (count > 0 && devices[count - 1].entity_id.empty() && devices[count - 1].title.empty()) --count;
+  this->normal_ui_devices_.resize(count);
+  for (size_t i = 0; i < count; i++) {
     this->normal_ui_devices_[i].title = truncate_string(devices[i].title, NORMAL_UI_TITLE_MAX_LENGTH);
     this->normal_ui_devices_[i].type = truncate_string(normalize_device_type(devices[i].type), NORMAL_UI_ICON_MAX_LENGTH);
     this->normal_ui_devices_[i].entity_id = truncate_string(devices[i].entity_id, NORMAL_UI_ENTITY_ID_MAX_LENGTH);
   }
-  bool changed = false;
-  for (size_t i = 0; i < this->normal_ui_devices_.size(); ++i) {
+  bool changed = previous_devices.size() != this->normal_ui_devices_.size();
+  for (size_t i = 0; !changed && i < count; ++i) {
     const auto &before = previous_devices[i];
     const auto &after = this->normal_ui_devices_[i];
-    changed |= before.title != after.title || before.type != after.type || before.entity_id != after.entity_id;
+    changed = before.title != after.title || before.type != after.type || before.entity_id != after.entity_id;
   }
   if (!changed || this->save_normal_ui_config_()) {
     return true;
@@ -682,10 +791,10 @@ const NormalUiDeviceState &OnxStorage::get_normal_ui_device_state_record(size_t 
 }
 
 bool OnxStorage::set_normal_ui_device_state_record(size_t index, const NormalUiDeviceState &state) {
-  if (index >= this->normal_ui_device_states_.size()) {
+  if (index >= NORMAL_UI_DEVICE_MAX_COUNT) {
     return false;
   }
-
+  this->ensure_state_capacity_(index + 1);
   const auto previous_state = this->normal_ui_device_states_[index];
   this->normal_ui_device_states_[index] = state;
   if (this->save_normal_ui_states_()) {
@@ -703,10 +812,10 @@ bool OnxStorage::get_normal_ui_device_state(size_t index) const {
 }
 
 bool OnxStorage::set_normal_ui_device_state(size_t index, bool state) {
-  if (index >= this->normal_ui_device_states_.size()) {
+  if (index >= NORMAL_UI_DEVICE_MAX_COUNT) {
     return false;
   }
-
+  this->ensure_state_capacity_(index + 1);
   const auto previous_state = this->normal_ui_device_states_[index];
   set_device_power(this->normal_ui_device_states_[index], state);
   if (this->save_normal_ui_states_()) {
@@ -724,10 +833,10 @@ uint8_t OnxStorage::get_normal_ui_device_brightness(size_t index) const {
 }
 
 bool OnxStorage::set_normal_ui_device_brightness(size_t index, uint8_t brightness) {
-  if (index >= this->normal_ui_device_states_.size()) {
+  if (index >= NORMAL_UI_DEVICE_MAX_COUNT) {
     return false;
   }
-
+  this->ensure_state_capacity_(index + 1);
   const auto previous_state = this->normal_ui_device_states_[index];
   this->normal_ui_device_states_[index].flags |= NORMAL_UI_DEVICE_STATE_FLAG_BRIGHTNESS;
   this->normal_ui_device_states_[index].brightness = brightness;
@@ -746,10 +855,10 @@ uint16_t OnxStorage::get_normal_ui_device_color_temperature(size_t index) const 
 }
 
 bool OnxStorage::set_normal_ui_device_color_temperature(size_t index, uint16_t color_temperature) {
-  if (index >= this->normal_ui_device_states_.size()) {
+  if (index >= NORMAL_UI_DEVICE_MAX_COUNT) {
     return false;
   }
-
+  this->ensure_state_capacity_(index + 1);
   const auto previous_state = this->normal_ui_device_states_[index];
   this->normal_ui_device_states_[index].flags |= NORMAL_UI_DEVICE_STATE_FLAG_COLOR_TEMPERATURE;
   this->normal_ui_device_states_[index].color_temperature = color_temperature;
@@ -768,10 +877,10 @@ uint8_t OnxStorage::get_normal_ui_device_position(size_t index) const {
 }
 
 bool OnxStorage::set_normal_ui_device_position(size_t index, uint8_t position) {
-  if (index >= this->normal_ui_device_states_.size()) {
+  if (index >= NORMAL_UI_DEVICE_MAX_COUNT) {
     return false;
   }
-
+  this->ensure_state_capacity_(index + 1);
   const auto previous_state = this->normal_ui_device_states_[index];
   this->normal_ui_device_states_[index].flags |= NORMAL_UI_DEVICE_STATE_FLAG_POSITION;
   this->normal_ui_device_states_[index].position = position;
@@ -790,10 +899,10 @@ uint32_t OnxStorage::get_normal_ui_device_extra_u32(size_t index, size_t slot) c
 }
 
 bool OnxStorage::set_normal_ui_device_extra_u32(size_t index, size_t slot, uint32_t value) {
-  if (index >= this->normal_ui_device_states_.size() || slot >= 4) {
+  if (index >= NORMAL_UI_DEVICE_MAX_COUNT || slot >= 4) {
     return false;
   }
-
+  this->ensure_state_capacity_(index + 1);
   const auto previous_state = this->normal_ui_device_states_[index];
   this->normal_ui_device_states_[index].extra_u32[slot] = value;
   this->normal_ui_device_states_[index].flags |= static_cast<uint8_t>(NORMAL_UI_DEVICE_STATE_FLAG_EXTRA0 << slot);
@@ -812,10 +921,10 @@ uint16_t OnxStorage::get_normal_ui_device_extra_u16(size_t index, size_t slot) c
 }
 
 bool OnxStorage::set_normal_ui_device_extra_u16(size_t index, size_t slot, uint16_t value) {
-  if (index >= this->normal_ui_device_states_.size() || slot >= 4) {
+  if (index >= NORMAL_UI_DEVICE_MAX_COUNT || slot >= 4) {
     return false;
   }
-
+  this->ensure_state_capacity_(index + 1);
   const auto previous_state = this->normal_ui_device_states_[index];
   this->normal_ui_device_states_[index].extra_u16[slot] = value;
   this->normal_ui_device_states_[index].flags |= static_cast<uint8_t>(NORMAL_UI_DEVICE_STATE_FLAG_EXTRA0 << slot);
@@ -849,10 +958,10 @@ NormalLightState OnxStorage::get_normal_light_state(size_t index) const {
 }
 
 bool OnxStorage::update_normal_light_state(size_t index, const NormalLightStatePatch &patch) {
-  if (index >= this->normal_ui_device_states_.size()) {
+  if (index >= NORMAL_UI_DEVICE_MAX_COUNT) {
     return false;
   }
-
+  this->ensure_state_capacity_(index + 1);
   const auto previous_state = this->normal_ui_device_states_[index];
   NormalUiDeviceState &state = this->normal_ui_device_states_[index];
 
@@ -1048,56 +1157,42 @@ bool OnxStorage::save_auth_record_() {
 }
 
 bool OnxStorage::save_normal_ui_config_() {
-  auto ui_buffer=allocate_record<StoredNormalUiConfig>();
-  if(!ui_buffer)return false;
-  auto &stored_normal_ui=*ui_buffer;
-  clear_string_rows(stored_normal_ui.titles);
-  clear_string_rows(stored_normal_ui.types);
-  clear_string_rows(stored_normal_ui.entity_ids);
-  copy_string_rows(this->normal_ui_devices_, stored_normal_ui.titles, 0);
-  copy_string_rows(this->normal_ui_devices_, stored_normal_ui.types, 1);
-  copy_string_rows(this->normal_ui_devices_, stored_normal_ui.entity_ids, 2);
-
 #ifdef USE_ESP32
-  // ESPHome preferences queues a second copy and allocates another internal-RAM
-  // buffer to compare the old blob during sync. Keep this large record in PSRAM
-  // and write it directly using the same namespace/key/format as the backend.
-  nvs_handle_t handle;
-  esp_err_t error = nvs_open("esphome", NVS_READWRITE, &handle);
-  if (error != ESP_OK) {
-    ESP_LOGW(TAG, "Failed to open normal UI config NVS: %s", esp_err_to_name(error));
+  // Compact length-prefixed NVS blob in PSRAM: scales with configured count
+  // instead of writing a fixed multi-kilobyte matrix for empty slots.
+  const uint16_t count = static_cast<uint16_t>(std::min(this->normal_ui_devices_.size(), NORMAL_UI_DEVICE_MAX_COUNT));
+  PsramVector<uint8_t> blob;
+  blob.reserve(6 + size_t(count) * 48);
+  auto append_bytes = [&](const void *p, size_t n) {
+    const auto *b = static_cast<const uint8_t *>(p);
+    blob.insert(blob.end(), b, b + n);
+  };
+  auto append_str = [&](const std::string &s, size_t max_len) {
+    const uint8_t n = static_cast<uint8_t>(std::min(s.size(), max_len));
+    blob.push_back(n);
+    if (n > 0) append_bytes(s.data(), n);
+  };
+  append_bytes(&NORMAL_UI_CFG_V4_MAGIC, 4);
+  append_bytes(&count, 2);
+  for (size_t i = 0; i < count; ++i) {
+    append_str(this->normal_ui_devices_[i].title, NORMAL_UI_TITLE_MAX_LENGTH);
+    append_str(this->normal_ui_devices_[i].type, NORMAL_UI_ICON_MAX_LENGTH);
+    append_str(this->normal_ui_devices_[i].entity_id, NORMAL_UI_ENTITY_ID_MAX_LENGTH);
+  }
+  if (!write_nvs_blob(NORMAL_UI_CFG_V4_KEY, blob.data(), blob.size())) {
+    ESP_LOGW(TAG, "Failed to write normal UI config v4 NVS (%u bytes)", static_cast<unsigned>(blob.size()));
     return false;
   }
-  char key[16];
-  snprintf(key, sizeof(key), "%u", static_cast<unsigned>(NORMAL_UI_PREF_KEY));
-  error = nvs_set_blob(handle, key, &stored_normal_ui, sizeof(stored_normal_ui));
-  if (error == ESP_OK) error = nvs_commit(handle);
-  nvs_close(handle);
-  if (error != ESP_OK) {
-    ESP_LOGW(TAG, "Failed to write normal UI config NVS: %s", esp_err_to_name(error));
+  PsramVector<uint8_t> verify;
+  if (!read_nvs_blob(NORMAL_UI_CFG_V4_KEY, verify) || verify.size() != blob.size() ||
+      memcmp(verify.data(), blob.data(), blob.size()) != 0) {
+    ESP_LOGW(TAG, "Normal UI config v4 read-back verification failed");
     return false;
-  }
-#else
-  if (!this->normal_ui_pref_.save(&stored_normal_ui)) return false;
-  if (global_preferences != nullptr && !global_preferences->sync()) return false;
-#endif
-
-  auto &verify_normal_ui=stored_normal_ui;
-  if (!this->normal_ui_pref_.load(&verify_normal_ui)) {
-    ESP_LOGW(TAG, "Failed to read back normal UI config from NVS");
-    return false;
-  }
-  for (size_t i = 0; i < this->normal_ui_devices_.size(); i++) {
-    const bool title_matches = load_string_from_buffer(verify_normal_ui.titles[i]) == this->normal_ui_devices_[i].title;
-    const bool type_matches = load_string_from_buffer(verify_normal_ui.types[i]) == this->normal_ui_devices_[i].type;
-    const bool entity_id_matches =
-        load_string_from_buffer(verify_normal_ui.entity_ids[i]) == this->normal_ui_devices_[i].entity_id;
-    if (!title_matches || !type_matches || !entity_id_matches) {
-      ESP_LOGW(TAG, "Normal UI config read-back verification failed at index %u", static_cast<unsigned>(i));
-      return false;
-    }
   }
   return true;
+#else
+  return true;
+#endif
 }
 
 bool OnxStorage::end_state_batch() {
@@ -1112,33 +1207,26 @@ bool OnxStorage::save_normal_ui_states_() {
     this->state_batch_dirty_ = true;
     return true;
   }
-  StoredNormalUiStateV2 stored_state{};
-  for (size_t i = 0; i < this->normal_ui_device_states_.size(); i++) {
-    stored_state.states[i] = this->normal_ui_device_states_[i];
-  }
-
-  if (!this->normal_ui_state_pref_.save(&stored_state)) {
-    ESP_LOGW(TAG, "Failed to write normal UI device states to NVS");
+#ifdef USE_ESP32
+  const uint16_t count = static_cast<uint16_t>(std::min(this->normal_ui_device_states_.size(), NORMAL_UI_DEVICE_MAX_COUNT));
+  PsramVector<uint8_t> blob(6 + size_t(count) * sizeof(NormalUiDeviceState));
+  memcpy(blob.data(), &NORMAL_UI_ST_V5_MAGIC, 4);
+  memcpy(blob.data() + 4, &count, 2);
+  if (count > 0) memcpy(blob.data() + 6, this->normal_ui_device_states_.data(), size_t(count) * sizeof(NormalUiDeviceState));
+  if (!write_nvs_blob(NORMAL_UI_ST_V5_KEY, blob.data(), blob.size())) {
+    ESP_LOGW(TAG, "Failed to write normal UI state v5 NVS (%u bytes)", static_cast<unsigned>(blob.size()));
     return false;
   }
-  if (global_preferences != nullptr && !global_preferences->sync()) {
-    ESP_LOGW(TAG, "Failed to sync normal UI device state NVS writes");
+  PsramVector<uint8_t> verify;
+  if (!read_nvs_blob(NORMAL_UI_ST_V5_KEY, verify) || verify.size() != blob.size() ||
+      memcmp(verify.data(), blob.data(), blob.size()) != 0) {
+    ESP_LOGW(TAG, "Normal UI state v5 read-back verification failed");
     return false;
-  }
-
-  StoredNormalUiStateV2 verify_state{};
-  if (!this->normal_ui_state_pref_.load(&verify_state)) {
-    ESP_LOGW(TAG, "Failed to read back normal UI device states from NVS");
-    return false;
-  }
-  for (size_t i = 0; i < this->normal_ui_device_states_.size(); i++) {
-    const bool matches = memcmp(&verify_state.states[i], &this->normal_ui_device_states_[i], sizeof(NormalUiDeviceState)) == 0;
-    if (!matches) {
-      ESP_LOGW(TAG, "Normal UI device state read-back verification failed at index %u", static_cast<unsigned>(i));
-      return false;
-    }
   }
   return true;
+#else
+  return true;
+#endif
 }
 
 bool OnxStorage::save_power_policy_() {

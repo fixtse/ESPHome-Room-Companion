@@ -291,7 +291,7 @@ script:
           #endif
           int total = id(normal_device_count);
           if (total < 0) total = 0;
-          if (total > (int)custom_logic::CONFIGURABLE_DEVICE_SLOT_COUNT) total = 20;
+          if (total > (int)custom_logic::CONFIGURABLE_DEVICE_SLOT_COUNT) total = (int)custom_logic::CONFIGURABLE_DEVICE_SLOT_COUNT;
           const int last_selectable = total == 0 ? (id(normal_ha_added) ? 1 : 2) : total;
 
           int selected = id(normal_device_selected_index);
@@ -394,7 +394,7 @@ script:
       - lambda: |-
           int total = id(normal_device_count);
           if (total < 0) total = 0;
-          if (total > (int)custom_logic::CONFIGURABLE_DEVICE_SLOT_COUNT) total = 20;
+          if (total > (int)custom_logic::CONFIGURABLE_DEVICE_SLOT_COUNT) total = (int)custom_logic::CONFIGURABLE_DEVICE_SLOT_COUNT;
           const int last_selectable = total == 0 ? (id(normal_ha_added) ? 1 : 2) : total;
           int selected = id(normal_device_selected_index);
           if (selected < 0) selected = 0;
@@ -463,7 +463,7 @@ script:
           }
           id(normal_device_detail_is_on) = is_on;
           id(normal_device_detail_online) = is_local_gpio_switch ||
-              (id(normal_device_online_mask) & (1ull << detail_index)) != 0;
+              custom_logic::is_normal_ui_device_online(detail_index);
 
   # Detail state for the redesigned automation/media/sensor screens
   # (onx_panel_detail draws them); the legacy round page was removed.
@@ -480,7 +480,7 @@ script:
           }
           const int detail_index = std::clamp(id(normal_device_detail_index), 0, (int) custom_logic::CONFIGURABLE_DEVICE_SLOT_COUNT - 1);
           const std::string entity_id = id(ui_presenter)->get_normal_device_entity_id(detail_index);
-          id(normal_device_detail_online) = (id(normal_device_online_mask) & (1ull << detail_index)) != 0;
+          id(normal_device_detail_online) = custom_logic::is_normal_ui_device_online(detail_index);
           auto *media_state=custom_logic_entity_sub::entity_detail(entity_id);
           if(entity_id.rfind("media_player.",0)==0 && media_state &&
               media_state->media_player_off_transition_pending && media_state->received &&
@@ -548,7 +548,7 @@ script:
             id(normal_light_cct_value_pct) = std::clamp<int>(light_state.color_temperature_step(), 0, 100);
           if (enabled[2] && id(normal_detail_light_mode) == 2)
             id(normal_light_rgb_value_pct) = std::clamp((int) light_state.rgb_tick, 0, esphome::onx_storage::RGB_TICKS - 1);
-          id(normal_device_detail_online) = (id(normal_device_online_mask) & (1ull << detail_index)) != 0;
+          id(normal_device_detail_online) = custom_logic::is_normal_ui_device_online(detail_index);
 
   - id: update_normal_detail_exit_ready_flags
     mode: restart
@@ -639,7 +639,7 @@ script:
             id(normal_device_detail_curtain_feedback_position) = storage_position;
             id(normal_device_detail_curtain_target_position) = storage_position;
           }
-          id(normal_device_detail_online) = (id(normal_device_online_mask) & (1ull << detail_index)) != 0;
+          id(normal_device_detail_online) = custom_logic::is_normal_ui_device_online(detail_index);
 
   - id: refresh_normal_settings_detail_page
     mode: restart
@@ -1375,7 +1375,7 @@ script:
           int raw_selected_index = id(normal_device_selected_index);
           int total = id(normal_device_count);
           if (total < 0) total = 0;
-          if (total > (int)custom_logic::CONFIGURABLE_DEVICE_SLOT_COUNT) total = 20;
+          if (total > (int)custom_logic::CONFIGURABLE_DEVICE_SLOT_COUNT) total = (int)custom_logic::CONFIGURABLE_DEVICE_SLOT_COUNT;
           const int settings_index = total == 0 ? (id(normal_ha_added) ? 1 : 2) : total;
           if (total == 0 && raw_selected_index == 0) {
             ESP_LOGI("normal_mode", "detail entry ignored: empty list page has no detail");
@@ -1480,7 +1480,7 @@ script:
                                                  ? true
                                                  : (is_local_gpio_switch ||
                                                     ((detail_index >= 0 && detail_index < (int)custom_logic::CONFIGURABLE_DEVICE_SLOT_COUNT)
-                                                        ? ((id(normal_device_online_mask) & (1ull << detail_index)) != 0)
+                                                        ? (custom_logic::is_normal_ui_device_online(detail_index))
                                                         : true));
           if (detail_kind == NORMAL_DEVICE_DETAIL_KIND_CURTAIN) {
             const int feedback_position = std::clamp((int) id(app_storage)->get_normal_ui_device_position(detail_index), 0, 100);

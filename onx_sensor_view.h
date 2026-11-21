@@ -28,7 +28,7 @@ struct Config {
   char primary[129]{}, secondary[129]{}, text[161]{"{value}"};
   uint8_t graph{0};
 };
-inline onx_memory::StateArray<Config,onx_memory::ENTRY_COUNT> configs;
+inline onx_memory::PagedArray<Config,onx_memory::ENTRY_COUNT> configs;
 struct Point { uint32_t epoch{0}; float value{NAN}; };
 struct State {
   std::string primary, secondary, value, unit;
@@ -58,9 +58,10 @@ struct State {
     return out;
   }
 };
-inline onx_memory::StateArray<State,onx_memory::ENTRY_COUNT> states;
+inline onx_memory::PagedArray<State,onx_memory::ENTRY_COUNT> states;
 inline int index(const std::string &entity) {
-  for(size_t i=0;i<configs.size();++i)if(entity==configs[i].primary)return int(i);
+  for(size_t i=0;i<configs.allocated_limit();++i)
+    if(const auto *c=configs.find(i); c && entity==c->primary)return int(i);
   return -1;
 }
 inline std::string history_entity(const std::string &primary) {

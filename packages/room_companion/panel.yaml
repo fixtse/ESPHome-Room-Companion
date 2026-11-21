@@ -663,6 +663,7 @@ esphome:
     - ../../onx_ble_guard.h
     - ../../onx_panel_layout.h
     - ../../onx_panel_artwork.h
+    - ../../onx_grid_cache.h
     - ../../onx_panel_detail.h
     - ../../onx_panel_pages.h
     - ../../onx_idle_clock.h

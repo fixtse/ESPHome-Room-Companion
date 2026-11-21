@@ -642,7 +642,7 @@ script:
                         lambda: |-
                           int total = id(normal_device_count);
                           if (total < 0) total = 0;
-                          if (total > (int)custom_logic::CONFIGURABLE_DEVICE_SLOT_COUNT) total = 20;
+                          if (total > (int)custom_logic::CONFIGURABLE_DEVICE_SLOT_COUNT) total = (int)custom_logic::CONFIGURABLE_DEVICE_SLOT_COUNT;
                           const int settings_index = total == 0 ? (id(normal_ha_added) ? 1 : 2) : total;
                           int selected = id(normal_device_selected_index);
                           if (selected < 0) selected = 0;
@@ -773,7 +773,7 @@ script:
                         lambda: |-
                           int total = id(normal_device_count);
                           if (total < 0) total = 0;
-                          if (total > (int)custom_logic::CONFIGURABLE_DEVICE_SLOT_COUNT) total = 20;
+                          if (total > (int)custom_logic::CONFIGURABLE_DEVICE_SLOT_COUNT) total = (int)custom_logic::CONFIGURABLE_DEVICE_SLOT_COUNT;
                           const int last_selectable = total == 0 ? (id(normal_ha_added) ? 1 : 2) : total;
                           return id(normal_input_event_pass) &&
                                  !id(screen_off_state) && id(ui_presenter)->is_normal_mode_active() && !id(ui_presenter)->is_standby_active() && !id(standby_wakeup_pending) &&
@@ -1222,7 +1222,7 @@ script:
                         lambda: |-
                           int total = id(normal_device_count);
                           if (total < 0) total = 0;
-                          if (total > (int)custom_logic::CONFIGURABLE_DEVICE_SLOT_COUNT) total = 20;
+                          if (total > (int)custom_logic::CONFIGURABLE_DEVICE_SLOT_COUNT) total = (int)custom_logic::CONFIGURABLE_DEVICE_SLOT_COUNT;
                           return id(normal_input_event_pass) &&
                                  !id(screen_off_state) && id(ui_presenter)->is_normal_mode_active() && !id(ui_presenter)->is_standby_active() && !id(standby_wakeup_pending) &&
                                  id(normal_page_index) == 0 &&

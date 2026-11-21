@@ -39,7 +39,7 @@ namespace esphome::onx_icons {
 // (onx_geom::scale is 1 on the 2.8" panel).
 static size_t icon_px() { return static_cast<size_t>(onx_geom::S(80)); }
 static constexpr size_t MAX_SVG_BYTES = 32768;
-static constexpr size_t CACHE_SIZE = 25;  // ~25 KB of PSRAM each.
+static constexpr size_t CACHE_SIZE = 80;  // ~25 KB of PSRAM each; bounded by PSRAM headroom.
 static const char *const TAG = "onx_icons";
 
 // Both endpoints are fixed HTTPS hosts; redirects and device credentials are never used.
@@ -287,7 +287,11 @@ void IconDownloader::loop() {
     return;
   }
   if (pixels) {
-    if (cache_.size() >= CACHE_SIZE) {
+    bool evict = cache_.size() >= CACHE_SIZE;
+#ifdef USE_ESP32
+    evict = evict || (!cache_.empty() && heap_caps_get_free_size(MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT) < 1536 * 1024);
+#endif
+    if (evict) {
       const uint32_t now = millis();
       auto oldest = std::max_element(cache_.begin(), cache_.end(), [&](const auto &a, const auto &b) {
         return now - a.second->used < now - b.second->used;

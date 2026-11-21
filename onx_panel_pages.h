@@ -25,9 +25,9 @@ struct LegacyPage {
 struct LegacyPages {
   uint32_t magic;
   uint8_t count;
-  LegacyPage pages[MAX_PAGES];
+  LegacyPage pages[40];
 };
-// The artwork index uses six bits. Keep the presentation flag in its
+// The artwork index uses seven bits. Keep the presentation flag in its
 // unused high bit so existing page preferences retain their exact format.
 constexpr uint8_t ICON_ONLY=0x80;
 constexpr uint8_t ART_INDEX=0x7F;
@@ -38,10 +38,16 @@ struct StoredPage {
   std::array<uint8_t,MAX_CELLS> entries{}, artwork{};
   StoredPage() { entries.fill(NO_ENTRY); }
 };
-struct StoredPages {
-  static constexpr uint32_t MAGIC=0x52435033;
-  uint32_t magic{MAGIC};
+struct LegacyPagesV3 {
+  uint32_t magic{0x52435033};
   uint8_t count{0};
+  StoredPage pages[40]{};
+  std::array<uint64_t,40> images{};
+};
+struct StoredPages {
+  static constexpr uint32_t MAGIC=0x52435034;
+  uint32_t magic{MAGIC};
+  uint16_t count{0};
   StoredPage pages[MAX_PAGES]{};
   std::array<uint64_t,onx_panel_artwork::LIMIT> images{};
 };
@@ -51,15 +57,17 @@ inline StoredPages &stored=onx_memory::psram_object<StoredPages>();
 enum Effect : uint8_t {EFFECT_NONE=0,EFFECT_PULSE=1,EFFECT_BLINK=2,EFFECT_SPIN=3};
 inline const char *effect_name(uint8_t e){return e==EFFECT_PULSE?"pulse":e==EFFECT_BLINK?"blink":e==EFFECT_SPIN?"spin":"none";}
 inline int effect_parse(const std::string &s){return s=="none"?EFFECT_NONE:s=="pulse"?EFFECT_PULSE:s=="blink"?EFFECT_BLINK:s=="spin"?EFFECT_SPIN:-1;}
+struct LegacyEffectsV1 {
+  uint32_t magic{0x52434658};
+  std::array<uint8_t,40> fx{};
+};
 struct StoredEffects {
-  static constexpr uint32_t MAGIC=0x52434658;
+  static constexpr uint32_t MAGIC=0x52434659;
   uint32_t magic{MAGIC};
   std::array<uint8_t,onx_memory::ENTRY_COUNT> fx{};
 };
-inline StoredEffects effects{};
-inline esphome::ESPPreferenceObject effects_preference;
+inline StoredEffects &effects=onx_memory::psram_object<StoredEffects>();
 inline uint8_t effect_of(uint8_t entry){return entry<onx_memory::ENTRY_COUNT?effects.fx[entry]:EFFECT_NONE;}
-inline esphome::ESPPreferenceObject preference;
 inline bool loaded=false;
 // Set when entries change (slot save, preset, import); reconciled lazily.
 inline bool dirty=true;
@@ -73,7 +81,8 @@ inline uint8_t lead(const StoredPage &page) {
 }
 inline int configured(const std::string &entity) {
   if(entity.empty())return -1;
-  for(int i=0;i<int(onx_memory::ENTRY_COUNT);++i)if(custom_logic::cached_device_entity_id(i)==entity)return i;
+  const size_t limit=custom_logic::active_slot_limit();
+  for(size_t i=0;i<limit;++i)if(custom_logic::cached_device_entity_id(i)==entity)return int(i);
   return -1;
 }
 inline std::string entry_entity(uint8_t entry) {
@@ -82,6 +91,125 @@ inline std::string entry_entity(uint8_t entry) {
 inline bool placed(const StoredPages &list,int entry) {
   for(int p=0;p<list.count;++p)for(auto e:list.pages[p].entries)if(e==entry)return true;
   return false;
+}
+// Compact variable-length NVS persistence in namespace "rc_pages" so 10 pages
+// take ~320 bytes and 100+ pages stay well under NVS blob limits.
+inline bool save_pages_compact(const StoredPages &next, const StoredEffects &next_effects) {
+#ifdef USE_ESP32
+  std::vector<uint8_t, esphome::RAMAllocator<uint8_t>> blob;
+  blob.reserve(64 + size_t(next.count) * 48);
+  auto put = [&](const void *p, size_t n) {
+    const auto *b = static_cast<const uint8_t *>(p);
+    blob.insert(blob.end(), b, b + n);
+  };
+  uint32_t magic = StoredPages::MAGIC;
+  uint16_t count = std::min<uint16_t>(next.count, MAX_PAGES);
+  uint8_t img_count = 0;
+  for (size_t i = 0; i < next.images.size(); ++i) if (next.images[i]) img_count = uint8_t(i + 1);
+  put(&magic, 4); put(&count, 2); blob.push_back(img_count);
+  for (uint8_t i = 0; i < img_count; ++i) put(&next.images[i], 8);
+  for (uint16_t p = 0; p < count; ++p) {
+    const auto &pg = next.pages[p];
+    const uint8_t nlen = uint8_t(strnlen(pg.name, 48));
+    const uint8_t ilen = uint8_t(strnlen(pg.icon, 64));
+    const uint8_t cells = uint8_t(std::clamp(size_of(pg), 1, MAX_CELLS));
+    blob.push_back(pg.kind); blob.push_back(pg.rows); blob.push_back(pg.cols); blob.push_back(pg.carousel_artwork);
+    blob.push_back(nlen); if (nlen) put(pg.name, nlen);
+    blob.push_back(ilen); if (ilen) put(pg.icon, ilen);
+    blob.push_back(cells);
+    put(pg.entries.data(), cells);
+    put(pg.artwork.data(), cells);
+  }
+  std::vector<uint8_t, esphome::RAMAllocator<uint8_t>> fx_blob;
+  uint32_t fx_magic = StoredEffects::MAGIC;
+  uint16_t fx_count = 0;
+  for (size_t i = 0; i < onx_memory::ENTRY_COUNT; ++i) if (next_effects.fx[i]) ++fx_count;
+  fx_blob.reserve(6 + fx_count * 2);
+  const auto *mp = reinterpret_cast<const uint8_t *>(&fx_magic);
+  fx_blob.insert(fx_blob.end(), mp, mp + 4);
+  const auto *cp = reinterpret_cast<const uint8_t *>(&fx_count);
+  fx_blob.insert(fx_blob.end(), cp, cp + 2);
+  for (size_t i = 0; i < onx_memory::ENTRY_COUNT; ++i) {
+    if (!next_effects.fx[i]) continue;
+    fx_blob.push_back(uint8_t(i));
+    fx_blob.push_back(next_effects.fx[i]);
+  }
+  nvs_handle_t handle;
+  if (nvs_open("rc_pages", NVS_READWRITE, &handle) != ESP_OK) return false;
+  esp_err_t err = nvs_set_blob(handle, "pages_v4", blob.data(), blob.size());
+  if (err == ESP_OK) err = nvs_set_blob(handle, "fx_v2", fx_blob.data(), fx_blob.size());
+  if (err == ESP_OK) err = nvs_commit(handle);
+  nvs_close(handle);
+  return err == ESP_OK;
+#else
+  (void)next; (void)next_effects;
+  return true;
+#endif
+}
+inline bool load_pages_compact(StoredPages &out, StoredEffects &out_fx) {
+#ifdef USE_ESP32
+  nvs_handle_t handle;
+  if (nvs_open("rc_pages", NVS_READONLY, &handle) != ESP_OK) return false;
+  size_t len = 0;
+  bool ok = nvs_get_blob(handle, "pages_v4", nullptr, &len) == ESP_OK && len >= 7;
+  std::vector<uint8_t, esphome::RAMAllocator<uint8_t>> blob;
+  if (ok) {
+    blob.resize(len);
+    ok = blob.size() == len && nvs_get_blob(handle, "pages_v4", blob.data(), &len) == ESP_OK;
+  }
+  size_t fx_len = 0;
+  std::vector<uint8_t, esphome::RAMAllocator<uint8_t>> fx_blob;
+  if (nvs_get_blob(handle, "fx_v2", nullptr, &fx_len) == ESP_OK && fx_len >= 6) {
+    fx_blob.resize(fx_len);
+    if (fx_blob.size() == fx_len && nvs_get_blob(handle, "fx_v2", fx_blob.data(), &fx_len) == ESP_OK) {
+      uint32_t fmagic = 0; uint16_t fcount = 0;
+      std::memcpy(&fmagic, fx_blob.data(), 4); std::memcpy(&fcount, fx_blob.data() + 4, 2);
+      if (fmagic == StoredEffects::MAGIC && fx_blob.size() == 6 + size_t(fcount) * 2) {
+        out_fx = StoredEffects{};
+        for (uint16_t i = 0; i < fcount; ++i) {
+          const uint8_t entry = fx_blob[6 + i * 2], val = fx_blob[6 + i * 2 + 1];
+          if (entry < onx_memory::ENTRY_COUNT && val <= EFFECT_SPIN) out_fx.fx[entry] = val;
+        }
+      }
+    }
+  }
+  nvs_close(handle);
+  if (!ok) return false;
+  uint32_t magic = 0; uint16_t count = 0;
+  std::memcpy(&magic, blob.data(), 4); std::memcpy(&count, blob.data() + 4, 2);
+  const uint8_t img_count = blob[6];
+  if (magic != StoredPages::MAGIC || count > MAX_PAGES || img_count > out.images.size()) return false;
+  size_t pos = 7;
+  if (pos + size_t(img_count) * 8 > blob.size()) return false;
+  out.magic = StoredPages::MAGIC;
+  out.count = 0;
+  out.images.fill(0);
+  for (uint8_t i = 0; i < img_count; ++i) { std::memcpy(&out.images[i], blob.data() + pos, 8); pos += 8; }
+  for (uint16_t p = 0; p < count; ++p) {
+    if (pos + 6 > blob.size()) return false;
+    StoredPage pg{};
+    pg.kind = blob[pos++]; pg.rows = blob[pos++]; pg.cols = blob[pos++]; pg.carousel_artwork = blob[pos++];
+    const uint8_t nlen = blob[pos++];
+    if (nlen > 48 || pos + nlen + 1 > blob.size()) return false;
+    if (nlen) std::memcpy(pg.name, blob.data() + pos, nlen);
+    pg.name[nlen] = 0; pos += nlen;
+    const uint8_t ilen = blob[pos++];
+    if (ilen > 64 || pos + ilen + 1 > blob.size()) return false;
+    if (ilen) std::memcpy(pg.icon, blob.data() + pos, ilen);
+    pg.icon[ilen] = 0; pos += ilen;
+    const uint8_t cells = blob[pos++];
+    if (cells > MAX_CELLS || pos + size_t(cells) * 2 > blob.size()) return false;
+    if (cells) {
+      std::memcpy(pg.entries.data(), blob.data() + pos, cells); pos += cells;
+      std::memcpy(pg.artwork.data(), blob.data() + pos, cells); pos += cells;
+    }
+    out.pages[out.count++] = pg;
+  }
+  return pos == blob.size();
+#else
+  (void)out; (void)out_fx;
+  return false;
+#endif
 }
 // Drops entries that were cleared and gives every unplaced entry its own page,
 // so nothing configured becomes unreachable.
@@ -121,17 +249,19 @@ inline void reconcile(StoredPages &list) {
   list.count=out;
   // Registered timers (timer./sensor. with the timer flag) need no page: their
   // popups and the timer screen find them without a carousel stop.
-  for(int e=0;e<int(onx_memory::ENTRY_COUNT) && list.count<MAX_PAGES;++e)
-    if(!entry_entity(e).empty() && !placed(list,e) && !onx_entity_config::timer_hidden(e,entry_entity(e))){StoredPage single{};single.entries[0]=e;list.pages[list.count++]=single;}
+  const size_t limit = custom_logic::active_slot_limit();
+  for(size_t e=0;e<limit && list.count<MAX_PAGES;++e)
+    if(!entry_entity(uint8_t(e)).empty() && !placed(list,int(e)) && !onx_entity_config::timer_hidden(e,entry_entity(uint8_t(e)))){StoredPage single{};single.entries[0]=uint8_t(e);list.pages[list.count++]=single;}
 }
 // One-time migration from per-entity layouts (rc.page.v1.<entity>).
 inline void migrate() {
   stored.magic=StoredPages::MAGIC;
   stored.count=0;
   stored.images.fill(0);
-  for(int e=0;e<int(onx_memory::ENTRY_COUNT);++e) {
-    const auto entity=entry_entity(e);if(entity.empty() || placed(stored,e) || onx_entity_config::timer_hidden(e,entity))continue;
-    StoredPage page{};page.entries[0]=e;
+  const size_t limit = custom_logic::active_slot_limit();
+  for(size_t e=0;e<limit;++e) {
+    const auto entity=entry_entity(uint8_t(e));if(entity.empty() || placed(stored,int(e)) || onx_entity_config::timer_hidden(e,entity))continue;
+    StoredPage page{};page.entries[0]=uint8_t(e);
     auto old_pref=esphome::global_preferences->make_preference<Page>(esphome::fnv1_hash("rc.page.v1."+entity));
     Page old{};
     if(old_pref.load(&old) && entity==old.primary && onx_panel_layout::valid(old)) {
@@ -145,27 +275,40 @@ inline void migrate() {
 inline bool load() {
   if(loaded)return true;
   if(!esphome::global_preferences)return false;
-  preference=esphome::global_preferences->make_preference<StoredPages>(esphome::fnv1_hash("rc.pages.v3"));
-  effects_preference=esphome::global_preferences->make_preference<StoredEffects>(esphome::fnv1_hash("rc.pages.fx.v1"));
-  if(!effects_preference.load(&effects) || effects.magic!=StoredEffects::MAGIC)effects=StoredEffects{};
-  for(auto &f:effects.fx)if(f>EFFECT_SPIN)f=EFFECT_NONE;
-  if(!preference.load(&stored) || stored.magic!=StoredPages::MAGIC || stored.count>MAX_PAGES) {
-    auto legacy=custom_logic::make_ram_allocated<LegacyPages>();
-    auto old_pref=esphome::global_preferences->make_preference<LegacyPages>(esphome::fnv1_hash("rc.pages.v2"));
-    if(!legacy || !old_pref.load(legacy.get()) || legacy->magic!=0x52435032 || legacy->count>MAX_PAGES) {
-      migrate();
-    } else {
-      stored.magic=StoredPages::MAGIC;
-      stored.count=legacy->count;
+  effects = StoredEffects{};
+  if(!load_pages_compact(stored, effects)) {
+    auto old_fx_pref = esphome::global_preferences->make_preference<LegacyEffectsV1>(esphome::fnv1_hash("rc.pages.fx.v1"));
+    LegacyEffectsV1 old_fx{};
+    if (old_fx_pref.load(&old_fx) && old_fx.magic == 0x52434658) {
+      for (size_t i = 0; i < old_fx.fx.size(); ++i)
+        effects.fx[i] = old_fx.fx[i] <= EFFECT_SPIN ? old_fx.fx[i] : EFFECT_NONE;
+    }
+    auto v3_buf = custom_logic::make_ram_allocated<LegacyPagesV3>();
+    auto v3_pref = esphome::global_preferences->make_preference<LegacyPagesV3>(esphome::fnv1_hash("rc.pages.v3"));
+    if (v3_buf && v3_pref.load(v3_buf.get()) && v3_buf->magic == 0x52435033 && v3_buf->count <= 40) {
+      stored.magic = StoredPages::MAGIC;
+      stored.count = v3_buf->count;
       stored.images.fill(0);
-      for(int i=0;i<stored.count;++i) {
-        const auto &old=legacy->pages[i];
-        auto &page=stored.pages[i];
-        page=StoredPage{};
-        std::memcpy(page.name,old.name,sizeof(page.name));
-        std::memcpy(page.icon,old.icon,sizeof(page.icon));
-        page.kind=old.kind<=2?old.kind:0;
-        std::copy_n(old.entries,4,page.entries.begin());
+      std::copy(v3_buf->images.begin(), v3_buf->images.end(), stored.images.begin());
+      for (int i = 0; i < stored.count; ++i) stored.pages[i] = v3_buf->pages[i];
+    } else {
+      auto legacy = custom_logic::make_ram_allocated<LegacyPages>();
+      auto old_pref = esphome::global_preferences->make_preference<LegacyPages>(esphome::fnv1_hash("rc.pages.v2"));
+      if (!legacy || !old_pref.load(legacy.get()) || legacy->magic != 0x52435032 || legacy->count > 40) {
+        migrate();
+      } else {
+        stored.magic = StoredPages::MAGIC;
+        stored.count = legacy->count;
+        stored.images.fill(0);
+        for (int i = 0; i < stored.count; ++i) {
+          const auto &old = legacy->pages[i];
+          auto &page = stored.pages[i];
+          page = StoredPage{};
+          std::memcpy(page.name, old.name, sizeof(page.name));
+          std::memcpy(page.icon, old.icon, sizeof(page.icon));
+          page.kind = old.kind <= 2 ? old.kind : 0;
+          std::copy_n(old.entries, 4, page.entries.begin());
+        }
       }
     }
   }
@@ -208,7 +351,7 @@ inline std::vector<int> order() {
   return out;
 }
 inline const bool order_installed=(onx_entity_config::page_order=&order,true);
-inline std::string rpc(const std::string &op,const std::string &data,const std::string &asset={},unsigned offset=0);
+inline std::string rpc(const std::string &op,const std::string &data,const std::string &asset={},unsigned offset=0,const std::string &total_str={});
 inline uint64_t artwork_id(const StoredPages &list,const StoredPage &p,int pos) {
   const auto index=pos<0?p.carousel_artwork:p.artwork[pos]&ART_INDEX;
   return index && index<=list.images.size()?list.images[index-1]:0;
@@ -379,7 +522,7 @@ inline std::string artwork_rpc(const std::string &op,const std::string &data,con
   *oldest={value,now};
   return "{\"id\":\""+key(value)+"\"}";
 }
-inline std::string rpc(const std::string &op,const std::string &data,const std::string &asset,unsigned offset) {
+inline std::string rpc(const std::string &op,const std::string &data,const std::string &asset,unsigned offset,const std::string &total_str) {
   if(op=="panel_art_get" || op=="panel_art_put")return artwork_rpc(op,data,asset,offset);
   // Native (portrait) size and the orientation in use since boot, so the
   // configuration preview matches either model and orientation.
@@ -387,17 +530,53 @@ inline std::string rpc(const std::string &op,const std::string &data,const std::
     root["width"]=onx_panel_ui::native_width;root["height"]=onx_panel_ui::native_height;
     root["orientation"]=onx_panel_ui::turns*90;
   });
+  if(op=="panel_pages_put") {
+    // Chunked page list save (for large page/grid configurations > 4 KB).
+    constexpr size_t MAX_PAGES_JSON = 65536;
+    static custom_logic::PsramString upload_buf;
+    static size_t upload_total = 0;
+    static uint32_t upload_touched = 0;
+    unsigned total = 0;
+    if (total_str.empty()) return R"({"error":"Invalid page upload size"})";
+    for (char c : total_str) {
+      if (c < '0' || c > '9') return R"({"error":"Invalid page upload size"})";
+      total = total * 10 + unsigned(c - '0');
+    }
+    const uint32_t now = esphome::millis();
+    if (offset == 0) {
+      upload_buf.clear();
+      if (total == 0 || total > MAX_PAGES_JSON) return R"({"error":"Page configuration is too large"})";
+      upload_total = total;
+      upload_touched = now;
+      upload_buf.reserve(total);
+    } else if (offset != upload_buf.size() || total != upload_total || now - upload_touched > 30000) {
+      upload_buf.clear();
+      return R"({"error":"Page upload expired; save again"})";
+    }
+    upload_touched = now;
+    if (upload_buf.size() + data.size() > upload_total) {
+      upload_buf.clear();
+      return R"({"error":"Page upload exceeds announced size"})";
+    }
+    upload_buf.append(data.data(), data.size());
+    if (upload_buf.size() < upload_total) return "{\"next\":" + std::to_string(upload_buf.size()) + "}";
+    std::string assembled(upload_buf.data(), upload_buf.size());
+    custom_logic::PsramString().swap(upload_buf);
+    upload_total = 0;
+    return rpc("panel_pages_save", assembled);
+  }
   if(op!="panel_pages" && op!="panel_pages_save")return "";
   if(!load())return "{\"error\":\"Page storage is not ready\"}";
   if(op=="panel_pages_save") {
-    JsonDocument doc;
+    auto doc = custom_logic::make_psram_json_document();
     if(deserializeJson(doc,data)!=DeserializationError::Ok)return "{\"error\":\"Invalid page configuration\"}";
     auto pages=doc["pages"].as<JsonArrayConst>();
     if(pages.size()>MAX_PAGES)return "{\"error\":\"Too many pages\"}";
     auto next_buffer=custom_logic::make_ram_allocated<StoredPages>();
-    if(!next_buffer)return "{\"error\":\"Not enough memory to save pages\"}";
+    auto next_fx_buffer=custom_logic::make_ram_allocated<StoredEffects>();
+    if(!next_buffer || !next_fx_buffer)return "{\"error\":\"Not enough memory to save pages\"}";
     auto &next=*next_buffer;
-    StoredEffects next_effects{};
+    auto &next_effects=*next_fx_buffer;
     for(JsonObjectConst item:pages) {
       StoredPage page{};Kind kind;
       const std::string name=item["name"] | "",icon=item["icon"] | "";
@@ -449,9 +628,10 @@ inline std::string rpc(const std::string &op,const std::string &data,const std::
       next.pages[next.count++]=page;
     }
     reconcile(next);
-    if(!preference.save(&next) || !effects_preference.save(&next_effects) || !esphome::global_preferences->sync())
+    if(!save_pages_compact(next, next_effects))
       return "{\"error\":\"Could not save pages\"}";
     stored=next;effects=next_effects;
+    onx_grid_cache::invalidate_all_pages();
   }
   reconcile(stored);
   return onx_entity_config::build_json([](JsonObject root) {
@@ -623,6 +803,44 @@ inline void label(lv_obj_t *obj,const std::string &text,int x,int y,int w,const 
   lv_obj_set_pos(obj,x,y);lv_obj_set_width(obj,w);
   if(text.empty())lv_obj_add_flag(obj,LV_OBJ_FLAG_HIDDEN);else lv_obj_remove_flag(obj,LV_OBJ_FLAG_HIDDEN);
 }
+inline std::string grid_badge(const std::string &cell, const Item &v, const custom_logic_entity_sub::EntityDetailState *d) {
+  if (!d || !d->available || !d->received || cell.empty()) return "";
+  using custom_logic_entity_sub::has_prefix;
+  if (has_prefix(cell, "light.")) {
+    if (!v.on) return "";
+    if (onx_panel_detail::light_state) {
+      const auto st = onx_panel_detail::light_state(cell);
+      if (st.supports_brightness() && st.brightness_pct > 0) return std::to_string(st.brightness_pct) + "%";
+    }
+    const float b = onx_panel_detail::num(d->brightness);
+    if (std::isfinite(b) && b > 0) return std::to_string(int(std::lround(b * 100.0f / 255.0f))) + "%";
+    return "";
+  }
+  if (has_prefix(cell, "fan.")) {
+    if (!v.on) return "";
+    const float p = onx_panel_detail::num(onx_controls::effective(*d, "percentage"));
+    return std::isfinite(p) && p > 0 ? std::to_string(int(std::lround(p))) + "%" : "";
+  }
+  if (has_prefix(cell, "cover.")) {
+    const float p = onx_panel_detail::num(d->position);
+    return std::isfinite(p) ? std::to_string(int(std::lround(p))) + "%" : "";
+  }
+  if (has_prefix(cell, "climate.")) {
+    if (!v.on) return "Off";
+    const float t = onx_panel_detail::num(onx_controls::effective(*d, "temperature"));
+    if (std::isfinite(t)) return onx_detail_view::compact(onx_controls::effective(*d, "temperature")) + "°";
+    const float lo = onx_panel_detail::num(d->low), hi = onx_panel_detail::num(d->high);
+    if (std::isfinite(lo) && std::isfinite(hi)) return onx_detail_view::compact(d->low) + "–" + onx_detail_view::compact(d->high) + "°";
+    return "";
+  }
+  if (has_prefix(cell, "sensor.") || has_prefix(cell, "number.") || has_prefix(cell, "input_number.")) {
+    const float n = onx_panel_detail::num(d->state);
+    if (!std::isfinite(n)) return "";
+    const std::string out = onx_panel_detail::present(d->state, d->unit);
+    return out.size() <= 10 ? out : "";
+  }
+  return "";
+}
 inline std::vector<onx_panel_detail::Tile> main_tiles(const std::string &entity, const StoredPage *p, Kind kind,
                                                     const std::array<onx_panel_layout::Rect,MAX_CELLS> &areas) {
   std::vector<onx_panel_detail::Tile> tiles;
@@ -636,6 +854,7 @@ inline std::vector<onx_panel_detail::Tile> main_tiles(const std::string &entity,
     t.entity=cell;t.name=onx_media::display_text(v.name);t.value=v.value;t.context=v.context;
     t.on=v.on;t.ring=v.ring;t.r={r.x,r.y,r.w,r.h};t.compact=kind==Kind::CONTROL_SENSORS && i>0;
     t.key=kind==Kind::ACTION_GRID;
+    if (t.key && !cell.empty()) t.badge = grid_badge(cell, v, custom_logic_entity_sub::entity_detail(cell));
     t.icon_only=p && t.key && (p->artwork[i]&ICON_ONLY);
     t.artwork=p?artwork_id(stored,*p,i):0;
     t.effect=p && t.key ? effect_of(p->entries[i]) : 0;

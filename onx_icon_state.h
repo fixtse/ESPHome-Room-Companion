@@ -84,9 +84,10 @@ struct Metadata {
     return "";
   }
 };
-inline onx_memory::StateArray<Metadata, onx_memory::ENTRY_COUNT> metadata;
+inline onx_memory::PagedArray<Metadata, onx_memory::ENTRY_COUNT> metadata;
 inline std::string selected_icon(const std::string &entity) {
-  for (const auto &item : metadata) if (item.entity == entity) return item.chosen();
+  for (size_t i = 0; i < metadata.allocated_limit(); ++i)
+    if (const auto *item = metadata.find(i); item && item->entity == entity) return item->chosen();
   return "";
 }
 }  // namespace onx_icon_state

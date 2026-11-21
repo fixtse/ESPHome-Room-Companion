@@ -19,8 +19,8 @@ struct State {
   bool received{false},press_request{false};
   uint32_t requested_ms{0},feedback_ms{0},token{0};
 };
-inline onx_memory::StateArray<Config,onx_memory::ENTRY_COUNT> configs;
-inline onx_memory::StateArray<State,onx_memory::ENTRY_COUNT> states;
+inline onx_memory::PagedArray<Config,onx_memory::ENTRY_COUNT> configs;
+inline onx_memory::PagedArray<State,onx_memory::ENTRY_COUNT> states;
 // Swipe up/left steps up, down/right steps down; "held" = touch held first.
 inline const char *names[]={"up","down","held_up","held_down"};
 inline int gesture(int direction,bool pressed) {return (pressed?2:0)+(direction<0?1:0);}

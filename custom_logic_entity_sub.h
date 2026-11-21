@@ -63,15 +63,15 @@ struct NormalLightFeedbackWindow {
   std::string pending_max_mireds_value{};
 };
 
-static std::array<NormalLightFeedbackWindow, custom_logic::CONFIGURABLE_DEVICE_SLOT_COUNT>
-    &normal_light_feedback_windows = onx_memory::psram_object<
-        std::array<NormalLightFeedbackWindow, custom_logic::CONFIGURABLE_DEVICE_SLOT_COUNT>>();
+static onx_memory::PagedArray<NormalLightFeedbackWindow, custom_logic::CONFIGURABLE_DEVICE_SLOT_COUNT>
+    normal_light_feedback_windows{};
 
 inline bool normal_light_feedback_window_active(size_t ui_slot) {
-  if (ui_slot >= normal_light_feedback_windows.size()) {
+  const auto *window = normal_light_feedback_windows.find(ui_slot);
+  if (window == nullptr) {
     return false;
   }
-  return static_cast<int32_t>(normal_light_feedback_windows[ui_slot].deadline_ms - millis()) > 0;
+  return static_cast<int32_t>(window->deadline_ms - millis()) > 0;
 }
 
 inline void begin_normal_light_feedback_window(size_t ui_slot, uint8_t target_mask, bool target_power,
@@ -158,13 +158,13 @@ inline const std::array<const char *, 12> &weather_attributes() {
   return attrs;
 }
 
-inline std::array<std::string, onx_memory::ENTRY_COUNT> &automation_last_triggered_values() {
-  static std::array<std::string, onx_memory::ENTRY_COUNT> values{};
+inline onx_memory::PagedArray<std::string, onx_memory::ENTRY_COUNT> &automation_last_triggered_values() {
+  static onx_memory::PagedArray<std::string, onx_memory::ENTRY_COUNT> values{};
   return values;
 }
 
-inline std::array<std::string, onx_memory::ENTRY_COUNT> &automation_last_triggered_entity_ids() {
-  static std::array<std::string, onx_memory::ENTRY_COUNT> entity_ids{};
+inline onx_memory::PagedArray<std::string, onx_memory::ENTRY_COUNT> &automation_last_triggered_entity_ids() {
+  static onx_memory::PagedArray<std::string, onx_memory::ENTRY_COUNT> entity_ids{};
   return entity_ids;
 }
 
@@ -382,7 +382,7 @@ struct EntityDetailState {
   uint32_t timer_received_ms{0};
   float minimum{NAN}, maximum{NAN}, step{NAN}, humidity_min{NAN}, humidity_max{NAN};
 };
-static onx_memory::StateArray<EntityDetailState, custom_logic::CONFIGURABLE_DEVICE_SLOT_COUNT> entity_details{};
+static onx_memory::PagedArray<EntityDetailState, custom_logic::CONFIGURABLE_DEVICE_SLOT_COUNT> entity_details{};
 
 inline float detail_number(const std::string &value) {
   char *end = nullptr;
@@ -391,8 +391,9 @@ inline float detail_number(const std::string &value) {
 }
 
 inline EntityDetailState *entity_detail(const std::string &entity_id) {
-  for (auto &detail : entity_details)
-    if (detail.entity_id == entity_id) return &detail;
+  if (entity_id.empty()) return nullptr;
+  for (size_t i = 0; i < entity_details.allocated_limit(); ++i)
+    if (auto *detail = entity_details.find(i); detail != nullptr && detail->entity_id == entity_id) return detail;
   return nullptr;
 }
 
@@ -1163,8 +1164,10 @@ inline void subscribe_secondary(esphome::api::APIServer *api_server,size_t slot,
 #endif
 }
 inline void sample_sensor_history(time_t now) {
-  for(size_t i=0;i<onx_memory::ENTRY_COUNT;++i) {
-    const auto &c=onx_sensor_view::configs[i];if(!c.graph || custom_logic::cached_device_entity_id(i)!=c.primary)continue;
+  for(size_t i=0;i<onx_sensor_view::configs.allocated_limit();++i) {
+    const auto *cp=onx_sensor_view::configs.find(i);
+    if(!cp || !cp->graph || custom_logic::cached_device_entity_id(i)!=cp->primary)continue;
+    const auto &c=*cp;
     auto &s=onx_sensor_view::states[i];s.bind(c);
     if(std::string(c.primary).rfind("switch.",0)==0) {
       if(s.received && s.available && (s.unit=="W" || s.unit=="kWh"))s.sample(now,detail_number(s.value));

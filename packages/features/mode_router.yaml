@@ -46,7 +46,7 @@ onx_config_web:
   id: entity_config_web
   handler: !lambda |-
     #ifdef USE_ROOM_COMPANION
-    const auto pages = onx_panel_pages::rpc(query.op, query.data, query.search, query.offset);
+    const auto pages = onx_panel_pages::rpc(query.op, query.data, query.search, query.offset, query.total);
     if (!pages.empty()) return pages;
     // Room Companion panels: dashboard stream settings (panel_state / panel_save).
     if (esphome::room_companion::global_panel != nullptr) {

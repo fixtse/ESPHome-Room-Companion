@@ -204,6 +204,7 @@ std::vector<Shot> load_scenario(const std::string &path) {
     const std::string id = e["entity_id"] | "";
     if (id.empty() || slot >= int(onx_memory::ENTRY_COUNT)) continue;
     custom_logic::cached_device_entity_id(slot) = id;
+    custom_logic::note_slot_used(slot);
     auto &d = custom_logic_entity_sub::entity_details[slot];
     d = {};
     d.entity_id = id;

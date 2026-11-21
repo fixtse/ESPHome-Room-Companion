@@ -408,6 +408,42 @@
    ]
   },
   {
+   "name": "grid-2x2",
+   "kind": "grid",
+   "rows": 2,
+   "cols": 2,
+   "entities": [
+    "fan.ceiling_fan",
+    "cover.office_blind",
+    "light.bedroom_strip",
+    "climate.calentador"
+   ]
+  },
+  {
+   "name": "grid-4x4",
+   "kind": "grid",
+   "rows": 4,
+   "cols": 4,
+   "entities": [
+    "light.porch",
+    "light.living_room",
+    "light.kitchen",
+    "light.bedroom_strip",
+    "switch.desk_lamp",
+    "fan.ceiling_fan",
+    "cover.office_blind",
+    "climate.calentador",
+    "scene.movie_night",
+    "script.good_night",
+    "automation.porch_lights",
+    "button.restart_router",
+    "input_button.doorbell_test",
+    "input_boolean.guest_mode",
+    "siren.alarm",
+    ""
+   ]
+  },
+  {
    "kind": "two",
    "entities": [
     "sensor.codex_5_hour",

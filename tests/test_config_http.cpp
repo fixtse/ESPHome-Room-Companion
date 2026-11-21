@@ -62,7 +62,9 @@ int main() {
   auto forbidden=request("wrong");web.handleRequest(&forbidden);assert(forbidden.code()==403);
   auto cross_origin=request(token);cross_origin.headers["Origin"]="http://another-host";web.handleRequest(&cross_origin);assert(cross_origin.code()==403);
   auto large=request(token);large.length=8193;web.handleRequest(&large);assert(large.code()==413);
-  auto bad=request(token);bad.args["slot"]="40";web.handleRequest(&bad);assert(bad.code()==400);
+  auto slot40=request(token);slot40.args["slot"]="40";web.handleRequest(&slot40);assert(slot40.code()==202);
+  web.loop();
+  auto bad=request(token);bad.args["slot"]="250";web.handleRequest(&bad);assert(bad.code()==400);
   auto method=request(token);method.method_=HTTP_GET;web.handleRequest(&method);assert(method.code()==405);
   for(int i=0;i<4;++i) {auto queued=request(token);web.handleRequest(&queued);assert(queued.code()==202);}
   auto busy=request(token);web.handleRequest(&busy);assert(busy.code()==429);

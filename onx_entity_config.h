@@ -23,7 +23,7 @@ template<typename F> inline std::string build_json(F &&fill) {
   fill(doc.template to<JsonObject>());
   if (doc.overflowed()) return "{\"error\":\"Not enough memory to build configuration response\"}";
   const size_t size = measureJson(doc);
-  if (size > 65536) return "{\"error\":\"Configuration response exceeds size limit\"}";
+  if (size > 131072) return "{\"error\":\"Configuration response exceeds size limit\"}";
   // Serialize into the PSRAM response buffer; ConfigWeb sends it without a copy.
   auto &body = esphome::onx_config_web::large_body();
   body.clear();
@@ -149,36 +149,50 @@ inline bool save_hold_cue(const std::string &value) {
 
 // Keep subscriptions and compact runtime indices intact; hide only carousel entries.
 struct TimerVisibility { char entity[129]{}; bool hidden{false}; };
-inline std::array<TimerVisibility,onx_memory::ENTRY_COUNT> &timer_visibility=onx_memory::psram_object<std::array<TimerVisibility,onx_memory::ENTRY_COUNT>>();
-inline std::array<esphome::ESPPreferenceObject,onx_memory::ENTRY_COUNT> timer_visibility_preferences;
-inline bool timer_visibility_loaded=false;
-inline void load_timer_visibility() {
-  if(timer_visibility_loaded || esphome::global_preferences==nullptr)return;
-  for(size_t i=0;i<onx_memory::ENTRY_COUNT;++i) {
-    timer_visibility_preferences[i]=esphome::global_preferences->make_preference<TimerVisibility>(
-        esphome::fnv1_hash("onx.timer.visibility.v1."+std::to_string(i)));
-    TimerVisibility saved{};
-    if(timer_visibility_preferences[i].load(&saved)) {
-      saved.entity[128]=0;
-      if(onx_config::valid_entity(saved.entity))timer_visibility[i]=saved;
-    }
+inline onx_memory::PagedArray<TimerVisibility,onx_memory::ENTRY_COUNT> timer_visibility{};
+inline onx_memory::PagedArray<esphome::ESPPreferenceObject,onx_memory::ENTRY_COUNT> timer_visibility_preferences{};
+inline size_t timer_visibility_loaded_limit=0;
+inline void load_timer_visibility_slot(size_t i) {
+  if(esphome::global_preferences==nullptr || i>=onx_memory::ENTRY_COUNT)return;
+  timer_visibility_preferences[i]=esphome::global_preferences->make_preference<TimerVisibility>(
+      esphome::fnv1_hash("onx.timer.visibility.v1."+std::to_string(i)));
+  TimerVisibility saved{};
+  if(timer_visibility_preferences[i].load(&saved)) {
+    saved.entity[128]=0;
+    if(onx_config::valid_entity(saved.entity))timer_visibility[i]=saved;
   }
-  timer_visibility_loaded=true;
+}
+inline void load_timer_visibility() {
+  if(esphome::global_preferences==nullptr)return;
+  const size_t limit=custom_logic::active_slot_limit();
+  for(size_t i=timer_visibility_loaded_limit;i<limit;++i)load_timer_visibility_slot(i);
+  if(limit>timer_visibility_loaded_limit)timer_visibility_loaded_limit=limit;
 }
 inline bool timer_hidden(size_t slot,const std::string &entity) {
   load_timer_visibility();
-  return slot<onx_memory::ENTRY_COUNT && !entity.empty() && timer_visibility[slot].hidden && entity==timer_visibility[slot].entity;
+  if(slot>=onx_memory::ENTRY_COUNT || entity.empty())return false;
+  const auto *tv=timer_visibility.find(slot);
+  return tv!=nullptr && tv->hidden && entity==tv->entity;
 }
 inline bool save_timer_visibility(size_t slot,const std::string &entity,bool hidden) {
   load_timer_visibility();
-  if(!timer_visibility_loaded || slot>=onx_memory::ENTRY_COUNT)return false;
+  if(esphome::global_preferences==nullptr || slot>=onx_memory::ENTRY_COUNT)return false;
+  if(slot>=timer_visibility_loaded_limit) {
+    timer_visibility_preferences[slot]=esphome::global_preferences->make_preference<TimerVisibility>(
+        esphome::fnv1_hash("onx.timer.visibility.v1."+std::to_string(slot)));
+  }
+  const auto *existing=timer_visibility.find(slot);
+  if(!hidden && (existing==nullptr || !existing->hidden))return true;
   TimerVisibility next{};
   snprintf(next.entity,sizeof(next.entity),"%s",entity.c_str());next.hidden=hidden;
   if(!timer_visibility_preferences[slot].save(&next)||!esphome::global_preferences->sync())return false;
-  timer_visibility[slot]=next;return true;
+  timer_visibility[slot]=next;
+  if(!entity.empty())custom_logic::note_slot_used(slot);
+  return true;
 }
 inline bool timer_hidden_ui(int ui_slot) {
-  for(size_t slot=0;slot<onx_memory::ENTRY_COUNT;++slot)
+  const size_t limit=custom_logic::active_slot_limit();
+  for(size_t slot=0;slot<limit;++slot)
     if(custom_logic::normal_ui_slot_for_device_config_slot(slot)==static_cast<size_t>(ui_slot))
       return timer_hidden(slot,custom_logic::cached_device_entity_id(slot));
   return false;
@@ -226,34 +240,46 @@ inline int carousel_position(int index) {
   return at==order.end()?int(order.size()):int(at-order.begin());
 }
 
-inline bool sensor_configs_loaded=false;
-inline std::array<esphome::ESPPreferenceObject,onx_memory::ENTRY_COUNT> sensor_preferences;
-inline void load_sensor_configs() {
-  if(sensor_configs_loaded || esphome::global_preferences==nullptr)return;
-  for(size_t i=0;i<onx_memory::ENTRY_COUNT;++i) {
-    const auto key="onx.sensor.v1."+std::to_string(i);
-    sensor_preferences[i]=esphome::global_preferences->make_preference<onx_sensor_view::Config>(esphome::fnv1_hash(key.c_str()));
-    onx_sensor_view::Config saved{};
-    if(sensor_preferences[i].load(&saved)) {
-      saved.primary[128]=saved.secondary[128]=saved.text[160]=0;
-      if((!saved.primary[0]||onx_config::valid_entity(saved.primary)) && (!saved.secondary[0]||onx_config::valid_entity(saved.secondary)) && saved.graph<=1)
-        onx_sensor_view::configs[i]=saved;
+inline size_t sensor_configs_loaded_limit=0;
+inline onx_memory::PagedArray<esphome::ESPPreferenceObject,onx_memory::ENTRY_COUNT> sensor_preferences{};
+inline void load_sensor_config_slot(size_t i) {
+  if(esphome::global_preferences==nullptr || i>=onx_memory::ENTRY_COUNT)return;
+  const auto key="onx.sensor.v1."+std::to_string(i);
+  sensor_preferences[i]=esphome::global_preferences->make_preference<onx_sensor_view::Config>(esphome::fnv1_hash(key.c_str()));
+  onx_sensor_view::Config saved{};
+  if(sensor_preferences[i].load(&saved)) {
+    saved.primary[128]=saved.secondary[128]=saved.text[160]=0;
+    if((!saved.primary[0]||onx_config::valid_entity(saved.primary)) && (!saved.secondary[0]||onx_config::valid_entity(saved.secondary)) && saved.graph<=1) {
+      if(std::string(saved.primary).rfind("switch.",0)==0 && saved.secondary[0])saved.graph=1;
+      onx_sensor_view::configs[i]=saved;
+      onx_sensor_view::states[i].bind(onx_sensor_view::configs[i]);
     }
-    // A switch with a power/energy sensor always charts it, even when the
-    // sensor was set without the graph option.
-    auto &c=onx_sensor_view::configs[i];
-    if(std::string(c.primary).rfind("switch.",0)==0 && c.secondary[0])c.graph=1;
-    onx_sensor_view::states[i].bind(onx_sensor_view::configs[i]);
   }
-  sensor_configs_loaded=true;
+}
+inline void load_sensor_configs() {
+  if(esphome::global_preferences==nullptr)return;
+  const size_t limit=custom_logic::active_slot_limit();
+  for(size_t i=sensor_configs_loaded_limit;i<limit;++i)load_sensor_config_slot(i);
+  if(limit>sensor_configs_loaded_limit)sensor_configs_loaded_limit=limit;
 }
 inline bool save_sensor_config(size_t i,const std::string &primary,const std::string &secondary,const std::string &text,bool graph) {
-  load_sensor_configs();if(!sensor_configs_loaded||i>=onx_memory::ENTRY_COUNT)return false;
+  load_sensor_configs();if(esphome::global_preferences==nullptr||i>=onx_memory::ENTRY_COUNT)return false;
+  const bool eff_graph=primary.rfind("switch.",0)==0 ? !secondary.empty() : graph;
+  const auto *existing=onx_sensor_view::configs.find(i);
+  const std::string norm_text=text.empty()?"{value}":text;
+  if(secondary.empty() && !eff_graph && norm_text=="{value}" &&
+     (existing==nullptr || (!existing->secondary[0] && !existing->graph)))return true;
+  if(i>=sensor_configs_loaded_limit) {
+    const auto key="onx.sensor.v1."+std::to_string(i);
+    sensor_preferences[i]=esphome::global_preferences->make_preference<onx_sensor_view::Config>(esphome::fnv1_hash(key.c_str()));
+  }
   onx_sensor_view::Config next{};
   snprintf(next.primary,sizeof(next.primary),"%s",primary.c_str());snprintf(next.secondary,sizeof(next.secondary),"%s",secondary.c_str());
-  snprintf(next.text,sizeof(next.text),"%s",text.empty()?"{value}":text.c_str());next.graph=primary.rfind("switch.",0)==0 ? !secondary.empty() : graph;
+  snprintf(next.text,sizeof(next.text),"%s",norm_text.c_str());next.graph=eff_graph;
   if(!sensor_preferences[i].save(&next)||!esphome::global_preferences->sync())return false;
-  onx_sensor_view::configs[i]=next;onx_sensor_view::states[i].bind(next);return true;
+  onx_sensor_view::configs[i]=next;onx_sensor_view::states[i].bind(next);
+  if(!primary.empty())custom_logic::note_slot_used(i);
+  return true;
 }
 
 struct CoverPresetEntry { std::string entity; onx_cover_presets::Config config; };
@@ -284,11 +310,12 @@ inline bool save_cover_presets(const std::string &entity, const onx_cover_preset
   cover_preset_cache.push_back({entity,config}); return true;
 }
 
-inline bool playlists_loaded=false;
-inline esphome::ESPPreferenceObject playlist_preferences[onx_memory::ENTRY_COUNT];
+inline size_t playlists_loaded_limit=0;
+inline onx_memory::PagedArray<esphome::ESPPreferenceObject,onx_memory::ENTRY_COUNT> playlist_preferences{};
 inline void load_playlists() {
-  if(playlists_loaded || esphome::global_preferences==nullptr) return;
-  for(size_t i=0;i<onx_memory::ENTRY_COUNT;++i) {
+  if(esphome::global_preferences==nullptr) return;
+  const size_t limit=custom_logic::active_slot_limit();
+  for(size_t i=playlists_loaded_limit;i<limit;++i) {
     playlist_preferences[i]=esphome::global_preferences->make_preference<onx_playlist::Config>(esphome::fnv1_hash("onx.playlists.v1."+std::to_string(i)));
     onx_playlist::Config saved{};
     if(!playlist_preferences[i].load(&saved) || saved.magic!=0x4F4E5851 || saved.count>onx_playlist::MAX_ENTRIES) continue;
@@ -300,7 +327,7 @@ inline void load_playlists() {
     for(size_t j=0;j<saved.count;++j) valid=valid && saved.entries[j].name[0] && onx_playlist::action_valid(saved.entries[j].action);
     if(valid) onx_playlist::configs[i]=saved;
   }
-  playlists_loaded=true;
+  if(limit>playlists_loaded_limit)playlists_loaded_limit=limit;
 }
 inline bool parse_playlists(const std::string &entity,const std::string &raw,onx_playlist::Config &next) {
   if(raw.empty()) return true; // Old clients clear the list when saving a slot.
@@ -319,28 +346,38 @@ inline bool parse_playlists(const std::string &entity,const std::string &raw,onx
 }
 inline bool save_playlists(size_t slot,const onx_playlist::Config &next) {
   load_playlists();
-  if(!playlists_loaded || slot>=onx_memory::ENTRY_COUNT) return false;
+  if(esphome::global_preferences==nullptr || slot>=onx_memory::ENTRY_COUNT) return false;
+  const auto *existing=onx_playlist::configs.find(slot);
+  if(next.count==0 && (existing==nullptr || existing->count==0)) return true;
+  if(slot>=playlists_loaded_limit) {
+    playlist_preferences[slot]=esphome::global_preferences->make_preference<onx_playlist::Config>(esphome::fnv1_hash("onx.playlists.v1."+std::to_string(slot)));
+  }
   if(!playlist_preferences[slot].save(&next) || !esphome::global_preferences->sync()) return false;
   onx_playlist::configs[slot]=next;
+  if(next.entity[0])custom_logic::note_slot_used(slot);
   onx_playlist::browser.clear();
   return true;
 }
 inline const onx_playlist::Config *playlists_for_ui(int ui_slot,const std::string &entity) {
   load_playlists();
-  for(size_t i=0;i<onx_memory::ENTRY_COUNT;++i) {
-    const auto &config=onx_playlist::configs[i];
-    if(custom_logic::normal_ui_slot_for_device_config_slot(i)==static_cast<size_t>(ui_slot) && entity==config.entity && config.count) return &config;
+  const size_t limit=std::min(custom_logic::active_slot_limit(),onx_playlist::configs.allocated_limit());
+  for(size_t i=0;i<limit;++i) {
+    const auto *config=onx_playlist::configs.find(i);
+    if(config && config->count && entity==config->entity &&
+       custom_logic::normal_ui_slot_for_device_config_slot(i)==static_cast<size_t>(ui_slot)) return config;
   }
   return nullptr;
 }
-inline bool gestures_loaded=false;
-inline std::array<esphome::ESPPreferenceObject,onx_memory::ENTRY_COUNT> gesture_preferences;
+inline size_t gestures_loaded_limit=0;
+inline onx_memory::PagedArray<esphome::ESPPreferenceObject,onx_memory::ENTRY_COUNT> gesture_preferences{};
 inline void load_gestures() {
-  if(gestures_loaded || esphome::global_preferences==nullptr)return;
-  for(size_t i=0;i<onx_memory::ENTRY_COUNT;++i) {
+  if(esphome::global_preferences==nullptr)return;
+  const size_t limit=custom_logic::active_slot_limit();
+  for(size_t i=gestures_loaded_limit;i<limit;++i) {
     gesture_preferences[i]=esphome::global_preferences->make_preference<onx_gesture::Config>(esphome::fnv1_hash("onx.gestures.v2."+std::to_string(i)));
     onx_gesture::Config saved{};
     if(!gesture_preferences[i].load(&saved)) {
+      if(i>=40)continue;
       auto legacy_preference=esphome::global_preferences->make_preference<onx_gesture::LegacyConfig>(esphome::fnv1_hash("onx.gestures.v1."+std::to_string(i)));
       onx_gesture::LegacyConfig legacy{};
       if(!legacy_preference.load(&legacy))continue;
@@ -353,7 +390,7 @@ inline void load_gestures() {
     for(auto &action:saved.actions) {action[128]=0;valid=valid && onx_config::valid_action(action);}
     if(valid)onx_gesture::configs[i]=saved;
   }
-  gestures_loaded=true;
+  if(limit>gestures_loaded_limit)gestures_loaded_limit=limit;
 }
 inline bool parse_gestures(const std::string &entity,const std::string &raw,onx_gesture::Config &next) {
   snprintf(next.entity,sizeof(next.entity),"%s",entity.c_str());
@@ -383,20 +420,34 @@ inline bool parse_gestures(const std::string &entity,const std::string &raw,onx_
   next.step=step;return true;
 }
 inline bool save_gestures(size_t slot,const onx_gesture::Config &next) {
-  load_gestures();if(!gestures_loaded || slot>=onx_memory::ENTRY_COUNT)return false;
+  load_gestures();if(esphome::global_preferences==nullptr || slot>=onx_memory::ENTRY_COUNT)return false;
+  const bool is_default=!next.actions[0][0] && !next.actions[1][0] && !next.actions[2][0] && !next.actions[3][0] &&
+      !next.feedback[0] && next.popup==1 && next.responses==0 && next.press_responses==0 && next.events==0 && next.step==1;
+  const auto *existing=onx_gesture::configs.find(slot);
+  const bool existing_default=existing==nullptr || (!existing->actions[0][0] && !existing->actions[1][0] && !existing->actions[2][0] &&
+      !existing->actions[3][0] && !existing->feedback[0] && existing->popup==1 && existing->responses==0 &&
+      existing->press_responses==0 && existing->events==0 && existing->step==1);
+  if(is_default && existing_default)return true;
+  if(slot>=gestures_loaded_limit) {
+    gesture_preferences[slot]=esphome::global_preferences->make_preference<onx_gesture::Config>(esphome::fnv1_hash("onx.gestures.v2."+std::to_string(slot)));
+  }
   if(!gesture_preferences[slot].save(&next) || !esphome::global_preferences->sync())return false;
   const bool same=std::string(next.entity)==onx_gesture::configs[slot].entity && std::string(next.feedback)==onx_gesture::configs[slot].feedback;
   const uint32_t next_token=onx_gesture::states[slot].token+1;
   onx_gesture::configs[slot]=next;
   if(!same)onx_gesture::states[slot]={};
   onx_gesture::states[slot].token=next_token;onx_gesture::states[slot].feedback_ms=0;
+  if(next.entity[0])custom_logic::note_slot_used(slot);
   onx_gesture::clear_pending();return true;
 }
 inline int gesture_slot_for_ui(int ui_slot) {
   load_gestures();
-  for(size_t i=0;i<onx_memory::ENTRY_COUNT;++i)
-    if(custom_logic::normal_ui_slot_for_device_config_slot(i)==static_cast<size_t>(ui_slot) &&
-        !custom_logic::cached_device_entity_id(i).empty() && custom_logic::cached_device_entity_id(i)==onx_gesture::configs[i].entity)return i;
+  const size_t limit=std::min(custom_logic::active_slot_limit(),onx_gesture::configs.allocated_limit());
+  for(size_t i=0;i<limit;++i) {
+    const auto *cfg=onx_gesture::configs.find(i);
+    if(cfg && cfg->entity[0] && custom_logic::cached_device_entity_id(i)==cfg->entity &&
+       custom_logic::normal_ui_slot_for_device_config_slot(i)==static_cast<size_t>(ui_slot))return int(i);
+  }
   return -1;
 }
 
@@ -404,73 +455,104 @@ struct PressBinding {
   char source[MAX_HA_ENTITY_ID_LENGTH + 1]{};
   char action[MAX_HA_ENTITY_ID_LENGTH + 1]{};
 };
-struct StoredBindings {
+struct StoredPressBindingSlot {
   uint32_t magic{0x4F4E5850};
-  PressBinding slots[onx_memory::ENTRY_COUNT]{};
+  PressBinding binding{};
 };
-static StoredBindings &bindings = onx_memory::psram_object<StoredBindings>();
-static esphome::ESPPreferenceObject preference;
-static bool loaded = false;
+static onx_memory::PagedArray<PressBinding, onx_memory::ENTRY_COUNT> bindings{};
+static onx_memory::PagedArray<esphome::ESPPreferenceObject, onx_memory::ENTRY_COUNT> binding_preferences{};
+static size_t bindings_loaded_limit = 0;
+static bool legacy_bindings_checked = false;
 inline void load() {
-  if (loaded || esphome::global_preferences == nullptr) return;
-  preference = esphome::global_preferences->make_preference<StoredBindings>(esphome::fnv1_hash("onx.press_bindings.v3"));
-  auto stored_buffer=custom_logic::make_ram_allocated<StoredBindings>();
-  if(!stored_buffer)return;
-  auto &stored=*stored_buffer;
-  bool restored=preference.load(&stored) && stored.magic==bindings.magic;
-  // v3 holds 40 entries; v2 held 20 and v1 held 10.
-  if(!restored) {
-    struct V2Bindings {uint32_t magic;PressBinding slots[20];};
-    auto v2_pref=esphome::global_preferences->make_preference<V2Bindings>(esphome::fnv1_hash("onx.press_bindings.v2"));
-    auto v2_buffer=custom_logic::make_ram_allocated<V2Bindings>();
-    if(v2_buffer && v2_pref.load(v2_buffer.get()) && v2_buffer->magic==bindings.magic) {
-      std::copy(std::begin(v2_buffer->slots),std::end(v2_buffer->slots),std::begin(stored.slots));
-      restored=true;
+  if (esphome::global_preferences == nullptr) return;
+  if (!legacy_bindings_checked) {
+    legacy_bindings_checked = true;
+    // Migrate legacy monolithic press binding tables (v3: 40, v2: 20, v1: 10) into RAM;
+    // per-slot v4 keys below override any slot that was saved after upgrade.
+    struct V3Bindings { uint32_t magic; PressBinding slots[40]; };
+    auto v3_pref = esphome::global_preferences->make_preference<V3Bindings>(esphome::fnv1_hash("onx.press_bindings.v3"));
+    auto v3_buf = custom_logic::make_ram_allocated<V3Bindings>();
+    size_t legacy_count = 0;
+    if (v3_buf && v3_pref.load(v3_buf.get()) && v3_buf->magic == 0x4F4E5850) {
+      legacy_count = 40;
+    } else {
+      struct V2Bindings { uint32_t magic; PressBinding slots[20]; };
+      auto v2_pref = esphome::global_preferences->make_preference<V2Bindings>(esphome::fnv1_hash("onx.press_bindings.v2"));
+      auto v2_buf = custom_logic::make_ram_allocated<V2Bindings>();
+      if (v3_buf && v2_buf && v2_pref.load(v2_buf.get()) && v2_buf->magic == 0x4F4E5850) {
+        std::copy(std::begin(v2_buf->slots), std::end(v2_buf->slots), std::begin(v3_buf->slots));
+        legacy_count = 20;
+      } else {
+        struct LegacyBindings { uint32_t magic; PressBinding slots[10]; };
+        auto v1_pref = esphome::global_preferences->make_preference<LegacyBindings>(esphome::fnv1_hash("onx.press_bindings.v1"));
+        auto v1_buf = custom_logic::make_ram_allocated<LegacyBindings>();
+        if (v3_buf && v1_buf && v1_pref.load(v1_buf.get()) && v1_buf->magic == 0x4F4E5850) {
+          std::copy(std::begin(v1_buf->slots), std::end(v1_buf->slots), std::begin(v3_buf->slots));
+          legacy_count = 10;
+        }
+      }
+    }
+    if (v3_buf && legacy_count > 0) {
+      for (size_t i = 0; i < legacy_count; ++i) {
+        auto &s = v3_buf->slots[i];
+        s.source[MAX_HA_ENTITY_ID_LENGTH] = '\0'; s.action[MAX_HA_ENTITY_ID_LENGTH] = '\0';
+        if (s.action[0] && (onx_config::valid_entity(s.source) || custom_logic::is_local_hmi_gpio_switch_preset_option(s.source)) &&
+            onx_config::valid_press_action(s.source, s.action)) {
+          bindings[i] = s;
+        }
+      }
     }
   }
-  if(!restored) {
-    struct LegacyBindings {uint32_t magic;PressBinding slots[10];};
-    auto legacy_pref=esphome::global_preferences->make_preference<LegacyBindings>(esphome::fnv1_hash("onx.press_bindings.v1"));
-    auto legacy_buffer=custom_logic::make_ram_allocated<LegacyBindings>();
-    if(!legacy_buffer)return;
-    auto &legacy=*legacy_buffer;
-    if(legacy_pref.load(&legacy) && legacy.magic==bindings.magic) {
-      std::copy(std::begin(legacy.slots),std::end(legacy.slots),std::begin(stored.slots));
-      restored=true;
+  const size_t limit = custom_logic::active_slot_limit();
+  for (size_t i = bindings_loaded_limit; i < limit; ++i) {
+    binding_preferences[i] = esphome::global_preferences->make_preference<StoredPressBindingSlot>(
+        esphome::fnv1_hash("onx.press.v4." + std::to_string(i)));
+    StoredPressBindingSlot stored{};
+    if (binding_preferences[i].load(&stored) && stored.magic == 0x4F4E5850) {
+      stored.binding.source[MAX_HA_ENTITY_ID_LENGTH] = '\0';
+      stored.binding.action[MAX_HA_ENTITY_ID_LENGTH] = '\0';
+      if ((!stored.binding.source[0] || onx_config::valid_entity(stored.binding.source) ||
+           custom_logic::is_local_hmi_gpio_switch_preset_option(stored.binding.source)) &&
+          onx_config::valid_press_action(stored.binding.source, stored.binding.action)) {
+        bindings[i] = stored.binding;
+      } else {
+        bindings[i] = {};
+      }
     }
   }
-  if (restored) {
-    for (auto &slot : stored.slots) {
-      slot.source[MAX_HA_ENTITY_ID_LENGTH] = '\0'; slot.action[MAX_HA_ENTITY_ID_LENGTH] = '\0';
-      if ((!std::string(slot.source).empty() && !onx_config::valid_entity(slot.source) && !custom_logic::is_local_hmi_gpio_switch_preset_option(slot.source)) || !onx_config::valid_press_action(slot.source,slot.action)) slot = {};
-    }
-    bindings = stored;
-  }
-  loaded = true;
+  if (limit > bindings_loaded_limit) bindings_loaded_limit = limit;
 }
 inline std::string action_for_slot(size_t slot) {
   load();
   if (slot >= onx_memory::ENTRY_COUNT) return "";
+  const auto *b = bindings.find(slot);
+  if (b == nullptr || !b->action[0]) return "";
   custom_logic::load_device_config_if_needed(slot);
-  return onx_config::binding_matches(bindings.slots[slot].source, custom_logic::cached_device_entity_id(slot))
-             ? bindings.slots[slot].action : "";
+  return onx_config::binding_matches(b->source, custom_logic::cached_device_entity_id(slot)) ? b->action : "";
 }
 inline std::string action_for_ui(int ui_slot) {
-  if (ui_slot < 0 || ui_slot >= onx_memory::ENTRY_COUNT) return "";
-  for (size_t slot = 0; slot < onx_memory::ENTRY_COUNT; ++slot)
+  if (ui_slot < 0 || ui_slot >= int(onx_memory::ENTRY_COUNT)) return "";
+  const size_t limit = custom_logic::active_slot_limit();
+  for (size_t slot = 0; slot < limit; ++slot)
     if (custom_logic::normal_ui_slot_for_device_config_slot(slot) == static_cast<size_t>(ui_slot)) return action_for_slot(slot);
   return "";
 }
 inline bool save_action(size_t slot, const std::string &entity, const std::string &action) {
   load();
-  if (!loaded || slot >= onx_memory::ENTRY_COUNT || !onx_config::valid_press_action(entity,action)) return false;
-  auto next_buffer=custom_logic::make_ram_allocated<StoredBindings>();
-  if(!next_buffer)return false;
-  auto &next=*next_buffer;next=bindings;
-  custom_logic::copy_string_to_fixed_buffer(entity, next.slots[slot].source);
-  custom_logic::copy_string_to_fixed_buffer(action, next.slots[slot].action);
-  if (!preference.save(&next) || !esphome::global_preferences->sync()) return false;
-  bindings = next;
+  if (esphome::global_preferences == nullptr || slot >= onx_memory::ENTRY_COUNT || !onx_config::valid_press_action(entity, action)) return false;
+  const auto *existing = bindings.find(slot);
+  if (action.empty() && (existing == nullptr || !existing->action[0])) return true;
+  if (existing != nullptr && entity == existing->source && action == existing->action) return true;
+  if (slot >= bindings_loaded_limit) {
+    binding_preferences[slot] = esphome::global_preferences->make_preference<StoredPressBindingSlot>(
+        esphome::fnv1_hash("onx.press.v4." + std::to_string(slot)));
+  }
+  StoredPressBindingSlot stored{};
+  custom_logic::copy_string_to_fixed_buffer(entity, stored.binding.source);
+  custom_logic::copy_string_to_fixed_buffer(action, stored.binding.action);
+  if (!binding_preferences[slot].save(&stored) || !esphome::global_preferences->sync()) return false;
+  bindings[slot] = stored.binding;
+  if (!entity.empty()) custom_logic::note_slot_used(slot);
   return true;
 }
 inline void customize_control_view(int ui_slot,const std::string &entity,onx_detail_view::View &view) {
@@ -497,11 +579,12 @@ struct StoredIcon {
   char entity[129]{}, icon[81]{};
   bool registry_override{false};
 };
-inline bool icons_loaded{false};
-inline esphome::ESPPreferenceObject icon_preferences[onx_memory::ENTRY_COUNT];
+inline size_t icons_loaded_limit{0};
+inline onx_memory::PagedArray<esphome::ESPPreferenceObject, onx_memory::ENTRY_COUNT> icon_preferences{};
 inline void load_icons() {
-  if (icons_loaded || esphome::global_preferences == nullptr) return;
-  for (size_t i = 0; i < onx_memory::ENTRY_COUNT; ++i) {
+  if (esphome::global_preferences == nullptr) return;
+  const size_t limit = custom_logic::active_slot_limit();
+  for (size_t i = icons_loaded_limit; i < limit; ++i) {
     icon_preferences[i] = esphome::global_preferences->make_preference<StoredIcon>(
         esphome::fnv1_hash("onx.entity_icon.v1." + std::to_string(i)));
     StoredIcon stored;
@@ -513,13 +596,18 @@ inline void load_icons() {
       }
     }
   }
-  icons_loaded = true;
+  if (limit > icons_loaded_limit) icons_loaded_limit = limit;
 }
 inline bool save_icon(size_t slot, const std::string &entity, const std::string &icon, bool override) {
   load_icons();
-  if (!icons_loaded || slot >= onx_memory::ENTRY_COUNT || (!icon.empty() && !onx_icon_state::valid_icon(icon))) return false;
-  const auto &existing = onx_icon_state::metadata[slot];
-  if (existing.entity == entity && existing.configured == icon && existing.registry_override == override) return true;
+  if (esphome::global_preferences == nullptr || slot >= onx_memory::ENTRY_COUNT || (!icon.empty() && !onx_icon_state::valid_icon(icon))) return false;
+  const auto *existing = onx_icon_state::metadata.find(slot);
+  if (icon.empty() && !override && (existing == nullptr || (existing->configured.empty() && !existing->registry_override))) return true;
+  if (existing != nullptr && existing->entity == entity && existing->configured == icon && existing->registry_override == override) return true;
+  if (slot >= icons_loaded_limit) {
+    icon_preferences[slot] = esphome::global_preferences->make_preference<StoredIcon>(
+        esphome::fnv1_hash("onx.entity_icon.v1." + std::to_string(slot)));
+  }
   StoredIcon stored;
   custom_logic::copy_string_to_fixed_buffer(entity, stored.entity);
   custom_logic::copy_string_to_fixed_buffer(icon, stored.icon);
@@ -527,51 +615,92 @@ inline bool save_icon(size_t slot, const std::string &entity, const std::string 
   if (!icon_preferences[slot].save(&stored) || !esphome::global_preferences->sync()) return false;
   auto &meta = onx_icon_state::metadata[slot];
   meta.bind(entity); meta.configured = icon; meta.registry_override = override;
+  if (!entity.empty()) custom_logic::note_slot_used(slot);
   return true;
 }
+// Highest active slot count to serialize (trimmed of trailing empty slots).
+inline size_t serialized_slot_count() {
+  const size_t limit = custom_logic::active_slot_limit();
+  size_t last = 0;
+  for (size_t i = 0; i < limit; ++i) {
+    custom_logic::load_device_config_if_needed(i);
+    if (!custom_logic::cached_device_entity_id(i).empty()) last = i + 1;
+  }
+  return std::max<size_t>(1, last);
+}
 // One slot as the configuration page saves it. Presets store the same shape so
-// applying one goes through the regular, validated save path.
+// applying one goes through the regular, validated save path. Empty slots and
+// default-empty optional sections are omitted to keep JSON compact at 200+ entries.
 inline void encode_slot(size_t i, JsonObject slot) {
   custom_logic::load_device_config_if_needed(i);
-  slot["entity"] = custom_logic::cached_device_entity_id(i);
-  auto gestures=slot["gestures"].to<JsonObject>();
-  const auto &control=onx_gesture::configs[i];
-  const bool bound=custom_logic::cached_device_entity_id(i)==control.entity;
-  const char *gesture_keys[]={"cw","ccw","holdCw","holdCcw"};
-  for(size_t j=0;j<4;++j)gestures[gesture_keys[j]]=bound?control.actions[j]:"";
-  gestures["feedback"]=bound?control.feedback:"";
-  gestures["popup"]=!bound || control.popup?"1":"0";
-  gestures["responses"]=bound && control.responses?"1":"0";
-  gestures["pressResponses"]=bound && control.press_responses?"1":"0";
-  gestures["events"]=bound && control.events?"1":"0";
-  gestures["step"]=std::to_string(bound?control.step:1);
-  slot["coverPresetsEnabled"] = cover_presets(custom_logic::cached_device_entity_id(i)).enabled ? "1" : "0";
-  slot["coverPresets"] = onx_cover_presets::encode(cover_presets(custom_logic::cached_device_entity_id(i)));
-  slot["timerHidden"] = timer_hidden(i,custom_logic::cached_device_entity_id(i))?"1":"0";
-  JsonArray playlists=slot["playlists"].to<JsonArray>();
-  const auto &playlist=onx_playlist::configs[i];
-  if(custom_logic::cached_device_entity_id(i)==playlist.entity)
-    for(size_t j=0;j<playlist.count;++j) {
-      auto entry=playlists.add<JsonObject>();entry["name"]=playlist.entries[j].name;entry["action"]=playlist.entries[j].action;
+  const std::string &entity = custom_logic::cached_device_entity_id(i);
+  slot["entity"] = entity;
+  if (entity.empty()) return;
+  if (const auto *control = onx_gesture::configs.find(i); control != nullptr && entity == control->entity) {
+    const bool non_default = control->actions[0][0] || control->actions[1][0] || control->actions[2][0] ||
+        control->actions[3][0] || control->feedback[0] || !control->popup || control->responses ||
+        control->press_responses || control->events || control->step != 1;
+    if (non_default) {
+      auto gestures = slot["gestures"].to<JsonObject>();
+      const char *gesture_keys[] = {"cw", "ccw", "holdCw", "holdCcw"};
+      for (size_t j = 0; j < 4; ++j) gestures[gesture_keys[j]] = control->actions[j];
+      gestures["feedback"] = control->feedback;
+      gestures["popup"] = control->popup ? "1" : "0";
+      gestures["responses"] = control->responses ? "1" : "0";
+      gestures["pressResponses"] = control->press_responses ? "1" : "0";
+      gestures["events"] = control->events ? "1" : "0";
+      gestures["step"] = std::to_string(control->step);
     }
-  const auto &sensor=onx_sensor_view::configs[i];
-  const bool same_sensor=custom_logic::cached_device_entity_id(i)==sensor.primary;
-  slot["secondary"] = same_sensor?sensor.secondary:"";
-  slot["secondaryText"] = same_sensor?sensor.text:"{value}";
-  slot["sensorGraph"] = same_sensor&&sensor.graph?"1":"0";
-  const auto &icon = onx_icon_state::metadata[i];
-  const bool same_icon_entity = icon.entity == custom_logic::cached_device_entity_id(i);
-  slot["icon"] = same_icon_entity ? icon.configured : "";
-  slot["iconOverride"] = same_icon_entity && icon.registry_override ? "1" : "0";
-  slot["name"] = custom_logic::ha_entity_title_from_registry_cache(custom_logic::cached_device_entity_id(i));
+  }
+  if (entity.rfind("cover.", 0) == 0) {
+    const auto cp = cover_presets(entity);
+    slot["coverPresetsEnabled"] = cp.enabled ? "1" : "0";
+    slot["coverPresets"] = onx_cover_presets::encode(cp);
+  }
+  if (timer_hidden(i, entity)) slot["timerHidden"] = "1";
+  if (const auto *playlist = onx_playlist::configs.find(i); playlist != nullptr && entity == playlist->entity && playlist->count > 0) {
+    JsonArray playlists = slot["playlists"].to<JsonArray>();
+    for (size_t j = 0; j < playlist->count; ++j) {
+      auto entry = playlists.add<JsonObject>();
+      entry["name"] = playlist->entries[j].name;
+      entry["action"] = playlist->entries[j].action;
+    }
+  }
+  if (const auto *sensor = onx_sensor_view::configs.find(i); sensor != nullptr && entity == sensor->primary) {
+    if (sensor->secondary[0]) {
+      slot["secondary"] = sensor->secondary;
+      slot["secondaryText"] = sensor->text;
+    }
+    if (sensor->graph) slot["sensorGraph"] = "1";
+  }
+  if (const auto *icon = onx_icon_state::metadata.find(i); icon != nullptr && icon->entity == entity) {
+    if (!icon->configured.empty()) slot["icon"] = icon->configured;
+    if (icon->registry_override) slot["iconOverride"] = "1";
+  }
+  const std::string title = custom_logic::ha_entity_title_from_registry_cache(entity);
+  if (!title.empty()) slot["name"] = title;
   for (size_t j = 0; j < custom_logic::cached_ha_entities().count; ++j) {
     const auto &entry = custom_logic::cached_ha_entities().entities[j];
-    if (custom_logic::cached_device_entity_id(i) == entry.entity_id) slot["area"] = entry.area_name;
+    if (entity == entry.entity_id) {
+      if (entry.area_name[0]) slot["area"] = entry.area_name;
+      break;
+    }
   }
-  slot["action"] = action_for_slot(i);
-  slot["type"] = custom_logic::cached_device_custom_type(i);
-  slot["typeOption"] = custom_logic::ha_domain_from_entity_id(custom_logic::cached_device_entity_id(i)) == "light" ? custom_logic::light_type_option_from_custom_mask(custom_logic::cached_device_custom_light_capability_mask(i)) : custom_logic::ha_domain_from_entity_id(custom_logic::cached_device_entity_id(i)) == "cover" ? (custom_logic::cached_device_custom_light_capability_mask(i) == 0 ? "Cover (Preset Off)" : "Cover (Preset On)") : custom_logic::cached_device_custom_type(i) == "plug" ? "Plug" : "";
-  slot["actionName"] = custom_logic::ha_entity_title_from_registry_cache(action_for_slot(i));
+  const std::string act = action_for_slot(i);
+  if (!act.empty()) {
+    slot["action"] = act;
+    const std::string act_name = custom_logic::ha_entity_title_from_registry_cache(act);
+    if (!act_name.empty()) slot["actionName"] = act_name;
+  }
+  const std::string &ctype = custom_logic::cached_device_custom_type(i);
+  if (!ctype.empty()) slot["type"] = ctype;
+  const std::string domain = custom_logic::ha_domain_from_entity_id(entity);
+  const std::string type_opt = domain == "light"
+      ? custom_logic::light_type_option_from_custom_mask(custom_logic::cached_device_custom_light_capability_mask(i))
+      : domain == "cover"
+      ? (custom_logic::cached_device_custom_light_capability_mask(i) == 0 ? "Cover (Preset Off)" : "Cover (Preset On)")
+      : ctype == "plug" ? "Plug" : "";
+  if (!type_opt.empty()) slot["typeOption"] = type_opt;
 }
 inline std::string state(const std::string &host = "", bool wifi_connected = false, bool ha_connected = false, float wifi_rssi = NAN, const std::string &artwork_error = "") {
   custom_logic::load_ha_entities_if_needed();
@@ -635,8 +764,10 @@ inline std::string state(const std::string &host = "", bool wifi_connected = fal
 #ifdef USE_ESP32
     root["reset_reason"] = static_cast<int>(esp_reset_reason());
 #endif
+    root["max_slots"] = onx_memory::ENTRY_COUNT;
     JsonArray slots = root["slots"].to<JsonArray>();
-    for (size_t i = 0; i < onx_memory::ENTRY_COUNT; ++i) encode_slot(i, slots.add<JsonObject>());
+    const size_t n_slots = serialized_slot_count();
+    for (size_t i = 0; i < n_slots; ++i) encode_slot(i, slots.add<JsonObject>());
   });
 }
 inline bool save_selected_metadata(const esphome::onx_config_web::Query &query) {
@@ -658,7 +789,8 @@ inline bool save_selected_metadata(const esphome::onx_config_web::Query &query) 
     }
     if (entity == query.action) custom_logic::copy_string_to_fixed_buffer(query.action_name, item.friendly_name);
   };
-  for (size_t i = 0; i < onx_memory::ENTRY_COUNT; ++i) {
+  const size_t limit = custom_logic::active_slot_limit();
+  for (size_t i = 0; i < limit; ++i) {
     custom_logic::load_device_config_if_needed(i);
     add(custom_logic::cached_device_entity_id(i));
     add(action_for_slot(i));
