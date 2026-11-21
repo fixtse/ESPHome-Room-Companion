@@ -252,6 +252,10 @@ interval:
           // screen, except while Assist itself is on screen.
           if (onx_panel_detail::timers.overlay && lv_obj_has_flag(id(assist_overlay), LV_OBJ_FLAG_HIDDEN)) {
             onx_notification_ui::set_bell_visible(false);
+            // The shared Wi-Fi/HA status icons (top layer) belong to the carousel and idle clock.
+            for (auto *icon : {id(normal_device_wifi_online_widget), id(normal_device_wifi_offline_widget),
+                               id(normal_device_homeassistant_online_widget), id(normal_device_homeassistant_offline_widget)})
+              lv_obj_add_flag(icon, LV_OBJ_FLAG_HIDDEN);
             onx_panel_pages::show_timers(onx_panel_ui::width, onx_panel_ui::height);
             return;
           }
@@ -317,6 +321,14 @@ interval:
           // screens open the centre by pulling down from the top edge. The
           // dashboard also has an automatic shortcut when a URL is configured.
           onx_notification_ui::set_bell_visible(normal && !detail && onx_navigation::visible);
+          // The shared Wi-Fi/HA status icons (top layer) show only on the carousel
+          // and the idle clock; hide them in this pass so they never linger for
+          // the 1 s carousel refresh when another screen opens.
+          if (!standby && !(normal && !detail && id(normal_page_index) == 0)) {
+            for (auto *icon : {id(normal_device_wifi_online_widget), id(normal_device_wifi_offline_widget),
+                               id(normal_device_homeassistant_online_widget), id(normal_device_homeassistant_offline_widget)})
+              lv_obj_add_flag(icon, LV_OBJ_FLAG_HIDDEN);
+          }
           // Timer chip: Assist's local timers and every HA timer entry (paged or
           // registered), so timers without a page stay one tap away.
           static uint32_t last_chip = 0;
