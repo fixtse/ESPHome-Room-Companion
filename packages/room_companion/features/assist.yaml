@@ -168,8 +168,13 @@ voice_assistant:
     - lambda: |-
         onx_panel_detail::timers.focus = "local:" + timer.id;
         onx_panel_detail::timers.dismissed = false;
-    - script.execute: timer_show
-    - script.execute: timer_autoclose
+    # Idle timeout off (notification centre): the new timer stays in the chip.
+    - if:
+        condition:
+          lambda: 'return onx_notification_ui::standby_timeout_enabled;'
+        then:
+          - script.execute: timer_show
+          - script.execute: timer_autoclose
   on_timer_updated:
     - script.execute: timer_sync
     - lambda: |-

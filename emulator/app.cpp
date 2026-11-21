@@ -186,7 +186,9 @@ esphome::onx_storage::NormalLightState light_of(const std::string &entity) {
   auto it = lights.find(entity);
   return it == lights.end() ? esphome::onx_storage::NormalLightState{} : it->second;
 }
-struct Shot { std::string name, entity; bool detail{false}; };
+// status: the main page with the timer/music status row ("timer" text, "media");
+// centre: the notification centre opened over the main page.
+struct Shot { std::string name, entity; bool detail{false}; std::string timer; bool media{false}, centre{false}; };
 std::vector<Shot> load_scenario(const std::string &path) {
   JsonDocument &doc = scenario_doc;
   if (deserializeJson(doc, read_file(path))) { std::fprintf(stderr, "cannot parse %s\n", path.c_str()); std::exit(2); }
@@ -285,6 +287,12 @@ std::vector<Shot> load_scenario(const std::string &path) {
     pages.push_back({prefix + name, lead, false});
   }
   pages.insert(pages.end(), shots.begin(), shots.end());
+  // "screens": extra main-page shots, e.g. {"name":"status","timer":"4:32","media":true} or {"name":"centre","centre":true}.
+  for (JsonObjectConst x : doc["screens"].as<JsonArrayConst>()) {
+    Shot shot{x["name"] | "screen", x["entity"] | (pages.empty() ? "" : pages.front().entity.c_str()), false};
+    shot.timer = x["timer"] | ""; shot.media = x["media"] | false; shot.centre = x["centre"] | false;
+    pages.push_back(shot);
+  }
   return pages;
 
 }
@@ -345,6 +353,9 @@ void show(const Shot &shot) {
   const int w = board.width, h = board.height;
   auto bind = [](lv_obj_t *icon, const std::string &entity) { bind_entity_icon(icon, entity, false); };
   onx_panel_detail::timers.focus.clear();
+  onx_notification_ui::set_timer_chip(shot.timer);
+  onx_notification_ui::set_media_chip(shot.media);
+  if (onx_notification_ui::panel_open && !shot.centre) onx_notification_ui::close_panel();
   if (shot.detail) {
     // A detail shot represents tapping that timer's row in the multi-timer list.
     if (custom_logic_entity_sub::is_timer_detail(shot.entity))
@@ -367,6 +378,7 @@ void show(const Shot &shot) {
     });
     onx_notification_ui::set_bell_visible(true);
   }
+  if (shot.centre && !onx_notification_ui::panel_open) onx_notification_ui::open_panel();
   onx_notification_ui::refresh();
   write_preview(shot);
 }
@@ -404,6 +416,11 @@ void setup() {
   nf.title = font("fonts_MiSans_Bold_16"); nf.body = font("fonts_MiSans_Medium_14");
   nf.small = font("fonts_MiSans_Medium_12"); nf.icon = font("fonts_MiSans_Medium_20"); nf.symbol = symbol_font();
   onx_notification_ui::bell_image = lvgl_emu::svg(root + "/assets/panel/bell-outline.svg", ui(20));
+  // As notifications.yaml: quick-tile and status-row images.
+  onx_notification_ui::clock_tile_image = lvgl_emu::svg(root + "/assets/panel/screen-sleep.svg", ui(24));
+  onx_notification_ui::preset_tile_image = lvgl_emu::svg(root + "/assets/panel/preset-layers.svg", ui(24));
+  onx_notification_ui::rotate_tile_image = lvgl_emu::svg(root + "/assets/panel/screen-rotation.svg", ui(22));
+  onx_notification_ui::music_image = lvgl_emu::svg(root + "/assets/entity_icons/music-note.svg", ui(18));
   onx_notification_ui::init(w, h, nf, {});
   lv_obj_set_style_bg_color(lv_screen_active(), lv_color_hex(onx_display_settings::background()), 0);
 }

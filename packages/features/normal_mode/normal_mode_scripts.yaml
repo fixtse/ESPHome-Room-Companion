@@ -307,9 +307,15 @@ script:
             if (visible) lv_obj_remove_flag(obj, LV_OBJ_FLAG_HIDDEN);
             else lv_obj_add_flag(obj, LV_OBJ_FLAG_HIDDEN);
           };
-          show(id(normal_device_wifi_online_widget), !empty && id(normal_wifi_connected));
+          #ifdef USE_ROOM_COMPANION
+          // The timer/music status row takes the place of the "online" icons.
+          const bool status_row = onx_notification_ui::status_row_shown() && id(normal_wifi_connected) && id(normal_ha_api_connected);
+          #else
+          const bool status_row = false;
+          #endif
+          show(id(normal_device_wifi_online_widget), !empty && id(normal_wifi_connected) && !status_row);
           show(id(normal_device_wifi_offline_widget), !empty && !id(normal_wifi_connected));
-          show(id(normal_device_homeassistant_online_widget), !empty && id(normal_ha_api_connected));
+          show(id(normal_device_homeassistant_online_widget), !empty && id(normal_ha_api_connected) && !status_row);
           show(id(normal_device_homeassistant_offline_widget), !empty && !id(normal_ha_api_connected));
           if (empty) { onx_navigation::hide(); return; }
           const bool settings = selected >= total;
@@ -2031,6 +2037,9 @@ script:
           const bool manual_player=id(normal_device_detail_active) &&
               id(normal_device_detail_kind)==NORMAL_DEVICE_DETAIL_KIND_AUTOMATION && current_entity.rfind("media_player.",0)==0;
           if(!allowed || candidate<0 || (id(normal_device_detail_active) && !manual_player) || !id(ui_presenter)->is_standby_active())return;
+          #ifdef USE_ROOM_COMPANION
+          if(!onx_notification_ui::standby_timeout_enabled)return;  // Idle timeout off: the music chip opens it instead.
+          #endif
           popup.previous_index=id(normal_device_selected_index);
           popup.visible=true;
           id(normal_device_selected_index)=candidate;
@@ -2083,6 +2092,11 @@ script:
             return;
           }
           if (candidate<0) {onx_timer::popup.dismissed=false;return;}
+          #ifdef USE_ROOM_COMPANION
+          // Idle timeout off (notification centre): running timers stay in the
+          // status chip; only a finished (ringing) timer takes the screen.
+          if (!onx_notification_ui::standby_timeout_enabled && soonest>=0) return;
+          #endif
           if (!onx_timer::popup_due(id(ui_presenter)->user_idle_ms(), id(normal_device_detail_active), onx_timer::popup.dismissed)) return;
           // Never replace a settings page or an explicitly sleeping screen.
           if (id(normal_device_detail_active) && id(normal_device_detail_kind)!=NORMAL_DEVICE_DETAIL_KIND_AUTOMATION) return;

@@ -77,6 +77,31 @@ font:
     glyphs: "0123456789:-. "
 
 select:
+  # Current carousel page, for automations: choose a page to show it.
+  # Options follow the page list (names, or the first entity's title).
+  - platform: template
+    id: panel_page_select
+    name: Page
+    icon: mdi:book-open-page-variant-outline
+    options:
+      - None
+    initial_option: None
+    optimistic: false
+    restore_value: false
+    set_action:
+      - lambda: |-
+          const auto titles = onx_panel_pages::page_titles();
+          const auto it = std::find(titles.begin(), titles.end(), x);
+          if (it == titles.end()) return;
+          const int entry = onx_panel_pages::lead(onx_panel_pages::stored.pages[it - titles.begin()]);
+          if (onx_panel_pages::entry_entity(entry).empty()) return;
+          if (onx_power::sleeping && id(low_power_sleep).state) id(low_power_sleep).turn_off();
+          if (id(ui_presenter)->is_standby_active()) id(exit_standby_mode).execute();
+          id(ui_presenter)->notify_user_activity();
+          if (id(normal_device_detail_active)) id(exit_normal_switch_detail).execute();
+          id(normal_device_selected_index) = custom_logic::normal_ui_slot_for_device_config_slot(entry);
+          id(show_normal_device_entry_page).execute(0);
+          id(panel_page_select).publish_state(size_t(it - titles.begin()));
   - platform: template
     id: panel_idle_screen
     name: Idle screen
@@ -382,7 +407,47 @@ interval:
             }
             onx_notification_ui::set_timer_chip(count == 0 ? std::string() :
                 onx_timer::countdown(soonest) + (count > 1 ? " +" + std::to_string(count - 1) : std::string()));
+            // Music chip: a configured player that is playing (the selected one first).
+            auto playing = [&](int i) {
+              if (i < 0 || i >= id(normal_device_count)) return false;
+              const auto entity = id(ui_presenter)->get_normal_device_entity_id(i);
+              const auto *d = custom_logic_entity_sub::entity_detail(entity);
+              return entity.rfind("media_player.", 0) == 0 && d && d->received && d->available && d->state == "playing";
+            };
+            int player = playing(id(normal_device_selected_index)) ? id(normal_device_selected_index) : -1;
+            for (int i = 0; player < 0 && i < id(normal_device_count) && i < (int)custom_logic::CONFIGURABLE_DEVICE_SLOT_COUNT; ++i)
+              if (playing(i)) player = i;
+            onx_panel_ui::playing_index = player;
+            onx_notification_ui::set_media_chip(player >= 0);
           }
+          // "Page" select: keep its options and the shown page current (1 s).
+          static uint32_t last_page_sync = 0;
+          if (millis() - last_page_sync >= 1000) {
+            last_page_sync = millis();
+            static std::vector<std::string> page_options;
+            auto titles = onx_panel_pages::page_titles();
+            if (titles.empty()) titles.push_back("None");
+            auto *select = id(panel_page_select);
+            if (titles != page_options) {
+              page_options = std::move(titles);
+              esphome::FixedVector<const char *> options;
+              options.init(page_options.size());
+              for (const auto &t : page_options) options.push_back(t.c_str());
+              select->traits.set_options(options);
+              // Home Assistant reads a select's options when it connects.
+              static bool first = true;
+              if (!first) custom_logic::disconnect_all_clients_for_refresh(id(api_server));
+              first = false;
+            }
+            const int config = onx_panel_pages::configured(
+                id(ui_presenter)->get_normal_device_entity_id(id(normal_device_selected_index)));
+            const int page = onx_panel_pages::page_of_entry(config);
+            if (page >= 0 && page < int(page_options.size()) && select->current_option().str() != page_options[page])
+              select->publish_state(size_t(page));
+          }
+          // With Wi-Fi and HA online the status row replaces their icons
+          // (normal_mode_scripts.yaml hides them); otherwise it sits by the bell.
+          onx_notification_ui::set_status_centered(id(normal_wifi_connected) && id(normal_ha_api_connected));
           // Media detail rearranged for the tall screen.
           // Idle screen.
           const auto mode = id(panel_idle_screen).active_index().value_or(0);
@@ -681,6 +746,7 @@ image:
             id(entity_icon_downloader)->set_artwork_busy(onx_media::downloading);
             auto *image = id(immichframe_image);
             if (onx_panel_ui::hidden(onx_panel_ui::slide_layer)) { image->release(); return; }
+            onx_panel_ui::slide_failures = 0;
             lv_image_set_src(onx_panel_ui::slide_image, image->get_lv_image_dsc());
             lv_obj_center(onx_panel_ui::slide_image);
             onx_panel_ui::slide_error_show(nullptr, "");
@@ -695,6 +761,17 @@ image:
             onx_panel_ui::slide_waiting(false);
             lv_obj_set_style_image_opa(onx_panel_ui::slide_image, LV_OPA_COVER, 0);
             if (image->get_width() == 0) lv_image_set_src(onx_panel_ui::slide_image, static_cast<const void *>(nullptr));
+            const auto &err0 = image->last_error();
+            // Busy downloader/worker states are not server problems: retry soon, silently.
+            if (err0.rfind("Waiting for", 0) == 0 || err0.rfind("Previous artwork", 0) == 0) {
+              onx_panel_ui::slide_due = millis() + 1000;
+              return;
+            }
+            // One failure (often a slow first photo) retries after 3 s without the card.
+            if (++onx_panel_ui::slide_failures < 2) {
+              onx_panel_ui::slide_due = millis() + 3000;
+              return;
+            }
             {
               // Tell the user why photos stopped; the card clears on the next photo.
               const auto &err = image->last_error();

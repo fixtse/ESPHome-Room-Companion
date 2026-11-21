@@ -597,16 +597,43 @@ async function importExtras(value){
  if(dash&&typeof dash==='object'){try{const r=await rpc({op:'panel_save',data:JSON.stringify({server:str(dash.server),url:str(dash.url),scale:+dash.scale||1,dock_pin:str(dash.dock_pin||'dashboard'),toolbar_side:dash.toolbar_side==='left'?'left':'right'})});if(r.error)throw Error(r.error);done.push('dashboard')}catch(e){failed.push('dashboard: '+e.message)}}
  if(haUrl){try{const origin=OnxHA.baseUrl(haUrl);const r=await rpc({op:'ha_host',q:origin});if(r?.error)throw Error(r.error);$('ha-url').value=origin;device.ha_url=origin;done.push('Home Assistant address')}catch(e){failed.push('Home Assistant address: '+e.message)}}
  return [...done,...failed.map(f=>'not restored — '+f)]}
-$('import').onclick=()=>{if(editTarget){message('Choose “On the panel” in Display & actions before importing a configuration.',true);return}$('import-file').click()};$('import-file').onchange=async()=>{const file=$('import-file').files[0];try{if(!file)return;if(file.size>2097152)throw Error('Configuration file is too large (maximum 2 MB).');message('Reading '+file.name+'…');const value=JSON.parse(await file.text());if(typeof value.model!=='string')throw Error('This file is not a Room Companion configuration.');const draft=validateDocument(value),presetList=validatePresets(value.presets),extras=extraNames(value);
- // One decision: apply everything now (with progress), or load it as a draft to review.
- const entities=draft.slots.filter(s=>s.entity).length,parts=[draft.pages.length+' page'+(draft.pages.length===1?'':'s'),entities+' entit'+(entities===1?'y':'ies'),'device settings'];if(presetList.length)parts.push(presetList.length+' preset'+(presetList.length===1?'':'s'));parts.push(...extras);
- const apply=await ask({title:'Apply this backup to the panel?',text:'It contains '+parts.join(', ')+'. Apply replaces the panel’s configuration now'+(hasChanges()||pagesDirty()?' and your unsaved changes':'')+'; this takes a moment. Review first loads the pages, entities and device settings as an unsaved draft'+(presetList.length||extras.length?' (presets and other settings are only restored by Apply)':'')+'.',ok:'Apply now',cancel:'Review first'});
+$('import').onclick=()=>{if(editTarget){message('Choose “On the panel” in Display & actions before importing a configuration.',true);return}$('import-file').click()};// Import chooser: pick which pages and which other parts of the backup to use,
+// then apply them now or load them as a draft. Resolves to null when cancelled.
+function importChoice(draft,presetList,extras){
+ const dialog=$('import-pick'),groups=$('import-groups'),error=$('import-error');groups.replaceChildren();error.hidden=true;
+ const title=(p,i)=>p.name||(draft.slots.find(s=>s.entity===p.entities.find(Boolean))?.name)||p.entities.find(Boolean)||'Page '+(i+1);
+ const box=(text,note='',checked=true)=>{const l=element('label','');const c=document.createElement('input');c.type='checkbox';c.checked=checked;l.append(c,element('span',text));if(note)l.append(element('span',note,'muted'));return [l,c]};
+ const group=(name,items)=>{const f=document.createElement('fieldset'),lg=document.createElement('legend'),[all,ac]=box(name);lg.append(...all.childNodes);f.append(lg);const wrap=element('div','',items.length>3?'import-pages':'');for(const [l] of items)wrap.append(l);f.append(wrap);const sync=()=>{const n=items.filter(([,c])=>c.checked).length;ac.checked=n===items.length;ac.indeterminate=n>0&&n<items.length};ac.onchange=()=>{for(const [,c] of items)c.checked=ac.checked;sync()};for(const [,c] of items)c.addEventListener('change',sync);groups.append(f);return items.map(([,c])=>c)};
+ const pages=group('Pages',draft.pages.map((p,i)=>box(title(p,i),p.entities.filter(Boolean).length+' entit'+(p.entities.filter(Boolean).length===1?'y':'ies'))));
+ const other=[['settings','Device settings','Brightness, colours, clock, sleep']];
+ if(presetList.length)other.push(['presets','Presets',presetList.length+' stored']);
+ for(const n of extras)other.push(['extra:'+n,n[0].toUpperCase()+n.slice(1),'']);
+ const otherBoxes=group('Other settings',other.map(([,t,n])=>box(t,n)));
+ $('import-summary').textContent='Untick anything you do not want. Entities used only by unticked pages are left out. Apply saves it to the panel now; Load as draft lets you review first (presets and other stored settings are only restored by Apply).';
+ return new Promise(resolve=>{
+  const pick=apply=>{const keep=new Set(pages.flatMap((c,i)=>c.checked?[i]:[]));const parts=new Set(other.flatMap(([k],i)=>otherBoxes[i].checked?[k]:[]));if(!keep.size&&!parts.size){error.textContent='Choose at least one item.';error.hidden=false;return}finish({apply,keep,parts})};
+  const finish=v=>{dialog.onclose=null;$('import-form').onsubmit=null;if(dialog.open)dialog.close();resolve(v)};
+  $('import-cancel').onclick=()=>finish(null);$('import-draft').onclick=()=>pick(false);
+  $('import-form').onsubmit=e=>{e.preventDefault();pick(true)};dialog.onclose=()=>finish(null);
+  dialog.showModal();$('import-apply').focus()})}
+$('import-file').onchange=async()=>{const file=$('import-file').files[0];try{if(!file)return;if(file.size>2097152)throw Error('Configuration file is too large (maximum 2 MB).');message('Reading '+file.name+'…');const value=JSON.parse(await file.text());if(typeof value.model!=='string')throw Error('This file is not a Room Companion configuration.');const draft=validateDocument(value),presetList=validatePresets(value.presets),extras=extraNames(value);
+ message('Choose what to import from '+file.name+'.');
+ const choice=await importChoice(draft,presetList,extras);if(!choice){message('Import cancelled. Nothing changed.');return}
+ const {apply,keep,parts}=choice;
  if(!apply&&(hasChanges()||pagesDirty())&&!await ask({title:'Replace your unsaved draft?',text:'The imported configuration replaces the changes you have not saved yet.',ok:'Replace draft',danger:true}))return;
- globalThis.ONX_PAGE_ART?.import(value.artwork,[...draft.pages,...presetList.flatMap(p=>p.pages)]);slots=draft.slots;settings=draft.settings;globalThis.ONX_PAGES?.set(draft.pages);settingsForm();changed();search();page('entities');
- if(!apply){message('Configuration loaded as a draft. Review it, then choose Save changes and Save device settings to apply it.');return}
- await hold(async()=>{progress(1,10);const extraRestored=await importExtras(value);const restored=presetList.length?await importPresets(presetList):0;progress(2,10);
+ // Unticked pages are dropped; entities only they used are cleared.
+ const pages=draft.pages.filter((_,i)=>keep.has(i)),used=new Set(pages.flatMap(p=>p.entities).filter(Boolean));
+ const importedSlots=draft.slots.map(s=>s.entity&&!used.has(s.entity)&&s.timerHidden!=='1'?empty():s);
+ const keepPresets=parts.has('presets')?presetList:[];
+ globalThis.ONX_PAGE_ART?.import(value.artwork,[...pages,...keepPresets.flatMap(p=>p.pages)]);
+ if(keep.size||!parts.size){slots=importedSlots;globalThis.ONX_PAGES?.set(pages)}
+ if(parts.has('settings'))settings=draft.settings;
+ settingsForm();changed();search();page('entities');
+ if(!apply){message('Configuration loaded as a draft. Review it — delete or reorder pages as needed — then choose Save changes'+(parts.has('settings')?' and Save device settings':'')+'.');return}
+ const extraValue={...value};for(const n of ['idle screen','dashboard and dock','Home Assistant address'])if(!parts.has('extra:'+n)){if(n==='idle screen')delete extraValue.idle_screen;if(n==='dashboard and dock')delete extraValue.dashboard;if(n==='Home Assistant address')delete extraValue.ha_url}
+ await hold(async()=>{progress(1,10);const extraRestored=await importExtras(extraValue);const restored=keepPresets.length?await importPresets(keepPresets):0;progress(2,10);
   const ok=await(globalThis.ONX_PAGES?.save?globalThis.ONX_PAGES.save():saveSlots(dirtyIndices()));const settingsOk=ok&&(!dirtySettings()||await saveSettings());
-  if(ok&&settingsOk)message('Backup applied: pages, entities and device settings saved'+(restored?', '+restored+' preset'+(restored===1?'':'s')+' restored':'')+(extraRestored.length?'; '+extraRestored.join(', ')+' restored':'')+'.');
+  if(ok&&settingsOk)message('Backup applied'+(keep.size?': '+keep.size+' page'+(keep.size===1?'':'s'):'')+(parts.has('settings')?(keep.size?',':':')+' device settings':'')+' saved'+(restored?', '+restored+' preset'+(restored===1?'':'s')+' restored':'')+(extraRestored.length?'; '+extraRestored.join(', ')+' restored':'')+'.');
   else message('The backup was only partly applied. Unsaved items stay marked; choose Save changes'+(dirtySettings()?' and Save device settings':'')+' to retry.',true)})
 }catch(error){message('Import failed: '+error.message,true)}finally{$('import-file').value=''}};
 let presets={presets:[],active:'',applying:'',capacity:8},presetBusy=false;

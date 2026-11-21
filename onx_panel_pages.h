@@ -590,6 +590,27 @@ inline void suspend_underlay() {
     lv_obj_add_flag(obj,LV_OBJ_FLAG_HIDDEN);
   }
 }
+// Home Assistant "Page" select: one unique title per stored page (its name,
+// or its first entity's title), and the page that shows a given entry.
+inline std::vector<std::string> page_titles() {
+  std::vector<std::string> out;
+  for(int p=0;p<stored.count && p<int(MAX_PAGES);++p) {
+    const auto &page=stored.pages[p];
+    std::string title=page.name;
+    if(title.empty()){const auto e=entry_entity(lead(page));title=custom_logic::ha_entity_title_from_registry_cache(e);if(title.empty())title=e;}
+    if(title.empty())title="Page "+std::to_string(p+1);
+    if(title.size()>60)title.resize(60);
+    std::string unique=title;
+    for(int n=2;std::find(out.begin(),out.end(),unique)!=out.end();++n)unique=title+" ("+std::to_string(n)+")";
+    out.push_back(unique);
+  }
+  return out;
+}
+inline int page_of_entry(int entry) {
+  if(entry<0)return -1;
+  for(int p=0;p<stored.count && p<int(MAX_PAGES);++p)for(auto e:stored.pages[p].entries)if(e==entry)return p;
+  return -1;
+}
 inline void hide() {
   hide_carousel_clock();
   onx_panel_detail::leave_main_page();

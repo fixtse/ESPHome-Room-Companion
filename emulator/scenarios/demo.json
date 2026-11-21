@@ -171,5 +171,20 @@
     "fan.bedroom"
    ]
   }
+ ],
+ "screens": [
+  {
+   "name": "status-timer-music",
+   "timer": "4:32 +1",
+   "media": true
+  },
+  {
+   "name": "status-music",
+   "media": true
+  },
+  {
+   "name": "centre",
+   "centre": true
+  }
  ]
 }

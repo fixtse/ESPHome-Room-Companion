@@ -20,7 +20,7 @@ bool lv_obj_is_visible(lv_obj_t *o){return o->visible;}
 void lv_obj_get_coords(lv_obj_t *o,lv_area_t *a){*a=o->area;}
 namespace onx_notification_ui {
 int S(int n){return int(std::lround(n*320.0/240));}
-lv_obj_t *bell=nullptr,*timer_chip=nullptr;
+lv_obj_t *bell=nullptr,*timer_chip=nullptr,*media_chip=nullptr;
 HITS
 }
 int main(){

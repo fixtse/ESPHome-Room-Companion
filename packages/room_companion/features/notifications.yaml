@@ -19,6 +19,8 @@ esphome:
             onx_notification_ui::bell_image = id(panel_bell_icon)->get_lv_image_dsc();
             onx_notification_ui::clock_tile_image = id(panel_standby_clock_icon)->get_lv_image_dsc();
             onx_notification_ui::preset_tile_image = id(panel_preset_layers_icon)->get_lv_image_dsc();
+            onx_notification_ui::rotate_tile_image = id(panel_screen_rotation_icon)->get_lv_image_dsc();
+            onx_notification_ui::music_image = id(panel_music_chip_icon)->get_lv_image_dsc();
             onx_notification_ui::controls_blocked = []() { return id(touch_input)->suppress_click(); };
             // The centre follows a swipe up and decides on release.
             id(touch_input)->set_pull_up_drag(
@@ -60,6 +62,15 @@ esphome:
               if (id(touch_input)->suppress_click()) return;
               id(timer_show).execute();
             };
+            // Music chip opens the playing player (the selected one first).
+            onx_notification_ui::on_media_chip = []() {
+              if (id(touch_input)->suppress_click()) return;
+              const int index = onx_panel_ui::playing_index;
+              if (index < 0) return;
+              id(ui_presenter)->notify_user_activity();
+              id(normal_device_selected_index) = index;
+              id(enter_normal_switch_detail).execute();
+            };
             onx_notification_ui::init(onx_panel_ui::width, onx_panel_ui::height, fonts, hooks);
             id(dashboard_stream)->enable_frame_snapshot();
             id(room_panel)->set_backdrop_changed(onx_notification_ui::set_dashboard_backdrop);
@@ -89,6 +100,19 @@ image:
     file: "../../../assets/panel/preset-layers.svg"
     id: panel_preset_layers_icon
     resize: ${ (24 * (ui_scale | float)) | round | int }x${ (24 * (ui_scale | float)) | round | int }
+    type: RGB565
+    transparency: alpha_channel
+  - platform: file
+    file: "../../../assets/panel/screen-rotation.svg"
+    id: panel_screen_rotation_icon
+    resize: ${ (22 * (ui_scale | float)) | round | int }x${ (22 * (ui_scale | float)) | round | int }
+    type: RGB565
+    transparency: alpha_channel
+  # Music chip in the main carousel's status row.
+  - platform: file
+    file: "../../../assets/entity_icons/music-note.svg"
+    id: panel_music_chip_icon
+    resize: ${ (18 * (ui_scale | float)) | round | int }x${ (18 * (ui_scale | float)) | round | int }
     type: RGB565
     transparency: alpha_channel
   # Bell on the main carousel and the idle clock (Material Design Icons).

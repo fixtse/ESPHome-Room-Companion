@@ -280,6 +280,11 @@ inline lv_obj_t *slide_bar = nullptr, *slide_date = nullptr, *slide_weather = nu
                 *slide_media = nullptr;
 inline uint32_t slide_due = 0;
 inline bool slide_loading = false;
+// Consecutive photo failures; the error card waits for a second one so a
+// single slow or transient fetch retries silently instead of flashing it.
+inline uint8_t slide_failures = 0;
+// Carousel slot of the player the music chip opens (-1: nothing playing).
+inline int playing_index = -1;
 // Set by a horizontal swipe on a photo screen: -1 previous photo, +1 next.
 inline int slide_step = 0;
 // Error card when photos cannot be loaded: title, a large state and a reason.

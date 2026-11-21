@@ -71,15 +71,35 @@ inline lv_obj_t *toast_icon = nullptr, *toast_bar = nullptr;
 inline uint32_t detail_id = 0, built_revision = 0;
 inline bool panel_open = false;
 inline bool bell_wanted = false;  // Only the main carousel shows the bell.
-// Running timers (Assist's own and Home Assistant ones, with or without a page)
-// as a chip left of the bell; tapping it opens the timer screen.
-inline lv_obj_t *timer_chip = nullptr, *timer_label = nullptr;
+// Status row on the main carousel: running timers (Assist's own and Home
+// Assistant ones, with or without a page) as a countdown chip, and a music
+// chip while a player plays. Tapping opens the timer screen or the player.
+// With Wi-Fi and Home Assistant online the row takes the place of their status
+// icons (top centre); otherwise it sits left of the bell so the warnings stay.
+inline lv_obj_t *status_row = nullptr, *timer_chip = nullptr, *timer_label = nullptr, *media_chip = nullptr;
 inline std::string timer_text;
-inline std::function<void()> on_timer_chip;
+inline bool media_playing = false, status_centered = true;
+inline const void *music_image = nullptr, *rotate_tile_image = nullptr;  // MDI images, set before init().
+inline std::function<void()> on_timer_chip, on_media_chip;
+inline bool status_row_shown() { return bell_wanted && (!timer_text.empty() || media_playing); }
 inline void update_timer_chip() {
-  if (timer_chip == nullptr) return;
-  if (bell_wanted && !timer_text.empty()) lv_obj_remove_flag(timer_chip, LV_OBJ_FLAG_HIDDEN);
-  else lv_obj_add_flag(timer_chip, LV_OBJ_FLAG_HIDDEN);
+  if (status_row == nullptr) return;
+  auto show = [](lv_obj_t *o, bool on) { if (on) lv_obj_remove_flag(o, LV_OBJ_FLAG_HIDDEN); else lv_obj_add_flag(o, LV_OBJ_FLAG_HIDDEN); };
+  show(timer_chip, !timer_text.empty());
+  show(media_chip, media_playing);
+  show(status_row, status_row_shown());
+  if (status_centered) lv_obj_align(status_row, LV_ALIGN_TOP_MID, 0, 2 + (36 - S(28)) / 2);
+  else lv_obj_align(status_row, LV_ALIGN_TOP_RIGHT, -(4 + 44 + S(4)), 2 + (36 - S(28)) / 2);
+}
+inline void set_status_centered(bool centered) {
+  if (centered == status_centered) return;
+  status_centered = centered;
+  update_timer_chip();
+}
+inline void set_media_chip(bool playing) {
+  if (playing == media_playing) return;
+  media_playing = playing;
+  update_timer_chip();
 }
 inline void set_timer_chip(const std::string &text) {
   if (text == timer_text) return;
@@ -606,7 +626,14 @@ inline void init(int screen_width, int screen_height, Fonts f, Hooks h) {
     lv_obj_center(text(bell, fonts.body, TEXT, "!"));
   }
   lv_obj_add_event_cb(bell, on_bell, LV_EVENT_CLICKED, nullptr);
-  timer_chip = box(top, CARD, S(14));
+  status_row = box(top, CARD, 0);
+  lv_obj_set_style_bg_opa(status_row, LV_OPA_TRANSP, 0);
+  lv_obj_set_size(status_row, LV_SIZE_CONTENT, S(28));
+  lv_obj_set_flex_flow(status_row, LV_FLEX_FLOW_ROW);
+  lv_obj_set_flex_align(status_row, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+  lv_obj_set_style_pad_column(status_row, S(6), 0);
+  lv_obj_remove_flag(status_row, LV_OBJ_FLAG_CLICKABLE);
+  timer_chip = box(status_row, CARD, S(14));
   lv_obj_set_size(timer_chip, LV_SIZE_CONTENT, S(28));
   lv_obj_set_style_pad_hor(timer_chip, S(10), 0);
   lv_obj_add_flag(timer_chip, LV_OBJ_FLAG_CLICKABLE);
@@ -614,12 +641,26 @@ inline void init(int screen_width, int screen_height, Fonts f, Hooks h) {
   timer_label = text(timer_chip, fonts.body, TEXT, "");
   lv_obj_remove_flag(timer_label, LV_OBJ_FLAG_CLICKABLE);
   lv_obj_center(timer_label);
-  // Anchor the content-sized chip by its right edge. align_to() computes a
-  // one-time position while the label is empty, so later countdown text can
-  // grow across the bell and unread badge.
-  lv_obj_align(timer_chip, LV_ALIGN_TOP_RIGHT, -(4 + 44 + S(4)), 2 + (36 - S(28)) / 2);
   lv_obj_add_event_cb(timer_chip, [](lv_event_t *) { if (on_timer_chip) on_timer_chip(); }, LV_EVENT_CLICKED, nullptr);
   lv_obj_add_flag(timer_chip, LV_OBJ_FLAG_HIDDEN);
+  media_chip = box(status_row, CARD, S(14));
+  lv_obj_set_size(media_chip, S(40), S(28));
+  lv_obj_add_flag(media_chip, LV_OBJ_FLAG_CLICKABLE);
+  lv_obj_set_ext_click_area(media_chip, S(6));
+  if (music_image != nullptr) {
+    lv_obj_t *note = lv_image_create(media_chip);
+    lv_image_set_src(note, music_image);
+    lv_obj_set_style_image_recolor(note, lv_color_hex(accent()), 0);
+    lv_obj_set_style_image_recolor_opa(note, LV_OPA_COVER, 0);
+    lv_obj_remove_flag(note, LV_OBJ_FLAG_CLICKABLE);
+    lv_obj_center(note);
+  } else {
+    lv_obj_center(text(media_chip, fonts.body, TEXT, "\xE2\x99\xAA"));
+  }
+  lv_obj_add_event_cb(media_chip, [](lv_event_t *) { if (on_media_chip) on_media_chip(); }, LV_EVENT_CLICKED, nullptr);
+  lv_obj_add_flag(media_chip, LV_OBJ_FLAG_HIDDEN);
+  // The row is content sized; update_timer_chip() re-aligns it as it grows.
+  lv_obj_add_flag(status_row, LV_OBJ_FLAG_HIDDEN);
   badge = box(top, 0xE5484D, S(9));
   lv_obj_set_size(badge, LV_SIZE_CONTENT, S(18));
   lv_obj_set_style_min_width(badge, S(18), 0);
@@ -710,7 +751,14 @@ inline void init(int screen_width, int screen_height, Fonts f, Hooks h) {
     touched();
     open_rotate_dialog();
   },LV_EVENT_CLICKED,nullptr);
-  lv_obj_center(text(rotate_button,fonts.symbol,foreground(),LV_SYMBOL_REFRESH));
+  if(rotate_tile_image!=nullptr){
+    auto *icon=lv_image_create(rotate_button);
+    lv_image_set_src(icon,rotate_tile_image);
+    lv_obj_set_style_image_recolor(icon,lv_color_hex(foreground()),0);
+    lv_obj_set_style_image_recolor_opa(icon,LV_OPA_COVER,0);
+    lv_obj_remove_flag(icon,LV_OBJ_FLAG_CLICKABLE);
+    lv_obj_center(icon);
+  } else lv_obj_center(text(rotate_button,fonts.symbol,foreground(),LV_SYMBOL_REFRESH));
   update_standby_button();
   lv_obj_t *header = box(panel, BG, 0);
   lv_obj_set_style_bg_opa(header, LV_OPA_TRANSP, 0);
@@ -1032,13 +1080,15 @@ inline bool bell_hit(int x, int y) {
 }
 // The timer chip is also an LVGL target. Otherwise its tap first enters the
 // underlying entity through the virtual button before opening the timer overlay.
-inline bool timer_chip_hit(int x, int y) {
-  if (timer_chip == nullptr || !lv_obj_is_visible(timer_chip)) return false;
+inline bool chip_hit(lv_obj_t *chip, int x, int y) {
+  if (chip == nullptr || !lv_obj_is_visible(chip)) return false;
   lv_area_t a;
-  lv_obj_get_coords(timer_chip, &a);
+  lv_obj_get_coords(chip, &a);
   const int pad = S(6);
   return x >= a.x1 - pad && x <= a.x2 + pad && y >= a.y1 - pad && y <= a.y2 + pad;
 }
+// Timer and music chips: their taps go to LVGL, not the gesture router.
+inline bool timer_chip_hit(int x, int y) { return chip_hit(timer_chip, x, y) || chip_hit(media_chip, x, y); }
 // Called by the panel's UI tick: the bell belongs to the main carousel only.
 inline void set_bell_visible(bool visible) {
   if (bell == nullptr || visible == bell_wanted) return;
