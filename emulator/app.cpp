@@ -14,6 +14,7 @@ using namespace esphome;
 #include "onx_notification_ui.h"
 #include "onx_icon_state.h"
 #include "onx_preview.h"
+#include "onx_sensor_graph.h"
 
 #include <ArduinoJson.h>
 #include <cstdio>
@@ -444,6 +445,22 @@ void setup() {
                              font("fonts_MiSans_Medium_32"), symbol_font(), font("fonts_MiSans_Medium_64"),
                              font("fonts_MiSans_Medium_12"), font("fonts_MiSans_Bold_14")};
   onx_panel_detail::light_state = light_of;
+  // As panel.yaml: sensor graphs drawn by onx_sensor_graph (detail screens
+  // and the graph frames on pages).
+  onx_panel_pages::draw_graph = [](lv_obj_t *parent, const std::string &entity, int y) {
+    onx_sensor_graph::panel_owned = true;
+    const bool framed = entity.rfind("sensor.", 0) == 0 && parent != onx_panel_detail::root;
+    onx_sensor_graph::render(parent, entity, uint32_t(std::time(nullptr)), onx_display_settings::current.media_color,
+                             font("fonts_MiSans_Medium_12"),
+                             framed ? lv_obj_get_style_width(parent, LV_PART_MAIN) - onx_panel_detail::P(24) : 0,
+                             framed ? lv_obj_get_style_height(parent, LV_PART_MAIN) - onx_panel_detail::P(40) : 0);
+    if (onx_sensor_graph::canvas) {
+      lv_obj_remove_flag(onx_sensor_graph::canvas, LV_OBJ_FLAG_HIDDEN);
+      if (lv_obj_get_parent(onx_sensor_graph::canvas) != parent) lv_obj_set_parent(onx_sensor_graph::canvas, parent);
+      onx_render::align(onx_sensor_graph::canvas, LV_ALIGN_TOP_MID, 0, y);
+    }
+  };
+  onx_panel_detail::draw_graph = onx_panel_pages::draw_graph;
   // "artwork": "demo" gives a player a generated cover (no downloads here).
   onx_panel_detail::artwork_source = [](const std::string &entity) -> const void * {
     return demo_artwork.count(entity) ? &demo_cover() : nullptr;

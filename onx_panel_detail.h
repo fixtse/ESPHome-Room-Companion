@@ -3273,39 +3273,6 @@ inline void card_generic(lv_obj_t *c, const Tile &t, const EntityDetailState *d)
       return;
     }
   }
-  // Sensors with a graph: the reading beside the name, the graph below and
-  // the range, min and max under the graph.
-  if (available && domain == "sensor" && std::isfinite(num(d->state))) {
-    auto history = card_history(e);
-    // Short cards: one header line without the chip, and no stats line.
-    const bool slim = r.h < P(170);
-    const int head = slim ? line(fonts.title) : cs;
-    const int gy = pad + head + (slim ? P(6) : P(10)), sy = r.h - pad - line(fonts.small), gb = slim ? r.h - pad : sy - P(6);
-    if (history.size() >= 2 && gb - gy >= P(30)) {
-      const std::string v = onx_detail_view::compact(d->state), u = d->unit;
-      const int uw = u.empty() ? 0 : text_width(u, fonts.small) + P(4);
-      const int nx = slim ? pad : tx;
-      const lv_font_t *vf = slim ? fonts.title : fit(v, (r.w - tx - pad) / 2, {fonts.big, fonts.title, fonts.body});
-      const int vw = text_width(v, vf) + 1, vx = r.w - pad - uw - vw, vy = pad + (head - line(vf)) / 2;
-      if (slim) text(c, t.name, fonts.body, SOFT_TEXT(), nx, pad + (head - line(fonts.body)) / 2, vx - P(10) - nx);
-      else { chip_icon(c, e, pad, pad, cs, t.on); titled(c, t, tx, pad + P(2), vx - P(10) - tx); }
-      text(c, v, vf, TEXT(), vx, vy, vw);
-      if (uw) text(c, u, fonts.small, MUTED(), vx + vw + P(4), vy + line(vf) - line(fonts.small) - P(3), uw);
-      const float delta = history.back().value - history.front().value;
-      const Chart *ch = chart(c, pad, gy, r.w - 2 * pad, gb - gy, e, std::move(history), accent(), true);
-      if (ch && !slim) {
-        const int i = onx_sensor_view::index(e);
-        std::string stats = onx_sensor_view::states[i].range_label() + "  ·  min " + fmt(ch->lo, 1) + "  ·  max " + fmt(ch->hi, 1);
-        text(c, stats, fonts.small, MUTED(), pad, sy, r.w - 2 * pad);
-        const std::string change = std::string(delta > 0 ? "+" : "-") + fmt(std::fabs(delta), 1);
-        // The change only when it fits beside the stats.
-        if (std::fabs(delta) >= 0.05f && text_width(stats, fonts.small) + text_width(change, fonts.small) + P(12) <= r.w - 2 * pad)
-          text(c, std::string(delta > 0 ? "+" : "-") + fmt(std::fabs(delta), 1), fonts.small, accent(), pad, sy, r.w - 2 * pad,
-               LV_TEXT_ALIGN_RIGHT);
-      }
-      return;
-    }
-  }
   // Percentages in a short card: a ring with the value, the name beside it and
   // a sparkline below the name.
   const float pv = d != nullptr ? num(d->state) : NAN;
@@ -4003,6 +3970,19 @@ inline std::vector<std::string> built_tile_sigs;
 inline std::string main_page_key;
 inline void build_main_cards(const std::vector<Tile> &tiles) {
   card_patches.clear();
+  // One cover downloads at a time: give it to the first media card that is
+  // playing (or paused), else the first media card on the page.
+  if (onx_media::main_entity.empty()) {
+    std::string first;
+    for (const auto &t : tiles) {
+      if (t.chip || t.compact || t.key || t.artwork || !has_prefix(t.entity, "media_player.")) continue;
+      const auto *d = custom_logic_entity_sub::entity_detail(t.entity);
+      if (d == nullptr || !d->received || !d->available) continue;
+      if (first.empty()) first = t.entity;
+      if (onx_media::has_playback(d->state)) { onx_media::main_entity = t.entity; break; }
+    }
+    if (onx_media::main_entity.empty()) onx_media::main_entity = first;
+  }
   for (const auto &t : tiles) {
     card_artwork = t.artwork;
     card_on = t.on;

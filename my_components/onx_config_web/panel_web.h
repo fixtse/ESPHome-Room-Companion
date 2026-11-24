@@ -1378,19 +1378,6 @@ static const char PANEL_JS[] = R"ONXPANEL(
      circle(r.x+pad+bs/2,r.y+bcy,bs,INSET,'minus',TEXT);circle(r.x+r.w-pad-bs/2,r.y+bcy,bs,INSET,'plus',TEXT);return;
     }
    }
-   // As card_generic: graph sensors show the reading beside the name.
-   if(available&&domain==='sensor'&&isFinite(pv)){
-    const slim=r.h<P(170),head=slim?F.title.lh:cs,gy=pad+head+(slim?P(6):P(10)),sy=r.h-pad-F.small.lh,gb=slim?r.h-pad:sy-P(6);
-    if(hst.points.length>=2&&gb-gy>=P(30)){
-     const v=compact(d.state),u=d.unit||'',uw=u?width(u,F.small)+P(4):0,nx=slim?pad:tx,vf=slim?F.title:fit(v,Math.trunc((r.w-tx-pad)/2),[F.big,F.title,F.body]),vw=width(v,vf)+1,vx=r.w-pad-uw-vw,vy=pad+Math.trunc((head-vf.lh)/2);
-     if(slim)text(t.name,F.body,SOFT,r.x+nx,r.y+pad+Math.trunc((head-F.body.lh)/2),vx-P(10)-nx);else{chipIcon(e,r.x+pad,r.y+pad,cs,t.on);titled(t,r.x+tx,r.y+pad+P(2),vx-P(10)-tx)}
-     text(v,vf,TEXT,r.x+vx,r.y+vy,vw);if(uw)text(u,F.small,MUTED,r.x+vx+vw+P(4),r.y+vy+vf.lh-F.small.lh-P(3),uw);
-     const delta=hst.points.at(-1).value-hst.points[0].value,ch=chart(hst.points,hst.now,hst.range,r.x+pad,r.y+gy,r.w-2*pad,gb-gy,ACCENT,true);
-     if(ch&&!slim){const stats=rangeLabel(hst.range)+'  ·  min '+fmt(ch.lo,1)+'  ·  max '+fmt(ch.hi,1),change=(delta>0?'+':'-')+fmt(Math.abs(delta),1);text(stats,F.small,MUTED,r.x+pad,r.y+sy,r.w-2*pad);
-      if(Math.abs(delta)>=0.05&&width(stats,F.small)+width(change,F.small)+P(12)<=r.w-2*pad)text(change,F.small,ACCENT,r.x+pad,r.y+sy,r.w-2*pad,'right')}
-     return;
-    }
-   }
    if(available&&!switchable&&d.unit==='%'&&isFinite(pv)&&pv>=0&&pv<=100&&r.h<P(300)&&r.h>=P(110)){
     const tw=r.w-2*pad,nl=linesFor(t.name,F.title,tw,Math.min(W,H)<320?1:2);text(t.name,F.title,TEXT,r.x+pad,r.y+pad,tw,'left',nl);
     const top=pad+nl*F.title.lh+P(10),avail=r.h-pad-top,size=Math.min(avail,Math.trunc(r.w*34/100)),aw=Math.max(P(8),Math.trunc(size/10)),cx=r.x+pad+size/2,cy=r.y+top+avail/2;
