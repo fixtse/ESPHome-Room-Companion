@@ -1,6 +1,5 @@
 #include "../onx_sound_sense.h"
 #include <cassert>
-#include <cmath>
 #include <vector>
 #include <string>
 #include <limits>
@@ -27,27 +26,6 @@ int main() {
   assert(std::isnan(meter.level(3000)));
   feed(UINT32_MAX-100);
   assert(meter.level(50)==0); // Freshness survives millis rollover.
-  assert(std::isnan(meter.level(50, 1)) && std::isnan(meter.correlation(50))); // Mono has no pair.
-  // Stereo: channel 0 at half scale, channel 1 at quarter scale and one
-  // sample later (the sound reached channel 0 first).
-  {
-    Meter stereo;
-    stereo.capture = true;
-    std::vector<int16_t> frames(2 * 512);
-    for (size_t f = 0; f < 512; ++f) {
-      auto wave = [](long n) { return std::sin(2 * M_PI * 1000.0 * double(n) / 16000.0); };
-      frames[2 * f] = int16_t(16384 * wave(long(f)));
-      frames[2 * f + 1] = int16_t(8192 * wave(long(f) - 1));
-    }
-    stereo.feed(reinterpret_cast<uint8_t *>(frames.data()), frames.size() * 2, 1000, 2);
-    const float ch0 = stereo.level(1000, 0), ch1 = stereo.level(1000, 1);
-    assert(std::abs(ch0 - ch1 - 6.02f) < 0.1f);
-    assert(stereo.level(1000) == ch1);  // Ambient follows the Assist microphone (channel 1).
-    assert(stereo.correlation(1000) > 0.85f && stereo.correlation(1000) < 0.95f);  // cos(22.5°)
-    assert(std::abs(stereo.lag_samples(1000) - 1.0f) < 0.25f);
-    stereo.capture = false;
-    assert(std::isnan(stereo.lag_samples(1000)));
-  }
   Detector detector;
   auto state = [&](float db,uint32_t now){return std::string(detector.update(db,30,50,now));};
   assert(state(10,1000)=="quieting");

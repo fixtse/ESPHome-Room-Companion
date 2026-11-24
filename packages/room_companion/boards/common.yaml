@@ -107,11 +107,9 @@ microphone:
     pdm: true
     sample_rate: 16000
     bits_per_sample: 32bit
-    # Both microphones of the dual-mic board (4 cm apart) share the PDM line:
-    # channel 0 is the board's right microphone, channel 1 its left one
-    # (checked on the panel). Assist and the wake word use channel 1, as the
-    # mono `channel: right` build did; SoundSense reports both.
-    channel: stereo
+    # The Dual MIC board has two matched mics on this line; one is enough
+    # (see docs/room-companion/hardware-and-assist.md, "Dual microphone board").
+    channel: right
     correct_dc_offset: true
 
 speaker:
