@@ -95,10 +95,12 @@ media_player:
       num_channels: 1
     on_announcement:
       - script.stop: assist_finished
+      - script.stop: assist_unmute_media_deferred
       - lvgl.label.update:
           id: assist_status
           text: Speaking...
     on_idle:
+      - script.execute: assist_unmute_media_deferred
       - script.execute: assist_finished
 
 voice_assistant:
@@ -120,6 +122,8 @@ voice_assistant:
     - globals.set:
         id: assist_ready
         value: 'false'
+    - script.stop: assist_unmute_media_deferred
+    - lambda: 'onx_media::assist_muted.clear();'
     - voice_assistant.stop:
     - script.execute:
         id: assist_show
@@ -127,6 +131,8 @@ voice_assistant:
     - script.execute: assist_finished
   on_listening:
     - script.stop: assist_finished
+    - script.stop: assist_unmute_media_deferred
+    - script.execute: assist_mute_media
     - script.execute:
         id: assist_show
         status: Listening...
@@ -153,6 +159,7 @@ voice_assistant:
     - script.execute:
         id: assist_pulse
         active: false
+    - script.execute: assist_unmute_media_deferred
     - script.execute: assist_finished
   on_error:
     - script.execute:
@@ -161,6 +168,7 @@ voice_assistant:
     - lvgl.label.update:
         id: assist_status
         text: !lambda 'return onx_notification::clipped(message, 128);'
+    - script.execute: assist_unmute_media_deferred
     - script.execute: assist_finished
   # Local voice timers (also tells Home Assistant this satellite supports them).
   on_timer_started:
@@ -493,6 +501,8 @@ script:
   # Stop button (and the left-edge back swipe): stop and close the overlay.
   - id: assist_stop
     then:
+      - script.stop: assist_unmute_media_deferred
+      - script.execute: assist_unmute_media
       - lambda: |-
           id(ui_presenter)->notify_user_activity();
           id(assist).request_stop();
@@ -501,6 +511,59 @@ script:
           id(assist_finished).stop();
           lv_obj_add_flag(id(assist_overlay), LV_OBJ_FLAG_HIDDEN);
           id(room_panel)->set_overlay(esphome::room_companion::OVERLAY_ASSIST, false);
+
+  - id: assist_set_media_mute
+    mode: queued
+    max_runs: 16
+    parameters:
+      entity: string
+      muted: bool
+    then:
+      - homeassistant.action:
+          action: media_player.volume_mute
+          data:
+            entity_id: !lambda 'return entity;'
+            is_volume_muted: !lambda 'return muted ? std::string("true") : std::string("false");'
+
+  # Mutes registered playing media players while Assist is active (web setting).
+  - id: assist_mute_media
+    then:
+      - lambda: |-
+          if (!onx_display_settings::assist_mute_media.enabled || !id(normal_ha_api_connected)) return;
+          auto &muted = onx_media::assist_muted;
+          for (int i = 0; i < id(normal_device_count) && i < (int)custom_logic::CONFIGURABLE_DEVICE_SLOT_COUNT; ++i) {
+            const auto entity = id(ui_presenter)->get_normal_device_entity_id(i);
+            if (entity.rfind("media_player.", 0) != 0) continue;
+            const auto *d = custom_logic_entity_sub::entity_detail(entity);
+            if (!d || !d->received || !d->available || d->state != "playing") continue;
+            if (d->muted == "True" || d->muted == "true") continue;
+            if (d->features != 0 && !(d->features & 8U)) continue;
+            if (std::find(muted.begin(), muted.end(), entity) != muted.end()) continue;
+            muted.push_back(entity);
+            id(assist_set_media_mute).execute(entity, true);
+          }
+
+  - id: assist_unmute_media
+    then:
+      - lambda: |-
+          if (onx_media::assist_muted.empty()) return;
+          auto players = std::move(onx_media::assist_muted);
+          onx_media::assist_muted.clear();
+          if (!id(normal_ha_api_connected)) return;
+          for (const auto &entity : players) id(assist_set_media_mute).execute(entity, false);
+
+  - id: assist_unmute_media_deferred
+    mode: restart
+    then:
+      - delay: 400ms
+      - if:
+          condition:
+            not:
+              or:
+                - voice_assistant.is_running:
+                - media_player.is_announcing: panel_media_player
+          then:
+            - script.execute: assist_unmute_media
 
   # The mute button is highlighted while the microphone is muted.
   - id: assist_sync_mute

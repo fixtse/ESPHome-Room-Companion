@@ -39,6 +39,7 @@ template<typename F> inline std::string build_json(F &&fill) {
 
 inline esphome::ESPPreferenceObject behavior_preference;
 inline esphome::ESPPreferenceObject hold_cue_preference;
+inline esphome::ESPPreferenceObject assist_mute_media_preference;
 inline esphome::ESPPreferenceObject display_preference, background_preference;
 inline esphome::ESPPreferenceObject orientation_preference;
 inline esphome::ESPPreferenceObject idle_preference;
@@ -82,6 +83,10 @@ inline void load_display_settings() {
   onx_display_settings::HoldCue hold_saved{};
   if(hold_cue_preference.load(&hold_saved) && hold_saved.magic==0x4F4E5848 && hold_saved.show<=1)
     onx_display_settings::hold_cue=hold_saved;
+  assist_mute_media_preference=esphome::global_preferences->make_preference<onx_display_settings::AssistMuteMedia>(esphome::fnv1_hash("onx.assist_mute_media.v1"));
+  onx_display_settings::AssistMuteMedia assist_mute_saved{};
+  if(assist_mute_media_preference.load(&assist_mute_saved) && assist_mute_saved.magic==0x4F4E5841 && assist_mute_saved.enabled<=1)
+    onx_display_settings::assist_mute_media=assist_mute_saved;
   background_preference=esphome::global_preferences->make_preference<onx_display_settings::BackgroundSettings>(esphome::fnv1_hash("onx.background.v1"));
   onx_display_settings::BackgroundSettings background_saved{};
   if(background_preference.load(&background_saved) && background_saved.magic==0x4F4E5842 && background_saved.color<=0xFFFFFF)
@@ -145,6 +150,16 @@ inline bool save_hold_cue(const std::string &value) {
   if(next.show==onx_display_settings::hold_cue.show)return true;
   if(!hold_cue_preference.save(&next) || !esphome::global_preferences->sync())return false;
   onx_display_settings::hold_cue=next;return true;
+}
+
+inline bool save_assist_mute_media(const std::string &value) {
+  if(value.empty())return true;
+  if(value!="0" && value!="1")return false;
+  load_display_settings();
+  auto next=onx_display_settings::assist_mute_media;next.enabled=value=="1";
+  if(next.enabled==onx_display_settings::assist_mute_media.enabled)return true;
+  if(!assist_mute_media_preference.save(&next) || !esphome::global_preferences->sync())return false;
+  onx_display_settings::assist_mute_media=next;return true;
 }
 
 // Keep subscriptions and compact runtime indices intact; hide only carousel entries.

@@ -21,6 +21,9 @@ inline BehaviorSettings behavior;
 // Progress cue while holding the button on a detail page.
 struct HoldCue {uint32_t magic{0x4F4E5848};uint8_t show{1};};
 inline HoldCue hold_cue;
+// Mute registered playing media players while Assist is active.
+struct AssistMuteMedia {uint32_t magic{0x4F4E5841};uint8_t enabled{0};};
+inline AssistMuteMedia assist_mute_media;
 struct MediaStyle {uint32_t magic{0x4F4E584D};uint8_t material{0};};
 inline MediaStyle media_style;
 struct IdleSettings {uint32_t magic{0x4F4E5849};uint8_t media{0};};

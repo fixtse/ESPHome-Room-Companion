@@ -2,12 +2,15 @@
 #include <cstdint>
 #include "onx_playlist.h"
 #include <string>
+#include <vector>
 #include <functional>
 #include <algorithm>
 #include <cmath>
 namespace onx_media {
 struct IdlePopup {bool visible{false};int previous_index{0};};
 inline IdlePopup idle_popup;
+// Registered playing media players muted by Assist (unmuted when Assist ends).
+inline std::vector<std::string> assist_muted;
 // Artwork owner on the visible rectangular main page.
 inline std::string main_entity;
 inline std::function<void()> detach_main_artwork;

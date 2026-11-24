@@ -191,6 +191,7 @@ onx_config_web:
         root["clock_seconds_ring"] = onx_display_settings::behavior.clock_seconds?"1":"0";
         onx_entity_config::load_display_settings();
         root["hold_cue"] = onx_display_settings::hold_cue.show?"1":"0";
+        root["assist_mute_media"] = onx_display_settings::assist_mute_media.enabled?"1":"0";
         onx_clock_sensors::load();
         root["clock_temperature"] = std::string(onx_clock_sensors::config.temperature);
         root["clock_humidity"] = std::string(onx_clock_sensors::config.humidity);
@@ -214,6 +215,7 @@ onx_config_web:
       if ((!query.orientation.empty() && !onx_display_settings::parse_orientation(query.orientation,orientation)) ||
           (!query.clock_seconds_ring.empty() && query.clock_seconds_ring!="0" && query.clock_seconds_ring!="1") ||
           (!query.hold_cue.empty() && query.hold_cue!="0" && query.hold_cue!="1") ||
+          (!query.assist_mute_media.empty() && query.assist_mute_media!="0" && query.assist_mute_media!="1") ||
           (query.clock_temperature!="none" && !onx_clock_sensors::valid(query.clock_temperature)) ||
           (query.clock_humidity!="none" && !onx_clock_sensors::valid(query.clock_humidity)) ||
           !onx_clock_sensors::valid_layout(query.clock_layout) ||
@@ -248,6 +250,8 @@ onx_config_web:
         return onx_entity_config::error("Could not save the clock screen content; retry");
       if (!onx_entity_config::save_hold_cue(query.hold_cue))
         return onx_entity_config::error("Could not persist appearance settings; retry");
+      if (!onx_entity_config::save_assist_mute_media(query.assist_mute_media))
+        return onx_entity_config::error("Could not persist Assist settings; retry");
       // Panels apply a new orientation at boot (panel.yaml restarts after a change).
       auto standby_call = id(standby_timeout_seconds).make_call();
       standby_call.set_value(standby); standby_call.perform();
