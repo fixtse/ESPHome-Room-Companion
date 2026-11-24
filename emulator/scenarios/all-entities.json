@@ -167,6 +167,18 @@
    "features": 16829
   },
   {
+   "entity_id": "media_player.living_room_tv",
+   "name": "Living room TV",
+   "state": "playing",
+   "media_title": "How the panel draws a 16:9 video thumbnail",
+   "media_artist": "YouTube",
+   "volume": "0.3",
+   "artwork": "wide",
+   "media_duration": 612,
+   "media_position": 140,
+   "features": 16829
+  },
+  {
    "entity_id": "media_player.bedroom",
    "name": "Bedroom",
    "state": "idle",

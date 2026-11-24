@@ -18,7 +18,7 @@ const raw=(file,tag)=>fs.readFileSync('my_components/onx_config_web/'+file,'utf8
  const responses={
   ha_discover:{status:"ready",instances:[{name:"Home",url:"http://192.168.10.2:8123"}]},
   state:{wifi_connected:true,ha_connected:true,count:3,capacity:41,firmware:'test',uptime_ms:60000,ha_url:'http://homeassistant.local:8123',weather:'weather.home',slots},
-  settings_state:{brightness:'73',standby:'30',date_format:'dd-mm',show_ampm:'1',hour_format:'24',media_color:'#F97316',orientation:'0',media_view:'material',clock_seconds_ring:'0',hold_cue:'1',clock_temperature:'',clock_humidity:'',notifications_cover_timers:'1',idle_view:'clock',standby_scope:'main',sensitivity:'2',sleep_enabled:'0',sleep_start:'00:00',sleep_end:'00:00',sleep_timeout:'60'},
+  settings_state:{brightness:'73',standby:'30',date_format:'dd-mm',show_ampm:'1',hour_format:'24',media_color:'#F97316',orientation:'0',clock_seconds_ring:'0',hold_cue:'1',clock_temperature:'',clock_humidity:'',notifications_cover_timers:'1',idle_view:'clock',standby_scope:'main',sensitivity:'2',sleep_enabled:'0',sleep_start:'00:00',sleep_end:'00:00',sleep_timeout:'60'},
   presets:{presets:[],active:'',applying:'',capacity:8,remaining:8,max_name:32},
   preview:{panel_width:320,panel_height:480,slots:[{entity:'weather.home',available:true,layout:'value',lines:Array.from({length:5},()=>({text:''})),panel:{state:'sunny',available:true,temperature:20,humidity:50,forecast:[]}}]},
   panel_state:{status:'ready',scale:1},panel_pages:{pages:[{name:'',icon:'',layout:'single',entities:['weather.home']},{name:'Bedroom',icon:'mdi:bed',layout:'control_sensors',entities:['media_player.bedroom','sensor.codex_remaining','','']}]},dashboard:{url:'',server:''}};

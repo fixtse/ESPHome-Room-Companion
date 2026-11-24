@@ -958,7 +958,9 @@ static const char PANEL_JS[] = R"ONXPANEL(
  }
  // The panel's views plus drafts for the listed entities it has none for.
  const withDrafts=(views,ids)=>{const out=[...views];for(const e of new Set(ids))if(e&&!out.some(v=>v.entity===e)){const v=draftView(e);if(v)out.push(v)}return out};
+ const artSizes=new Map();
  globalThis.ONX_PANEL_PREVIEW=(svg,slot,view,views,screen,settings)=>{
+  const redraw=()=>{if(svg.isConnected)globalThis.ONX_PANEL_PREVIEW(svg,slot,view,views,screen,settings)};
   views=withDrafts(views||[],[slot.entity,...(slot.entity?pageFor(slot.entity).ids:[])]);if(!view&&slot.entity)view=views.find(v=>v.entity===slot.entity);
   if(settings&&settings.orientation!==lastSettings.orientation){lastSettings=settings;renderPageEditor()}else lastSettings=settings||{};
   // A port of onx_panel_detail.h: the same geometry, fonts, colours and rules,
@@ -1091,10 +1093,20 @@ static const char PANEL_JS[] = R"ONXPANEL(
    let d='';points.forEach((p,i)=>{const px=x+right-(now-p.t)*(right-left)/range,py=y+(high>low?bottom-(p.value-low)*bottom/(high-low):bottom/2);d+=(i&&p.t-points[i-1].t<=Math.max(1200,range/24)?'L':'M')+px.toFixed(1)+' '+py.toFixed(1)+' '});
    add(node('path',{d,fill:'none',stroke:ACCENT,'stroke-width':2}));
   };
-  const artwork=(url,x,y,size,r)=>{
-   const id='art-'+Math.random().toString(36).slice(2),clip=node('clipPath',{id});clip.append(node('rect',{x,y,width:size,height:size,rx:r}));add(clip);
-   box(x,y,size,size,CONTROL,r);
-   try{const u=new URL(url);if(['http:','https:'].includes(u.protocol)){add(node('image',{href:u.href,x,y,width:size,height:size,preserveAspectRatio:'xMidYMid slice','clip-path':`url(#${id})`,'data-panel-artwork':''}));return true}}catch{}
+  // As art_box: square covers keep the square; other shapes (video thumbnails)
+  // take their own aspect at the largest size within maxW x maxH, shown whole
+  // with rounded corners. The size is known once the browser has loaded it.
+  const coverUrl=url=>{try{const u=new URL(url);return ['http:','https:'].includes(u.protocol)?u.href:''}catch{return ''}};
+  const artBox=(url,square,maxW,maxH)=>{
+   const href=coverUrl(url),size=href&&artSizes.get(href);
+   if(href&&!artSizes.has(href)){artSizes.set(href,null);const img=new Image();img.onload=()=>{artSizes.set(href,[img.naturalWidth,img.naturalHeight]);redraw()};img.src=href}
+   if(!size||!size[0]||!size[1]||Math.abs(size[0]-size[1])*20<=Math.max(...size))return {w:square,h:square,shaped:false};
+   const [iw,ih]=size;return maxW*ih<=maxH*iw?{w:maxW,h:Math.trunc(maxW*ih/iw),shaped:true}:{w:Math.trunc(maxH*iw/ih),h:maxH,shaped:true};
+  };
+  const artwork=(url,x,y,b,r,cover=true)=>{
+   const w=b.w,h=b.h,id='art-'+Math.random().toString(36).slice(2),clip=node('clipPath',{id});clip.append(node('rect',{x,y,width:w,height:h,rx:r}));add(clip);
+   box(x,y,w,h,CONTROL,r);
+   const href=coverUrl(url);if(href){add(node('image',{href,x,y,width:w,height:h,preserveAspectRatio:b.shaped?'none':cover?'xMidYMid slice':'xMidYMid meet','clip-path':`url(#${id})`,'data-panel-artwork':''}));return true}
    return false;
   };
   const transport=(cx,cy,side,main,gap,playing)=>{circle(cx-main/2-gap-side/2,cy,side,INSET,'prev',TEXT,{'data-media-button':'previous'});circle(cx,cy,main,ACCENT,playing?'pause':'play',TEXT,{'data-media-button':'play'});circle(cx+main/2+gap+side/2,cy,side,INSET,'next',TEXT,{'data-media-button':'next'})};
@@ -1370,8 +1382,11 @@ static const char PANEL_JS[] = R"ONXPANEL(
     const ch=Math.min(lh,hgt(cf)),cy=Math.trunc((lh-ch)/2),top=ry+lp,n=Math.trunc(((lh-ch)/2-gap-2*py)/F.small.lh);chip(cur,cf,TEXT,top+cy,24);
     const ph=rows(ly[0],F.small,n);if(ph)chip(ly[0],F.small,MUTED,top+cy-gap-(ph*F.small.lh+2*py),n);
     if(rows(ly[2],F.small,n))chip(ly[2],F.small,SOFT,top+cy+ch+gap,n);return}
-   const art=wide?sideArt:Math.max(P(48),Math.min(P(220),w-2*reserve,room)),ax=wide?pad:(W-art)/2,ay=wide?(H-art)/2:pad+Math.max(0,(room-art)/2);
-   if(!artwork(v?.artwork,ax,ay,art,P(14)))icon(e,ax+art/2,ay+art/2,Math.trunc(art*40/100),playing?ACCENT:SOFT);
+   // As build_media: square covers centred; other shapes across the whole width, below the header buttons.
+   const square=wide?sideArt:Math.max(P(48),Math.min(P(220),w-2*reserve,room)),maxH=wide?H-2*pad:Math.max(P(48),room-reserve);
+   const b=artBox(v?.artwork,square,wide?sideArt:w,maxH),artTop=wide||!b.shaped?pad:pad+reserve,artRoom=wide||!b.shaped?room:maxH;
+   const ax=wide?pad+Math.trunc((sideArt-b.w)/2):Math.trunc((W-b.w)/2),ay=wide?Math.trunc((H-b.h)/2):artTop+Math.max(0,Math.trunc((artRoom-b.h)/2));
+   if(!artwork(v?.artwork,ax,ay,b,P(14)))icon(e,ax+b.w/2,ay+b.h/2,Math.trunc(b.w*40/100),playing?ACCENT:SOFT);
   };
   const renderDetail=()=>{
    const e=slot.entity,v=view,d={...(v?.panel||{})},title=slot.name||v?.lines?.[4]?.text||e,l=layout(),quick=(d.actions||[]).length;
@@ -1448,9 +1463,11 @@ static const char PANEL_JS[] = R"ONXPANEL(
   };
   const cardMedia=(t,d,v)=>{
    const r=t.r,pad=P(14),bh=P(48),playing=v?.playing||d.state==='playing',by=r.h-pad-bh,bar=P(6),progH=bar+P(4)+F.small.lh,progY=by-P(10)-progH,metaH=F.small.lh+F.title.lh+F.small.lh;
-   const tall=progY-pad-metaH-P(8)>=P(140),art=tall?Math.min(r.w-2*pad,progY-pad-metaH-P(18)):Math.max(P(48),Math.min(P(104),progY-pad-P(10),Math.trunc(r.w*36/100))),ax=tall?(r.w-art)/2:pad;
-   if(currentArt||!artwork(t.artwork?'':v?.artwork,r.x+ax,r.y+pad,art,P(10))){if(!currentArt)box(r.x+ax,r.y+pad,art,art,INSET,P(10));icon(t.entity,r.x+ax+art/2,r.y+pad+art/2,Math.min(Math.trunc(art*46/100),P(96)),playing?ACCENT:SOFT)}
-   const tx=tall?pad:pad+art+P(12),tw=r.w-tx-pad,track=d.title&&!['off','idle'].includes(d.state);let y=tall?pad+art+P(8):pad+P(2);
+   const tall=progY-pad-metaH-P(8)>=P(140),side=tall?Math.min(r.w-2*pad,progY-pad-metaH-P(18)):Math.max(P(48),Math.min(P(104),progY-pad-P(10),Math.trunc(r.w*36/100)));
+   // As card_media: a wide cover uses the card's width (tall) or up to half of it (short).
+   const cover=currentArt||t.artwork?'':v?.artwork,b=artBox(cover,side,tall?r.w-2*pad:Math.max(side,Math.trunc(r.w/2)),tall?progY-pad-metaH-P(18):side),art=b.h,ax=tall?Math.trunc((r.w-b.w)/2):pad;
+   if(currentArt||!artwork(cover,r.x+ax,r.y+pad,b,P(10),false)){if(!currentArt)box(r.x+ax,r.y+pad,b.w,art,INSET,P(10));icon(t.entity,r.x+ax+b.w/2,r.y+pad+art/2,Math.min(Math.trunc(art*46/100),P(96)),playing?ACCENT:SOFT)}
+   const tx=tall?pad:pad+b.w+P(12),tw=r.w-tx-pad,track=d.title&&!['off','idle'].includes(d.state);let y=tall?pad+art+P(8):pad+P(2);
    text(t.name,F.small,MUTED,r.x+tx,r.y+y,tw);y+=F.small.lh;const name=track?d.title:label(d.state||'idle'),f=fit(name,tw,[F.title,F.body]);text(name,f,TEXT,r.x+tx,r.y+y,tw);y+=f.lh;
    if(track&&d.artist)text(d.artist,F.small,SOFT,r.x+tx,r.y+y,tw);
    if(!tall&&t.ring>=0&&pad+art-P(4)>y+F.small.lh)level(r.x+tx,r.y+pad+art-P(4),tw,P(4),t.ring/1000);

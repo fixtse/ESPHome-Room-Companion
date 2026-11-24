@@ -169,7 +169,6 @@ void ConfigWeb::handleRequest(AsyncWebServerRequest *request) {
   query.notifications_cover_timers = request->arg("notifications_cover_timers");
   query.gestures = request->arg("gestures");
   query.orientation = request->arg("orientation");
-  query.media_view = request->arg("media_view");
   query.idle_view = request->arg("idle_view");
   query.timer_hidden = request->arg("timer_hidden");
   query.playlists = request->arg("playlists");
@@ -191,7 +190,7 @@ void ConfigWeb::handleRequest(AsyncWebServerRequest *request) {
   query.background_color = request->arg("background_color");
   query.media_color = request->arg("media_color"); query.standby_scope = request->arg("standby_scope");
   unsigned slot = 0, offset = 0;
-  if (query.cover_presets_enabled.size()>1 || query.cover_presets.size()>31 || query.background_color.size()>7 || query.data.size()>16384 || query.total.size()>6 || query.clock_seconds_ring.size()>1 || query.hold_cue.size()>1 || query.assist_mute_media.size()>1 || query.clock_temperature.size()>128 || query.clock_humidity.size()>128 || query.clock_layout.size()>2 || query.notifications_cover_timers.size()>1 || query.orientation.size()>3 || query.media_view.size()>8 || query.gestures.size()>1600 || query.idle_view.size()>5 || query.timer_hidden.size()>1 || query.playlists.size()>2048 || query.secondary.size()>128 || query.secondary_text.size()>160 || query.sensor_graph.size()>1 || query.show_ampm.size()>1 || query.date_format.size() > 11 || query.hour_format.size() > 2 || query.media_color.size() > 7 || query.standby_scope.size() > 5 || query.icon.size() > 80 || query.icon_override.size() > 1 || query.op.size() > 16 || query.entity.size() > 128 || query.action.size() > 128 ||
+  if (query.cover_presets_enabled.size()>1 || query.cover_presets.size()>31 || query.background_color.size()>7 || query.data.size()>16384 || query.total.size()>6 || query.clock_seconds_ring.size()>1 || query.hold_cue.size()>1 || query.assist_mute_media.size()>1 || query.clock_temperature.size()>128 || query.clock_humidity.size()>128 || query.clock_layout.size()>2 || query.notifications_cover_timers.size()>1 || query.orientation.size()>3 || query.gestures.size()>1600 || query.idle_view.size()>5 || query.timer_hidden.size()>1 || query.playlists.size()>2048 || query.secondary.size()>128 || query.secondary_text.size()>160 || query.sensor_graph.size()>1 || query.show_ampm.size()>1 || query.date_format.size() > 11 || query.hour_format.size() > 2 || query.media_color.size() > 7 || query.standby_scope.size() > 5 || query.icon.size() > 80 || query.icon_override.size() > 1 || query.op.size() > 16 || query.entity.size() > 128 || query.action.size() > 128 ||
       query.search.size() > 128 || query.domain.size() > 32 ||
       query.brightness.size() > 3 || query.standby.size() > 3 || query.sensitivity.size() > 1 ||
       query.sleep_enabled.size() > 1 || query.sleep_start.size() > 5 || query.sleep_end.size() > 5 || query.sleep_timeout.size() > 4 ||

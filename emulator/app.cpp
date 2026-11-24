@@ -156,25 +156,29 @@ void set_field(custom_logic_entity_sub::EntityDetailState &d, const std::string 
 }
 
 // A generated 96x96 RGB565 cover: warm and cool blobs on a dark field.
-std::set<std::string> demo_artwork;
-const lv_image_dsc_t &demo_cover() {
-  static std::vector<uint16_t> px(96 * 96);
-  static lv_image_dsc_t d{};
+std::set<std::string> demo_artwork, wide_artwork;
+// A generated cover: 96x96, or a 160x90 video thumbnail when wide.
+const lv_image_dsc_t &demo_cover(bool wide = false) {
+  static std::vector<uint16_t> pixels[2];
+  static lv_image_dsc_t dsc[2]{};
+  auto &px = pixels[wide];
+  auto &d = dsc[wide];
   if (d.data) return d;
-  auto blob = [](int x, int y, int cx, int cy, int r) { const int dx = x - cx, dy = y - cy; return std::max(0, 255 - (dx * dx + dy * dy) * 255 / (r * r)); };
-  for (int y = 0; y < 96; ++y)
-    for (int x = 0; x < 96; ++x) {
+  const int w = wide ? 160 : 96, h = wide ? 90 : 96;
+  px.resize(w * h);
+  for (int y = 0; y < h; ++y)
+    for (int x = 0; x < w; ++x) {
       // Hard-edged shapes on a pale sky, like a photo cover, to show the blur.
-      (void) blob;
-      int r = 170, g = 200, bl = 230;                                  // sky
-      if (y > 60) { r = 40; g = 90; bl = 150; }                        // sea
-      if (std::abs(x - 30) < 12 && y > 20 && y < 80) { r = 120; g = 60; bl = 30; }  // figure
-      if ((x - 70) * (x - 70) + (y - 30) * (y - 30) < 160) { r = 250; g = 240; bl = 200; }  // sun
-      if (y > 78 && (x / 6) % 2) { r = 230; g = 220; bl = 180; }      // sand stripes
-      px[y * 96 + x] = uint16_t((r >> 3) << 11 | (g >> 2) << 5 | (bl >> 3));
+      const int sx = x * 96 / w, sy = y * 96 / h;
+      int r = 170, g = 200, bl = 230;                                     // sky
+      if (sy > 60) { r = 40; g = 90; bl = 150; }                          // sea
+      if (std::abs(sx - 30) < 12 && sy > 20 && sy < 80) { r = 120; g = 60; bl = 30; }  // figure
+      if ((sx - 70) * (sx - 70) + (sy - 30) * (sy - 30) < 160) { r = 250; g = 240; bl = 200; }  // sun
+      if (sy > 78 && (x / 6) % 2) { r = 230; g = 220; bl = 180; }         // sand stripes
+      px[y * w + x] = uint16_t((r >> 3) << 11 | (g >> 2) << 5 | (bl >> 3));
     }
   d.header.magic = LV_IMAGE_HEADER_MAGIC; d.header.cf = LV_COLOR_FORMAT_RGB565;
-  d.header.w = d.header.h = 96; d.header.stride = 192;
+  d.header.w = w; d.header.h = h; d.header.stride = w * 2;
   d.data_size = px.size() * 2; d.data = reinterpret_cast<const uint8_t *>(px.data());
   return d;
 }
@@ -245,7 +249,8 @@ std::vector<Shot> load_scenario(const std::string &path) {
       d.progress.set_state(d.state, lvgl_emu::now_ms());
       d.progress.set_position(e["media_position"].as<float>(), lvgl_emu::now_ms());
     }
-    if (e["artwork"] == "demo") demo_artwork.insert(id);
+    if (e["artwork"] == "demo" || e["artwork"] == "wide") demo_artwork.insert(id);
+    if (e["artwork"] == "wide") wide_artwork.insert(id);
     // "secondary": {"entity", "text", "value", "unit", "in": seconds} models the
     // entry's secondary sensor (e.g. a reset time shown as "{relative}").
     if (e["secondary"].is<JsonObjectConst>()) {
@@ -461,9 +466,9 @@ void setup() {
     }
   };
   onx_panel_detail::draw_graph = onx_panel_pages::draw_graph;
-  // "artwork": "demo" gives a player a generated cover (no downloads here).
+  // "artwork": "demo" (square) or "wide" (16:9) gives a player a generated cover (no downloads here).
   onx_panel_detail::artwork_source = [](const std::string &entity) -> const void * {
-    return demo_artwork.count(entity) ? &demo_cover() : nullptr;
+    return demo_artwork.count(entity) ? &demo_cover(wide_artwork.count(entity) > 0) : nullptr;
   };
   // As panel.yaml: the configured entities that are timers.
   onx_panel_detail::timer_entities = []() {

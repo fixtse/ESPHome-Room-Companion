@@ -187,7 +187,6 @@ onx_config_web:
         root["hour_format"] = onx_display_settings::datetime.hour_format == 1 ? "12" : "24";
         root["media_color"] = onx_display_settings::color_text(onx_display_settings::current.media_color);
         root["orientation"] = std::to_string(onx_display_settings::orientation.turns*90);
-        root["media_view"] = onx_display_settings::media_style.material?"material":"classic";
         root["clock_seconds_ring"] = onx_display_settings::behavior.clock_seconds?"1":"0";
         onx_entity_config::load_display_settings();
         root["hold_cue"] = onx_display_settings::hold_cue.show?"1":"0";
@@ -220,7 +219,6 @@ onx_config_web:
           (query.clock_humidity!="none" && !onx_clock_sensors::valid(query.clock_humidity)) ||
           !onx_clock_sensors::valid_layout(query.clock_layout) ||
           (!query.notifications_cover_timers.empty() && query.notifications_cover_timers!="0" && query.notifications_cover_timers!="1") ||
-          (!query.media_view.empty() && query.media_view!="classic" && query.media_view!="material") ||
           (!query.idle_view.empty() && query.idle_view!="clock" && query.idle_view!="media") ||
           (!query.show_ampm.empty() && query.show_ampm!="0" && query.show_ampm!="1") ||
           !onx_display_settings::parse_date_format(date_text, date_format) ||
@@ -242,7 +240,7 @@ onx_config_web:
       if (!id(app_storage)->set_standby_timeout_ms(standby * 1000U) ||
           !id(app_storage)->set_sleep_mode_config(enabled, start_minutes, end_minutes, sleep_timeout * 1000U))
         return onx_entity_config::error("Could not persist display settings; retry");
-      if (!onx_entity_config::save_display_settings(query.media_color, query.standby_scope, date_text, hour_text, query.show_ampm.empty() ? onx_display_settings::datetime.show_ampm!=0 : query.show_ampm=="1",query.idle_view,query.media_view,query.orientation,query.notifications_cover_timers,query.clock_seconds_ring,query.background_color))
+      if (!onx_entity_config::save_display_settings(query.media_color, query.standby_scope, date_text, hour_text, query.show_ampm.empty() ? onx_display_settings::datetime.show_ampm!=0 : query.show_ampm=="1",query.idle_view,query.orientation,query.notifications_cover_timers,query.clock_seconds_ring,query.background_color))
         return onx_entity_config::error("Could not persist appearance settings; retry");
       if (!onx_clock_sensors::save(id(api_server), query.clock_temperature, query.clock_humidity))
         return onx_entity_config::error("Could not save the clock sensors; retry");

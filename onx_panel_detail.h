@@ -3026,6 +3026,33 @@ inline void transport(lv_obj_t *parent, int cx, int cy, int side, int main, int 
   circle(parent, cx + main / 2 + gap + side / 2, cy, side, INSET(), LV_SYMBOL_NEXT, TEXT(),
          [e]() { request(e, "media_player.media_next_track", "", "", "panel_media"); });
 }
+// Artwork frame size. Square covers keep the square side; other shapes (video
+// thumbnails) take their own aspect ratio at the largest size that fits
+// max_w x max_h, shown whole.
+struct ArtBox { int w, h; bool shaped; };
+inline ArtBox art_box(const void *src, int square, int max_w, int max_h) {
+  lv_image_header_t h{};
+  if (!src || lv_image_decoder_get_info(src, &h) != LV_RESULT_OK || !h.w || !h.h) return {square, square, false};
+  const int iw = h.w, ih = h.h;
+  if (std::abs(iw - ih) * 20 <= std::max(iw, ih)) return {square, square, false};
+  if (int64_t(max_w) * ih <= int64_t(max_h) * iw) return {max_w, int(int64_t(max_w) * ih / iw), true};
+  return {int(int64_t(max_h) * iw / ih), max_h, true};
+}
+// Puts the shared cover image in frame: a shaped frame shows the whole image,
+// a square one is covered (cover = crop the longer side) or fitted.
+inline void place_artwork(lv_obj_t *frame, const void *source, const ArtBox &b, bool cover) {
+  if (!main_artwork) main_artwork = lv_image_create(lv_layer_top());
+  lv_obj_set_parent(main_artwork, frame);
+  lv_obj_remove_flag(main_artwork, LV_OBJ_FLAG_HIDDEN);
+  lv_image_set_src(main_artwork, source);
+  lv_image_header_t h{};
+  if (lv_image_decoder_get_info(source, &h) != LV_RESULT_OK || !h.w || !h.h) return;
+  const int iw = h.w, ih = h.h;
+  lv_image_set_pivot(main_artwork, iw / 2, ih / 2);
+  const int side = b.shaped ? iw : cover ? std::min(iw, ih) : std::max(iw, ih);
+  lv_image_set_scale(main_artwork, b.w * 256 / std::max(1, side));
+  lv_obj_center(main_artwork);
+}
 // Tall cards put the artwork across the width with the track below it; short
 // ones keep it beside the text. Both show the position above the transport.
 inline void card_media(lv_obj_t *c, const Tile &t, const EntityDetailState &d) {
@@ -3037,27 +3064,20 @@ inline void card_media(lv_obj_t *c, const Tile &t, const EntityDetailState &d) {
   const int prog_y = by - P(10) - prog_h;
   const int meta_h = line(fonts.small) + line(fonts.title) + line(fonts.small);
   const bool tall = prog_y - pad - meta_h - P(8) >= P(140);
-  const int art = tall ? std::min(r.w - 2 * pad, prog_y - pad - meta_h - P(18))
-                       : std::max(P(48), std::min({P(104), prog_y - pad - P(10), r.w * 36 / 100}));
-  const int ax = tall ? (r.w - art) / 2 : pad;
-  auto *frame = box(c, ax, pad, art, art, INSET(), P(10));
-  lv_obj_set_style_clip_corner(frame, true, 0);
+  const int side = tall ? std::min(r.w - 2 * pad, prog_y - pad - meta_h - P(18))
+                        : std::max(P(48), std::min({P(104), prog_y - pad - P(10), r.w * 36 / 100}));
   if (onx_media::main_entity.empty()) onx_media::main_entity = t.entity;
   const void *source = !t.artwork && artwork_source && onx_media::main_entity == t.entity
       ? artwork_source(t.entity) : nullptr;
-  if (source) {
-    if (!main_artwork) main_artwork = lv_image_create(lv_layer_top());
-    lv_obj_set_parent(main_artwork, frame);
-    lv_obj_remove_flag(main_artwork, LV_OBJ_FLAG_HIDDEN);
-    lv_image_set_src(main_artwork, source);
-    lv_image_header_t h{};
-    if (lv_image_decoder_get_info(source, &h) == LV_RESULT_OK && h.w && h.h) {
-      lv_image_set_pivot(main_artwork, h.w / 2, h.h / 2);
-      lv_image_set_scale(main_artwork, art * 256 / std::max(h.w, h.h));
-      lv_obj_center(main_artwork);
-    }
-  } else icon(c, t.entity, ax + art / 2, pad + art / 2, std::min(art * 46 / 100, P(96)), playing ? accent() : SOFT_TEXT());
-  const int tx = tall ? pad : pad + art + P(12), tw = r.w - tx - pad;
+  // A wide cover uses the card's width (tall) or up to half of it (short).
+  const ArtBox b = art_box(source, side, tall ? r.w - 2 * pad : std::max(side, r.w / 2),
+                           tall ? prog_y - pad - meta_h - P(18) : side);
+  const int art = b.h, ax = tall ? (r.w - b.w) / 2 : pad;
+  auto *frame = box(c, ax, pad, b.w, b.h, INSET(), P(10));
+  lv_obj_set_style_clip_corner(frame, true, 0);
+  if (source) place_artwork(frame, source, b, false);
+  else icon(c, t.entity, ax + art / 2, pad + art / 2, std::min(art * 46 / 100, P(96)), playing ? accent() : SOFT_TEXT());
+  const int tx = tall ? pad : pad + b.w + P(12), tw = r.w - tx - pad;
   const bool track = !d.media_title.empty() && d.state != "off" && d.state != "idle";
   int y = tall ? pad + art + P(8) : pad + P(2);
   text(c, t.name, fonts.small, MUTED(), tx, y, tw);
@@ -3203,26 +3223,21 @@ __attribute__((noinline)) inline void build_media(const Layout &l, const std::st
     tick_media_progress();
     return;
   }
-  // Artwork fills the space above, square and centred.
-  const int art = wide() ? side_art : std::max(P(48), std::min({P(220), w - 2 * header_reserve, room}));
-  const int ax = wide() ? pad : (W - art) / 2, ay = wide() ? (H - art) / 2 : top + std::max(0, (room - art) / 2);
-  auto *frame = box(root, ax, ay, art, art, CONTROL(), P(14));
+  // Artwork fills the space above, centred: square covers as a square, other
+  // shapes (video thumbnails) at their own aspect across the whole width,
+  // below the header buttons.
+  const void *source = artwork_source ? artwork_source(e) : nullptr;
+  const int square = wide() ? side_art : std::max(P(48), std::min({P(220), w - 2 * header_reserve, room}));
+  const int max_h = wide() ? H - 2 * pad : std::max(P(48), room - header_reserve);
+  const ArtBox b = art_box(source, square, wide() ? side_art : w, max_h);
+  const int art_top = wide() || !b.shaped ? top : top + header_reserve, art_room = wide() || !b.shaped ? room : max_h;
+  const int ax = wide() ? pad + (side_art - b.w) / 2 : (W - b.w) / 2,
+            ay = wide() ? (H - b.h) / 2 : art_top + std::max(0, (art_room - b.h) / 2);
+  auto *frame = box(root, ax, ay, b.w, b.h, CONTROL(), P(14));
   lv_obj_set_style_clip_corner(frame, true, 0);
   if (lyrics) { lv_obj_add_flag(frame, LV_OBJ_FLAG_CLICKABLE); on(frame, LV_EVENT_CLICKED, toggle); }
-  const void *source = artwork_source ? artwork_source(e) : nullptr;
-  if (source) {
-    if (!main_artwork) main_artwork = lv_image_create(lv_layer_top());
-    lv_obj_set_parent(main_artwork, frame);
-    lv_obj_remove_flag(main_artwork, LV_OBJ_FLAG_HIDDEN);
-    lv_image_set_src(main_artwork, source);
-    lv_image_header_t h{};
-    if (lv_image_decoder_get_info(source, &h) == LV_RESULT_OK && h.w && h.h) {
-      lv_image_set_pivot(main_artwork, h.w / 2, h.h / 2);
-      // Cover the square frame (crop the longer side).
-      lv_image_set_scale(main_artwork, art * 256 / std::max<int>(1, std::min(h.w, h.h)));
-      lv_obj_center(main_artwork);
-    }
-  } else icon(root, e, ax + art / 2, ay + art / 2, art * 40 / 100, playing ? accent() : SOFT_TEXT());
+  if (source) place_artwork(frame, source, b, true);
+  else icon(root, e, ax + b.w / 2, ay + b.h / 2, b.w * 40 / 100, playing ? accent() : SOFT_TEXT());
   tick_media_progress();
 }
 
