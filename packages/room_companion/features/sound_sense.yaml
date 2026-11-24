@@ -6,7 +6,8 @@ esphome:
       then:
         - lambda: |-
             id(panel_microphone).add_data_callback([](const esphome::microphone::AudioCapture &audio) {
-              onx_sound_sense::meter.feed(audio.data.data(), audio.data.size(), millis());
+              onx_sound_sense::meter.feed(audio.data.data(), audio.data.size(), millis(),
+                                          audio.stream_info.get_channels());
             });
 
 globals:
@@ -89,6 +90,45 @@ sensor:
     accuracy_decimals: 1
     state_class: measurement
     update_interval: never
+  # Per-microphone diagnostics for the dual-mic board. Measured only while
+  # sound sensing listens (not during Assist or playback).
+  - platform: template
+    id: mic_left_level
+    name: Mic Left Level
+    icon: mdi:microphone-outline
+    unit_of_measurement: dB
+    accuracy_decimals: 1
+    state_class: measurement
+    entity_category: diagnostic
+    update_interval: never
+  - platform: template
+    id: mic_right_level
+    name: Mic Right Level
+    icon: mdi:microphone-outline
+    unit_of_measurement: dB
+    accuracy_decimals: 1
+    state_class: measurement
+    entity_category: diagnostic
+    update_interval: never
+  - platform: template
+    id: mic_correlation
+    name: Mic Correlation
+    icon: mdi:sine-wave
+    accuracy_decimals: 2
+    state_class: measurement
+    entity_category: diagnostic
+    update_interval: never
+  # Positive: the sound reached the left microphone first. At 4 cm spacing
+  # the physical limit is about ±117 µs (sound from either side).
+  - platform: template
+    id: mic_arrival_offset
+    name: Mic Arrival Offset
+    icon: mdi:arrow-left-right
+    unit_of_measurement: µs
+    accuracy_decimals: 0
+    state_class: measurement
+    entity_category: diagnostic
+    update_interval: never
 
 text_sensor:
   - platform: template
@@ -118,6 +158,11 @@ interval:
       - lambda: |-
           const float level = onx_sound_sense::meter.level(millis());
           id(ambient_sound_level).publish_state(level);
+          const uint32_t now = millis();
+          id(mic_left_level).publish_state(onx_sound_sense::meter.level(now, 0));
+          id(mic_right_level).publish_state(onx_sound_sense::meter.level(now, 1));
+          id(mic_correlation).publish_state(onx_sound_sense::meter.correlation(now));
+          id(mic_arrival_offset).publish_state(onx_sound_sense::meter.lag_samples(now) * 1e6f / 16000.0f);
           id(sound_detection_sensor).publish_state(onx_sound_sense::detector.update(
               level, id(sound_silence_threshold).state, id(presence_threshold).state, millis()));
           if (!id(dynamic_volume_switch).state || !std::isfinite(level) ||

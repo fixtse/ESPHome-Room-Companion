@@ -1,6 +1,7 @@
 #pragma once
 // Panel-native SoundSense-compatible controls. No upstream SoundSense code is
 // included. PDM capture is signed 16-bit PCM, regardless of the I2S slot setting.
+// The PDM line carries two microphones: channel 0 (left) and 1 (right).
 #include <algorithm>
 #include <atomic>
 #include <cmath>
@@ -9,34 +10,90 @@
 #include <cstring>
 
 namespace onx_sound_sense {
+// Assist and the wake word listen to the right microphone (channel 1), as the
+// mono build did; the ambient level follows the same microphone.
+inline constexpr uint8_t kAssistChannel = 1;
+inline constexpr int kMaxLag = 2;  // 4 cm spacing at 16 kHz is at most 1.9 samples.
+
 class Meter {
  public:
   std::atomic<bool> capture{false};
-  void feed(const uint8_t *data, size_t size, uint32_t now) {
-    if (!capture.load(std::memory_order_relaxed) || size < 2) return;
-    uint64_t energy = 0;
-    uint32_t count = 0;
-    // Decimate computation only, without allocating or retaining audio buffers.
-    for (size_t i = 0; i + 1 < size; i += 8) {
-      int16_t sample;
-      std::memcpy(&sample, data + i, sizeof(sample));
-      energy += int64_t(sample) * sample;
-      ++count;
+  // `data` is interleaved 16-bit PCM with `channels` channels (1 or 2).
+  void feed(const uint8_t *data, size_t size, uint32_t now, uint8_t channels = 1) {
+    if (!capture.load(std::memory_order_relaxed)) return;
+    channels = std::clamp<uint8_t>(channels, 1, 2);
+    const size_t frames = size / (2 * channels);
+    if (frames == 0) return;
+    auto sample = [&](size_t frame, uint8_t channel) {
+      int16_t value;
+      std::memcpy(&value, data + 2 * (frame * channels + std::min<uint8_t>(channel, channels - 1)), sizeof(value));
+      return int32_t(value);
+    };
+    uint64_t energy[2]{};
+    int64_t cross[2 * kMaxLag + 1]{};
+    for (size_t f = 0; f < frames; ++f) {
+      const int32_t left = sample(f, 0), right = sample(f, 1);
+      energy[0] += int64_t(left) * left;
+      energy[1] += int64_t(right) * right;
+      if (channels < 2) continue;
+      // cross[k] pairs left[f] with right[f + k]: a peak at k > 0 means the
+      // sound reached the left microphone first.
+      for (int k = -kMaxLag; k <= kMaxLag; ++k) {
+        const int64_t g = int64_t(f) + k;
+        if (g >= 0 && g < int64_t(frames)) cross[k + kMaxLag] += int64_t(left) * sample(size_t(g), 1);
+      }
     }
-    energy_.store(static_cast<uint32_t>(energy / count), std::memory_order_relaxed);
+    for (int c = 0; c < 2; ++c) energy_[c].store(uint32_t(energy[c] / frames), std::memory_order_relaxed);
+    stereo_.store(channels > 1, std::memory_order_relaxed);
+    if (channels > 1) {
+      // Smoothed over ~10 chunks (~160 ms) so 2 s reports are not one chunk.
+      constexpr float kAlpha = 0.1f;
+      const bool first = !pair_valid_.load(std::memory_order_relaxed);
+      for (int c = 0; c < 2; ++c) pair_energy_[c] += (first ? 1.0f : kAlpha) * (float(energy[c]) - pair_energy_[c]);
+      for (int k = 0; k < 2 * kMaxLag + 1; ++k) pair_cross_[k] += (first ? 1.0f : kAlpha) * (float(cross[k]) - pair_cross_[k]);
+      pair_valid_.store(true, std::memory_order_relaxed);
+      const float norm = std::sqrt(pair_energy_[0] * pair_energy_[1]);
+      int peak = 0;
+      for (int k = 1; k < 2 * kMaxLag + 1; ++k) if (pair_cross_[k] > pair_cross_[peak]) peak = k;
+      float lag = float(peak - kMaxLag);
+      if (peak > 0 && peak < 2 * kMaxLag) {
+        const float a = pair_cross_[peak - 1], b = pair_cross_[peak], c = pair_cross_[peak + 1];
+        const float d = a - 2 * b + c;
+        if (d < 0) lag += 0.5f * (a - c) / d;
+      }
+      correlation_.store(norm > 0 ? std::clamp(pair_cross_[kMaxLag] / norm, -1.0f, 1.0f) : NAN, std::memory_order_relaxed);
+      lag_.store(norm > 0 ? lag : NAN, std::memory_order_relaxed);
+    }
     at_.store(now, std::memory_order_relaxed);
     valid_.store(true, std::memory_order_release);
   }
-  float level(uint32_t now) const {
-    if (!capture.load() || !valid_.load(std::memory_order_acquire) || now - at_.load() > 1500) return NAN;
-    const float energy = energy_.load();
+  // Ambient level of the Assist microphone.
+  float level(uint32_t now) const { return level(now, stereo_.load() ? kAssistChannel : 0); }
+  // Level of one microphone (0 = left, 1 = right); NAN for a mono capture.
+  float level(uint32_t now, uint8_t channel) const {
+    if (!fresh_(now) || (channel > 0 && !stereo_.load())) return NAN;
+    const float energy = energy_[std::min<uint8_t>(channel, 1)].load();
     // Relative dB scale: full scale = 90. This is not calibrated acoustic SPL.
     return energy > 0 ? std::clamp(10.0f * std::log10(energy / 1073741824.0f) + 90.0f, 0.0f, 90.0f) : 0.0f;
   }
-  void reset() { valid_.store(false); }
+  // Zero-lag correlation of the two microphones (-1..1).
+  float correlation(uint32_t now) const { return fresh_(now) && stereo_.load() ? correlation_.load() : NAN; }
+  // Arrival offset in samples; positive when the left microphone hears first.
+  float lag_samples(uint32_t now) const { return fresh_(now) && stereo_.load() ? lag_.load() : NAN; }
+  void reset() {
+    valid_.store(false);
+    pair_valid_.store(false);  // The next chunk reseeds the smoothing.
+  }
  private:
-  std::atomic<uint32_t> energy_{0}, at_{0};
-  std::atomic<bool> valid_{false};
+  bool fresh_(uint32_t now) const {
+    return capture.load() && valid_.load(std::memory_order_acquire) && now - at_.load() <= 1500;
+  }
+  std::atomic<uint32_t> energy_[2]{}, at_{0};
+  std::atomic<float> correlation_{NAN}, lag_{NAN};
+  std::atomic<bool> valid_{false}, stereo_{false};
+  // Smoothing state, written by the feeder only.
+  std::atomic<bool> pair_valid_{false};
+  float pair_energy_[2]{}, pair_cross_[2 * kMaxLag + 1]{};
 };
 struct Detector {
   bool quiet{false}, elevated{false}, spike{false}, initialized{false};
