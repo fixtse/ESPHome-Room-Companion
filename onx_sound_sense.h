@@ -1,7 +1,8 @@
 #pragma once
 // Panel-native SoundSense-compatible controls. No upstream SoundSense code is
 // included. PDM capture is signed 16-bit PCM, regardless of the I2S slot setting.
-// The PDM line carries two microphones: channel 0 (left) and 1 (right).
+// The PDM line carries two microphones: channel 0 is the board's right
+// microphone and channel 1 its left one (checked on the panel, 2026-11-24).
 #include <algorithm>
 #include <atomic>
 #include <cmath>
@@ -10,8 +11,8 @@
 #include <cstring>
 
 namespace onx_sound_sense {
-// Assist and the wake word listen to the right microphone (channel 1), as the
-// mono build did; the ambient level follows the same microphone.
+// Assist and the wake word listen to channel 1 (the left microphone), as the
+// mono `channel: right` build did; the ambient level follows the same one.
 inline constexpr uint8_t kAssistChannel = 1;
 inline constexpr int kMaxLag = 2;  // 4 cm spacing at 16 kHz is at most 1.9 samples.
 
@@ -32,15 +33,15 @@ class Meter {
     uint64_t energy[2]{};
     int64_t cross[2 * kMaxLag + 1]{};
     for (size_t f = 0; f < frames; ++f) {
-      const int32_t left = sample(f, 0), right = sample(f, 1);
-      energy[0] += int64_t(left) * left;
-      energy[1] += int64_t(right) * right;
+      const int32_t ch0 = sample(f, 0), ch1 = sample(f, 1);
+      energy[0] += int64_t(ch0) * ch0;
+      energy[1] += int64_t(ch1) * ch1;
       if (channels < 2) continue;
-      // cross[k] pairs left[f] with right[f + k]: a peak at k > 0 means the
-      // sound reached the left microphone first.
+      // cross[k] pairs ch0[f] with ch1[f + k]: a peak at k > 0 means the
+      // sound reached channel 0 first.
       for (int k = -kMaxLag; k <= kMaxLag; ++k) {
         const int64_t g = int64_t(f) + k;
-        if (g >= 0 && g < int64_t(frames)) cross[k + kMaxLag] += int64_t(left) * sample(size_t(g), 1);
+        if (g >= 0 && g < int64_t(frames)) cross[k + kMaxLag] += int64_t(ch0) * sample(size_t(g), 1);
       }
     }
     for (int c = 0; c < 2; ++c) energy_[c].store(uint32_t(energy[c] / frames), std::memory_order_relaxed);
@@ -69,7 +70,7 @@ class Meter {
   }
   // Ambient level of the Assist microphone.
   float level(uint32_t now) const { return level(now, stereo_.load() ? kAssistChannel : 0); }
-  // Level of one microphone (0 = left, 1 = right); NAN for a mono capture.
+  // Level of one channel (0 or 1); NAN for channel 1 of a mono capture.
   float level(uint32_t now, uint8_t channel) const {
     if (!fresh_(now) || (channel > 0 && !stereo_.load())) return NAN;
     const float energy = energy_[std::min<uint8_t>(channel, 1)].load();
@@ -78,7 +79,7 @@ class Meter {
   }
   // Zero-lag correlation of the two microphones (-1..1).
   float correlation(uint32_t now) const { return fresh_(now) && stereo_.load() ? correlation_.load() : NAN; }
-  // Arrival offset in samples; positive when the left microphone hears first.
+  // Arrival offset in samples; positive when channel 0 hears first.
   float lag_samples(uint32_t now) const { return fresh_(now) && stereo_.load() ? lag_.load() : NAN; }
   void reset() {
     valid_.store(false);

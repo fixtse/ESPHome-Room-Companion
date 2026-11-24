@@ -28,8 +28,8 @@ int main() {
   feed(UINT32_MAX-100);
   assert(meter.level(50)==0); // Freshness survives millis rollover.
   assert(std::isnan(meter.level(50, 1)) && std::isnan(meter.correlation(50))); // Mono has no pair.
-  // Stereo: left at half scale, right at quarter scale, right delayed by one
-  // sample (the sound reached the left microphone first).
+  // Stereo: channel 0 at half scale, channel 1 at quarter scale and one
+  // sample later (the sound reached channel 0 first).
   {
     Meter stereo;
     stereo.capture = true;
@@ -40,9 +40,9 @@ int main() {
       frames[2 * f + 1] = int16_t(8192 * wave(long(f) - 1));
     }
     stereo.feed(reinterpret_cast<uint8_t *>(frames.data()), frames.size() * 2, 1000, 2);
-    const float left = stereo.level(1000, 0), right = stereo.level(1000, 1);
-    assert(std::abs(left - right - 6.02f) < 0.1f);
-    assert(stereo.level(1000) == right);  // Ambient follows the Assist (right) microphone.
+    const float ch0 = stereo.level(1000, 0), ch1 = stereo.level(1000, 1);
+    assert(std::abs(ch0 - ch1 - 6.02f) < 0.1f);
+    assert(stereo.level(1000) == ch1);  // Ambient follows the Assist microphone (channel 1).
     assert(stereo.correlation(1000) > 0.85f && stereo.correlation(1000) < 0.95f);  // cos(22.5°)
     assert(std::abs(stereo.lag_samples(1000) - 1.0f) < 0.25f);
     stereo.capture = false;

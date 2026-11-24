@@ -9,7 +9,7 @@ micro_wake_word:
   stop_after_detection: false
   microphone:
     microphone: panel_microphone
-    channels: 1  # Right microphone of the stereo capture.
+    channels: 1  # Left microphone of the stereo capture.
   models:
     - model: okay_nabu
       id: wake_okay_nabu

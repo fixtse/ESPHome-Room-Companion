@@ -159,10 +159,12 @@ interval:
           const float level = onx_sound_sense::meter.level(millis());
           id(ambient_sound_level).publish_state(level);
           const uint32_t now = millis();
-          id(mic_left_level).publish_state(onx_sound_sense::meter.level(now, 0));
-          id(mic_right_level).publish_state(onx_sound_sense::meter.level(now, 1));
+          // Channel 0 is the right microphone, channel 1 the left one.
+          id(mic_left_level).publish_state(onx_sound_sense::meter.level(now, 1));
+          id(mic_right_level).publish_state(onx_sound_sense::meter.level(now, 0));
           id(mic_correlation).publish_state(onx_sound_sense::meter.correlation(now));
-          id(mic_arrival_offset).publish_state(onx_sound_sense::meter.lag_samples(now) * 1e6f / 16000.0f);
+          // The meter's lag is positive when channel 0 (right) hears first.
+          id(mic_arrival_offset).publish_state(-onx_sound_sense::meter.lag_samples(now) * 1e6f / 16000.0f);
           id(sound_detection_sensor).publish_state(onx_sound_sense::detector.update(
               level, id(sound_silence_threshold).state, id(presence_threshold).state, millis()));
           if (!id(dynamic_volume_switch).state || !std::isfinite(level) ||

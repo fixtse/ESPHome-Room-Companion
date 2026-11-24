@@ -107,7 +107,7 @@ voice_assistant:
   id: assist
   microphone:
     microphone: panel_microphone
-    channels: 1  # Right microphone of the stereo capture.
+    channels: 1  # Left microphone of the stereo capture.
     gain_factor: 2
   media_player: panel_media_player
   use_wake_word: false
