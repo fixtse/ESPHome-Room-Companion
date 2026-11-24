@@ -16,6 +16,9 @@ esphome:
             onx_entity_config::load_sensor_configs();
             onx_entity_config::load_gestures();
             id(ui_presenter)->set_standby_guard([]() {
+              #ifdef USE_ROOM_COMPANION
+              if (onx_panel_detail::timers.overlay) return false;
+              #endif
               return !id(mode_manager)->is_provisioning_mode_enabled() && !onx_notification::current.visible && !onx_timer::popup.visible && !onx_media::idle_popup.visible && onx_display_settings::standby_allowed(onx_display_settings::current.standby_scope,
                   id(normal_device_detail_active));
             });

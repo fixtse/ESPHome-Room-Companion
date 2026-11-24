@@ -170,8 +170,9 @@ class TouchInput : public Component, public touchscreen::TouchListener {
     left_back_ = back_ && swipe_left_back_ && swipe_left_back_();
     // Navigation can start over an LVGL control, but LVGL still owns taps there.
     const bool edge = x < EDGE && back_ && edge_back_ && edge_back_();
+    const bool full_back = back_ && !(edge_back_ && edge_back_());
     const bool passthrough = !edge && passthrough_fn_ && passthrough_fn_(x, y);
-    if (passthrough && !left_back_) {
+    if (passthrough && !left_back_ && !full_back) {
       state_ = State::IGNORED;
       return;
     }

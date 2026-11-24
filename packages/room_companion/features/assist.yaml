@@ -168,13 +168,7 @@ voice_assistant:
     - lambda: |-
         onx_panel_detail::timers.focus = "local:" + timer.id;
         onx_panel_detail::timers.dismissed = false;
-    # Idle timeout off (notification centre): the new timer stays in the chip.
-    - if:
-        condition:
-          lambda: 'return onx_notification_ui::standby_timeout_enabled;'
-        then:
-          - script.execute: timer_show
-          - script.execute: timer_autoclose
+    - script.execute: timer_show
   on_timer_updated:
     - script.execute: timer_sync
     - lambda: |-
@@ -401,6 +395,7 @@ script:
           id(ui_presenter)->notify_user_activity();
           onx_panel_detail::timers.overlay = true;
           id(room_panel)->set_overlay(esphome::room_companion::OVERLAY_TIMER, true);
+          onx_panel_ui::request_render();
 
   # A newly started timer is shown briefly, unless one is ringing.
   - id: timer_autoclose
@@ -425,6 +420,9 @@ script:
           state.dismissed = true;
           state.focus.clear();
           id(room_panel)->set_overlay(esphome::room_companion::OVERLAY_TIMER, false);
+          onx_panel_ui::request_render();
+          if (!id(normal_device_detail_active) && !id(ui_presenter)->is_standby_active() && id(normal_page_index) == 0)
+            id(refresh_normal_device_page).execute();
 
   - id: timer_close_if_idle
     then:

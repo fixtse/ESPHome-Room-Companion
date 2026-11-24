@@ -41,12 +41,14 @@ onx_touch_input:
   native_touch: |-
     return !id(room_panel)->native_ui_has_touch() ||
            (id(normal_device_detail_active) && id(normal_device_detail_kind) == NORMAL_DEVICE_DETAIL_KIND_SETTINGS);
-  # Media closes with either horizontal swipe; other details use edge-back.
+  # Media and timers close with either horizontal swipe; other details use edge-back.
   edge_back: |-
+    if (onx_panel_detail::timers.overlay) return false;
     if (id(room_panel)->dashboard_open() && !onx_notification_ui::panel_open && onx_notification_ui::detail_id == 0)
       return true;
     const auto entity = id(ui_presenter)->get_normal_device_entity_id(id(normal_device_detail_index));
-    return id(normal_device_detail_active) && entity.rfind("media_player.", 0) != 0 && id(room_panel)->native_ui_has_touch();
+    return id(normal_device_detail_active) && entity.rfind("media_player.", 0) != 0 &&
+           !custom_logic_entity_sub::is_timer_detail(entity) && id(room_panel)->native_ui_has_touch();
   swipe_left_back: |-
     return id(room_panel)->native_ui_has_touch() && id(normal_device_detail_active) &&
            id(ui_presenter)->get_normal_device_entity_id(id(normal_device_detail_index)).rfind("climate.", 0) == 0;

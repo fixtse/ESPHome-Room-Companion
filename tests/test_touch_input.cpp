@@ -119,4 +119,23 @@ int main() {
   assert(handed && drag_dy==0);            // Hand-off starts the drag at zero travel.
   move(160,140); assert(drag_dy==-60);
   touch.release();touch.loop(); assert(release_dy==-60);
+
+  // Full-screen swipe-to-close (timer overlay / media player): horizontal swipe
+  // starting over an LVGL button still closes the overlay and suppresses the
+  // click, while a plain tap remains LVGL's.
+  touch.set_enabled_lambda([] { return false; });
+  touch.set_pull_up_enabled([] { return false; });
+  touch.set_back_enabled([] { return true; });
+  touch.set_edge_back([] { return false; });
+  touch.set_swipe_left_back([] { return false; });
+  touch.set_native_touch([] { return true; });
+  touch.set_passthrough_fn([](int, int) { return true; });
+  button.edges.clear();
+  const int backs_before = backs;
+  test_ms += 200; down(160, 300); move(240, 300); touch.release(); touch.loop();
+  assert(backs == backs_before + 1 && touch.suppress_click() && button.edges.empty());
+  test_ms += 200; down(160, 300); move(80, 300); touch.release(); touch.loop();
+  assert(backs == backs_before + 2 && touch.suppress_click() && button.edges.empty());
+  test_ms += 200; down(160, 300); touch.release(); touch.loop();
+  assert(backs == backs_before + 2 && !touch.suppress_click() && button.edges.empty());
 }

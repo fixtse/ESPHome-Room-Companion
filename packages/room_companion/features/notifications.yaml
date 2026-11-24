@@ -67,6 +67,7 @@ esphome:
               if (id(touch_input)->suppress_click()) return;
               const int index = onx_panel_ui::playing_index;
               if (index < 0) return;
+              onx_panel_pages::parent_entity = onx_panel_pages::page_lead;
               id(ui_presenter)->notify_user_activity();
               id(normal_device_selected_index) = index;
               id(enter_normal_switch_detail).execute();

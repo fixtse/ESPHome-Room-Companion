@@ -486,12 +486,17 @@ script:
           const std::string entity_id = id(ui_presenter)->get_normal_device_entity_id(detail_index);
           id(normal_device_detail_online) = custom_logic::is_normal_ui_device_online(detail_index);
           auto *media_state=custom_logic_entity_sub::entity_detail(entity_id);
-          if(entity_id.rfind("media_player.",0)==0 && media_state &&
+          const bool media_stopped = entity_id.rfind("media_player.", 0) == 0 && media_state &&
               media_state->media_player_off_transition_pending && media_state->received &&
-              media_state->available && media_state->state=="off" &&
-              id(normal_ha_api_connected) && id(normal_device_detail_online)) {
-            // Only a new off transition closes an already-open player view.
+              media_state->available && !onx_media::has_playback(media_state->state) &&
+              id(normal_ha_api_connected) && id(normal_device_detail_online) &&
+              (media_state->state == "off" ||
+               (millis() - media_state->media_player_stop_ms >= 2500 &&
+                !onx_media::transport.remaining_ms(entity_id, millis())));
+          if (media_stopped) {
+            // Only a new stop/off transition closes an already-open player view.
             media_state->media_player_off_transition_pending = false;
+            media_state->media_player_stop_ms = 0;
             onx_playlist::browser.clear();
             id(exit_normal_switch_detail).execute();
             return;
@@ -1458,10 +1463,12 @@ script:
           }
           std::string detail_entity_id = id(ui_presenter)->get_normal_device_entity_id(detail_index);
           if (detail_entity_id.rfind("media_player.", 0) == 0) {
-            // An off transition on the main page must not prevent opening this
+            // A stop/off transition on the main page must not prevent opening this
             // player's detail page. Only transitions after entry may close it.
-            if (auto *media = custom_logic_entity_sub::entity_detail(detail_entity_id))
+            if (auto *media = custom_logic_entity_sub::entity_detail(detail_entity_id)) {
               media->media_player_off_transition_pending = false;
+              media->media_player_stop_ms = 0;
+            }
           }
           auto local_hmi_gpio_switch_state = [&](const std::string &entity_id, bool *state) -> bool {
             switch (local_hmi_gpio_switch_io_from_entity_id(entity_id)) {
@@ -1802,9 +1809,30 @@ script:
             if (config >= 0) id(normal_device_selected_index) = custom_logic::normal_ui_slot_for_device_config_slot(config);
           }
           ESP_LOGI("normal_mode", "detail closed");
-      - script.execute:
-          id: show_normal_device_entry_page
-          direction: 0
+          if (id(ui_presenter)->is_standby_active()) {
+            #ifdef USE_ROOM_COMPANION
+            if (!onx_panel_detail::timers.overlay) {
+              onx_panel_pages::hide();
+              onx_panel_ui::request_render();
+            }
+            #endif
+            return;
+          }
+          #ifdef USE_ROOM_COMPANION
+          if (onx_panel_detail::timers.overlay) return;
+          #endif
+      - if:
+          condition:
+            lambda: |-
+              if (id(ui_presenter)->is_standby_active()) return false;
+              #ifdef USE_ROOM_COMPANION
+              if (onx_panel_detail::timers.overlay) return false;
+              #endif
+              return true;
+          then:
+            - script.execute:
+                id: show_normal_device_entry_page
+                direction: 0
 
   - id: adjust_normal_entity_control
     parameters:
@@ -2079,9 +2107,53 @@ script:
     then:
       - lambda: |-
           #ifdef USE_ROOM_COMPANION
-          // A shared timer overlay owns navigation; never open another timer
-          // entity underneath it or change the page it will return to.
-          if (onx_panel_detail::timers.overlay) return;
+          // Room Companion shows every timer (local Assist, HA helpers, voice
+          // satellite, Google) on the shared timer overlay so it sits on top
+          // of whatever view (including media player) is open and swiping to
+          // close returns directly to it.
+          if (!id(ui_presenter)->is_normal_mode_active() || !id(normal_ha_api_connected) ||
+              id(mode_manager)->is_provisioning_mode_enabled() || id(sleep_mode_state) || id(screen_off_state)) {
+            return;
+          }
+          const auto items = onx_panel_detail::all_timers();
+          if (onx_panel_detail::timers.overlay && !onx_panel_detail::timers.ringing &&
+              std::none_of(items.begin(), items.end(), onx_panel_detail::running)) {
+            id(timer_close).execute();
+          }
+          static std::vector<std::string> prev_active;
+          static std::vector<std::string> prev_ringing;
+          static bool ha_timer_synced = false;
+          std::vector<std::string> now_active;
+          std::vector<std::string> now_ringing;
+          std::string newly_started, newly_ringing;
+          for (const auto &t : items) {
+            // Local Assist timers are opened directly by assist.yaml callbacks.
+            if (t.key.rfind("local:", 0) == 0) continue;
+            if (t.state == "active") {
+              now_active.push_back(t.key);
+              if (ha_timer_synced && newly_started.empty() &&
+                  std::find(prev_active.begin(), prev_active.end(), t.key) == prev_active.end())
+                newly_started = t.key;
+            } else if (t.state == "ringing") {
+              now_ringing.push_back(t.key);
+              if (newly_ringing.empty() &&
+                  std::find(prev_ringing.begin(), prev_ringing.end(), t.key) == prev_ringing.end())
+                newly_ringing = t.key;
+            }
+          }
+          prev_active = std::move(now_active);
+          prev_ringing = std::move(now_ringing);
+          ha_timer_synced = true;
+          if (!newly_ringing.empty()) {
+            onx_panel_detail::timers.focus.clear();
+            onx_panel_detail::timers.dismissed = false;
+            id(timer_show).execute();
+          } else if (!newly_started.empty()) {
+            onx_panel_detail::timers.focus = newly_started;
+            onx_panel_detail::timers.dismissed = false;
+            id(timer_show).execute();
+          }
+          return;
           #endif
           if (onx_timer::popup.visible && !id(normal_ha_api_connected)) {
             onx_timer::popup.visible=false;

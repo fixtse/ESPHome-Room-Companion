@@ -374,6 +374,7 @@ struct EntityDetailState {
   uint32_t features{0}, received_ms{0};
   bool received{false}, available{false};
   bool media_player_off_transition_pending{false};
+  uint32_t media_player_stop_ms{0};
   std::string timer_duration, timer_remaining, timer_finishes_at, timer_name, timer_last_finish;
   bool voice_timer{false}, google_timer{false};
   std::string google_state;
@@ -514,13 +515,15 @@ class DeviceSlotStateUpdater {
       auto &detail = entity_details[this->slot_];
       if (detail.entity_id != this->entity_id_) { detail = EntityDetailState{}; detail.entity_id = this->entity_id_; }
       if (has_prefix(this->entity_id_, "media_player.")) {
-        if (value == "off") {
-          // Ignore an initial or repeated off state. Only a transition from a
-          // previously received non-off state should close an open player view.
-          if (detail.received && detail.available && detail.state != "off")
-            detail.media_player_off_transition_pending = true;
-        } else {
+        if (onx_media::has_playback(value)) {
           detail.media_player_off_transition_pending = false;
+          detail.media_player_stop_ms = 0;
+        } else if (detail.received && detail.available &&
+                   (onx_media::has_playback(detail.state) || (value == "off" && detail.state != "off"))) {
+          // Ignore an initial or repeated stopped/off state. Only a transition
+          // from playback (or non-off -> off) should close an open player view.
+          if (!detail.media_player_off_transition_pending) detail.media_player_stop_ms = millis();
+          detail.media_player_off_transition_pending = true;
         }
       }
       detail.received = true; detail.available = online; detail.received_ms = millis();
