@@ -1,4 +1,6 @@
 #pragma once
+// Pure namespace onx_mic_selector: ESPHome code runs `using namespace esphome`,
+// so a top-level onx_mic_select would clash with esphome::onx_mic_select.
 // Chooses one microphone of a stereo pair, by signal-to-noise ratio, and
 // writes it as mono. No ESPHome dependencies, so the host tests use it too.
 //
@@ -13,7 +15,7 @@
 #include <cstddef>
 #include <cstdint>
 
-namespace onx_mic_select {
+namespace onx_mic_selector {
 
 // On the Dual MIC board, stereo channel 0 is the right microphone and
 // channel 1 the left one (measured on the panel, 2026-11-24).
@@ -101,4 +103,4 @@ class Selector {
   std::atomic<uint32_t> switches_{0};
 };
 
-}  // namespace onx_mic_select
+}  // namespace onx_mic_selector

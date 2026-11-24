@@ -5,7 +5,7 @@
 #include <random>
 #include <vector>
 
-using namespace onx_mic_select;
+using namespace onx_mic_selector;
 
 namespace {
 constexpr size_t kFrames = 256;  // 16 ms at 16 kHz.

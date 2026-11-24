@@ -31,7 +31,7 @@ class MicSelect : public microphone::Microphone, public Component {
 
   void set_mode(uint8_t mode) { this->selector_.mode.store(mode); }
   uint8_t channel() const { return this->selector_.channel(); }
-  bool is_left() const { return this->selector_.channel() == ::onx_mic_select::kLeftMic; }
+  bool is_left() const { return this->selector_.channel() == ::onx_mic_selector::kLeftMic; }
   uint32_t switches() const { return this->selector_.switches(); }
 
  protected:
@@ -51,7 +51,7 @@ class MicSelect : public microphone::Microphone, public Component {
   }
 
   microphone::Microphone *source_{nullptr};
-  ::onx_mic_select::Selector selector_;
+  ::onx_mic_selector::Selector selector_;
   std::vector<int16_t> buffer_;
 };
 
