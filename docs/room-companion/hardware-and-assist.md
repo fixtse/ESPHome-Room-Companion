@@ -37,25 +37,29 @@ touch coordinates and PSRAM initialization before testing audio.
 ### Dual microphone board
 
 The Nextion Dual MIC board carries two PDM microphones 4 cm apart on the one
-data line (GPIO20). The firmware captures one of them (`channel: right`).
+data line (GPIO20). The firmware captures both (`panel_microphone_pair`,
+stereo: channel 0 is the board's right microphone, channel 1 its left one)
+and `onx_mic_select` turns them into the mono `panel_microphone` that Assist,
+the wake word and SoundSense use:
 
-Both were measured with a stereo test build (2026.11.0.136/.137) over about
-2 hours of room sound, read back from Home Assistant:
+- **Auto** (default) tracks each microphone's noise floor and, while there is
+  sound above it, a smoothed signal-to-noise score. The other microphone takes
+  over when it scores more than 1.5 dB better, or within about 1 s when the
+  current one goes silent while the other still hears sound (a failed or
+  disconnected microphone). Switches crossfade over one 16 ms chunk.
+- **Left** / **Right** force one microphone (*Assist microphone* select).
+- *Assist microphone in use* reports the current one. Before selection,
+  Assist used the left microphone (mono `channel: right`), so Auto starts there.
 
-- In stereo capture, channel 0 is the board's right microphone and channel 1
-  its left one.
-- The right microphone is about 0.7 dB more sensitive, by the same amount in
-  quiet and loud periods, so both have the same signal-to-noise ratio.
-- Ambient sound correlates at about 0.9 between the two (0.93 when loud), and
-  inter-mic arrival offsets stay within the ±117 µs that 4 cm allows.
-
-At 4 cm, room noise reaches both microphones almost identically, so summing
-them gains only 1–2 dB against general background noise. Only an adaptive
-two-mic canceller would help, and only against one noise source off to the
-side. Neither was judged worth the extra internal RAM (about 2 KB more I2S DMA
-for stereo) and complexity, so the panel stays on one microphone. Home
-Assistant's noise suppression (`noise_suppression_level`) handles background
-noise for Assist.
+Measured with a stereo test build (2026.11.0.136/.137) over about 2 hours of
+room sound, read back from Home Assistant: the right microphone is about
+0.7 dB more sensitive, by the same amount in quiet and loud periods, so both
+have the same signal-to-noise ratio. Ambient sound correlates at about 0.9
+between the two (0.93 when loud), and inter-mic arrival offsets stay within the
+±117 µs that 4 cm allows. Expect Auto to switch rarely: at 4 cm a talker a
+metre away reaches both microphones almost equally, and general background
+noise reaches both alike, so summing or beamforming them would gain only
+1–2 dB. Stereo capture costs about 2 KB more internal DMA memory than mono.
 
 ## Wi-Fi provisioning
 

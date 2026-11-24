@@ -66,6 +66,37 @@ number:
     optimistic: true
     entity_category: config
 
+# Which Dual MIC board microphone Assist hears: Auto picks the one with the
+# better signal-to-noise ratio while running; Left/Right force one.
+select:
+  - platform: template
+    id: assist_microphone_mode
+    name: Assist microphone
+    icon: mdi:microphone-settings
+    entity_category: config
+    options: [Auto, Left, Right]
+    initial_option: Auto
+    optimistic: true
+    restore_value: true
+    on_value:
+      - lambda: 'id(panel_microphone).set_mode(i);'
+
+text_sensor:
+  - platform: template
+    id: assist_microphone_in_use
+    name: Assist microphone in use
+    icon: mdi:microphone-question
+    entity_category: diagnostic
+    update_interval: 1s
+    lambda: 'return std::string(id(panel_microphone).is_left() ? "Left" : "Right");'
+    filters:
+      # Only publish changes.
+      - lambda: |-
+          static std::string last;
+          if (x == last) return {};
+          last = x;
+          return x;
+
 binary_sensor:
   - id: !extend boot_btn
     on_click:

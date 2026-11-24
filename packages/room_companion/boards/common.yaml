@@ -6,7 +6,7 @@ external_components:
   - source:
       type: local
       path: ../../../my_components
-    components: [onx_touch_bus]
+    components: [onx_touch_bus, onx_mic_select]
 
 onx_touch_bus:
   id: fast_touch_bus
@@ -99,18 +99,23 @@ i2s_audio:
     i2s_lrclk_pin: GPIO16
 
 microphone:
+  # Both microphones of the Dual MIC board (4 cm apart, one PDM line):
+  # stereo channel 0 is the board's right microphone, channel 1 its left one.
   - platform: i2s_audio
-    id: panel_microphone
+    id: panel_microphone_pair
     i2s_audio_id: microphone_bus
     adc_type: external
     i2s_din_pin: GPIO20
     pdm: true
     sample_rate: 16000
     bits_per_sample: 32bit
-    # The Dual MIC board has two matched mics on this line; one is enough
-    # (see docs/room-companion/hardware-and-assist.md, "Dual microphone board").
-    channel: right
+    channel: stereo
     correct_dc_offset: true
+  # What Assist, the wake word and SoundSense hear: the microphone with the
+  # better signal-to-noise ratio, switched while running (onx_mic_select).
+  - platform: onx_mic_select
+    id: panel_microphone
+    microphone: panel_microphone_pair
 
 speaker:
   - platform: i2s_audio
