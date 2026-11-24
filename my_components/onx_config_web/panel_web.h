@@ -308,12 +308,20 @@ static const char PANEL_JS[] = R"ONXPANEL(
    const li=el('li','stack-row'),pick=el('select');pick.setAttribute('aria-label','Row '+(k+1)+' type');pick.disabled=locked;
    for(const [value,r] of Object.entries(ROWS)){const o=el('option','',r.label+(r.n>1?' ('+r.n+')':''));o.value=value;o.selected=value===type;pick.append(o)}
    pick.onchange=()=>editRows(list=>{list[k].type=pick.value;return list});
-   const up=tool('Move row '+(k+1)+' up','M12 19V5m-6 6 6-6 6 6'),down=tool('Move row '+(k+1)+' down','M12 5v14m-6-6 6 6 6-6'),rm=tool('Remove row '+(k+1),'m6 6 12 12M18 6 6 18',true);
-   up.disabled=locked||k===0;down.disabled=locked||k===rows.length-1;rm.disabled=locked||rows.length===1;
-   up.onclick=()=>editRows(list=>{[list[k-1],list[k]]=[list[k],list[k-1]];return list});
-   down.onclick=()=>editRows(list=>{[list[k+1],list[k]]=[list[k],list[k+1]];return list});
+   const rm=tool('Remove row '+(k+1),'m6 6 12 12M18 6 6 18',true);rm.disabled=locked||rows.length===1;
    rm.onclick=()=>editRows(list=>{list.splice(k,1);return list});
-   li.append(el('b','',String(k+1)),pick,up,down,rm);list.append(li);
+   // Drag a row by its handle to reorder; Alt+arrow keys on the handle do the same.
+   const grip=el('span','stack-grip');grip.title='Drag to reorder';grip.setAttribute('aria-label','Row '+(k+1)+', drag to reorder (Alt+arrow keys)');grip.tabIndex=locked?-1:0;grip.append(svgIcon('M9 6h.01M15 6h.01M9 12h.01M15 12h.01M9 18h.01M15 18h.01'));
+   const move=to=>{if(to<0||to>=rows.length||to===k)return;editRows(list=>{const [r]=list.splice(k,1);list.splice(to,0,r);return list})};
+   grip.onkeydown=ev=>{if(!ev.altKey)return;if(ev.key==='ArrowUp'){ev.preventDefault();move(k-1)}else if(ev.key==='ArrowDown'){ev.preventDefault();move(k+1)}};
+   li.draggable=!locked;li.dataset.row=k;
+   li.ondragstart=ev=>{if(ev.target!==li)return;ev.dataTransfer.setData('application/x-onx-row',String(k));ev.dataTransfer.effectAllowed='move';li.classList.add('dragging')};
+   li.ondragend=()=>{li.classList.remove('dragging');list.querySelectorAll('.drop-before,.drop-after').forEach(x=>x.classList.remove('drop-before','drop-after'))};
+   li.ondragover=ev=>{if(!ev.dataTransfer.types.includes('application/x-onx-row'))return;ev.preventDefault();ev.dataTransfer.dropEffect='move';const b=li.getBoundingClientRect(),after=ev.clientY>b.top+b.height/2;li.classList.toggle('drop-after',after);li.classList.toggle('drop-before',!after)};
+   li.ondragleave=()=>li.classList.remove('drop-before','drop-after');
+   li.ondrop=ev=>{const from=Number(ev.dataTransfer.getData('application/x-onx-row'));if(!Number.isInteger(from)||ev.dataTransfer.getData('application/x-onx-row')==='')return;ev.preventDefault();const b=li.getBoundingClientRect();let to=k+(ev.clientY>b.top+b.height/2?1:0);if(from<to)to--;if(to!==from)editRows(list=>{const [r]=list.splice(from,1);list.splice(to,0,r);return list})};
+   pick.draggable=false;
+   li.append(grip,el('b','',String(k+1)),pick,rm);list.append(li);
   });
   const add=el('div','stack-add'),type=el('select');type.setAttribute('aria-label','New row type');
   for(const [value,r] of Object.entries(ROWS)){const o=el('option','',r.label);o.value=value;o.selected=value==='compact';type.append(o)}
