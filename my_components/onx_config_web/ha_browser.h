@@ -28,7 +28,8 @@ static const char HA_BROWSER_JS[] = R"ONXJS(
    const inferred=translatedIcon(icons.entity?.[platform]?.[domain]?.[key],s.state)||
     translatedIcon(component?.[a.device_class]||component?._,s.state);
    const icon=validIcon(registryIcon)?registryIcon:validIcon(a.icon)?a.icon:inferred;
-   return {entity:s.entity_id,unit:a.unit_of_measurement||'',icon,iconOverride:icon&&icon===registryIcon?'1':'0',name:a.friendly_name||r.en||r.name||s.entity_id,area:rooms.get(r.ai||r.area_id||deviceRooms.get(r.di||r.device_id))||'',type,types:types.length?types:undefined};
+   // State and attributes: the snapshot the page previews unsaved entities from.
+   return {entity:s.entity_id,state:s.state,attributes:a,unit:a.unit_of_measurement||'',icon,iconOverride:icon&&icon===registryIcon?'1':'0',name:a.friendly_name||r.en||r.name||s.entity_id,area:rooms.get(r.ai||r.area_id||deviceRooms.get(r.di||r.device_id))||'',type,types:types.length?types:undefined};
   }).concat(local()).sort((a,b)=>(a.area+' '+a.name+' '+a.entity).localeCompare(b.area+' '+b.name+' '+b.entity));
  }
  function search(items,q,domain,offset=0){

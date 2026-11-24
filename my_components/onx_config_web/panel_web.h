@@ -217,6 +217,28 @@ static const char PANEL_JS[] = R"ONXPANEL(
  }
  // Entries stay while a page or the timer list still uses them.
  function release(e){const i=slotOf(e);if(e&&i>=0&&editorSlots[i].timerHidden!=='1'&&!pageConfigs.some(p=>p.entities.includes(e)))app()?.clear(i)}
+ // Entities a layout change pushes off a page wait here until the next save,
+ // so going Split → Full → Split brings the second entity back. Not part of the
+ // saved page list; discarding or reloading the pages forgets them.
+ const parked=new Map();  // page -> [{entity,art,icon}]
+ const keepOf=(p,i)=>p.entities[i]&&{entity:p.entities[i],art:positionArt(p,i),icon:iconOnly(p,i)};
+ function park(p,items){if(!items.length)return;const list=(parked.get(p)||[]).filter(x=>!items.some(y=>y.entity===x.entity));parked.set(p,[...items,...list])}
+ function unpark(p){
+  const list=parked.get(p);if(!list)return;const left=[];
+  for(const x of list){
+   if(slotOf(x.entity)<0||pageConfigs.some(q=>q.entities.includes(x.entity)))continue;  // Removed or placed elsewhere since.
+   const i=p.entities.findIndex((e,i)=>!e&&!(p.layout==='control_sensors'&&i>0&&!compact(x.entity)));
+   if(i<0){left.push(x);continue}
+   p.entities[i]=x.entity;if(x.art)updateArt(p,i,x.art);if(x.icon&&isGrid(p))setIconOnly(p,i,true);
+  }
+  if(left.length)parked.set(p,left);else parked.delete(p);
+ }
+ function parkStatus(p){
+  const names=(parked.get(p)||[]).map(x=>nameOf(x.entity)),one=names.length===1;
+  status(names.length?names.join(', ')+(one?' is':' are')+' set aside: choose a larger layout to bring '+(one?'it':'them')+' back. Saving removes '+(one?'it':'them')+' from this page.':'');
+ }
+ // Before saving: whatever is still set aside leaves the panel.
+ function releaseParked(){const list=[...parked.values()].flat();parked.clear();for(const x of list)release(x.entity)}
  function removeAt(page,pos){const e=page.entities[pos];page.entities[pos]='';updateArt(page,pos,'');setIconOnly(page,pos,false);release(e);touch()}
  function pickFor(page,pos){const small=pos>0&&page.layout==='control_sensors';app()?.pick(x=>!small||compact(x),item=>place(page,pos,item))}
  function cell(page,pos,r,w,h){
@@ -267,14 +289,15 @@ static const char PANEL_JS[] = R"ONXPANEL(
  // Entities move with their rows. `map` lists, for each new position, the old
  // position it takes its entity from (-1: empty). Anything not carried over
  // leaves the page.
- function remap(p,stack,map){
-  const old=p.entities,oldArt=old.map((_,i)=>positionArt(p,i));
+ function remap(p,stack,map,keep=false){
+  const old=p.entities,oldArt=old.map((_,i)=>positionArt(p,i)),kept=old.map((_,i)=>keepOf(p,i));
   p.layout=STACK;p.stack=stack;delete p.rows;delete p.columns;delete p.icon_only;delete p.animation;
   p.entities=map.map(i=>i>=0?old[i]||'':'');
   if(p.artwork||oldArt.some(Boolean)){p.artwork=map.map(i=>i>=0?oldArt[i]||'':'');if(!p.artwork.some(Boolean))delete p.artwork}
-  const dropped=old.filter(e=>e&&!p.entities.includes(e)),names=dropped.map(nameOf);for(const e of dropped)release(e);
+  const dropped=old.filter(e=>e&&!p.entities.includes(e)),names=dropped.map(nameOf);
+  if(keep){park(p,kept.filter(x=>x&&dropped.includes(x.entity)));unpark(p)}else for(const e of dropped)release(e);
   const was=old[selectedPos];selectedPos=Math.max(0,was&&p.entities.includes(was)?p.entities.indexOf(was):Math.min(selectedPos,p.entities.length-1));
-  status(names.length?names.join(', ')+(names.length===1?' was':' were')+' removed from this page.':'');if(!focusMember())touch();
+  if(keep)parkStatus(p);else status(names.length?names.join(', ')+(names.length===1?' was':' were')+' removed from this page.':'');if(!focusMember())touch();
  }
  // A preset or custom stack from any page: cards take the controls first,
  // chips and compact rows the sensors, then whatever is left fills the gaps.
@@ -285,7 +308,7 @@ static const char PANEL_JS[] = R"ONXPANEL(
   place((k,e)=>(k==='full'||k==='split')&&(e===undefined||!compact(e)));
   place((k,e)=>(k==='chips'||k==='compact')&&(e===undefined||compact(e)));
   place(()=>true);
-  remap(p,[...stack],map);
+  remap(p,[...stack],map,true);
  }
  // Row operations from the row editor; fixed layouts become stacks.
  function editRows(fn){
@@ -334,15 +357,15 @@ static const char PANEL_JS[] = R"ONXPANEL(
  }
  function setLayout(kind){
   const p=pageConfigs[selectedPage];if(!p||p.layout===kind)return;
-  const n=LAYOUTS[kind].n,dropped=p.entities.slice(n).filter(Boolean);
+  const n=LAYOUTS[kind].n,kept=p.entities.map((_,i)=>keepOf(p,i)),aside=kept.slice(n).filter(Boolean);
   p.layout=kind;delete p.stack;
   if(isGrid(p)){p.rows=2;p.columns=2}else{delete p.rows;delete p.columns;delete p.icon_only;delete p.animation}
   p.entities=Array.from({length:n},(_,i)=>p.entities[i]||'');
   if(p.artwork)p.artwork=p.artwork.slice(0,n).concat(Array(Math.max(0,n-p.artwork.length)).fill(''));
   // Compact positions only take sensors; anything else moves off the page.
-  if(kind==='control_sensors')for(let i=1;i<n;i++)if(p.entities[i]&&!compact(p.entities[i])){dropped.push(p.entities[i]);p.entities[i]='';updateArt(p,i,'')}
-  const names=dropped.map(nameOf);for(const e of dropped)release(e);selectedPos=Math.min(selectedPos,n-1);
-  status(dropped.length?names.join(', ')+(dropped.length===1?' was':' were')+' removed from this page.':'');if(!focusMember())touch();
+  if(kind==='control_sensors')for(let i=1;i<n;i++)if(p.entities[i]&&!compact(p.entities[i])){aside.push(kept[i]);p.entities[i]='';updateArt(p,i,'')}
+  park(p,aside);unpark(p);selectedPos=Math.min(selectedPos,n-1);
+  parkStatus(p);if(!focusMember())touch();
  }
  function resizeGrid(){
   const p=pageConfigs[selectedPage];if(!p||!isGrid(p))return;
@@ -380,7 +403,7 @@ static const char PANEL_JS[] = R"ONXPANEL(
   if(!grid||!p||!globalThis.ONX_PANEL_PREVIEW)return;
   let svg=grid.querySelector('svg.page-live');
   if(!svg){svg=document.createElementNS('http://www.w3.org/2000/svg','svg');svg.classList.add('page-live');svg.setAttribute('aria-hidden','true');grid.prepend(svg)}
-  const e=lead(p),a=app(),views=a?.views?.()||[];
+  const e=lead(p),a=app(),views=withDrafts(a?.views?.()||[],p.entities);
   // Hide the plain cell text only while live data is actually drawn; until
   // then (or if it is unavailable) the cells keep showing their entity.
   const liveView=e?views.find(v=>v.entity===e):null;
@@ -763,6 +786,7 @@ static const char PANEL_JS[] = R"ONXPANEL(
   try{if(imageIds(list).some(id=>artPending.has(id)))a.message?.('Uploading page images…');await uploadImages(list)}catch(error){status(error.message);a.message?.(error.message,true);return false}
   finally{saving=false}
   if(target)target.pages=list;
+  releaseParked();
   if(!await a.saveAll())return false;
   if(target){savedPages=JSON.stringify(pageConfigs);touch();return true}
   if(!dirtyPages()){a.message?.('Changes saved.');touch();return true}
@@ -790,10 +814,10 @@ static const char PANEL_JS[] = R"ONXPANEL(
   editorTarget=target;
   if(target){pageConfigs=target.pages?normalize(target.pages):target.isNew?[]:singles(editorSlots);savedPages=JSON.stringify(pageConfigs)}
   else{pageConfigs=JSON.parse(panelPages);savedPages=panelPages}
-  view='page';selectedPage=0;selectedPos=Math.max(0,pageConfigs[0]?.entities.findIndex(Boolean)??0);status('');
+  parked.clear();view='page';selectedPage=0;selectedPos=Math.max(0,pageConfigs[0]?.entities.findIndex(Boolean)??0);status('');
  }
  // Bridge for config_app.h: import/export, dirty state, discard and save.
- globalThis.ONX_PAGES={get:()=>pageConfigs,restore:list=>{pageConfigs=structuredClone(list);selectedPage=Math.max(0,Math.min(selectedPage,pageConfigs.length-1));selectedPos=Math.max(0,pageConfigs[selectedPage]?.entities.findIndex(Boolean)??0);renderPageEditor();redraw()},saved:()=>JSON.parse(panelPages),set:list=>{pageConfigs=normalize(list);selectPage(0)},dirty:dirtyPages,discard:()=>{pageConfigs=JSON.parse(savedPages);selectedPos=Math.max(0,pageConfigs[selectedPage]?.entities.findIndex(Boolean)??0);status('')},save:savePages};
+ globalThis.ONX_PAGES={get:()=>pageConfigs,restore:list=>{parked.clear();pageConfigs=structuredClone(list);selectedPage=Math.max(0,Math.min(selectedPage,pageConfigs.length-1));selectedPos=Math.max(0,pageConfigs[selectedPage]?.entities.findIndex(Boolean)??0);renderPageEditor();redraw()},saved:()=>JSON.parse(panelPages),set:list=>{parked.clear();pageConfigs=normalize(list);selectPage(0)},dirty:dirtyPages,discard:()=>{parked.clear();pageConfigs=JSON.parse(savedPages);selectedPos=Math.max(0,pageConfigs[selectedPage]?.entities.findIndex(Boolean)??0);status('')},save:savePages};
  globalThis.ONX_PANEL_EDITOR=(slots,active,busy,refresh,target=null)=>{
   editorSlots=slots;editorBusy=busy;redraw=refresh;
   const switched=(target||null)!==editorTarget;if(switched)loadTarget(target||null);
@@ -870,7 +894,72 @@ static const char PANEL_JS[] = R"ONXPANEL(
  };
  const ns='http://www.w3.org/2000/svg';
  const node=(tag,attrs={})=>{const n=document.createElementNS(ns,tag);for(const [key,value]of Object.entries(attrs))n.setAttribute(key,value);return n};
+ // Unsaved entities: the panel only follows saved entries, so until a save the
+ // preview builds their view from the Home Assistant states this browser
+ // loaded (a snapshot, refreshed with the entity list). A rough port of
+ // onx_detail_view::build / carousel and onx_preview::build; the panel's own
+ // view replaces it once saved. Values use the panel's text form
+ // (lists as ['a', 'b'], booleans as True/False).
+ const haText=v=>v===undefined||v===null?'':Array.isArray(v)?'['+v.map(x=>"'"+String(x).replaceAll("'","\\'")+"'").join(', ')+']':typeof v==='boolean'?(v?'True':'False'):String(v);
+ const haCompact=v=>{const n=Number(v);if(v===''||v===null||v===undefined||!isFinite(n))return String(v??'');const t=n.toFixed(2).replace(/\.?0+$/,'');return t==='-0'?'0':t};
+ const haLabel=k=>{k=String(k||'').replaceAll('_',' ');return k&&k[0].toUpperCase()+k.slice(1)};
+ const haPercent=f=>Math.round(Math.max(0,Math.min(1,f))*100)+'%';
+ function draftView(e){
+  const item=app()?.item?.(e);if(!e||!item||item.state===undefined)return null;
+  const a=item.attributes||{},st=String(item.state),domain=e.split('.')[0],available=st!=='unavailable'&&st!=='unknown';
+  const t=k=>haText(a[k]),num=(...ks)=>{for(const k of ks){const n=Number(a[k]);if(a[k]!==undefined&&a[k]!==null&&isFinite(n))return n}};
+  const unit=domain==='weather'?t('temperature_unit'):t('unit_of_measurement'),name=item.name||e;
+  const d={state:st,unit,available,received:true,features:Number(a.supported_features)||0,value:st,hvac:st,
+   temperature:t('temperature'),current:t('current_temperature'),humidity:t('humidity'),feels_like:t('apparent_temperature'),
+   wind:t('wind_speed'),wind_unit:t('wind_speed_unit'),pressure:t('pressure'),pressure_unit:t('pressure_unit'),visibility:t('visibility'),visibility_unit:t('visibility_unit'),uv:t('uv_index'),wind_bearing:t('wind_bearing'),
+   title:t('media_title'),artist:t('media_artist'),low:t('target_temp_low'),high:t('target_temp_high'),target_low:t('target_temp_low'),target_high:t('target_temp_high'),
+   modes:t('hvac_modes'),presets:t('preset_modes'),preset:t('preset_mode'),preset_mode:t('preset_mode'),fan_modes:t('fan_modes'),fan_mode:t('fan_mode'),swing_modes:t('swing_modes'),swing_mode:t('swing_mode'),
+   percentage:t('percentage'),oscillating:t('oscillating'),direction:t('direction'),position:t('current_position'),options:t('options'),event_type:t('event_type'),
+   sensor_class:t('device_class'),forecast:[],actions:[],forecast_pending:false};
+  const min=num('min','min_temp'),max=num('max','max_temp'),step=num('step','percentage_step','target_temp_step');
+  if(min!==undefined)d.minimum=min;if(max!==undefined)d.maximum=max;if(step!==undefined)d.step=step;
+  if(domain==='media_player'&&(d.features&4))d.volume=t('volume_level');
+  if(domain==='light'){
+   const modes=a.supported_color_modes||[],hs=Array.isArray(a.hs_color)?a.hs_color:null,b=num('brightness');
+   Object.assign(d,{brightness:b===undefined?0:Math.round(b*100/255),dimmable:modes.some(m=>m!=='onoff'),light_on:st==='on',
+    kelvin:num('color_temp_kelvin')||0,kelvin_min:num('min_color_temp_kelvin')||2000,kelvin_max:num('max_color_temp_kelvin')||6500,
+    supports_ct:modes.includes('color_temp'),supports_rgb:modes.some(m=>['rgb','rgbw','rgbww','xy','hs'].includes(m)),
+    hue:hs?+hs[0]:0,saturation:hs?+hs[1]:100,hs_known:!!hs,light_temperature:a.color_mode==='color_temp',light_mode:0});
+  }
+  const line=text=>({text:String(text??'')});
+  // Detail lines: badge, value, context, hint, name.
+  let value=available?haCompact(st)+(unit?' '+unit:''):'--',context=available?'':'Entity unavailable',badge='';
+  if(domain==='binary_sensor')value=st==='on'?'On':st==='off'?'Off':st;
+  else if(domain==='script')value=st==='on'?'Running':st==='off'?'Idle':haLabel(st);
+  else if(domain==='automation')value=st==='on'?'Enabled':st==='off'?'Disabled':haLabel(st);
+  else if(/^(scene|button|input_button)$/.test(domain))value='Ready';
+  else if(domain==='climate'){value=haCompact(d.temperature)+(unit||'°');context='Now '+haCompact(d.current)+(unit||'°');badge=haLabel(st)}
+  else if(domain==='weather'){value=haCompact(d.temperature)+unit;context=haLabel(st)}
+  else if(domain==='fan'){value=haCompact(d.percentage)+'%';badge=st==='off'?'Off':'Fan'}
+  else if(domain==='media_player'){value='Volume: '+haPercent(Number(a.volume_level)||0);context=/^(playing|paused)$/.test(st)?d.title||st:'Nothing playing'}
+  else if(domain==='event'){value=st&&st!=='unknown'?(d.event_type?haLabel(d.event_type):'Event'):'No events'}
+  // Main-page lines (onx_detail_view::carousel).
+  let cValue=value,cContext='';
+  if(available){
+   if(domain==='light'||domain==='switch'){cValue=st==='on'?'On':st==='off'?'Off':haLabel(st);if(domain==='light'&&st==='on'&&a.brightness!=null)cContext=haPercent(a.brightness/255)+' brightness'}
+   else if(domain==='cover'){const pos=num('current_position');cValue=pos!==undefined?haPercent(pos/100):haLabel(st);cContext=haLabel(st)}
+   else if(domain==='climate'||domain==='fan')cContext=badge;
+   else if(domain==='media_player'){cValue=haLabel(st);cContext=/^(playing|paused)$/.test(st)?d.title:''}
+   else if(domain==='timer'){cValue=haLabel(st);cContext=t('remaining')}
+  }
+  const ring=(lo,hi,v)=>{const n=Number(v);return available&&isFinite(n)&&hi>lo?Math.round(Math.max(0,Math.min(1,(n-lo)/(hi-lo)))*1000):-1};
+  const vring=/^(number|input_number)$/.test(domain)?ring(min,max,st):domain==='sensor'&&unit==='%'?ring(0,100,st):domain==='fan'?ring(0,100,d.percentage):-1;
+  const v={entity:e,draft:true,layout:domain==='light'?'light':domain==='media_player'?'media':'value',available,icon:item.icon||'',value_ring:vring,
+   lines:[line(badge),line(value),line(context),line(''),line(name)],panel:d,
+   carousel:{layout:'carousel',value_ring:-1,icon:item.icon||'',lines:[line(''),line(cValue),line(cContext),line(''),line(name)]},
+   playing:st==='playing',paused:st==='paused',progress:-1};
+  if(domain==='timer')v.timer={state:st,duration:t('duration'),remaining:t('remaining'),finishes_at:t('finishes_at')};
+  return v;
+ }
+ // The panel's views plus drafts for the listed entities it has none for.
+ const withDrafts=(views,ids)=>{const out=[...views];for(const e of new Set(ids))if(e&&!out.some(v=>v.entity===e)){const v=draftView(e);if(v)out.push(v)}return out};
  globalThis.ONX_PANEL_PREVIEW=(svg,slot,view,views,screen,settings)=>{
+  views=withDrafts(views||[],[slot.entity,...(slot.entity?pageFor(slot.entity).ids:[])]);if(!view&&slot.entity)view=views.find(v=>v.entity===slot.entity);
   if(settings&&settings.orientation!==lastSettings.orientation){lastSettings=settings;renderPageEditor()}else lastSettings=settings||{};
   // A port of onx_panel_detail.h: the same geometry, fonts, colours and rules,
   // drawn as SVG. Keep the two in step when either changes.
@@ -1551,7 +1640,7 @@ static const char PANEL_JS[] = R"ONXPANEL(
    });
   };
   if(detail)renderDetail();else renderMain();
-  status(view?'Live rectangular panel view':'Save configured entities to load live readings.');
+  status(view?.draft||(slot.entity&&pageFor(slot.entity).ids.some(e=>views.find(v=>v.entity===e)?.draft))?'Unsaved entities show a Home Assistant snapshot; save to see the panel’s own view.':view?'Live rectangular panel view':'Save configured entities to load live readings.');
   if(svg.id==='device-preview')drawLiveCanvas();
  };
  // Colour helpers shared by the light preview (onx_light::kelvin / hsv).
