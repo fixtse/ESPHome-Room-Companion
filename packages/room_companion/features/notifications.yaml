@@ -79,7 +79,7 @@ esphome:
 switch:
   - platform: template
     id: panel_standby_timeout_enabled
-    name: "Standby clock timer"
+    name: "2. Standby clock timer"
     icon: "mdi:timer-outline"
     entity_category: config
     optimistic: true

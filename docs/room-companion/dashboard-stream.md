@@ -89,8 +89,7 @@ The tab repeats these steps in short form.
 - **Page address**: e.g. `http://homeassistant.local:8123/room-panel/0`.
   **Use my Home Assistant** fills in the Home Assistant the panel is connected
   to; add a dashboard path for a view made for the panel. After **Connect to
-  Home Assistant** on the page, dashboards appear as suggestions. Home Assistant can also change it through the **Dashboard
-  address** text entity, and **Screen mode** switches between modes.
+  Home Assistant** on the page, dashboards appear as suggestions. **Screen mode** in Home Assistant switches between modes.
 - **Zoom** enlarges text and controls (restart to apply).
 
 The stream connects the first time the dashboard is opened, not at boot, so a

@@ -41,7 +41,6 @@ room_companion:
   lvgl_id: lvgl_ui
   stream_id: dashboard_stream
   touchscreen_id: panel_touch
-  url_text: dashboard_url_text
   dashboard_switch: dashboard_open_switch
   default_server: ${default_dashboard_server}
   default_url: ${default_dashboard_url}
@@ -60,21 +59,10 @@ script:
       - delay: ${dashboard_notice_seconds}s
       - lambda: 'onx_notification::center.dismiss(item);'
 
-text:
-  - platform: template
-    id: dashboard_url_text
-    name: Dashboard address
-    entity_category: config
-    icon: mdi:web
-    mode: text
-    max_length: 255
-    set_action:
-      - lambda: 'id(room_panel)->set_dashboard_url(std::string(x.c_str()));'
-
 switch:
   - platform: template
     id: dashboard_open_switch
-    name: Dashboard
+    name: Streamed page
     icon: mdi:monitor-dashboard
     # State is published by room_panel (corner hold closes it too).
     turn_on_action:

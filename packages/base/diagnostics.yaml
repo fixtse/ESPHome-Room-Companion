@@ -53,6 +53,6 @@ button:
   - platform: factory_reset
     id: reset_device
     name: "Reset device"
-    disabled_by_default: false
+    disabled_by_default: true
     icon: mdi:restore
     entity_category: config

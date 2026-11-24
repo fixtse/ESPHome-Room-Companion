@@ -72,6 +72,8 @@ select:
   - platform: template
     id: assist_microphone_mode
     name: Assist microphone
+    # Kept on the panel (Auto); not exposed to Home Assistant.
+    internal: true
     icon: mdi:microphone-settings
     entity_category: config
     options: [Auto, Left, Right]
@@ -85,6 +87,7 @@ text_sensor:
   - platform: template
     id: assist_microphone_in_use
     name: Assist microphone in use
+    disabled_by_default: true
     icon: mdi:microphone-question
     entity_category: diagnostic
     update_interval: 1s

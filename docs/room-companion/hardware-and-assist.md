@@ -47,8 +47,10 @@ the wake word and SoundSense use:
   over when it scores more than 1.5 dB better, or within about 1 s when the
   current one goes silent while the other still hears sound (a failed or
   disconnected microphone). Switches crossfade over one 16 ms chunk.
-- **Left** / **Right** force one microphone (*Assist microphone* select).
-- *Assist microphone in use* reports the current one. Before selection,
+- **Left** / **Right** force one microphone. The *Assist microphone* select is
+  internal (not in Home Assistant), so released firmware always runs Auto.
+- *Assist microphone in use* reports the current one; it is disabled by
+  default, so enable it in Home Assistant to see it. Before selection,
   Assist used the left microphone (mono `channel: right`), so Auto starts there.
 
 Measured with a stereo test build (2026.11.0.136/.137) over about 2 hours of

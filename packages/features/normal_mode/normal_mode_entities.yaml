@@ -27,7 +27,9 @@ number:
             }
             id(ui_presenter)->set_standby_timeout_ms((uint32_t) timeout_seconds * 1000U);
   - platform: template
-    name: "5. Sleep timeout"
+    name: "Sleep timeout"
+    # Set on the panel's settings page; not exposed to Home Assistant.
+    internal: true
     id: sleep_timeout_seconds
     icon: "mdi:timer-sand"
     optimistic: true
@@ -55,7 +57,8 @@ number:
 
 text:
   - platform: template
-    name: "3. Sleep start time"
+    name: "Sleep start time"
+    internal: true
     id: sleep_mode_start_time
     icon: "mdi:bed-clock"
     optimistic: false
@@ -97,7 +100,8 @@ text:
           
 
   - platform: template
-    name: "4. Sleep end time"
+    name: "Sleep end time"
+    internal: true
     id: sleep_mode_end_time
     icon: "mdi:bed-clock"
     optimistic: false
@@ -522,7 +526,7 @@ switch:
             then:
               - switch.turn_off: low_power_sleep
   - platform: template
-    name: "2. Sleep mode enabled"
+    name: "3. Sleep mode enabled"
     id: sleep_mode_enabled
     icon: "mdi:sleep"
     optimistic: true

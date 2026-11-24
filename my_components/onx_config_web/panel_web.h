@@ -1693,7 +1693,7 @@ static const char PANEL_JS[] = R"ONXPANEL(
  form.innerHTML='<h2>Streamed page</h2>'+
   '<p class="hint">Show an interactive web page on the panel, usually a Home Assistant dashboard, though any page works. A Remote WebView server renders it '+
   'and streams the picture; touches go back to the page. Native screens still appear for Assist and notifications. A dashboard icon appears automatically when an address is set. '+
-  'You can also add <strong>Dashboard</strong> as a control to open it from the icon strip, or use the Dashboard switch in Home Assistant. Swipe left or right to return.</p>'+
+  'You can also add <strong>Dashboard</strong> as a control to open it from the icon strip, or use the Streamed page switch in Home Assistant. Swipe left or right to return.</p>'+
   '<fieldset class="settings-section"><legend>Set it up</legend><ol class="setup-steps">'+
   '<li><b>Run a Remote WebView server.</b> On Home Assistant OS, add the <a href="https://my.home-assistant.io/redirect/supervisor_add_addon_repository/?repository_url=https%3A%2F%2Fgithub.com%2Fstrange-v%2FRemoteWebViewServer" target="_blank" rel="noopener noreferrer">Remote WebView Server app repository</a>, then install and start it. '+
   'Elsewhere, use the <a href="https://github.com/fixtse/OpenNextion-Room-Companion/blob/main/deploy/remote-webview/compose.yaml" target="_blank" rel="noopener noreferrer">Docker Compose example</a>, already tuned for these panels.</li>'+

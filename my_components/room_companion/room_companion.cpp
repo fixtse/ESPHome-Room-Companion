@@ -318,7 +318,7 @@ std::string RoomPanel::handle_web(const std::string &op, const std::string &data
     return "{\"error\":\"Toolbar position must be left or right\"}";
   const float scale = doc["scale"] | settings_.scale;
   if (!valid_server(next.server)) return "{\"error\":\"Server must be host:port, for example 192.168.1.10:8081\"}";
-  if (!valid_url(next.url)) return "{\"error\":\"Dashboard address must start with http:// or https://\"}";
+  if (!valid_url(next.url)) return "{\"error\":\"Page address must start with http:// or https://\"}";
   if (!std::isfinite(scale) || scale < 0.5f || scale > 4.0f) return "{\"error\":\"Zoom must be between 0.5 and 4\"}";
   next.scale = std::round(scale * 100.0f) / 100.0f;
   const StreamSettings previous = settings_;
