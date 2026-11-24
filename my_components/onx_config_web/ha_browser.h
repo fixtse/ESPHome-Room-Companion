@@ -91,6 +91,26 @@ static const char HA_BROWSER_JS[] = R"ONXJS(
      this.items=catalogue(states,registry,areas,devices,{entity:entity.resources,entity_component:component.resources});this.ready=true;return this.items;}finally{clearTimeout(timeout)}
    }finally{socket.close();}
   }
+  // One request over its own short-lived socket (history for the web preview).
+  async request(type,params={}){
+   const auth=await this.token();const url=new URL(auth.base+'/api/websocket');url.protocol=url.protocol==='https:'?'wss:':'ws:';
+   const socket=new WebSocket(url);
+   try{return await new Promise((resolve,reject)=>{
+    const timer=setTimeout(()=>reject(Error('Home Assistant request timed out')),15000);
+    socket.onerror=socket.onclose=()=>{clearTimeout(timer);reject(Error('Home Assistant disconnected'))};
+    socket.onmessage=event=>{let data;try{data=JSON.parse(event.data)}catch{clearTimeout(timer);reject(Error('Invalid Home Assistant response'));return}
+     if(data.type==='auth_required')socket.send(JSON.stringify({type:'auth',access_token:auth.access}));
+     else if(data.type==='auth_ok')socket.send(JSON.stringify({id:1,type,...params}));
+     else if(data.type==='auth_invalid'){clearTimeout(timer);reject(Error('Home Assistant sign-in expired. Connect again.'))}
+     else if(data.id===1){clearTimeout(timer);data.success?resolve(data.result):reject(Error(data.error?.message||'Home Assistant request failed'))}
+    };
+   })}finally{socket.close()}
+  }
+  // Numeric history of one entity over the last `seconds`, as [{t: epoch seconds, value}].
+  async history(entity,seconds){
+   const result=await this.request('history/history_during_period',{start_time:new Date(Date.now()-seconds*1000).toISOString(),entity_ids:[entity],minimal_response:true,no_attributes:true,significant_changes_only:false});
+   return (result?.[entity]||[]).map(p=>({t:Math.trunc(p.lu??(Date.parse(p.last_updated||p.last_changed)/1000)),value:Number(p.s??p.state)})).filter(p=>isFinite(p.t)&&isFinite(p.value));
+  }
   disconnect(){this.storage.removeItem('onx.ha.auth');this.flowStorage.removeItem('onx.ha.auth');this.flowStorage.removeItem('onx.ha.flow');this.items=local();this.ready=false;}
  }
  globalThis.OnxHA={catalogue,search,baseUrl,Client};

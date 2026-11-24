@@ -722,7 +722,7 @@ globalThis.ONX_APP={
  clear:i=>{slots[i]=empty();changed()},
  setTimer:(i,on)=>{slots[i].timerHidden=on?'1':'0';changed()},
  saveAll:()=>saveSlots(dirtyIndices()),hold,progress,
- refresh:()=>render(),dirtyAt:i=>dirtySlot(i),message,views:()=>liveViews,settings:()=>settings
+ refresh:()=>render(),history:(entity,seconds)=>ha.history(entity,seconds),dirtyAt:i=>dirtySlot(i),message,views:()=>liveViews,settings:()=>settings
 };
 (async()=>{try{
  render();search();

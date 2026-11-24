@@ -958,7 +958,7 @@ static const char PANEL_JS[] = R"ONXPANEL(
  }
  // The panel's views plus drafts for the listed entities it has none for.
  const withDrafts=(views,ids)=>{const out=[...views];for(const e of new Set(ids))if(e&&!out.some(v=>v.entity===e)){const v=draftView(e);if(v)out.push(v)}return out};
- const artSizes=new Map();
+ const artSizes=new Map(),haHistory=new Map();
  globalThis.ONX_PANEL_PREVIEW=(svg,slot,view,views,screen,settings)=>{
   const redraw=()=>{if(svg.isConnected)globalThis.ONX_PANEL_PREVIEW(svg,slot,view,views,screen,settings)};
   views=withDrafts(views||[],[slot.entity,...(slot.entity?pageFor(slot.entity).ids:[])]);if(!view&&slot.entity)view=views.find(v=>v.entity===slot.entity);
@@ -1046,7 +1046,8 @@ static const char PANEL_JS[] = R"ONXPANEL(
   const pct=v=>isFinite(v)?Math.round(v)+'%':'—';
   const label=s=>{s=String(s??'').replaceAll('_',' ');return s?s[0].toUpperCase()+s.slice(1):s};
   const heroSafe=s=>!!s&&/^[0-9.,: -]+$/.test(s),heroText=s=>heroSafe(String(s).replaceAll('°',''));
-  const options=s=>{try{const v=JSON.parse(String(s||'[]').replaceAll("'",'"'));return Array.isArray(v)?v.map(String):[]}catch{return String(s||'').split(',').map(x=>x.trim().replace(/^\[|\]$/g,'').replace(/^'|'$/g,'')).filter(Boolean)}};
+  // As onx_control_state::options: Python list reprs, where enum members come as <HVACMode.HEAT: 'heat'>.
+  const options=s=>{s=String(s||'').trim();if(!s.startsWith('['))return [];const out=[],re=/\s*(?:<[A-Za-z_][\w.]*:\s*)?(['"])((?:\\.|(?!\1).)*)\1>?\s*(,|\])/gy;re.lastIndex=1;let m;while((m=re.exec(s))){out.push(m[2].replace(/\\(.)/g,'$1'));if(m[3]===']')break}return out};
   const conditionText=s=>({partlycloudy:'Partly cloudy','clear-night':'Clear','lightning-rainy':'Storm','snowy-rainy':'Sleet'}[s]||label(s));
   const present=(v,unit)=>v===undefined||v===null||v===''||['None','unknown','unavailable'].includes(String(v))?'':compact(v)+(unit?(unit==='%'||unit==='°'?unit:' '+unit):'');
   const readingOf=(v,unit)=>v===undefined||v===null||v===''||['None','unknown','unavailable'].includes(String(v))?'—':compact(v)+unit;
@@ -1117,6 +1118,15 @@ static const char PANEL_JS[] = R"ONXPANEL(
     if(isFinite(d)){const ly=y+bar+(lab??P(remaining?4:6));text(dur(s),F.small,MUTED,x,ly,w/2);text(remaining?'-'+dur(d-s):dur(d),F.small,MUTED,x+w/2,ly,w/2,'right')}}
   };
   const now=Date.now()/1000;
+  // The panel only holds a plug's power history once its own screen has asked
+  // for it; until then the preview reads the secondary sensor's history from
+  // Home Assistant in this browser, when the entry shows a graph.
+  const secondaryHistory=(e,range)=>{
+   const sensor=slot.entity===e&&slot.sensorGraph==='1'?slot.secondary:'';if(!sensor||!app()?.history)return {points:[]};
+   const key=sensor+'|'+range;
+   if(!haHistory.has(key)){haHistory.set(key,null);app().history(sensor,range).then(points=>{haHistory.set(key,{points,now:Math.trunc(Date.now()/1000)});redraw()}).catch(()=>{})}
+   return haHistory.get(key)||{points:[]};
+  };
   const history=v=>({points:(v?.graph||[]).map(p=>({t:p.t,value:p.value})).filter(p=>isFinite(p.value)),now:v?.graph_now||now,range:v?.panel?.history_range||43200});
   const rangeLabel=r=>({3600:'1 h',86400:'24 h',604800:'7 d'}[r]||'12 h');
   if(!slot.entity){text('Choose an entity',F.body,TEXT,P(24),H/2,W-P(48));status('Choose what this page displays.');return}
@@ -1212,7 +1222,7 @@ static const char PANEL_JS[] = R"ONXPANEL(
    circle(cx,cy,size,on?STRONG:CONTROL,'power',on?TEXT:SOFT);text(on?'On':'Off',F.big,TEXT,l.vis.x,cy+size/2+P(10),l.vis.w,'center');
    if(d.power===undefined&&!(v?.graph?.length))return;const th=P(56),ty=wide?l.ctl.y:Math.min(l.ctl.y,cy+size/2+P(10)+F.big.lh+P(10));
    tile({x:l.ctl.x,y:ty,w:l.ctl.w,h:th},d.power_unit==='kWh'?'Energy':'Power',d.power!==undefined?d.power+' '+(d.power_unit||''):'—');
-   const gy=ty+th+P(10),gb=H-P(24);if(gb-gy>=P(60)){const hst=history(v);sensorGraph(hst.points,hst.now,hst.range,l.ctl.x,gy,l.ctl.w,gb-gy)}
+   const gy=ty+th+P(10),gb=H-P(24);if(gb-gy>=P(60)){const hst=history(v);if(!hst.points.length)Object.assign(hst,secondaryHistory(e,hst.range));sensorGraph(hst.points,hst.now,hst.range,l.ctl.x,gy,l.ctl.w,gb-gy)}
   };
   const buildAction=(l,e,d,title)=>{
    const script=e.startsWith('script.'),scene=e.startsWith('scene.'),automation=e.startsWith('automation.'),running=script&&d.state==='on';
@@ -1673,25 +1683,47 @@ static const char PANEL_JS[] = R"ONXPANEL(
   orientation.closest('label')?.after(hint);
  }
 
- // Dashboard stream settings belong with the Home Assistant connection.
- const anchor=$('page-connection');
+ // Streamed page: any web page (usually a Home Assistant dashboard) rendered by
+ // a Remote WebView server and streamed to the panel. Its own settings page.
+ const anchor=$('page-stream');
  if(!anchor)return;
+ const DOCS='https://github.com/fixtse/OpenNextion-Room-Companion/blob/main/docs/room-companion/dashboard-stream.md';
  const form=document.createElement('form');
  form.className='panel';form.id='panel-dashboard';
- form.innerHTML='<h2>Home Assistant dashboard</h2>'+
-  '<p class="hint">Show an interactive Home Assistant dashboard on the panel. A Remote WebView server renders it and streams the picture; '+
-  'native screens still appear for Assist and notifications. A dashboard icon appears automatically when an address is set. You can also add <strong>Dashboard</strong> as a control '+
-  'to open it from the icon strip, or use the Dashboard switch in Home Assistant. Swipe left or right to return.</p>'+
+ form.innerHTML='<h2>Streamed page</h2>'+
+  '<p class="hint">Show an interactive web page on the panel, usually a Home Assistant dashboard, though any page works. A Remote WebView server renders it '+
+  'and streams the picture; touches go back to the page. Native screens still appear for Assist and notifications. A dashboard icon appears automatically when an address is set. '+
+  'You can also add <strong>Dashboard</strong> as a control to open it from the icon strip, or use the Dashboard switch in Home Assistant. Swipe left or right to return.</p>'+
+  '<fieldset class="settings-section"><legend>Set it up</legend><ol class="setup-steps">'+
+  '<li><b>Run a Remote WebView server.</b> On Home Assistant OS, add the <a href="https://my.home-assistant.io/redirect/supervisor_add_addon_repository/?repository_url=https%3A%2F%2Fgithub.com%2Fstrange-v%2FRemoteWebViewServer" target="_blank" rel="noopener noreferrer">Remote WebView Server app repository</a>, then install and start it. '+
+  'Elsewhere, use the <a href="https://github.com/fixtse/OpenNextion-Room-Companion/blob/main/deploy/remote-webview/compose.yaml" target="_blank" rel="noopener noreferrer">Docker Compose example</a>, already tuned for these panels.</li>'+
+  '<li><b>Use the recommended stream settings.</b> Tile size 32, a minimum frame interval of 120 ms, JPEG quality 80 and reduced motion on. These panels draw a full frame in about a tenth of a second; '+
+  '<a href="'+DOCS+'#recommended-server-settings" target="_blank" rel="noopener noreferrer">all values and why</a>.</li>'+
+  '<li><b>Enter the server and the page below</b>, then save. <b>Use my Home Assistant</b> fills in the Home Assistant this panel is connected to.</li>'+
+  '<li><b>Sign the server’s browser in to Home Assistant</b> once: open the page on the panel, then sign in through Chrome DevTools on the server and choose <b>Keep me logged in</b>. '+
+  'A separate, non-admin Home Assistant user is best. <a href="'+DOCS+'#2-sign-the-servers-browser-in-to-home-assistant" target="_blank" rel="noopener noreferrer">Step-by-step sign-in</a>.</li>'+
+  '<li><b>Design for the panel.</b> A dedicated view at 320×480 (3.5") or 240×320 (2.8"), large tiles, no scrolling, no animations, cameras or clocks with seconds. '+
+  '<a href="'+DOCS+'#designing-a-dashboard-for-these-panels" target="_blank" rel="noopener noreferrer">Dashboard tips</a>.</li>'+
+  '</ol><p class="help-links"><a href="'+DOCS+'" target="_blank" rel="noopener noreferrer">Full setup guide<span class="sr"> (opens in a new tab)</span></a></p></fieldset>'+
   '<div class="field-grid">'+
   '<label class="field">Remote WebView server<input id="dash-server" maxlength="96" placeholder="192.168.1.10:8081" autocomplete="off"></label>'+
   '<label class="field">Zoom<input id="dash-scale" type="number" min="0.5" max="4" step="0.25"></label>'+
   '</div>'+
-  '<label class="field">Dashboard address<input id="dash-url" maxlength="256" placeholder="http://homeassistant.local:8123/room-panel/0" autocomplete="off"></label>'+
-  '<p class="hint">Design the dashboard for the panel’s size, without animations: these screens update a full frame in roughly a tenth of a second. '+
+  '<label class="field">Page address<input id="dash-url" maxlength="256" placeholder="http://homeassistant.local:8123/room-panel/0" autocomplete="off"></label>'+
+  '<div class="row"><button id="dash-use-ha" type="button">Use my Home Assistant</button></div>'+
+  '<p class="hint">Any http or https page the server can reach. For Home Assistant, add a dashboard path such as <code>/room-panel/0</code> to open a view made for the panel. '+
   'Changing the server or zoom needs a restart.</p>'+
   '<p class="hint" id="dash-status" role="status"></p>'+
-  '<div class="settings-actions"><button class="primary" type="submit">Save dashboard</button></div>';
+  '<div class="settings-actions"><button class="primary" type="submit">Save streamed page</button></div>';
  anchor.append(form);
+ // The Home Assistant the panel uses (Home Assistant page), else this browser's sign-in.
+ $('dash-use-ha').onclick=()=>{
+  let base=($('ha-url')?.value||'').trim();
+  if(!base)try{base=JSON.parse(localStorage.getItem('onx.ha.auth')||'null')?.base||''}catch{}
+  if(!base){$('dash-status').textContent='Set the Home Assistant address on the Home Assistant page first.';return}
+  try{const current=new URL($('dash-url').value.trim()),origin=new URL(base).origin;$('dash-url').value=current.origin===origin?current.href:origin+'/'}catch{$('dash-url').value=base.replace(/\/*$/,'/')}
+  $('dash-url').focus();$('dash-status').textContent='Filled in your Home Assistant. Save to apply.';
+ };
  const show=state=>{
   $('dash-server').value=state.server||'';$('dash-url').value=state.url||'';$('dash-scale').value=state.scale||1;
 

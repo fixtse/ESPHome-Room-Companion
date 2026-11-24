@@ -1,7 +1,7 @@
-# Home Assistant dashboard on the panel
+# Streamed page (Home Assistant dashboard) on the panel
 
-In **Home Assistant dashboard** mode, [RemoteWebViewServer](https://github.com/strange-v/RemoteWebViewServer) renders a web page (usually a
-Home Assistant dashboard) in headless Chromium and streams changed tiles to the
+In dashboard mode, [RemoteWebViewServer](https://github.com/strange-v/RemoteWebViewServer) renders a web page (usually a
+Home Assistant dashboard, but any page the server can reach) in headless Chromium and streams changed tiles to the
 panel; touches go back to the server. The panel switches to its native screens
 for setup, Assist, notifications and the corner menu, then returns to the
 dashboard.
@@ -39,6 +39,25 @@ timeout. It keeps the browser
 profile in `./pw-data`, and turns on reduced motion, which makes SPI panels feel
 much smoother. One server can drive several panels at their own sizes.
 
+### Recommended server settings
+
+These panels decode and draw a full 320×480 frame in roughly a tenth of a
+second, so the server should send small tiles and no faster than the panel can
+draw. The Compose example already uses these values; for the Home Assistant
+add-on, set the options of the same name in its **Configuration**:
+
+| Setting | Value | Why |
+| --- | --- | --- |
+| Tile size (`TILE_SIZE`) | `32` | Small changes (a toggled tile) send little data. |
+| Full-frame tile count (`FULL_FRAME_TILE_COUNT`) | `1` | Large changes go as one image instead of many tiles. |
+| Full-frame area threshold (`FULL_FRAME_AREA_THRESHOLD`) | `0.5` | Above half the screen changed, send a full frame. |
+| Full frame every (`FULL_FRAME_EVERY`) | `50` | Periodic full frame repairs any missed tile. |
+| Every Nth frame (`EVERY_NTH_FRAME`) | `1` | Keep every frame; the interval below limits the rate. |
+| Minimum frame interval (`MIN_FRAME_INTERVAL_MS`) | `120` | About what the panel can draw; faster only queues frames. |
+| JPEG quality (`JPEG_QUALITY`) | `80` | Sharp text at a size the panel decodes quickly. |
+| Max bytes per message (`MAX_BYTES_PER_MESSAGE`) | `61440` | Fits the panel's receive buffer. |
+| Reduced motion (`PREFERS_REDUCED_MOTION`) | `true` | Fewer animation frames; much smoother on SPI panels. |
+
 ## 2. Sign the server's browser in to Home Assistant
 
 For a dashboard that requires sign-in, [point the panel at the server](#3-point-the-panel-at-it)
@@ -62,13 +81,15 @@ A dedicated, non-admin Home Assistant user for panels is recommended.
 ## 3. Point the panel at it
 
 Open the panel's settings page (**Visit** on the device page in Home Assistant,
-or the address on the panel's **More** screen):
+or the address on the panel's **More** screen) and its **Streamed page** tab.
+The tab repeats these steps in short form.
 
 - **Screen**: *Home Assistant dashboard*.
 - **Remote WebView server**: `<server-host>:8081`. Restart when prompted.
-- **Dashboard address**: e.g. `http://homeassistant.local:8123/room-panel/0`.
-  After **Connect to Home Assistant** on the page, dashboards appear as
-  suggestions. Home Assistant can also change it through the **Dashboard
+- **Page address**: e.g. `http://homeassistant.local:8123/room-panel/0`.
+  **Use my Home Assistant** fills in the Home Assistant the panel is connected
+  to; add a dashboard path for a view made for the panel. After **Connect to
+  Home Assistant** on the page, dashboards appear as suggestions. Home Assistant can also change it through the **Dashboard
   address** text entity, and **Screen mode** switches between modes.
 - **Zoom** enlarges text and controls (restart to apply).
 
