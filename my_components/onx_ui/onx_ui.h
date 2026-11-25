@@ -33,6 +33,7 @@ class OnxUi : public Component {
   void set_standby_guard(std::function<bool()> guard) { this->standby_guard_ = std::move(guard); }
   void notify_user_activity();
   uint32_t user_idle_ms() const;
+  uint32_t get_standby_timeout_ms() const { return this->standby_timeout_ms_; }
   void set_standby_timeout_ms(uint32_t standby_timeout_ms);
   void set_standby_timeout_enabled(bool enabled) {
     standby_timeout_enabled_ = enabled;

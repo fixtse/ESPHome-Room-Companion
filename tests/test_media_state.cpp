@@ -94,4 +94,96 @@ int main() {
   assert(ar.failures == 0 && ar.ready("https://art/a.jpg", 64001));
   assert(ar.on_failure("https://art/wrap.jpg", UINT32_MAX - 500) == 1500);
   assert(!ar.ready("https://art/wrap.jpg", 998) && ar.ready("https://art/wrap.jpg", 999));
+
+  // Idle media popup / stuck non-playing media player return-to-idle state machine.
+  {
+    IdlePopup popup;
+    // 1. Standby + playing player opens popup and saves previous carousel index.
+    IdleMediaInput in;
+    in.mode_ok = in.allowed = in.standby_enabled = in.standby_active = in.user_idle = true;
+    in.selected_index = 2; in.candidate = 5;
+    auto d = decide_idle_media(popup, in);
+    assert(d.action == IdleMediaAction::OPEN_POPUP && d.target_index == 5);
+    assert(popup.visible && popup.previous_index == 2);
+
+    // 2. While still playing and user stays idle, popup stays open.
+    in.standby_active = false; in.detail_active = in.media_detail = in.cur_detail_playing = true;
+    in.cur_detail = 5; in.selected_index = 5;
+    d = decide_idle_media(popup, in);
+    assert(d.action == IdleMediaAction::NONE && popup.visible);
+
+    // 3. Playback stops/pauses while popup is active and user is idle -> closes immediately.
+    in.cur_detail_playing = false; in.candidate = -1;
+    d = decide_idle_media(popup, in);
+    assert(d.action == IdleMediaAction::CLOSE_DETAIL && !popup.visible && popup.previous_index == 2);
+  }
+  {
+    // 4. User interacts with popup (e.g. taps Pause): takes ownership, does NOT close
+    // immediately, then closes once standby timeout elapses while still paused/not playing.
+    IdlePopup popup{true, 3};
+    IdleMediaInput in;
+    in.mode_ok = in.allowed = in.standby_enabled = true;
+    in.user_idle = false; in.detail_active = in.media_detail = true;
+    in.cur_detail = 4; in.cur_detail_playing = false; in.candidate = -1;
+    auto d = decide_idle_media(popup, in);
+    assert(d.action == IdleMediaAction::NONE && !popup.visible && popup.previous_index == 3);
+    // Still paused after standby timeout -> closes so panel returns to idle view.
+    in.user_idle = true;
+    d = decide_idle_media(popup, in);
+    assert(d.action == IdleMediaAction::CLOSE_DETAIL && popup.previous_index == 3);
+  }
+  {
+    // 5. User touches volume on a playing player, then walks away: seamlessly promotes
+    // back to popup.visible = true after timeout, then closes immediately when it stops.
+    IdlePopup popup{true, 1};
+    IdleMediaInput in;
+    in.mode_ok = in.allowed = in.standby_enabled = true;
+    in.user_idle = false; in.detail_active = in.media_detail = in.cur_detail_playing = true;
+    in.cur_detail = 4; in.candidate = 4;
+    assert(decide_idle_media(popup, in).action == IdleMediaAction::NONE && !popup.visible);
+    in.user_idle = true;
+    assert(decide_idle_media(popup, in).action == IdleMediaAction::NONE && popup.visible && popup.previous_index == 1);
+    in.cur_detail_playing = false; in.candidate = -1;
+    assert(decide_idle_media(popup, in).action == IdleMediaAction::CLOSE_DETAIL && !popup.visible);
+  }
+  {
+    // 6. Manually opened non-playing player (idle/paused/off/unavailable/HA disconnected)
+    // closes after standby timeout when standby is enabled, but stays open while user is active,
+    // while an overlay (notification centre / Assist) is open, or when standby is disabled.
+    IdlePopup popup;
+    IdleMediaInput in;
+    in.mode_ok = true; in.allowed = false; in.standby_enabled = true;
+    in.user_idle = true; in.overlay_blocking = true;
+    in.detail_active = in.media_detail = true; in.cur_detail = 2;
+    assert(decide_idle_media(popup, in).action == IdleMediaAction::NONE);
+    in.overlay_blocking = false; in.standby_enabled = false;
+    assert(decide_idle_media(popup, in).action == IdleMediaAction::NONE);
+    in.standby_enabled = true; in.mode_ok = false;
+    assert(decide_idle_media(popup, in).action == IdleMediaAction::NONE);
+    in.mode_ok = true;
+    assert(decide_idle_media(popup, in).action == IdleMediaAction::CLOSE_DETAIL);
+  }
+  {
+    // 7. Manual non-playing player hands off to another playing player, and after idle
+    // timeout switches to an already-playing other player in popup mode.
+    IdlePopup popup;
+    IdleMediaInput in;
+    in.mode_ok = in.allowed = in.standby_enabled = true;
+    in.detail_active = in.media_detail = true; in.cur_detail = 1; in.candidate = 2;
+    in.detail_stopped_playing = true;
+    auto d = decide_idle_media(popup, in);
+    assert(d.action == IdleMediaAction::SWITCH_PLAYER && d.target_index == 2 && !popup.visible);
+    in.detail_stopped_playing = false; in.user_idle = true;
+    d = decide_idle_media(popup, in);
+    assert(d.action == IdleMediaAction::SWITCH_PLAYER && d.target_index == 2 && popup.visible);
+  }
+  {
+    // 8. Orphaned popup.visible when not on a media detail is repaired; non-media details untouched.
+    IdlePopup popup{true, 4};
+    IdleMediaInput in;
+    in.mode_ok = in.allowed = in.standby_enabled = in.user_idle = true;
+    in.detail_active = true; in.media_detail = false; in.candidate = 1;
+    assert(decide_idle_media(popup, in).action == IdleMediaAction::NONE);
+    assert(!popup.visible && popup.previous_index == -1);
+  }
 }

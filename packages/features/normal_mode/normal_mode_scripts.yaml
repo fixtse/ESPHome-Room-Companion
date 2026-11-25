@@ -496,9 +496,9 @@ script:
           auto *media_state=custom_logic_entity_sub::entity_detail(entity_id);
           const bool media_stopped = entity_id.rfind("media_player.", 0) == 0 && media_state &&
               media_state->media_player_off_transition_pending && media_state->received &&
-              media_state->available && !onx_media::has_playback(media_state->state) &&
-              id(normal_ha_api_connected) && id(normal_device_detail_online) &&
-              (media_state->state == "off" ||
+              (!media_state->available || !onx_media::has_playback(media_state->state)) &&
+              id(normal_ha_api_connected) &&
+              ((media_state->available && id(normal_device_detail_online) && media_state->state == "off") ||
                (millis() - media_state->media_player_stop_ms >= 2500 &&
                 !onx_media::transport.remaining_ms(entity_id, millis())));
           if (media_stopped) {
@@ -1783,10 +1783,11 @@ script:
     mode: restart
     then:
       - lambda: |-
-          if(onx_media::idle_popup.visible) {
-            id(normal_device_selected_index)=onx_media::idle_popup.previous_index;
-            onx_media::idle_popup.visible=false;
+          if (onx_media::idle_popup.previous_index >= 0) {
+            id(normal_device_selected_index) = onx_media::idle_popup.previous_index;
+            onx_media::idle_popup.previous_index = -1;
           }
+          onx_media::idle_popup.visible = false;
           if (onx_timer::popup.visible) {onx_timer::popup.visible=false;onx_timer::popup.dismissed=true;}
           if (!id(normal_device_detail_active)) {
             return;
@@ -2034,82 +2035,89 @@ script:
           #ifdef USE_ROOM_COMPANION
           if (onx_panel_detail::timers.overlay) return;
           #endif
-          if(onx_notification::current.visible)return;
-          auto &popup=onx_media::idle_popup;
-          const auto now=id(ha_time).now();
-          const bool sleep_due=now.is_valid() && id(ui_presenter)->should_enter_sleep_mode(now.hour,now.minute);
+          if (onx_notification::current.visible) return;
+          auto &popup = onx_media::idle_popup;
+          const auto now = id(ha_time).now();
+          const bool sleep_due = now.is_valid() && id(ui_presenter)->should_enter_sleep_mode(now.hour, now.minute);
           const bool media_idle =
           #ifdef USE_ROOM_COMPANION
               true;
           #else
               onx_display_settings::idle.media;
           #endif
-          const bool allowed=media_idle && id(normal_ha_api_connected) &&
-              id(ui_presenter)->is_normal_mode_active() && !id(mode_manager)->is_provisioning_mode_enabled() &&
+          const bool mode_ok = id(ui_presenter)->is_normal_mode_active() &&
+              !id(mode_manager)->is_provisioning_mode_enabled() &&
               !id(screen_off_state) && !id(sleep_mode_state) && !sleep_due && !onx_timer::popup.visible;
-          const auto timeout=id(app_storage)->get_standby_timeout_ms();
-          if(popup.visible && id(ui_presenter)->user_idle_ms()<timeout) {
-            // Interaction takes ownership of the player as a regular detail view.
-            popup.visible=false;return;
-          }
-          auto playing=[&](int index) {
-            if(index<0 || index>=id(normal_device_count))return false;
-            const auto entity=id(ui_presenter)->get_normal_device_entity_id(index);
-            const auto *detail=custom_logic_entity_sub::entity_detail(entity);
-            return entity.rfind("media_player.",0)==0 && detail && detail->received && detail->available && detail->state=="playing";
+          const bool allowed = media_idle && id(normal_ha_api_connected) && mode_ok;
+          const auto timeout = id(ui_presenter)->get_standby_timeout_ms();
+          auto playing = [&](int index) {
+            if (index < 0 || index >= id(normal_device_count)) return false;
+            const auto entity = id(ui_presenter)->get_normal_device_entity_id(index);
+            const auto *detail = custom_logic_entity_sub::entity_detail(entity);
+            return entity.rfind("media_player.", 0) == 0 && detail && detail->received && detail->available && detail->state == "playing";
           };
           static std::vector<std::string> prev_playing;
-          static int prev_detail_index=-1;
-          static bool prev_detail_playing=false;
+          static int prev_detail_index = -1;
+          static bool prev_detail_playing = false;
           std::vector<std::string> now_playing_entities;
-          int newly_playing=-1;
-          for(int i=0;i<id(normal_device_count) && i<(int)custom_logic::CONFIGURABLE_DEVICE_SLOT_COUNT;++i) {
-            if(!playing(i))continue;
-            const auto ent=id(ui_presenter)->get_normal_device_entity_id(i);
+          int newly_playing = -1;
+          for (int i = 0; i < id(normal_device_count) && i < (int)custom_logic::CONFIGURABLE_DEVICE_SLOT_COUNT; ++i) {
+            if (!playing(i)) continue;
+            const auto ent = id(ui_presenter)->get_normal_device_entity_id(i);
             now_playing_entities.push_back(ent);
-            if(newly_playing<0 && std::find(prev_playing.begin(),prev_playing.end(),ent)==prev_playing.end())
-              newly_playing=i;
+            if (newly_playing < 0 && std::find(prev_playing.begin(), prev_playing.end(), ent) == prev_playing.end())
+              newly_playing = i;
           }
-          const int cur_detail=id(normal_device_detail_index);
-          const bool cur_detail_playing=id(normal_device_detail_active) && playing(cur_detail);
-          const bool detail_stopped_playing=id(normal_device_detail_active) && cur_detail==prev_detail_index && prev_detail_playing && !cur_detail_playing;
-          int candidate=cur_detail_playing?cur_detail:(newly_playing>=0?newly_playing:(playing(id(normal_device_selected_index))?id(normal_device_selected_index):-1));
-          if(candidate<0)for(int i=0;i<id(normal_device_count) && i<(int)custom_logic::CONFIGURABLE_DEVICE_SLOT_COUNT;++i)if(playing(i)) {candidate=i;break;}
-          prev_playing=std::move(now_playing_entities);
-          prev_detail_index=id(normal_device_detail_active)?cur_detail:-1;
-          prev_detail_playing=cur_detail_playing;
-          if(popup.visible) {
-            if(!allowed || candidate<0) {
-              popup.visible=false;
-              id(normal_device_selected_index)=popup.previous_index;
-              id(exit_normal_switch_detail).execute();
-              return;
-            }
-            if(candidate!=cur_detail) {
-              id(normal_device_selected_index)=candidate;
-              id(enter_normal_switch_detail).execute();
-            }
-            return;
-          }
-          const auto current_entity=id(ui_presenter)->get_normal_device_entity_id(cur_detail);
-          const bool manual_player=id(normal_device_detail_active) &&
-              id(normal_device_detail_kind)==NORMAL_DEVICE_DETAIL_KIND_AUTOMATION && current_entity.rfind("media_player.",0)==0;
-          // If the open media player paused/stopped and another player is now playing
-          // (either newly started or already playing when this one paused), hand off to it.
-          if(allowed && manual_player && !cur_detail_playing && candidate>=0 && candidate!=cur_detail &&
-             (newly_playing>=0 || detail_stopped_playing)) {
-            id(normal_device_selected_index)=candidate;
-            id(enter_normal_switch_detail).execute();
-            return;
-          }
-          if(!allowed || candidate<0 || (id(normal_device_detail_active) && !manual_player) || !id(ui_presenter)->is_standby_active())return;
+          const int cur_detail = id(normal_device_detail_index);
+          const bool cur_detail_playing = id(normal_device_detail_active) && playing(cur_detail);
+          const bool detail_stopped_playing = id(normal_device_detail_active) && cur_detail == prev_detail_index && prev_detail_playing && !cur_detail_playing;
+          int candidate = cur_detail_playing ? cur_detail : (newly_playing >= 0 ? newly_playing : (playing(id(normal_device_selected_index)) ? id(normal_device_selected_index) : -1));
+          if (candidate < 0)
+            for (int i = 0; i < id(normal_device_count) && i < (int)custom_logic::CONFIGURABLE_DEVICE_SLOT_COUNT; ++i)
+              if (playing(i)) { candidate = i; break; }
+          prev_playing = std::move(now_playing_entities);
+          prev_detail_index = id(normal_device_detail_active) ? cur_detail : -1;
+          prev_detail_playing = cur_detail_playing;
+          const auto current_entity = (cur_detail >= 0 && cur_detail < id(normal_device_count))
+              ? id(ui_presenter)->get_normal_device_entity_id(cur_detail) : std::string();
+          const bool media_detail = id(normal_device_detail_active) &&
+              id(normal_device_detail_kind) == NORMAL_DEVICE_DETAIL_KIND_AUTOMATION &&
+              current_entity.rfind("media_player.", 0) == 0;
+          onx_media::IdleMediaInput in;
+          in.mode_ok = mode_ok;
+          in.allowed = allowed;
+          in.standby_enabled = onx_display_settings::current.standby_scope != 2
           #ifdef USE_ROOM_COMPANION
-          if(!onx_notification_ui::standby_timeout_enabled)return;  // Idle timeout off: the music chip opens it instead.
+              && onx_notification_ui::standby_timeout_enabled
           #endif
-          popup.previous_index=id(normal_device_selected_index);
-          popup.visible=true;
-          id(normal_device_selected_index)=candidate;
-          id(enter_normal_switch_detail).execute();
+              ;
+          in.standby_active = id(ui_presenter)->is_standby_active();
+          in.user_idle = id(ui_presenter)->user_idle_ms() >= timeout;
+          #ifdef USE_ROOM_COMPANION
+          in.overlay_blocking = onx_notification_ui::panel_open || onx_notification_ui::detail_id != 0 || onx_assist::overlay_visible();
+          #endif
+          in.detail_active = id(normal_device_detail_active);
+          in.media_detail = media_detail;
+          in.cur_detail_playing = cur_detail_playing;
+          in.newly_playing_found = newly_playing >= 0;
+          in.detail_stopped_playing = detail_stopped_playing;
+          in.cur_detail = cur_detail;
+          in.selected_index = id(normal_device_selected_index);
+          in.candidate = candidate;
+          const auto decision = onx_media::decide_idle_media(popup, in);
+          switch (decision.action) {
+            case onx_media::IdleMediaAction::OPEN_POPUP:
+            case onx_media::IdleMediaAction::SWITCH_PLAYER:
+              id(normal_device_selected_index) = decision.target_index;
+              id(enter_normal_switch_detail).execute();
+              break;
+            case onx_media::IdleMediaAction::CLOSE_DETAIL:
+              onx_playlist::browser.clear();
+              id(exit_normal_switch_detail).execute();
+              break;
+            case onx_media::IdleMediaAction::NONE:
+              break;
+          }
 
   - id: check_normal_timer_popup
     then:
@@ -2210,10 +2218,11 @@ script:
           if (!onx_timer::popup_due(id(ui_presenter)->user_idle_ms(), id(normal_device_detail_active), onx_timer::popup.dismissed)) return;
           // Never replace a settings page or an explicitly sleeping screen.
           if (id(normal_device_detail_active) && id(normal_device_detail_kind)!=NORMAL_DEVICE_DETAIL_KIND_AUTOMATION) return;
-          if(onx_media::idle_popup.visible) {
-            id(normal_device_selected_index)=onx_media::idle_popup.previous_index;
-            onx_media::idle_popup.visible=false;
+          if (onx_media::idle_popup.previous_index >= 0) {
+            id(normal_device_selected_index) = onx_media::idle_popup.previous_index;
+            onx_media::idle_popup.previous_index = -1;
           }
+          onx_media::idle_popup.visible = false;
           onx_timer::popup.previous_index=id(normal_device_selected_index);
           onx_timer::popup.entity=id(ui_presenter)->get_normal_device_entity_id(candidate);
           onx_timer::popup.visible=true;

@@ -304,10 +304,11 @@ interval:
           const bool entered = standby && !was_standby;
           const bool exited = !standby && was_standby;
           was_standby = standby;
-          // Load a fully populated clock before hiding the opaque card layer.
+          // Load a fully populated standby page before hiding the opaque card layer.
           // The periodic standby refresh remains responsible for later updates.
+          const auto idle_mode = id(panel_idle_screen).active_index().value_or(0);
           if (standby && !id(screen_off_state) && !id(sleep_mode_state) &&
-              id(panel_idle_screen).active_index().value_or(0) == onx_panel_ui::IDLE_CLOCK &&
+              (idle_mode == onx_panel_ui::IDLE_CLOCK || idle_mode == onx_panel_ui::IDLE_IMMICHFRAME) &&
               lv_scr_act() != id(standby_page)->obj)
             id(refresh_normal_standby_page).execute();
           const bool normal = id(ui_presenter)->is_normal_mode_active() && !standby &&

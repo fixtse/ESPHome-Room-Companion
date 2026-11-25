@@ -18,7 +18,19 @@ esphome:
             id(ui_presenter)->set_standby_guard([]() {
               #ifdef USE_ROOM_COMPANION
               if (onx_panel_detail::timers.overlay) return false;
+              const bool media_idle = true;
+              #else
+              const bool media_idle = onx_display_settings::idle.media;
               #endif
+              if (media_idle && id(normal_ha_api_connected) && id(normal_device_detail_active) &&
+                  id(normal_device_detail_kind) == NORMAL_DEVICE_DETAIL_KIND_AUTOMATION) {
+                const int idx = id(normal_device_detail_index);
+                if (idx >= 0 && idx < id(normal_device_count)) {
+                  const auto entity = id(ui_presenter)->get_normal_device_entity_id(idx);
+                  const auto *detail = entity.rfind("media_player.", 0) == 0 ? custom_logic_entity_sub::entity_detail(entity) : nullptr;
+                  if (detail != nullptr && detail->received && detail->available && detail->state == "playing") return false;
+                }
+              }
               return !id(mode_manager)->is_provisioning_mode_enabled() && !onx_notification::current.visible && !onx_timer::popup.visible && !onx_media::idle_popup.visible && onx_display_settings::standby_allowed(onx_display_settings::current.standby_scope,
                   id(normal_device_detail_active));
             });

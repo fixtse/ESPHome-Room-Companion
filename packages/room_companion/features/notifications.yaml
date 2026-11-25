@@ -154,11 +154,12 @@ interval:
             if (arrived && !center.items.empty()) {
               if (onx_power::sleeping && id(low_power_sleep).state) id(low_power_sleep).turn_off();
               if (id(screen_off_state)) id(ha_screen_off).turn_off();
-              // Photo idle screens stay up: the banner and the bell show over the photo.
+              // Photo idle screens and automatic media popups stay up: the banner
+              // and bell show over them without stealing popup ownership.
               const auto idle = id(panel_idle_screen).active_index().value_or(0);
               const bool photos = idle == onx_panel_ui::IDLE_IMMICHFRAME &&
                                   id(ui_presenter)->is_standby_active() && !onx_panel_ui::hidden(onx_panel_ui::slide_layer);
-              if (!photos) id(ui_presenter)->notify_user_activity();
+              if (!photos && !onx_media::idle_popup.visible) id(ui_presenter)->notify_user_activity();
             }
           }
           onx_notification_ui::tick();

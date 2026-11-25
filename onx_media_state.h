@@ -7,8 +7,80 @@
 #include <algorithm>
 #include <cmath>
 namespace onx_media {
-struct IdlePopup {bool visible{false};int previous_index{0};};
+struct IdlePopup {bool visible{false};int previous_index{-1};};
 inline IdlePopup idle_popup;
+enum class IdleMediaAction : uint8_t { NONE, OPEN_POPUP, SWITCH_PLAYER, CLOSE_DETAIL };
+struct IdleMediaInput {
+  bool mode_ok{false};
+  bool allowed{false};
+  bool standby_enabled{false};
+  bool standby_active{false};
+  bool user_idle{false};
+  bool overlay_blocking{false};
+  bool detail_active{false};
+  bool media_detail{false};
+  bool cur_detail_playing{false};
+  bool newly_playing_found{false};
+  bool detail_stopped_playing{false};
+  int cur_detail{-1};
+  int selected_index{0};
+  int candidate{-1};
+};
+struct IdleMediaDecision {
+  IdleMediaAction action{IdleMediaAction::NONE};
+  int target_index{-1};
+};
+inline IdleMediaDecision decide_idle_media(IdlePopup &popup, const IdleMediaInput &in) {
+  // Repair orphaned popup state if detail exited or moved off a media player.
+  if (popup.visible && !in.media_detail) {
+    popup.visible = false;
+    popup.previous_index = -1;
+  }
+  if (popup.visible) {
+    if (!in.user_idle) {
+      // User interaction takes ownership as a regular detail view while keeping
+      // previous_index so exiting returns to the page that was active before.
+      popup.visible = false;
+    } else {
+      if (!in.allowed || in.candidate < 0) {
+        popup.visible = false;
+        return {IdleMediaAction::CLOSE_DETAIL, -1};
+      }
+      if (in.candidate != in.cur_detail) {
+        return {IdleMediaAction::SWITCH_PLAYER, in.candidate};
+      }
+      return {};
+    }
+  }
+  if (in.media_detail) {
+    // If the open media player paused/stopped and another player is now playing
+    // (either newly started or already playing when this one paused), hand off to it.
+    if (in.allowed && !in.cur_detail_playing && in.candidate >= 0 && in.candidate != in.cur_detail &&
+        (in.newly_playing_found || in.detail_stopped_playing)) {
+      return {IdleMediaAction::SWITCH_PLAYER, in.candidate};
+    }
+    // After the standby timeout with no user activity, a playing media detail
+    // resumes automatic popup ownership, another playing player takes over, and
+    // any non-playing player (paused, idle, off, standby, unavailable, etc.)
+    // closes so the panel returns to the idle view instead of getting stuck.
+    if (in.mode_ok && in.user_idle && in.standby_enabled && !in.overlay_blocking) {
+      if (in.allowed && in.cur_detail_playing) {
+        popup.visible = true;
+        return {};
+      }
+      if (in.allowed && in.candidate >= 0) {
+        popup.visible = true;
+        return {IdleMediaAction::SWITCH_PLAYER, in.candidate};
+      }
+      return {IdleMediaAction::CLOSE_DETAIL, -1};
+    }
+    return {};
+  }
+  if (!in.allowed || in.candidate < 0 || in.detail_active || !in.standby_active || !in.standby_enabled) return {};
+  popup.previous_index = in.selected_index;
+  popup.visible = true;
+  return {IdleMediaAction::OPEN_POPUP, in.candidate};
+}
 // Registered playing media players muted by Assist (unmuted when Assist ends).
 inline std::vector<std::string> assist_muted;
 // Artwork owner on the visible rectangular main page.
