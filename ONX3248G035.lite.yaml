@@ -1,0 +1,9 @@
+# 3.5-inch Room Companion without microphone or speaker: no Assist, wake word,
+# SoundSense or media player. Timers from Home Assistant, voice satellites and
+# Google Home still show (silently). Settings and the firmware version come
+# from ONX3248G035.yaml; only the application package differs.
+<<: !include ONX3248G035.yaml
+
+packages:
+  board: !include packages/room_companion/boards/onx3248g035.yaml
+  application: !include packages/room_companion/application_lite.yaml

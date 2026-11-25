@@ -106,7 +106,7 @@ script:
           if (onx_notification_ui::detail_id != 0) { onx_notification_ui::close_detail(); return; }
           if (onx_notification_ui::panel_open) { onx_notification_ui::close_panel(); return; }
           if (onx_panel_detail::timers.overlay) { id(timer_close).execute(); return; }
-          if (!lv_obj_has_flag(id(assist_overlay), LV_OBJ_FLAG_HIDDEN)) { id(assist_stop).execute(); return; }
+          if (onx_assist::overlay_visible()) { onx_assist::stop(); return; }
           if (id(room_panel)->dashboard_open()) {
             if (onx_notification::center.toast_visible(millis())) onx_notification::center.hide_toast();
             else id(room_panel)->close_dashboard();

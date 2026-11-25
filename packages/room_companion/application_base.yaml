@@ -1,0 +1,69 @@
+# Room Companion: shared application on the rectangular touch panels, without
+# audio: the panel layer (display, touch, strip carousel), timers and the
+# optional dashboard stream. application.yaml adds the microphone and speaker
+# (Assist, SoundSense, media player); application_lite.yaml leaves them out.
+packages:
+  device: !include ../base/device.yaml
+  connectivity: !include ../base/connectivity.yaml
+  fonts: !include ../base/fonts.yaml
+  input_actions: !include ../base/input_actions.yaml
+  diagnostics: !include ../base/diagnostics.yaml
+  mode_router: !include ../features/mode_router.yaml
+  boot_status: !include ../features/boot_status.yaml
+  low_power: !include ../features/low_power.yaml
+  normal_mode: !include ../features/normal_mode.yaml
+  panel: !include panel.yaml
+  touch: !include features/touch.yaml
+  timers: !include features/timers.yaml
+  dashboard: !include features/dashboard.yaml
+  notifications: !include features/notifications.yaml
+
+preferences:
+  flash_write_interval: 5s
+
+esphome:
+  # Crash PC and backtrace go into the diagnostics breadcrumb (onx_crash_capture.h).
+  platformio_options:
+    build_flags:
+      - -DLV_USE_IMGFONT=1
+      # Keep Xtensa literal pools beside their code as the shared UI grows.
+      - -mtext-section-literals
+      - -Wl,--wrap=panic_arch_fill_info,--wrap=panic_soc_fill_info
+  includes:
+    - ../../onx_geom.h
+    - ../../onx_power_state.h
+    - ../../onx_light_state.h
+    - ../../onx_memory.h
+    - ../../onx_emoji_table.h
+    - ../../onx_emoji_queue.h
+    - ../../onx_emoji.h
+    - ../../onx_render.h
+    - ../../onx_navigation.h
+    - ../../onx_notification.h
+    - ../../onx_gesture.h
+    - ../../onx_runtime_diagnostics.h
+    - ../../onx_crash_capture.h
+    - ../../onx_config_rules.h
+    - ../../onx_timer_state.h
+    - ../../onx_sound_sense.h
+    - ../../onx_control_state.h
+    - ../../onx_icon_state.h
+    - ../../onx_recovery_state.h
+    - ../../onx_playlist.h
+    - ../../onx_media_state.h
+    - ../../onx_assist_hooks.h
+    - ../../onx_registry_queue.h
+    - ../../onx_subscriptions.h
+    - ../../custom_logic.h
+    - ../../onx_sensor_view.h
+    - ../../custom_logic_entity_sub.h
+    - ../../onx_entity_controls.h
+    - ../../onx_detail_view.h
+    - ../../onx_sensor_graph.h
+    - ../../onx_display_settings.h
+    - ../../onx_cover_presets.h
+    - ../../onx_lyrics.h
+    - ../../onx_entity_config.h
+    - ../../onx_clock_sensors.h
+    - ../../onx_presets.h
+    - ../../onx_preview.h

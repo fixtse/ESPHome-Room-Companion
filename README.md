@@ -217,8 +217,8 @@ the model number on your panel.
 
 | OpenNextion model | Touchscreen | ESPHome firmware |
 | --- | --- | --- |
-| **ONX2432G028** | 2.8 inches · 240 × 320 | [ONX2432G028.yaml](ONX2432G028.yaml) · [Wake-word variant](ONX2432G028.wake-word.yaml) |
-| **ONX3248G035** | 3.5 inches · 320 × 480 | [ONX3248G035.yaml](ONX3248G035.yaml) · [Wake-word variant](ONX3248G035.wake-word.yaml) |
+| **ONX2432G028** | 2.8 inches · 240 × 320 | [ONX2432G028.yaml](ONX2432G028.yaml) · [Wake-word variant](ONX2432G028.wake-word.yaml) · [Lite (no mic/speaker)](ONX2432G028.lite.yaml) |
+| **ONX3248G035** | 3.5 inches · 320 × 480 | [ONX3248G035.yaml](ONX3248G035.yaml) · [Wake-word variant](ONX3248G035.wake-word.yaml) · [Lite (no mic/speaker)](ONX3248G035.lite.yaml) |
 
 ## Get started
 

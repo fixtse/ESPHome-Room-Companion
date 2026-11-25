@@ -22,17 +22,6 @@ globals:
   - id: assist_ready
     type: bool
     initial_value: 'false'
-  # Serialized helper-extension state: script parameters are passed by value,
-  # so computed snapshots live here across its asynchronous HA acknowledgements.
-  - id: timer_extension_seconds
-    type: int
-    initial_value: '0'
-  - id: timer_extension_paused
-    type: bool
-    initial_value: 'false'
-  - id: timer_extension_finish
-    type: std::string
-    initial_value: '""'
 
 switch:
   - platform: template
@@ -52,19 +41,6 @@ button:
     icon: mdi:account-voice
     on_press:
       - script.execute: toggle_assist
-
-number:
-  - platform: template
-    id: timer_snooze_minutes
-    name: Timer snooze duration
-    min_value: 1
-    max_value: 30
-    step: 1
-    initial_value: 5
-    unit_of_measurement: min
-    restore_value: true
-    optimistic: true
-    entity_category: config
 
 # Which Dual MIC board microphone Assist hears: Auto picks the one with the
 # better signal-to-noise ratio while running; Left/Right force one.
@@ -265,154 +241,18 @@ esphome:
             onx_panel_detail::extend_local_timer = [local_command](const std::string &key) {
               local_command(key, onx_timer::Action::ADD_MINUTE);
             };
-            onx_panel_detail::extend_helper_timer = [](const std::string &entity) {
-              id(timer_helper_extend).execute(entity);
+            onx_assist::overlay_visible = []() { return !lv_obj_has_flag(id(assist_overlay), LV_OBJ_FLAG_HIDDEN); };
+            onx_assist::running = []() { return id(assist).is_running(); };
+            onx_assist::toggle = []() { id(toggle_assist).execute(); };
+            onx_assist::stop = []() { id(assist_stop).execute(); };
+            onx_assist::resize = [](int w, int h) { lv_obj_set_size(id(assist_overlay), w, h); };
+            onx_assist::stop_alarm_sound = []() {
+              id(timer_alarm_sound).stop();
+              id(panel_media_player).make_call()
+                  .set_command(esphome::media_player::MEDIA_PLAYER_COMMAND_STOP).set_announcement(true).perform();
             };
-            // Voice satellite timers (their "Voice timer" sensors).
-            onx_panel_detail::send_timer_sentence = [](const std::string &key, const std::string &sentence,
-                                                       const std::string &pending) {
-              id(timer_command).execute(key, sentence, pending);
-            };
-            onx_panel_detail::press_button = [](const std::string &button) { id(timer_press_button).execute(button); };
-            onx_panel_detail::stop_ringing = []() { id(timer_stop).execute(); };
-            onx_panel_detail::close_timers = []() { id(timer_close).execute(); };
 
 script:
-  # timer.change only accepts running helpers. A paused helper must receive a
-  # new remaining duration and be re-paused after HA confirms its start.
-  - id: timer_helper_extend
-    mode: queued
-    max_runs: 4
-    parameters:
-      entity: string
-    then:
-      - if:
-          condition:
-            lambda: |-
-              const auto *d = custom_logic_entity_sub::entity_detail(entity);
-              return d && d->available && d->received && (d->state == "active" || d->state == "paused") &&
-                  onx_panel_detail::entity_timer(entity, *d, "").ready;
-          then:
-            - script.stop: timer_autoclose
-            - lambda: |-
-                const auto *d = custom_logic_entity_sub::entity_detail(entity);
-                const auto timer = onx_panel_detail::entity_timer(entity, *d, "");
-                id(timer_extension_seconds) = int(std::ceil(timer.left)) + 60;
-                id(timer_extension_paused) = d->state == "paused";
-                id(timer_extension_finish) = d->timer_finishes_at;
-                auto &state = onx_panel_detail::timers;
-                state.message_key = entity;
-                state.message = "Adding 1 min...";
-                state.message_until = millis() + 12000;
-                state.command_pending = true;
-            - if:
-                condition:
-                  lambda: return id(timer_extension_paused);
-                then:
-                  - homeassistant.action:
-                      action: timer.start
-                      data:
-                        entity_id: !lambda return entity;
-                        duration: !lambda return onx_timer::duration_argument(id(timer_extension_seconds));
-                else:
-                  - homeassistant.action:
-                      action: timer.change
-                      data:
-                        entity_id: !lambda return entity;
-                        duration: "00:01:00"
-            - wait_until:
-                condition:
-                  lambda: |-
-                    const auto *d = custom_logic_entity_sub::entity_detail(entity);
-                    return d && d->state == "active" && (id(timer_extension_paused) ?
-                        int(onx_timer::duration_seconds(d->timer_duration)) == id(timer_extension_seconds) : d->timer_finishes_at != id(timer_extension_finish));
-                timeout: 5s
-            - if:
-                condition:
-                  lambda: |-
-                    const auto *d = custom_logic_entity_sub::entity_detail(entity);
-                    return id(timer_extension_paused) && d && d->state == "active" && int(onx_timer::duration_seconds(d->timer_duration)) == id(timer_extension_seconds);
-                then:
-                  - homeassistant.action:
-                      action: timer.pause
-                      data:
-                        entity_id: !lambda return entity;
-                  - wait_until:
-                      condition:
-                        lambda: |-
-                          const auto *d = custom_logic_entity_sub::entity_detail(entity);
-                          return d && d->state == "paused";
-                      timeout: 5s
-            - lambda: |-
-                const auto *d = custom_logic_entity_sub::entity_detail(entity);
-                const bool confirmed = d && d->available && (id(timer_extension_paused) ?
-                    d->state == "paused" && int(onx_timer::duration_seconds(d->timer_duration)) == id(timer_extension_seconds) :
-                    d->state == "active" && d->timer_finishes_at != id(timer_extension_finish));
-                auto &state = onx_panel_detail::timers;
-                state.command_pending = false;
-                state.message = confirmed ? "" : id(timer_extension_paused) ? "Extension/pause not confirmed" : "Extension not confirmed";
-                state.message_until = millis() + 5000;
-
-  # Assist timers are owned by HA, for this panel and for voice satellites.
-  # Never pause only the ESPHome mirror: HA would still finish the original
-  # timer. Use the built-in conversation agent. This panel's own timers wait
-  # for on_timer_updated; a satellite's sensor follows on its next update.
-  - id: timer_command
-    mode: queued
-    max_runs: 4
-    parameters:
-      key: string
-      sentence: string
-      pending: string
-    then:
-      - script.stop: timer_autoclose
-      - lambda: |-
-          auto &state = onx_panel_detail::timers;
-          state.message_key = key;
-          state.message = pending;
-          state.message_until = millis() + 8000;
-          state.command_pending = true;
-          id(ui_presenter)->notify_user_activity();
-      - homeassistant.action:
-          action: conversation.process
-          data:
-            agent_id: !lambda 'return std::string(onx_timer::conversation_agent);'
-            language: en
-            text: !lambda 'return sentence;'
-          capture_response: true
-          response_template: "{{ dict(type=response.get('response', {}).get('response_type', ''), code=response.get('response', {}).get('data', {}).get('code', '')) }}"
-          on_success:
-            - lambda: |-
-                auto &state = onx_panel_detail::timers;
-                if (state.message_key != key) return;
-                if (std::string(response["response"]["type"] | "") != "error") {
-                  // HA confirmed a satellite's timer; its sensor shows the result.
-                  if (key.rfind("local:", 0) != 0) { state.message.clear(); state.command_pending = false; }
-                  return;
-                }
-                state.message = "Timer command rejected by HA";
-                state.message_until = millis() + 5000;
-                state.command_pending = false;
-                ESP_LOGW("panel_timer", "HA rejected \"%s\": %s", sentence.c_str(), response["response"]["code"] | "unknown");
-          on_error:
-            - lambda: |-
-                auto &state = onx_panel_detail::timers;
-                state.message_key = key;
-                state.message = "HA timer action failed";
-                state.message_until = millis() + 5000;
-                state.command_pending = false;
-                ESP_LOGW("panel_timer", "Timer action failed: %s", error.c_str());
-
-  # Presses a voice satellite's "Stop timer alarm" button.
-  - id: timer_press_button
-    parameters:
-      button: string
-    then:
-      - homeassistant.action:
-          action: button.press
-          data:
-            entity_id: !lambda 'return button;'
-
   # Copies the voice assistant's timers for the timer screen.
   - id: timer_sync
     then:
@@ -428,109 +268,20 @@ script:
             state.command_pending = false;
           }
 
-  # Opens the timer screen above everything, waking the panel.
-  - id: timer_show
+  # One play of the finished-timer sound (timers.yaml repeats it).
+  - id: timer_alarm_sound
     then:
-      - lambda: |-
-          if (onx_power::sleeping && id(low_power_sleep).state) id(low_power_sleep).turn_off();
-          if (id(ui_presenter)->is_standby_active()) id(exit_standby_mode).execute();
-          id(ui_presenter)->notify_user_activity();
-          onx_panel_detail::timers.overlay = true;
-          id(room_panel)->set_overlay(esphome::room_companion::OVERLAY_TIMER, true);
-          onx_panel_ui::request_render();
-
-  # A newly started timer is shown briefly, unless one is ringing.
-  - id: timer_autoclose
-    mode: restart
-    then:
-      - delay: 8s
-      - lambda: 'if (!onx_panel_detail::timers.ringing) id(timer_close).execute();'
-
-  - id: timer_close
-    then:
-      - script.stop: timer_snooze
-      - script.stop: timer_autoclose
-      - script.stop: timer_ring
-      - lambda: |-
-          auto &state = onx_panel_detail::timers;
-          if (state.ringing) {
-            auto call = id(panel_media_player).make_call();
-            call.set_command(esphome::media_player::MEDIA_PLAYER_COMMAND_STOP).set_announcement(true).perform();
-          }
-          state.ringing = false;
-          state.overlay = false;
-          state.dismissed = true;
-          state.focus.clear();
-          id(room_panel)->set_overlay(esphome::room_companion::OVERLAY_TIMER, false);
-          onx_panel_ui::request_render();
-          if (!id(normal_device_detail_active) && !id(ui_presenter)->is_standby_active() && id(normal_page_index) == 0)
-            id(refresh_normal_device_page).execute();
-
-  - id: timer_close_if_idle
-    then:
-      - lambda: |-
-          const auto &state = onx_panel_detail::timers;
-          const auto items = onx_panel_detail::all_timers();
-          if (state.overlay && !state.ringing &&
-              std::none_of(items.begin(), items.end(), onx_panel_detail::running)) id(timer_close).execute();
-
-  # Stops the finished-timer sound (the screen stays while other timers run).
-  - id: timer_stop
-    then:
-      - script.stop: timer_snooze
-      - lambda: |-
-          const bool was = onx_panel_detail::timers.ringing;
-          onx_panel_detail::timers.ringing = false;
-          if (!was) return;
-          id(timer_ring).stop();
-          auto call = id(panel_media_player).make_call();
-          call.set_command(esphome::media_player::MEDIA_PLAYER_COMMAND_STOP).set_announcement(true).perform();
-      - script.execute: timer_close_if_idle
-
-  # Snooze the local ringing alert; HA's completed timer stays completed.
-  # Keep its label/total for the next alert. Stop/back cancels a pending snooze.
-  - id: timer_snooze
-    mode: restart
-    then:
-      - script.stop: timer_ring
-      - lambda: |-
-          onx_panel_detail::timers.ringing = false;
-          onx_panel_detail::timers.overlay = false;
-          onx_panel_detail::timers.dismissed = true;
-          id(room_panel)->set_overlay(esphome::room_companion::OVERLAY_TIMER, false);
-          id(panel_media_player).make_call()
-              .set_command(esphome::media_player::MEDIA_PLAYER_COMMAND_STOP).set_announcement(true).perform();
-      - delay: !lambda 'return uint32_t(id(timer_snooze_minutes).state * 60000);'
-      - lambda: |-
-          auto &state = onx_panel_detail::timers;
-          state.ringing = true;
-          state.ringing_since = millis();
-          state.dismissed = false;
-          state.focus.clear();
-      - script.execute: timer_show
-      - script.execute: timer_ring
-
-  # Repeats the finished sound until stopped, for at most five minutes.
-  - id: timer_ring
-    mode: restart
-    then:
-      - while:
+      - media_player.speaker.play_on_device_media_file:
+          id: panel_media_player
+          media_file: timer_finished_sound
+          announcement: true
+      - delay: 500ms
+      - wait_until:
           condition:
-            lambda: 'return onx_panel_detail::timers.ringing && millis() - onx_panel_detail::timers.ringing_since < 300000;'
-          then:
-            - media_player.speaker.play_on_device_media_file:
-                id: panel_media_player
-                media_file: timer_finished_sound
-                announcement: true
-            - delay: 500ms
-            - wait_until:
-                condition:
-                  not:
-                    media_player.is_announcing: panel_media_player
-                timeout: 15s
-            - delay: 800ms
-      - lambda: 'if (onx_panel_detail::timers.ringing) onx_panel_detail::timers.ringing = false;'
-      - script.execute: timer_close_if_idle
+            not:
+              media_player.is_announcing: panel_media_player
+          timeout: 15s
+      - delay: 800ms
 
   # Stop button (and the left-edge back swipe): stop and close the overlay.
   - id: assist_stop

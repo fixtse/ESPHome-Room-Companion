@@ -1,0 +1,53 @@
+# Dual MIC board microphones, the I2S speaker and its amplifier gate. Left out
+# of the lite (no microphone, no speaker) variants; the amplifier stays off.
+# PDM RX must get I2S0 on ESP32-S3. Keep this bus FIRST; speaker uses I2S1.
+i2s_audio:
+  - id: microphone_bus
+    i2s_lrclk_pin: GPIO19
+  - id: speaker_bus
+    i2s_bclk_pin: GPIO14
+    i2s_lrclk_pin: GPIO16
+
+microphone:
+  # Both microphones of the Dual MIC board (4 cm apart, one PDM line):
+  # stereo channel 0 is the board's right microphone, channel 1 its left one.
+  - platform: i2s_audio
+    id: panel_microphone_pair
+    i2s_audio_id: microphone_bus
+    adc_type: external
+    i2s_din_pin: GPIO20
+    pdm: true
+    sample_rate: 16000
+    bits_per_sample: 32bit
+    channel: stereo
+    correct_dc_offset: true
+  # What Assist, the wake word and SoundSense hear: the microphone with the
+  # better signal-to-noise ratio, switched while running (onx_mic_select).
+  - platform: onx_mic_select
+    id: panel_microphone
+    microphone: panel_microphone_pair
+
+speaker:
+  - platform: i2s_audio
+    id: panel_speaker
+    i2s_audio_id: speaker_bus
+    dac_type: external
+    i2s_dout_pin: GPIO15
+    sample_rate: 16000
+    bits_per_sample: 16bit
+    channel: mono
+    i2s_comm_fmt: stand_msb
+    buffer_duration: 100ms
+
+# Gate the physical amplifier from the actual speaker state, covering Assist,
+# media and timer sounds alike. Avoid I2C writes when the state is unchanged.
+interval:
+  - interval: 10ms
+    then:
+      - lambda: |-
+          const bool playing = id(panel_speaker).is_running();
+          if (id(speaker_amplifier).state != playing) {
+            if (playing) id(speaker_amplifier).turn_on();
+            else id(speaker_amplifier).turn_off();
+          }
+

@@ -275,9 +275,9 @@ interval:
           onx_notification_ui::cover_root = onx_panel_pages::layer;  // Hidden while the centre covers it.
           // Fully covered native content keeps its last frame without rebuilding.
           if (onx_notification_ui::panel_open || onx_notification_ui::detail_id != 0) return;
-          // The panel's own Assist timers (features/assist.yaml) cover the
+          // The timer screen (features/timers.yaml) covers the
           // screen, except while Assist itself is on screen.
-          if (onx_panel_detail::timers.overlay && lv_obj_has_flag(id(assist_overlay), LV_OBJ_FLAG_HIDDEN)) {
+          if (onx_panel_detail::timers.overlay && !onx_assist::overlay_visible()) {
             onx_notification_ui::set_bell_visible(false);
             // The shared Wi-Fi/HA status icons (top layer) belong to the carousel and idle clock.
             for (auto *icon : {id(normal_device_wifi_online_widget), id(normal_device_wifi_offline_widget),
@@ -760,12 +760,12 @@ esphome:
             };
             onx_navigation::local_action = [](const std::string &entity) {
               if (entity == "[Local] Dashboard") { id(room_panel)->open_dashboard(); return true; }
-              if (entity == "[Local] Assist") { id(toggle_assist).execute(); return true; }
+              if (entity == "[Local] Assist") { onx_assist::toggle(); return true; }
               return false;
             };
             onx_navigation::local_state = [](int io) {
               if (io == custom_logic::PANEL_LOCAL_DASHBOARD) return id(room_panel)->dashboard_open();
-              if (io == custom_logic::PANEL_LOCAL_ASSIST) return id(assist).is_running();
+              if (io == custom_logic::PANEL_LOCAL_ASSIST) return onx_assist::running();
               return false;
             };
             onx_navigation::local_icon = [](const std::string &entity) -> esphome::image::Image * {
@@ -942,7 +942,7 @@ script:
           onx_controls::main_control_visible = [](const std::string &entity) {
             if (!onx_panel_pages::showing || onx_panel_pages::detail_view ||
                 onx_notification::current.visible || onx_notification_ui::owns_screen() ||
-                onx_panel_detail::timers.overlay || !lv_obj_has_flag(id(assist_overlay), LV_OBJ_FLAG_HIDDEN)) return false;
+                onx_panel_detail::timers.overlay || onx_assist::overlay_visible()) return false;
             for (int i = 0; i < onx_panel_pages::count; ++i)
               if (onx_panel_pages::entities[i] == entity && onx_panel_pages::configured(entity) >= 0) return true;
             return false;
@@ -951,7 +951,7 @@ script:
           onx_controls::overlay_control_visible = [](const std::string &entity) {
             if (!onx_panel_detail::active || !onx_panel_detail::timer_screen_active ||
                 !onx_panel_detail::root || !lv_obj_is_visible(onx_panel_detail::root) ||
-                onx_notification_ui::owns_screen() || !lv_obj_has_flag(id(assist_overlay), LV_OBJ_FLAG_HIDDEN)) return false;
+                onx_notification_ui::owns_screen() || onx_assist::overlay_visible()) return false;
             for (const auto &t : onx_panel_detail::all_timers())
               if (t.helper && t.entity == entity) return true;
             return false;
@@ -1133,7 +1133,7 @@ script:
           // Runtime geometry (orientation chosen at boot).
           id(touch_input)->set_geometry(onx_panel_ui::width, onx_panel_ui::height - 44, ${strip_spacing},
                                         onx_geom::S(22));
-          lv_obj_set_size(id(assist_overlay), onx_panel_ui::width, onx_panel_ui::height);
+          onx_assist::resize(onx_panel_ui::width, onx_panel_ui::height);
           onx_panel_ui::on_track = [](bool previous) {
             if (id(touch_input)->suppress_click()) return;
             id(ui_presenter)->notify_user_activity();

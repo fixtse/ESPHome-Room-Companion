@@ -138,10 +138,13 @@ Firmware for the user to test is delivered as an OTA release, not built on
 devserv and not flashed by hand. After the emulator preview is approved:
 
 1. Increment `product_firmware_version` in `ONX3248G035.yaml` and
-   `ONX2432G028.yaml` (never reuse a published number), commit and push this
+   `ONX2432G028.yaml` (never reuse a published number; the `.lite.yaml`
+   roots inherit it), commit and push this
    repository.
-2. In `/home/fixt/git/esp-ota`, set `configs/onx3248g035.yaml` and
-   `configs/onx2432g028.yaml` to the pushed commit (`ref:`) and the same
+2. In `/home/fixt/git/esp-ota`, set `configs/onx3248g035.yaml`,
+   `configs/onx2432g028.yaml` and the lite `configs/onx3248g035_lite.yaml`,
+   `configs/onx2432g028_lite.yaml` (roots `*.lite.yaml`: no microphone or
+   speaker) to the pushed commit (`ref:`) and the same
    project version, then commit and push. The push starts the "Update ESPHome
    firmware" workflow, which builds both panels on GitHub and publishes the
    OTA images and manifests. Commit only the files you changed.

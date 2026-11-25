@@ -1,0 +1,5 @@
+# Variants without a speaker: a finished timer shows its screen silently.
+script:
+  - id: timer_alarm_sound
+    then:
+      - delay: 1s

@@ -1,0 +1,10 @@
+# Room Companion without microphone or speaker: no Assist, wake word,
+# SoundSense or media player. Timers from Home Assistant, voice satellites and
+# Google Home still show, silently.
+substitutions:
+  # OTA manifest suffix: <model>${firmware_variant}_manifest.yml.
+  firmware_variant: "_lite"
+
+packages:
+  base: !include application_base.yaml
+  timer_silent: !include features/timer_silent.yaml
