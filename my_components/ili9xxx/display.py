@@ -247,7 +247,7 @@ async def to_code(config):
 
     await display.register_display(var, config)
     if queued := config.get(CONF_QUEUED_SPI):
-        include_builtin_idf_component("esp_lcd")
+        include_builtin_idf_component("esp_driver_spi")
         cg.add_define("USE_ILI9XXX_QUEUED_SPI")
         cg.add(var.set_queued_spi(queued[CONF_CLK_PIN]["number"], queued[CONF_MOSI_PIN]["number"],
                                   queued[CONF_CS_PIN]["number"], config[CONF_DC_PIN]["number"],

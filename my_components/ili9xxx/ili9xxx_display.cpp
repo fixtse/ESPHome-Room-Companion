@@ -11,7 +11,9 @@
 #endif
 #ifdef USE_ILI9XXX_QUEUED_SPI
 #include "driver/spi_master.h"
-#include "esp_lcd_io_spi.h"
+#include "driver/gpio.h"
+#include "hal/gpio_ll.h"
+#include "soc/gpio_struct.h"
 #endif
 
 namespace esphome {
@@ -31,6 +33,16 @@ static const uint16_t POST_RESET_SETTLE_MS = 120; // Longer post-reset wait help
 static constexpr size_t QUEUED_DMA_BLOCK_SIZE = 16 * 1024;
 static constexpr size_t PSRAM_DMA_ALIGNMENT = 32;
 
+// Every LCD transfer, command or pixels, is a queued (interrupt) SPI
+// transaction on one device. Mixing polling transactions with queued ones (as
+// esp_lcd does for commands) makes each command acquire the bus while the SPI
+// ISR is still releasing it after the previous pixel transfer; on 2026.11.1.1
+// that race crashed in spi_bus_lock_bg_exit (LoadProhibited at 0x0).
+static IRAM_ATTR void queued_pre_transfer_(spi_transaction_t *trans) {
+  const auto value = reinterpret_cast<uintptr_t>(trans->user);
+  gpio_ll_set_level(&GPIO, value >> 1, value & 1);
+}
+
 bool ILI9XXXDisplay::setup_queued_spi_() {
   spi_bus_config_t bus{};
   bus.sclk_io_num = this->queued_clk_;
@@ -44,56 +56,109 @@ bool ILI9XXXDisplay::setup_queued_spi_() {
     return false;
   }
 
-  this->queued_done_ = xSemaphoreCreateBinary();
-  esp_lcd_panel_io_spi_config_t io{};
-  io.cs_gpio_num = this->queued_cs_;
-  io.dc_gpio_num = this->queued_dc_;
-  io.pclk_hz = this->data_rate_;
-  io.lcd_cmd_bits = io.lcd_param_bits = 8;
-  io.trans_queue_depth = 4;
-  io.flags.psram_dma_direct = true;
-  io.user_ctx = this;
-  io.on_color_trans_done = [](esp_lcd_panel_io_handle_t, esp_lcd_panel_io_event_data_t *, void *context) {
-    auto *lcd = static_cast<ILI9XXXDisplay *>(context);
-    BaseType_t woken = pdFALSE;
-    xSemaphoreGiveFromISR(lcd->queued_done_, &woken);
-    return woken == pdTRUE;
-  };
-  if (this->queued_done_ != nullptr && this->dma_bounce_ != nullptr) {
-    error = esp_lcd_new_panel_io_spi(SPI2_HOST, &io, &this->queued_io_);
-    if (error == ESP_OK) {
-      ESP_LOGI(TAG, "Queued LCD SPI DMA enabled");
-      return true;
-    }
-  } else {
-    error = ESP_ERR_NO_MEM;
+  gpio_config_t dc{};
+  dc.pin_bit_mask = 1ULL << this->queued_dc_;
+  dc.mode = GPIO_MODE_OUTPUT;
+  gpio_config(&dc);
+
+  spi_device_interface_config_t device{};
+  device.mode = 0;
+  device.clock_speed_hz = static_cast<int>(this->data_rate_);
+  device.spics_io_num = this->queued_cs_;
+  device.queue_size = QUEUED_DEPTH;
+  device.pre_cb = queued_pre_transfer_;
+  device.flags = SPI_DEVICE_HALFDUPLEX;
+  error = this->dma_bounce_ == nullptr ? ESP_ERR_NO_MEM : spi_bus_add_device(SPI2_HOST, &device, &this->queued_io_);
+  if (error == ESP_OK) {
+    ESP_LOGI(TAG, "Queued LCD SPI DMA enabled");
+    return true;
   }
-  if (this->queued_done_ != nullptr) vSemaphoreDelete(this->queued_done_);
-  this->queued_done_ = nullptr;
+  this->queued_io_ = nullptr;
   spi_bus_free(SPI2_HOST);
-  ESP_LOGE(TAG, "LCD SPI panel I/O initialization failed: %s", esp_err_to_name(error));
+  ESP_LOGE(TAG, "LCD SPI device initialization failed: %s", esp_err_to_name(error));
   return false;
+}
+
+bool ILI9XXXDisplay::collect_queued_() {
+  spi_transaction_t *done = nullptr;
+  auto error = spi_device_get_trans_result(this->queued_io_, &done, pdMS_TO_TICKS(250));
+  if (error == ESP_OK) {
+    this->queued_inflight_--;
+    return true;
+  }
+  // The transaction still owns its descriptor and buffer; wait it out before
+  // they are reused, then drop the rest of this frame.
+  ESP_LOGW(TAG, "LCD transfer timed out");
+  spi_device_get_trans_result(this->queued_io_, &done, portMAX_DELAY);
+  this->queued_inflight_--;
+  this->queued_write_failed_ = true;
+  return false;
+}
+
+bool ILI9XXXDisplay::submit_queued_(bool data_phase, const void *data, size_t length) {
+  if (this->queued_inflight_ == QUEUED_DEPTH && !this->collect_queued_()) return false;
+  auto &trans = this->queued_trans_[this->queued_next_];
+  this->queued_next_ = (this->queued_next_ + 1) % QUEUED_DEPTH;
+  trans = {};
+  trans.length = length * 8;
+  trans.user = reinterpret_cast<void *>((static_cast<uintptr_t>(this->queued_dc_) << 1) | (data_phase ? 1 : 0));
+  if (length <= 4) {
+    trans.flags = SPI_TRANS_USE_TXDATA;
+    if (length != 0) std::memcpy(trans.tx_data, data, length);
+  } else {
+    trans.tx_buffer = data;
+    if (esp_ptr_external_ram(data)) trans.flags = SPI_TRANS_DMA_USE_PSRAM;
+  }
+  const auto error = spi_device_queue_trans(this->queued_io_, &trans, pdMS_TO_TICKS(250));
+  if (error != ESP_OK) {
+    ESP_LOGW(TAG, "LCD transfer queue failed: %s", esp_err_to_name(error));
+    this->queued_write_failed_ = true;
+    return false;
+  }
+  this->queued_inflight_++;
+  return true;
+}
+
+bool ILI9XXXDisplay::drain_queued_() {
+  bool ok = true;
+  while (this->queued_inflight_ != 0) ok = this->collect_queued_() && ok;
+  return ok;
 }
 
 bool ILI9XXXDisplay::queue_pixels_(const uint8_t *data, size_t length) {
   if (this->queued_write_failed_) return false;
-  const int command = this->queued_ram_write_ ? ILI9XXX_RAMWR : -1;
-  this->queued_ram_write_ = false;
-  auto error = esp_lcd_panel_io_tx_color(this->queued_io_, command, data, length);
-  if (error == ESP_OK && xSemaphoreTake(this->queued_done_, pdMS_TO_TICKS(250)) == pdTRUE) return true;
-
-  // Submission can fail after earlier chunks were queued. Drain them before
-  // returning the draw buffer to LVGL or overwriting the DMA staging buffer.
-  esp_lcd_panel_io_tx_param(this->queued_io_, -1, nullptr, 0);
-  xSemaphoreTake(this->queued_done_, 0);
-  this->queued_write_failed_ = true;
-  ESP_LOGW(TAG, "LCD color transfer failed: %s", esp_err_to_name(error == ESP_OK ? ESP_ERR_TIMEOUT : error));
-  return false;
+  if (this->queued_ram_write_) {
+    this->queued_ram_write_ = false;
+    const uint8_t command = ILI9XXX_RAMWR;
+    if (!this->submit_queued_(false, &command, 1)) {
+      this->drain_queued_();
+      return false;
+    }
+  }
+  while (length != 0) {
+    const auto chunk = std::min(length, QUEUED_DMA_BLOCK_SIZE);
+    if (!this->submit_queued_(true, data, chunk)) break;
+    data += chunk;
+    length -= chunk;
+  }
+  // Callers reuse the DMA staging buffer and return the draw buffer to LVGL.
+  return this->drain_queued_() && length == 0 && !this->queued_write_failed_;
 }
 
 void ILI9XXXDisplay::write_queued_param_(int command, const void *data, size_t length) {
-  const auto error = esp_lcd_panel_io_tx_param(this->queued_io_, command, data, length);
-  if (error != ESP_OK) ESP_LOGW(TAG, "LCD command transfer failed: %s", esp_err_to_name(error));
+  if (command >= 0) {
+    const uint8_t byte = command;
+    this->submit_queued_(false, &byte, 1);
+  }
+  const auto *bytes = static_cast<const uint8_t *>(data);
+  while (length != 0 && bytes != nullptr) {
+    // Parameters are short; keep each in the descriptor's own buffer.
+    const auto chunk = std::min<size_t>(length, 4);
+    if (!this->submit_queued_(true, bytes, chunk)) break;
+    bytes += chunk;
+    length -= chunk;
+  }
+  this->drain_queued_();
 }
 #endif
 

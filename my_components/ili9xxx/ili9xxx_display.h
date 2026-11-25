@@ -6,9 +6,7 @@
 #include "ili9xxx_defines.h"
 #include "ili9xxx_init.h"
 #ifdef USE_ILI9XXX_QUEUED_SPI
-#include "esp_lcd_panel_io.h"
-#include "freertos/FreeRTOS.h"
-#include "freertos/semphr.h"
+#include "driver/spi_master.h"
 #include <mutex>
 #endif
 #if defined(USE_ESP32) && defined(USE_LVGL)
@@ -123,6 +121,7 @@ class ILI9XXXDisplay : public display::DisplayBuffer,
   void setup() override;
   void on_powerdown() override { this->command(ILI9XXX_SLPIN); }
 #ifdef USE_ILI9XXX_QUEUED_SPI
+  static constexpr int QUEUED_DEPTH = 4;
   void set_queued_spi(int clk, int mosi, int cs, int dc, uint32_t rate) {
     this->queued_clk_ = clk;
     this->queued_mosi_ = mosi;
@@ -161,8 +160,13 @@ class ILI9XXXDisplay : public display::DisplayBuffer,
   bool queue_pixels_(const uint8_t *data, size_t length);
   void write_queued_param_(int command, const void *data, size_t length);
   int queued_clk_{-1}, queued_mosi_{-1}, queued_cs_{-1}, queued_dc_{-1};
-  esp_lcd_panel_io_handle_t queued_io_{nullptr};
-  SemaphoreHandle_t queued_done_{nullptr};
+  bool submit_queued_(bool data_phase, const void *data, size_t length);
+  bool collect_queued_();
+  bool drain_queued_();
+  spi_device_handle_t queued_io_{nullptr};
+  spi_transaction_t queued_trans_[QUEUED_DEPTH]{};
+  int queued_inflight_{0};
+  int queued_next_{0};
   std::recursive_mutex panel_mutex_;
   bool queued_ram_write_{false};
   bool queued_write_failed_{false};
