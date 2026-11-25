@@ -51,7 +51,7 @@ the model number on your panel.
 ## Get started
 
 1. [Install the firmware and connect to Wi-Fi](docs/setup.md). For a first
-   install, use the factory image for your model, built with **ESPHome 2026.11.0**.
+   install, use the factory image for your model, built with **ESPHome 2026.11.1**.
    Wi-Fi setup is available over USB or Bluetooth with Improv, or through the
    panel’s setup hotspot.
 2. Add the panel through Home Assistant’s **ESPHome** integration and enable

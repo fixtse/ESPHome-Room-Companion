@@ -64,11 +64,11 @@ is the **ONX3248G035** (3.5-inch, 320×480 ST7796) and the **ONX2432G028**
 (2.8-inch, 240×320 ST7789V) touch panels, both ESP32-S3 with 16 MB flash and
 8 MB PSRAM. Use a USB cable that supports data.
 
-Build a factory image with **ESPHome 2026.11.0**:
+Build a factory image with **ESPHome 2026.11.1**:
 
 ```bash
 docker run --rm -v "$PWD":/config -w /config \
-  ghcr.io/esphome/esphome:2026.11.0 compile ONX3248G035.wake-word.yaml
+  ghcr.io/esphome/esphome:2026.11.1 compile ONX3248G035.wake-word.yaml
 ```
 
 Use `ONX3248G035.yaml` (no wake word) or `ONX2432G028.yaml` for the other

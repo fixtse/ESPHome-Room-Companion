@@ -15,7 +15,8 @@ shared
 state/configuration logic over reimplementing it. New rectangular firmware lives
 in `packages/room_companion/`; both model roots use one shared application.
 
-Pin ESPHome to 2026.11.0. Validate and compile both model roots after shared
+Build with the current ESPHome release, 2026.11.1 (esp-ota follows new ESPHome
+releases and rebuilds the panels automatically). Validate and compile both model roots after shared
 changes. If wake-word/extension examples change, also compile the example matrix
 using `scripts/validate-room-companion.sh --compile` in the pinned container.
 Never commit secrets, keys, `.env`, firmware blobs or private HA state. Keep
@@ -203,7 +204,7 @@ otherwise keep the model/example validation policy above.
 
    ```sh
    docker run --rm --name rc-35-TASK -v "$PWD":/config \
-     ghcr.io/esphome/esphome:2026.11.0 compile ONX3248G035.wake-word.yaml
+     ghcr.io/esphome/esphome:2026.11.1 compile ONX3248G035.wake-word.yaml
    ```
 
    Use a unique container name. If adding/removing profiling components leaves
@@ -265,14 +266,20 @@ transfer; do not claim the latter based only on a successful build or USB flash.
 
 - Every new firmware version published to OTA must use a new, incremented
   numeric version suffix (for example, `.86` → `.87`); never reuse a published
-  version number. Update the firmware's `product_firmware_version` and the OTA
+  version number. When the ESPHome base changes (for example
+  2026.11.0 → 2026.11.1), restart the numbering at the bare ESPHome version
+  (`2026.11.1`, then `2026.11.1.1`, …) instead of continuing the old suffix, and
+  update the version named in this file, `packages/base/device.yaml`
+  (`min_version`) and the docs together. Update the firmware's `product_firmware_version` and the OTA
   repository's project version together so the device reports the published
   version correctly.
 - The 3.5-inch wake-word device is also released through
   `/home/fixt/git/esp-ota` (`fixtse/esp-ota`). After firmware changes, update
   `configs/onx3248g035.yaml` there to the exact published source commit and
   increment its project version. Preserve `ONX3248G035.wake-word.yaml` as the
-  release root. Keep this device's compiler pinned to ESPHome **2026.11.0**.
+  release root. The panels are not pinned in esp-ota's `firmware_list.txt`: each new ESPHome
+  release rebuilds them as `<esphome version>`, then `.1`, `.2`, … for later
+  source releases on the same base.
 - Build and validate the OTA integration on devserv under the task lease, then
   publish the OTA application image using that repository's release tooling.
   Verify the release asset checksum and

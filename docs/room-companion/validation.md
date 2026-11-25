@@ -193,7 +193,7 @@ Validated on devserv in
 `fix/timer-touch-20261119`, base commit `90e6bc1b6963363759ff5c62617d6f4ede38d2a6`
 plus the uncommitted changes. Only the 3.5-inch firmware roots were compiled,
 as requested. Both `ONX3248G035.yaml` and `ONX3248G035.wake-word.yaml` passed
-`docker run ... ghcr.io/esphome/esphome:2026.11.0 compile <root>`.
+`docker run ... ghcr.io/esphome/esphome:2026.11.1 compile <root>`.
 
 Changes include preserving timer widgets through touch release, internal Assist
 timer Pause/Resume through Home Assistant, contextual Stop/Snooze models and
