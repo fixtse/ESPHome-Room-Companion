@@ -410,7 +410,7 @@ static const char PANEL_JS[] = R"ONXPANEL(
   grid.classList.toggle('live',!!liveView);
   if(!liveView){svg.replaceChildren();return}
   const slot=(a?.slots?.()||[]).find(s=>s.entity===e)||{entity:e,name:''};
-  globalThis.ONX_PANEL_PREVIEW(svg,slot,liveView,views,'main',a?.settings?.()||lastSettings);
+  globalThis.ONX_PANEL_PREVIEW(svg,slot,liveView,views,'main',a?.settings?.()||lastSettings,true);
  }
  function pageButton(p,i,savedList){
   const b=el('button','page-item');b.type='button';const meta=(isGrid(p)?p.rows+' × '+p.columns+' grid':isStack(p)?(PRESETS.find(o=>o.key===shapeOf(p))?.label||p.stack.length+'-row stack'):LAYOUTS[p.layout].label)+' · '+p.entities.filter(Boolean).length+'/'+p.entities.length;
@@ -959,8 +959,8 @@ static const char PANEL_JS[] = R"ONXPANEL(
  // The panel's views plus drafts for the listed entities it has none for.
  const withDrafts=(views,ids)=>{const out=[...views];for(const e of new Set(ids))if(e&&!out.some(v=>v.entity===e)){const v=draftView(e);if(v)out.push(v)}return out};
  const artSizes=new Map(),haHistory=new Map();
- globalThis.ONX_PANEL_PREVIEW=(svg,slot,view,views,screen,settings)=>{
-  const redraw=()=>{if(svg.isConnected)globalThis.ONX_PANEL_PREVIEW(svg,slot,view,views,screen,settings)};
+ globalThis.ONX_PANEL_PREVIEW=(svg,slot,view,views,screen,settings,editing=false)=>{
+  const redraw=()=>{if(svg.isConnected)globalThis.ONX_PANEL_PREVIEW(svg,slot,view,views,screen,settings,editing)};
   views=withDrafts(views||[],[slot.entity,...(slot.entity?pageFor(slot.entity).ids:[])]);if(!view&&slot.entity)view=views.find(v=>v.entity===slot.entity);
   if(settings&&settings.orientation!==lastSettings.orientation){lastSettings=settings;renderPageEditor()}else lastSettings=settings||{};
   // A port of onx_panel_detail.h: the same geometry, fonts, colours and rules,
@@ -1626,7 +1626,8 @@ static const char PANEL_JS[] = R"ONXPANEL(
   };
   const renderMain=()=>{
    const p=pageFor(slot.entity),ids=p.ids,stacked=p.layout===STACK,grid=p.layout===gridLayout;
-   const rects=globalThis.ONX_PANEL_GEOMETRY(p.layout,W,H,false,stacked?p.stack:p.rows,stacked?ids.map(Boolean):p.columns);
+   // The editor reserves a clickable position for each empty chip.
+   const rects=globalThis.ONX_PANEL_GEOMETRY(p.layout,W,H,false,stacked?p.stack:p.rows,stacked?(editing?undefined:ids.map(Boolean)):p.columns);
    const tiles=rects.map((r,i)=>{const e=ids[i]||'',v=viewOf(e),c=v?{...v,...v.carousel}:null,lines=c?.lines||[],d=v?.panel||{};
     const name=e===slot.entity?(slot.name||lines[4]?.text||e):(editorSlots.find(s=>s.entity===e)?.name||v?.lines?.[4]?.text||e);
     let context=lines[2]?.text||'';if(/^(sensor|binary_sensor)\./.test(e)&&lines[4]?.text&&lines[4].text!==name)context=lines[4].text;
@@ -1642,7 +1643,7 @@ static const char PANEL_JS[] = R"ONXPANEL(
     if(t.key){cardKey(t,t.d,i,p);currentArt='';return}
     if(t.r.w<=0||t.r.h<=0){currentArt='';return}  // An empty stack chip.
     const rad=t.chip?t.r.h/2:t.compact?P(14):P(18);
-    if(t.slot&&!t.entity){box(t.r.x,t.r.y,t.r.w,t.r.h,mix(CARD,BG,45),rad,{'data-panel-item':i});currentArt='';return}
+    if(t.slot&&!t.entity){if(!t.chip||!editing)box(t.r.x,t.r.y,t.r.w,t.r.h,mix(CARD,BG,45),rad,{'data-panel-item':i});currentArt='';return}
     box(t.r.x,t.r.y,t.r.w,t.r.h,t.chip&&t.on&&t.d.available!==false?TINT:CARD,rad,{'data-panel-item':t.entity});
     if(t.chip){cardChip(t,t.d);currentArt='';return}
     if(!t.entity){currentArt='';return}

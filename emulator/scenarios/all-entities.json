@@ -541,6 +541,20 @@
    ]
   },
   {
+   "name": "stack-two-chips",
+   "kind": "stack",
+   "stack": [
+    "chips",
+    "full"
+   ],
+   "entities": [
+    "sensor.phone_battery",
+    "sensor.codex_5_hour",
+    "",
+    ""
+   ]
+  },
+  {
    "name": "stack-mixed",
    "kind": "stack",
    "stack": [
