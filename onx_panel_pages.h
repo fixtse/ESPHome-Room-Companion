@@ -884,9 +884,16 @@ inline std::string grid_badge(const std::string &cell, const Item &v, const cust
   }
   if (has_prefix(cell, "sensor.") || has_prefix(cell, "number.") || has_prefix(cell, "input_number.")) {
     const float n = onx_panel_detail::num(d->state);
-    if (!std::isfinite(n)) return "";
     const std::string out = onx_panel_detail::present(d->state, d->unit);
-    return out.size() <= 10 ? out : "";
+    if (std::isfinite(n)) return out.size() <= 10 ? out : "";
+    if (!has_prefix(cell, "sensor.")) return "";
+  }
+  // Text states (text sensors, selects, weather, media, timers): the card's
+  // reading when it is short enough for the tile.
+  for (const char *pre : {"sensor.", "select.", "input_select.", "input_text.", "weather.", "media_player.", "timer."}) {
+    if (!has_prefix(cell, pre)) continue;
+    const std::string s = has_prefix(cell, "timer.") && v.context.find(':') != std::string::npos ? v.context : v.value;
+    return s != "—" && s != "--" && onx_media::display_text(s).size() <= 14 ? onx_media::display_text(s) : "";
   }
   return "";
 }
@@ -907,7 +914,7 @@ inline std::vector<onx_panel_detail::Tile> main_tiles(const std::string &entity,
       t.compact=row==onx_panel_layout::Row::COMPACT;t.chip=row==onx_panel_layout::Row::CHIPS;t.slot=true;
     }
     t.key=kind==Kind::ACTION_GRID;
-    if (t.key && !cell.empty()) t.badge = grid_badge(cell, v, custom_logic_entity_sub::entity_detail(cell));
+    if ((t.key || t.chip) && !cell.empty()) t.badge = grid_badge(cell, v, custom_logic_entity_sub::entity_detail(cell));
     t.icon_only=p && t.key && (p->artwork[i]&ICON_ONLY);
     t.artwork=p?artwork_id(stored,*p,i):0;
     t.effect=p && t.key ? effect_of(p->entries[i]) : 0;

@@ -76,11 +76,54 @@ const lv_font_t *symbol_font() {
 
 // fonts_MiSans_<Weight>_<size>: the firmware's ESPHome font ids at the
 // board's font_scale (packages/base/fonts.yaml).
+// Fonts that fonts.yaml limits to a `glyphs: "..."` list (the large digit
+// fonts) draw only those characters, as on the device; the text fonts carry
+// GF_Latin_Kernel + GF_Latin_Core (all of printable ASCII).
+std::map<std::string, std::set<uint32_t>> restricted_glyphs() {
+  std::map<std::string, std::set<uint32_t>> out;
+  std::ifstream in(root + "/packages/base/fonts.yaml");
+  std::string line, id;
+  static const std::regex id_re(R"(^\s*(?:-\s*)?id:\s*(\S+))"), glyph_re(R"re(^\s*glyphs:\s*"(.*)"\s*$)re");
+  std::smatch m;
+  while (std::getline(in, line)) {
+    if (std::regex_search(line, m, id_re)) id = m[1];
+    else if (std::regex_search(line, m, glyph_re) && !id.empty()) {
+      const std::string g = m[1];
+      auto &set = out[id];
+      for (size_t i = 0; i < g.size();) {  // UTF-8 decode.
+        const unsigned char c = g[i];
+        const int n = c < 0x80 ? 1 : c < 0xE0 ? 2 : c < 0xF0 ? 3 : 4;
+        uint32_t cp = n == 1 ? c : c & (0x3F >> (n - 1));
+        for (int k = 1; k < n && i + k < g.size(); ++k) cp = (cp << 6) | (g[i + k] & 0x3F);
+        set.insert(cp); i += n;
+      }
+    }
+  }
+  return out;
+}
+struct Restricted { const lv_font_t *orig; std::set<uint32_t> allowed; };
+std::map<const lv_font_t *, Restricted> restricted;
+bool restricted_dsc(const lv_font_t *f, lv_font_glyph_dsc_t *g, uint32_t letter, uint32_t next) {
+  const auto &r = restricted.at(f);
+  if (!r.allowed.count(letter)) return false;  // Not in the device font: LVGL's placeholder box.
+  return r.orig->get_glyph_dsc(r.orig, g, letter, next);
+}
 const lv_font_t *font(const std::string &id) {
   std::smatch m;
   static const std::regex pattern(R"(fonts_MiSans_(Medium|Bold)_(\d+))");
   if (!std::regex_match(id, m, pattern)) { std::fprintf(stderr, "unknown font %s\n", id.c_str()); return &lv_font_montserrat_14; }
-  return lvgl_emu::ttf(root + "/fonts/MiSans-" + std::string(m[1]) + ".ttf", std::lround(std::stoi(m[2]) * board.font_scale));
+  const lv_font_t *f = lvgl_emu::ttf(root + "/fonts/MiSans-" + std::string(m[1]) + ".ttf", std::lround(std::stoi(m[2]) * board.font_scale));
+  static const auto lists = restricted_glyphs();
+  static std::map<std::string, lv_font_t *> made;
+  const auto it = lists.find(id);
+  if (f == nullptr || it == lists.end()) return f;
+  if (!made.count(id)) {
+    auto *copy = new lv_font_t(*f);
+    copy->get_glyph_dsc = restricted_dsc;
+    restricted[copy] = {f, it->second};
+    made[id] = copy;
+  }
+  return made[id];
 }
 // The entity fallback icon (assets/entity_icons/<name>.svg), 80 px at ui_scale.
 void bind_entity_icon(lv_obj_t *widget, const std::string &entity, bool active) {

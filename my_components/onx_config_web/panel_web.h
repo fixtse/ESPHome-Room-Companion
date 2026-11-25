@@ -1499,6 +1499,8 @@ static const char PANEL_JS[] = R"ONXPANEL(
    transport(r.x+r.w/2,r.y+by+bh/2,bh-P(8),bh,P(22),playing);
   };
   const cardGeneric=(t,d,v)=>{
+   // As card_generic: a cover's position is its bar.
+   if(t.ring<0&&d.available!==false&&v&&t.entity.startsWith('cover.')&&isFinite(num(d.position))&&t.r.h-P(14)*2-P(44)-P(10)-P(22)>=F.big.lh)return cardGeneric({...t,ring:Math.round(Math.min(100,Math.max(0,num(d.position)))*10)},d,v);
    const r=t.r,e=t.entity,domain=e.split('.')[0],pad=P(14),cs=P(44),tx=pad+cs+P(12),available=d.available!==false&&!!v;
    const switchable=available&&['switch','input_boolean','automation','fan','siren'].includes(domain),runnable=available&&['scene','script','button','input_button'].includes(domain),pv=num(d.state),hst=history(v);
    // As card_generic: numbers between −/+ steppers.
@@ -1539,6 +1541,14 @@ static const char PANEL_JS[] = R"ONXPANEL(
      for(const run of runs){if(run.at>now||now-run.at>=86400)continue;box(r.x+pad+Math.trunc((86400-(now-run.at))*(sw-P(4))/86400),r.y+sy,P(4),sh,ACCENT,P(2))}
      text('-24 h',F.small,MUTED,r.x+pad,r.y+sy+sh+P(4),sw/2);text('now',F.small,MUTED,r.x+pad+sw/2,r.y+sy+sh+P(4),sw/2,'right')}return}
    if(runnable&&bottom-P(48)>=pad+cs+P(8)){bottom-=P(48);button(r.x+pad,r.y+bottom,r.w-2*pad,P(48),P(24),INSET,'Run',F.body,TEXT);bottom-=P(10)}
+   if(available&&domain==='cover'){
+    const feat=Number(d.features)||0,shown=[['Open',1],['Stop',8],['Close',2]].filter(b=>!feat||(feat&b[1])),bh=P(44),gap=P(8);
+    if(shown.length&&bottom-bh-P(10)-P(22)-(pad+cs+P(10))>=F.big.lh){
+     bottom-=bh;const n=shown.length,bw=Math.trunc((r.w-2*pad-gap*(n-1))/n);
+     shown.forEach((b,i)=>button(r.x+pad+i*(bw+gap),r.y+bottom,i===n-1?r.w-2*pad-i*(bw+gap):bw,bh,P(14),INSET,b[0],F.body,TEXT));
+     bottom-=P(10);
+    }
+   }
    const bar=t.ring>=0&&!runnable;if(bar)bottom-=P(12)+P(10);const vy=pad+cs+P(10);
    if(bottom-vy<F.big.lh){if(bar&&bottom+P(10)>vy)level(r.x+pad,r.y+bottom+P(10),r.w-2*pad,P(12),t.ring/1000);return}
    const numeric=isFinite(num(d.state))&&['sensor','number','input_number'].includes(domain),value=numeric?compact(d.state):t.value,unit=numeric?d.unit:'';
@@ -1568,7 +1578,10 @@ static const char PANEL_JS[] = R"ONXPANEL(
    const r=t.r,available=d.available!==false&&!!t.v,numeric=available&&isFinite(num(d.state)),lit=available&&t.on;
    const is=Math.min(P(18),r.h-P(16)),px=Math.min(P(10),Math.trunc(r.h/4));
    let value=!available?'—':numeric?compact(d.state):t.value;if(!value)value=t.context||'—';
-   if(!numeric&&available&&width(value,F.body)>r.w-2*px-is-P(6)){icon(t.entity,r.x+r.w/2,r.y+r.h/2,is,lit?ACCENT:SOFT);return}
+   const room=r.w-2*px-is-P(6),badge=available?gridBadge(t.entity,d,t.on):'';
+   if(available&&!numeric&&badge&&width(value,F.body)>room)value=badge;
+   if(numeric&&width(value,F.body)>room)value=compact(String(Math.round(num(d.state))));
+   if(!numeric&&available&&width(value,F.body)>room){icon(t.entity,r.x+r.w/2,r.y+r.h/2,is,lit?ACCENT:SOFT);return}
    icon(t.entity,r.x+px+is/2,r.y+r.h/2,is,lit?ACCENT:available?SOFT:MUTED);
    const x=px+is+P(6),w=r.w-x-px;let unit=numeric?d.unit||'':'',uw=unit?width(unit,F.small)+P(2):0;if(width(value,F.body)+1+uw>w){unit='';uw=0}const vw=Math.min(width(value,F.body)+1,w-uw);
    let nx=x;
@@ -1598,6 +1611,7 @@ static const char PANEL_JS[] = R"ONXPANEL(
   const animateKey=(t,p)=>{const fx=animationOf(p,t.entity),img=target.lastElementChild;if(t.on&&fx!=='none'&&img?.tagName==='image'){img.classList.add('fx-'+fx);img.dataset.animation=fx}};
   const gridBadge=(e,d,on)=>{
    if(!e||d.available===false||!viewOf(e))return '';
+   if(typeof viewOf(e).grid_badge==='string')return viewOf(e).grid_badge;
    if(e.startsWith('light.'))return on&&d.dimmable!==false&&Number(d.brightness)>0?Math.round(Number(d.brightness))+'%':'';
    if(e.startsWith('fan.')){const p=num(d.percentage);return on&&isFinite(p)&&p>0?Math.round(p)+'%':''}
    if(e.startsWith('cover.')){const p=num(d.position);return isFinite(p)?Math.round(p)+'%':''}

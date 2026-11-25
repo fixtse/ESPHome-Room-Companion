@@ -73,6 +73,10 @@ inline void build(JsonObject root, const std::string &query_entity, const Contex
     #endif
     auto slot = slots.add<JsonObject>();
     slot["entity"] = entity; encode(slot, view);
+    #ifdef USE_ROOM_COMPANION
+    // The action-grid tile's state line, so the editor preview matches the panel.
+    slot["grid_badge"] = onx_panel_pages::grid_badge(entity, onx_panel_pages::item(entity, false), custom_logic_entity_sub::entity_detail(entity));
+    #endif
     // History for every entry with a graph (sensors, smart-plug switches).
     if(view.layout=="graph" || (onx_sensor_view::index(entity)>=0 && onx_sensor_view::configs[onx_sensor_view::index(entity)].graph)) {
       const int index=onx_sensor_view::index(entity);

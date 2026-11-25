@@ -407,6 +407,17 @@
    "position": "50",
    "features": 15,
    "cover_presets": []
+  },
+  {
+   "entity_id": "sensor.pump_mode",
+   "name": "Pump (garage) mode_2 - v1.2",
+   "state": "eco_mode (2) - 1.5/3"
+  },
+  {
+   "entity_id": "sensor.outdoor_dew_point",
+   "name": "Dew point",
+   "state": "-3.5",
+   "unit": "\u00b0C"
   }
  ],
  "pages": [
@@ -581,6 +592,14 @@
     "media_player.living_room_speaker",
     "light.porch",
     "script.good_night"
+   ]
+  },
+  {
+   "name": "punctuation",
+   "kind": "two",
+   "entities": [
+    "sensor.pump_mode",
+    "sensor.outdoor_dew_point"
    ]
   }
  ]

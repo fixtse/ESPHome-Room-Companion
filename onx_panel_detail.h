@@ -3244,6 +3244,14 @@ __attribute__((noinline)) inline void build_media(const Layout &l, const std::st
 }
 
 inline void card_generic(lv_obj_t *c, const Tile &t, const EntityDetailState *d) {
+  // Covers: the position as the card's bar.
+  // Only where the reading still fits above it.
+  if (t.ring < 0 && d != nullptr && d->available && t.entity.rfind("cover.", 0) == 0 && std::isfinite(num(d->position)) &&
+      t.r.h - P(14) * 2 - P(44) - P(10) - P(22) >= line(fonts.big)) {
+    Tile with_bar = t;
+    with_bar.ring = int(std::clamp(num(d->position), 0.0f, 100.0f) * 10);
+    return card_generic(c, with_bar, d);
+  }
   const Rect r = t.r;
   const std::string e = t.entity, domain = e.substr(0, e.find('.'));
   const int pad = P(14), cs = P(44), tx = pad + cs + P(12);
@@ -3453,6 +3461,24 @@ inline void card_generic(lv_obj_t *c, const Tile &t, const EntityDetailState *d)
     button(c, pad, bottom, r.w - 2 * pad, P(48), P(24), INSET(), "Run", fonts.body, TEXT(), run);
     bottom -= P(10);
   }
+  // Covers in tall cards: open / stop / close along the bottom, as the detail.
+  if (available && domain == "cover") {
+    struct Btn { const char *caption, *service; uint32_t bit; };
+    std::vector<Btn> shown;
+    for (const Btn &b : {Btn{"Open", "cover.open_cover", 1}, Btn{"Stop", "cover.stop_cover", 8}, Btn{"Close", "cover.close_cover", 2}})
+      if (d->features == 0 || (d->features & b.bit)) shown.push_back(b);
+    const int bh = P(44), gap = P(8);
+    if (!shown.empty() && bottom - bh - P(10) - P(22) - (pad + cs + P(10)) >= line(fonts.big)) {
+      bottom -= bh;
+      const int n = shown.size(), bw = (r.w - 2 * pad - gap * (n - 1)) / n;
+      for (int i = 0; i < n; ++i) {
+        const Btn b = shown[i];
+        button(c, pad + i * (bw + gap), bottom, i == n - 1 ? r.w - 2 * pad - i * (bw + gap) : bw, bh, P(14), INSET(), b.caption,
+               fonts.body, TEXT(), [e, b]() { request(e, b.service, "", "", "panel_cover"); });
+      }
+      bottom -= P(10);
+    }
+  }
   const bool bar = t.ring >= 0 && !runnable;
   if (bar) bottom -= P(12) + P(10);
   const int vy = pad + cs + P(10);
@@ -3633,9 +3659,14 @@ inline void card_chip(lv_obj_t *c, const Tile &t, const EntityDetailState *d) {
   const int is = std::min(P(18), r.h - P(16)), px = std::min(P(10), r.h / 4);
   std::string value = !available ? std::string("—") : numeric ? onx_detail_view::compact(d->state) : t.value;
   if (value.empty()) value = t.context.empty() ? "—" : t.context;
+  // A long reading falls back to the tile's short state (grid_badge), then to
+  // whole numbers.
+  const int room = r.w - 2 * px - is - P(6);
+  if (available && text_width(value, fonts.body) > room && !t.badge.empty() && !numeric) value = t.badge;
+  if (numeric && text_width(value, fonts.body) > room) value = onx_detail_view::compact(std::to_string(int(std::lround(num(d->state)))));
   // A text state that does not fit: the icon alone, centred (the accent still
   // marks "on"); the detail has the words.
-  if (!numeric && available && text_width(value, fonts.body) > r.w - 2 * px - is - P(6)) {
+  if (!numeric && available && text_width(value, fonts.body) > room) {
     icon(c, t.entity, r.w / 2, r.h / 2, is, lit ? accent() : SOFT_TEXT());
     return;
   }
