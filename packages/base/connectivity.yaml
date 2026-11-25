@@ -50,6 +50,7 @@ wifi:
     then:
       - lambda: |-
           id(normal_wifi_connected) = true;
+          id(entity_icon_downloader)->on_network_connected();
           if(onx_power::sleeping)onx_power::apply_radio_sleep();
       - script.execute: refresh_normal_device_page
       - delay: 2s

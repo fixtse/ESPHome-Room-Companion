@@ -66,56 +66,53 @@ from firmware; those entries can be deleted from the device's entity list.
 
 ## Performance and reset diagnostics
 
-Icon bindings reuse unchanged LVGL descriptors and tint styles. After two seconds
-without panel input, configured icons prefetch one at a time into the existing
-12-entry RAM cache. Icons still download again after reboot: no flash partition
-or NVS space is consumed for bitmap storage.
+Icon bindings reuse unchanged LVGL descriptors and tint styles. Visible icons
+enter a deduplicated priority queue ahead of emoji and off-screen background
+prefetches (configured entity and page icons after two seconds without input),
+and drain back-to-back over one HTTP/1.1 keep-alive TLS connection per host
+inside a burst-scoped worker. When the burst ends or media artwork requests the
+network, the worker closes its TLS client and frees its stack; background
+prefetches cancel cooperatively and re-queue without counting as failures.
+SVG downloads, NanoSVG parsing and the bounded PSRAM bitmap cache (up to 120
+entries, gated by 1.5 MB free PSRAM headroom) stay in PSRAM. Icons download
+again after reboot: no flash partition or NVS space is consumed for bitmap
+storage. Failed icons use exponential backoff (2 s → 5 s → 15 s → 60 s → 5 min;
+confirmed 404s jump straight to 5 min) and transient failures clear
+automatically on Wi-Fi reconnect. Repeated primary-host transport/refusal errors
+temporarily prefer the GitHub backup host for 60 s before probing Iconify again.
 
 Artwork remains provider-independent: Home Assistant's supplied URL is fetched,
-and the final display buffer is resized to fit 100x100. This does not shrink the
-original network file; JPEG requires the complete compressed download and still
-has decode cost for the source dimensions. Artwork is postponed until its URL
-has settled, while icons are downloading, and when internal memory is low.
-Artwork uses a 2.5-second HTTP timeout and a 15-second overall deadline; failed
-URLs back off for a minute. Compressed input stays in a bounded PSRAM buffer.
-Existing OTA request timeouts are kept.
+and the final display buffer is resized to fit the panel's cover size. This does
+not shrink the original network file; JPEG requires the complete compressed
+download and still has decode cost for the source dimensions. Artwork is
+postponed until its URL has settled, while icons are yielding, and when internal
+memory is low. Artwork uses strict per-phase timeouts and a 10 s HTTPS / 7 s
+HTTP network budget, a bounded 4-entry PSRAM LRU cache, and exponential backoff
+(1.5 s → 3.5 s → 8 s → 20 s → 30 s) on failed URLs. Compressed input stays in a
+bounded PSRAM buffer. Existing OTA request timeouts are kept.
 
 Download completion refreshes on the next interval, after downloader cleanup.
 Unavailable players cancel in-progress artwork and discard stale progress.
 Unchanged media/playlist labels and image sources avoid repeated redraws.
 
 The configuration webpage and diagnostic download include readable reset reason,
-free/minimum/largest internal heap, free PSRAM, and artwork status. An RTC RAM
-breadcrumb can preserve the last media action or artwork event across a crash or
-software reset. It is the last observed event, not a crash backtrace or proof of
-cause; power-on and brownout discard it. No continuous log or flash writes are
-required. Hardware crash reproduction remains unverified without a reset log.
+free/minimum/largest internal heap, free PSRAM, artwork status/stats, and icon
+downloader stats (`icon_stats`). An RTC RAM breadcrumb can preserve the last
+media action or artwork event across a crash or software reset. It is the last
+observed event, not a crash backtrace or proof of cause; power-on and brownout
+discard it. No continuous log or flash writes are required. Hardware crash
+reproduction remains unverified without a reset log.
 
-Artwork DNS, TCP/TLS, redirects, and body reads now run in a separate task. Slow
-servers no longer block panel input during network operations. Downloads are
-limited to 512 KB of PSRAM, three redirects, and a 15-second deadline, with
-2.5-second socket timeouts. Cancelled requests cannot display stale artwork.
-JPEG/PNG/BMP content is identified from its bytes. Final decoding remains on the
-main task, so very large source dimensions can still cause a shorter decode
-pause; the network limit does not promise a dimension-independent decode time.
+Artwork and icon DNS, TCP/TLS, and body reads run in separate worker tasks so
+slow servers never block panel input. Both workers prefer an internal stack when
+internal RAM has ample headroom and fall back to PSRAM when fragmented; both
+require at least 32 KB free internal RAM and an 8 KB largest block for lwIP and
+Wi-Fi headroom (reported as `waiting_for_memory` when deferred). mbedTLS
+allocations live in PSRAM, covering icon/artwork HTTPS and OTA checks/downloads.
+JPEG decoder objects (including MCU/Huffman workspaces) use checked PSRAM
+allocation rather than the fragmented internal heap.
 
 HTTP diagnostics also report the most recent Wi-Fi RSSI (sampled every 60 seconds),
-Wi-Fi disconnect count since boot, and the last artwork download/decode error.
+Wi-Fi disconnect count since boot, and the last artwork/icon download errors.
 A connected Wi-Fi flag alone is not a measurement of signal quality or internet
 reachability. Artwork error messages omit URLs and access parameters.
-
-The network memory gate requires 48 KB total internal free RAM and a 20 KB
-largest block, allowing the observed 28 KB block to start a worker. A low-memory
-deferral is reported as `waiting_for_memory` for icons and artwork. These are
-allocation headroom checks, not a guarantee against every memory failure.
-
-TLS allocation failures (`mbedtls_ssl_setup -0x7F00`) were observed during the
-GitHub OTA manifest check on live firmware `.25`. The ESP-IDF build now allocates
-mbedTLS memory from PSRAM. This covers icon/artwork HTTPS and OTA checks/downloads;
-UI/worker stacks and DMA retain their normal internal-memory placement.
-
-Artwork uses its own memory gate: 32 KB total internal free RAM and a 14 KB
-contiguous block for its 12 KB worker stack. The icon worker retains its separate
-48 KB/20 KB check. Sharing the icon gate incorrectly deferred artwork on a live
-unit with a 16 KB block. JPEG decoder objects (including MCU/Huffman workspaces)
-now use checked PSRAM allocation rather than the fragmented internal heap.

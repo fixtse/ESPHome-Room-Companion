@@ -18,13 +18,22 @@ inline std::string backup_url(const std::string &icon) {
   return valid_icon(icon) ? "https://raw.githubusercontent.com/Templarian/MaterialDesign/master/svg/" + icon.substr(4) + ".svg" : "";
 }
 struct Retry {
-  uint32_t failed_at{0}, delay{5000};
+  uint32_t failed_at{0}, delay{2000};
   unsigned attempts{0};
+  bool permanent{false};
   bool due(uint32_t now) const { return now - failed_at >= delay; }
   void fail(uint32_t now) {
-    static const uint32_t delays[] = {5000, 15000, 60000, 300000};
-    failed_at = now; delay = delays[attempts < 4 ? attempts : 3];
-    if (attempts < 4) ++attempts;
+    static constexpr uint32_t DELAYS[] = {2000, 5000, 15000, 60000, 300000};
+    failed_at = now;
+    delay = DELAYS[attempts < 5 ? attempts : 4];
+    if (attempts < 5) ++attempts;
+    permanent = false;
+  }
+  void fail_permanent(uint32_t now) {
+    failed_at = now;
+    delay = 300000;
+    attempts = 5;
+    permanent = true;
   }
 };
 inline std::string fallback(const std::string &entity, const std::string &type = "") {

@@ -367,7 +367,11 @@ interval:
               last_carousel = key; last_inputs = inputs; last_full_ms = millis();
             }
             if (timer_due) last_tick_ms = millis();
-            if (!full && timer_due) onx_panel_detail::refresh_icons();  // Downloaded icons (~0.1 ms).
+            static uint32_t seen_icon_rev = 0;
+            const uint32_t cur_icon_rev = id(entity_icon_downloader)->cache_revision();
+            const bool icons_changed = cur_icon_rev != seen_icon_rev;
+            if (icons_changed) seen_icon_rev = cur_icon_rev;
+            if (!full && (timer_due || icons_changed)) onx_panel_detail::refresh_icons();  // Downloaded icons (~0.1 ms).
             if (full) {
               seen_revision = onx_subs::state_revision; last_full_ms = millis();
               last_carousel = key; last_inputs = inputs;

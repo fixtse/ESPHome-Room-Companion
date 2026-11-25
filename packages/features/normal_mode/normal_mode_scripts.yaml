@@ -2400,8 +2400,9 @@ script:
             return;
           }
           if (id(entity_icon_downloader)->busy()) {
+            id(entity_icon_downloader)->request_artwork_yield();
             onx_media::artwork_wait_reason = "waiting_for_icons";
-            onx_media::retry_at_ms = now + 400; if (onx_media::retry_at_ms == 0) onx_media::retry_at_ms = 1;
+            onx_media::retry_at_ms = now + 200; if (onx_media::retry_at_ms == 0) onx_media::retry_at_ms = 1;
             return;
           }
           if (!id(media_cover_image)->memory_ready()) {

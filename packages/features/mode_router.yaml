@@ -72,6 +72,39 @@ onx_config_web:
     }
     if (query.op == "icon_status") {
       return onx_entity_config::build_json([&](JsonObject root) {
+        auto *dl = id(entity_icon_downloader);
+        const auto &st = dl->stats();
+        auto stats = root["stats"].to<JsonObject>();
+        stats["attempts"] = st.attempts;
+        stats["ok"] = st.ok;
+        stats["failed"] = st.failed;
+        stats["cancelled"] = st.cancelled;
+        stats["cache_hits"] = st.cache_hits;
+        stats["keepalive_reuses"] = st.keepalive_reuses;
+        stats["backup_ok"] = st.backup_ok;
+        stats["last_ms"] = st.last_ms;
+        stats["slowest_ms"] = st.slowest_ms;
+        stats["cache_entries"] = dl->cache_size();
+        stats["cache_bytes"] = dl->cache_bytes();
+        stats["urgent_queued"] = dl->urgent_queued();
+        stats["prefetch_queued"] = dl->prefetch_queued();
+        stats["active_icon"] = dl->active_icon();
+        stats["primary_cooldown"] = dl->primary_in_cooldown();
+        stats["last_error"] = st.last_error;
+        auto lf = stats["last_fetch"].to<JsonObject>();
+        lf["icon"] = st.last_fetch.icon;
+        lf["host"] = st.last_fetch.host;
+        lf["attempts"] = st.last_fetch.attempts;
+        lf["open_ms"] = st.last_fetch.open_ms;
+        lf["read_ms"] = st.last_fetch.read_ms;
+        lf["raster_ms"] = st.last_fetch.raster_ms;
+        lf["bytes"] = st.last_fetch.bytes;
+        lf["stack_psram"] = st.last_fetch.stack_psram;
+        lf["reused"] = st.last_fetch.reused;
+        lf["backup"] = st.last_fetch.backup;
+        lf["heap_free_start"] = st.last_fetch.heap_free_start;
+        lf["heap_largest_start"] = st.last_fetch.heap_largest_start;
+        lf["heap_free_after_open"] = st.last_fetch.heap_free_after_open;
         JsonArray slots = root["slots"].to<JsonArray>();
         for (size_t i = 0; i < (int)custom_logic::CONFIGURABLE_DEVICE_SLOT_COUNT; ++i) {
           const auto entity = custom_logic::cached_device_entity_id(i);
@@ -84,8 +117,8 @@ onx_config_web:
           slot["runtime"] = meta.entity == entity ? meta.runtime : "";
           slot["device_class"] = meta.entity == entity ? meta.device_class : "";
           slot["selected"] = icon;
-          slot["status"] = id(entity_icon_downloader)->status(icon);
-          slot["error"] = id(entity_icon_downloader)->error(icon);
+          slot["status"] = dl->status(icon);
+          slot["error"] = dl->error(icon);
         }
       });
     }
