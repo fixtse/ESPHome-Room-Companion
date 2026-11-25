@@ -25,7 +25,7 @@ cards or full-screen detail views:
 | **Covers & blinds** | Drag a live window/blind visual to set position, tap Open / Stop / Close, and configure up to **4 position presets** per cover (15%, 25%, 50%, 75% by default). |
 | **Switches, helpers & automations** | Toggle switches, input booleans, and automations, or run scenes, scripts (with Stop while running), and buttons. Pair switches with a power/energy sensor (W or kWh) for live readings and a 12-hour graph. |
 | **Numbers, selects & sirens** | Adjust numbers and input numbers with sliders or − / + steps, pick from scrollable select lists, and configure siren tone, volume, and duration. |
-| **Media & synced lyrics** | View album artwork, title, artist, and a live playback progress bar; use play/pause/skip transport and swipe volume; launch up to **8 saved playlists or radio stations** per player; optionally display **synced lyrics** over blurred cover art. |
+| **Media players** | View album artwork, title, artist, and a live playback progress bar; use play/pause/skip transport and swipe volume; launch up to **8 saved playlists or radio stations** per player. |
 | **Weather & sensors** | Check current conditions, feels-like, humidity, wind, pressure, visibility, UV, and a 5-day forecast. View sensor values, percentage bars, secondary readings with custom templates (such as relative reset times), **1 h / 12 h / 24 h / 7 d history graphs** (min / avg / max), and persisted recent history for binary sensors and events. |
 
 Main cards include direct touch controls (switches, brightness sliders, climate
@@ -59,6 +59,57 @@ one tap; tap a card outside its controls to open the full screen.
 - **Rich text & emoji.** Supports accented Latin characters and on-demand **Noto
   Color Emoji** (with monochrome fallbacks offline).
 
+### Synced lyrics
+
+Turn the media screen into a live lyrics display over a soft, blurred copy of
+the album art—showing the previous, current, and next lines in time with the
+music. Works with Spotify and any other Home Assistant media player that reports
+title, artist, duration, and position:
+
+- **Synced locally on the panel.** An optional Home Assistant blueprint fetches
+  timed lyrics once per track from [LRCLIB](https://lrclib.net) (free, no
+  account required) and sends them to the panel; the panel tracks the active
+  line locally without extra network traffic.
+- **Instant toggle & custom sources.** Tap the lyrics at any time to switch back
+  to the album art and quick actions (lyrics return on the next track), or send
+  LRC text from your own automation with the panel’s `set_lyrics` action.
+- [Synced lyrics setup guide](docs/lyrics.md)
+
+### Streamed page (Home Assistant dashboard)
+
+Stream an interactive Home Assistant dashboard—or any web page—directly to the
+touchscreen using
+[RemoteWebViewServer](https://github.com/strange-v/RemoteWebViewServer):
+
+- **Interactive tile streaming.** Headless Chromium renders your dashboard and
+  streams changed tiles to the panel while forwarding touches back, with
+  configurable zoom and per-model defaults.
+- **Native handoff & flexible access.** Open the streamed page from a pinned
+  shortcut on the left or right edge of the bottom dock, from Home Assistant’s
+  **Streamed page** switch, or automatically as your idle screen. Native
+  overlays for Assist, timers, and notifications smoothly take over and return
+  to the stream when finished.
+- **Easy deployment.** Run RemoteWebViewServer as a Home Assistant OS add-on or
+  with the included Docker Compose setup. [Dashboard streaming setup](docs/room-companion/dashboard-stream.md)
+
+[![Add the Remote WebView Server repository to Home Assistant](https://my.home-assistant.io/badges/supervisor_add_addon_repository.svg)](https://my.home-assistant.io/redirect/supervisor_add_addon_repository/?repository_url=https%3A%2F%2Fgithub.com%2Fstrange-v%2FRemoteWebViewServer)
+
+### ImmichFrame photo frame
+
+Turn the panel into a dedicated photo frame backed by your Immich library using
+the [fixtSE ImmichFrame fork](https://github.com/fixtse/ImmichFrame):
+
+- **Native-resolution photos & mDNS discovery.** Automatically discovers
+  ImmichFrame on your network and fetches screen-sized photos matching the
+  panel’s current orientation.
+- **Flexible overlays & framing.** Choose **Large clock**, **Small clock**, or
+  **Photo only** overlays; pick **Blurred background**, **Fill screen**, or
+  **Whole photo** fit modes; enable split-view **photo pairs** when two photos
+  suit the screen better than one, fade transitions, and a countdown bar.
+- **Metadata & swipe history.** Optionally display up to three photo details
+  (date, place, album, people, description) and swipe left/right to browse
+  forward or back through the last 20 screens. [ImmichFrame setup](docs/room-companion/panel-ui.md#immichframe)
+
 ### Timers, notifications & quick-access shade
 
 - **Multi-source timers without clutter.** Track Home Assistant `timer.*`
@@ -72,6 +123,17 @@ one tap; tap a card outside its controls to open the full screen.
   automatic in-place updates for repeated threads) and `dismiss_message`. Pull
   down from the top edge on any screen—or tap the bell—to browse up to 12 recent
   notifications.
+- **Phone & desktop notifications via KDE Connect.** Mirror notifications (with
+  app icons and automatic dismissal when cleared on your phone or PC) using
+  [KDE for Home Assistant](https://github.com/Radeaus/kdeforhomeassistant) and
+  the included [notifications blueprint](blueprints/automation/notifications_on_esphome_display.yaml)
+  ([setup guide](docs/display-notifications.md#phone-and-desktop-notifications-kde-connect)).
+  On **Linux** and **Windows**, pair it with the
+  [KDE Connect Rich Notifications](https://github.com/fixtse/kdeconnect-rich-notifications)
+  plugin to send desktop notifications with chat avatars, website icons, and
+  screenshot previews (Linux) or app logos (experimental Windows port).
+
+  [![Import the KDE for Home Assistant notifications blueprint](https://my.home-assistant.io/badges/blueprint_import.svg)](https://my.home-assistant.io/redirect/blueprint_import/?blueprint_url=https%3A%2F%2Fgithub.com%2Ffixtse%2FOpenNextion-Room-Companion%2Fblob%2Fmain%2Fblueprints%2Fautomation%2Fnotifications_on_esphome_display.yaml)
 - **Pull-down quick toggles & status chips.** The notification shade includes
   quick tiles to toggle the standby clock timer, **switch presets on the
   panel**, and rotate screen orientation. Live status chips in the top bar let
@@ -99,25 +161,15 @@ one tap; tap a card outside its controls to open the full screen.
   audio, with optional **Dynamic Volume** to adapt idle speaker volume to the
   room.
 
-### Idle screens & power management
+### Clock idle screen & power management
 
-- **Clock.** Choose presets (*Time only*, *Time & weather*, *Weather &
-  forecast*, *Everything*) or customize individual parts with adaptive font
-  sizing, weather or custom sensor readings, 12/24-hour and date formats,
+- **Adaptive clock idle screen.** Choose presets (*Time only*, *Time & weather*,
+  *Weather & forecast*, *Everything*) or toggle individual parts with adaptive
+  font sizing, weather or custom sensor readings, 12/24-hour and date formats,
   optional edge seconds indicator, notification badge, and an option to show the
-  active **media player** while music plays.
-- **ImmichFrame photo frame.** Turn the idle screen into a photo frame backed by
-  the [fixtSE ImmichFrame fork](https://github.com/fixtse/ImmichFrame), with
-  automatic mDNS discovery, three clock overlay styles (*Large clock*, *Small
-  clock*, *Photo only*), photo fit modes (*Blurred background*, *Fill screen*,
-  *Whole photo*), split-view photo pairs, fade transitions, selectable photo
-  details (date, place, album, people, description), countdown bar, and swipe
-  history for the last 20 photos.
-- **Streamed page (Dashboard).** Stream an interactive Home Assistant dashboard
-  or web page through
-  [RemoteWebViewServer](https://github.com/strange-v/RemoteWebViewServer) with
-  touch forwarding, configurable zoom, and automatic handoff to native overlays
-  for Assist and notifications.
+  active **media player** while music plays. (Switch the idle screen to
+  **ImmichFrame** or **Streamed page** at any time from the **Idle screen** tab
+  or Home Assistant.)
 - **Scheduled sleep & connected low-power sleep.** Configure a daily sleep
   schedule to switch off the display overnight while staying connected to Home
   Assistant, or automate the **Low Power Sleep** switch to sleep the display
@@ -182,25 +234,6 @@ the model number on your panel.
 
 Already running Room Companion? Check the panel’s **Firmware Update** entity
 in Home Assistant for available updates. [Setup and update guide](docs/setup.md#keep-it-updated)
-
-## Add a dashboard, photo frame, or lyrics
-
-**Bring your dashboard to the room.** The optional
-[RemoteWebViewServer](https://github.com/strange-v/RemoteWebViewServer) streams an
-interactive Home Assistant dashboard to the panel. Install it as a Home Assistant
-add-on or run it on a separate Docker host. [Dashboard streaming setup](docs/room-companion/dashboard-stream.md)
-
-[![Add the Remote WebView Server repository to Home Assistant](https://my.home-assistant.io/badges/supervisor_add_addon_repository.svg)](https://my.home-assistant.io/redirect/supervisor_add_addon_repository/?repository_url=https%3A%2F%2Fgithub.com%2Fstrange-v%2FRemoteWebViewServer)
-
-**Turn the idle screen into a photo frame.** The
-[fixtSE ImmichFrame fork](https://github.com/fixtse/ImmichFrame) serves photos from
-your Immich library at the panel’s resolution. Open the panel’s **Idle screen**
-settings, choose **ImmichFrame**, and select your server or enter its URL. The
-panel fetches photos directly from ImmichFrame. [Slideshow setup](docs/room-companion/panel-ui.md#immichframe)
-
-**Sing along.** An optional Home Assistant blueprint fetches synced lyrics
-from [LRCLIB](https://lrclib.net) once per track. The media screen shows them
-over the album art, in time with Spotify or any other player. [Lyrics setup](docs/lyrics.md)
 
 ## Find your guide
 

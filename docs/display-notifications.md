@@ -181,3 +181,28 @@ notifications with an empty title also stay separate. Use a stable sender or
 conversation title and avatar URL. The current `show_message` action does not
 receive an app identifier: include the app in the title if the same sender can
 arrive from several apps and should have a separate card for each.
+
+## Phone and desktop notifications (KDE Connect)
+
+Use [KDE for Home Assistant](https://github.com/Radeaus/kdeforhomeassistant) to
+mirror notifications from your phone or computer onto the panel, including app
+icons and automatic dismissal when you clear them on the originating device. For
+**Linux** and **Windows** desktops, install the
+[KDE Connect Rich Notifications](https://github.com/fixtse/kdeconnect-rich-notifications)
+plugin to forward desktop notifications with chat avatars, website icons, and
+screenshot previews on Linux, or notification text and application logos via its
+experimental Windows port.
+
+1. Install and pair your devices with
+   [KDE for Home Assistant](https://github.com/Radeaus/kdeforhomeassistant), and
+   choose which devices and apps share notifications on its sidebar page.
+2. Create a **Text** helper (`input_text`, max length 255) in Home Assistant to
+   track the active notification on the display.
+3. Import the included blueprint:
+
+   [![Import the blueprint](https://my.home-assistant.io/badges/blueprint_import.svg)](https://my.home-assistant.io/redirect/blueprint_import/?blueprint_url=https%3A%2F%2Fgithub.com%2Ffixtse%2FOpenNextion-Room-Companion%2Fblob%2Fmain%2Fblueprints%2Fautomation%2Fnotifications_on_esphome_display.yaml)
+
+4. Create an automation from **KDE for Home Assistant · notifications on an
+   ESPHome display**, selecting your KDE Connect device(s), the Text helper, and
+   your Room Companion panel. Set **Icon server URL** if Home Assistant’s
+   default URL is not directly reachable from the panel’s LAN.
