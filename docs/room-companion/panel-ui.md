@@ -16,10 +16,10 @@ second carousel renderer.
 | --- | --- | --- |
 | Carousel | Swipe left / right | Previous / next control |
 | Carousel | Tap an icon in the bottom strip | Jump to that control |
-| Detail view (weather, light…) | Swipe left / right or up / down | Step the value (pages, brightness, volume) |
+| Detail view (weather, light…) | Swipe up / down | Step the value (pages, brightness, volume) |
 | Media player | Swipe left / right | Close the player without changing playback |
 | Media player | Swipe up / down | Change volume |
-| Detail view | Swipe right **starting at the left edge** | Back |
+| Detail view | Swipe left or right anywhere (not starting on a slider or scrolling row) | Back to the main view |
 | Anywhere in the native UI | Swipe down **from the top edge** | Open the notification centre (the only way on detail screens) |
 | Notification centre | Swipe up starting on the bottom handle area (*Swipe up to close* and the line below it) past a fifth of the screen, or flick up; or tap the handle. Swipes over the list only scroll it | Close it; a sheet follows the finger and springs back from a shorter drag |
 | Dashboard stream | Swipe from the left edge | Back to the native UI |

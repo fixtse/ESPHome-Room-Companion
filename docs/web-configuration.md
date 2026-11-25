@@ -23,6 +23,16 @@ If a save fails, already saved slots stay saved and the others remain marked.
 The browser can offer to recover an unsaved draft after a reload—still save your
 work before closing it.
 
+### Page icon
+
+Each page has an icon in the bottom bar. Click **Icon** beside the page name to
+search Material Design Icons or upload an image. To reuse the icon of an entity
+on that page, drag the entity from the page layout and drop it on **Icon**. The
+page then follows that entity's icon: when Home Assistant changes it (for
+example a battery or door sensor whose icon depends on its state), the bottom
+bar changes too. If the entity leaves the page, the page returns to its
+automatic icon. **Restore default icon** brings back the automatic icon.
+
 The **On your panel** preview shows live readings when available. Switch between
 **Main screen** and **Opened entity** to see each layout. A new entity needs to be
 saved before its readings can load.
@@ -87,9 +97,11 @@ means the request was sent; the player may take a moment to start.
 
 ## Sensors and graphs
 
-Choose a sensor slot and open **Display**. Keep **Value** for a simple reading,
-or choose **12-hour graph when opened** for a numeric sensor. The main screen
-still shows its current value. Graphs use Home Assistant's recorded statistics
+Choose a sensor slot and open **Display**. Turn on **Graph** to open a graph
+instead of a simple reading. **Graph of** picks the main entity or the
+secondary entity, and **Default time** sets the range the graph opens with
+(1 hour, 12 hours, 24 hours or 7 days); the panel's range chips still change it.
+The main screen still shows the main entity's current value. Graphs use Home Assistant's recorded statistics
 where available; otherwise they show readings collected since the panel started.
 Some sensors do not have recorded statistics. Gaps stay empty, and locally
 collected history is lost on restart.

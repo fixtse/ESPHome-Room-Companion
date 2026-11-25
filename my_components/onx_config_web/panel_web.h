@@ -155,7 +155,8 @@ static const char PANEL_JS[] = R"ONXPANEL(
  const slotOf=e=>e?editorSlots.findIndex(s=>s.entity===e):-1;
  const iconOf=e=>entry(e)?.icon||app()?.item(e)?.icon||'mdi:'+(DEFAULT_ICONS[(e||'').split('.')[0]]||'shape-outline');
  const pageTitle=(p,i)=>p?.name||(p?nameOf(lead(p)):'')||'Page '+(i+1);
- const pageIcon=p=>p.icon==='entity'?iconOf(lead(p)):p.icon||(isGrid(p)?'mdi:view-grid-outline':lead(p)?iconOf(lead(p)):'mdi:view-dashboard-outline');
+ const iconRef=p=>p.icon?.startsWith('entity:')?p.icon.slice(7):'';
+ const pageIcon=p=>p.icon==='entity'?iconOf(lead(p)):iconRef(p)?iconOf(iconRef(p)):p.icon||(isGrid(p)?'mdi:view-grid-outline':lead(p)?iconOf(lead(p)):'mdi:view-dashboard-outline');
  const dirtyPages=()=>JSON.stringify(pageConfigs)!==savedPages;
  const status=t=>{$('page-layout-status').textContent=t||''};
  const singles=list=>list.filter(s=>s.entity&&s.timerHidden!=='1').map(s=>({name:'',icon:'',layout:'single',entities:[s.entity]}));
@@ -453,7 +454,7 @@ static const char PANEL_JS[] = R"ONXPANEL(
   if(p){
    if(isGrid(p)){$('grid-rows').value=p.rows;$('grid-columns').value=p.columns;$('grid-rows').disabled=$('grid-columns').disabled=locked}
    const name=$('page-name');if(document.activeElement!==name)name.value=p.name;name.placeholder=lead(p)?nameOf(lead(p)):'Living room';name.disabled=locked;
-   displayArt(setIcon($('page-icon-preview'),pageIcon(p)),p.carousel_artwork);$('page-icon-button').setAttribute('aria-label','Carousel icon: '+(p.carousel_artwork?'custom image':p.icon==='entity'?'first entity icon':p.icon||'default icon')+'. Choose another');$('page-icon-button').disabled=locked;
+   displayArt(setIcon($('page-icon-preview'),pageIcon(p)),p.carousel_artwork);$('page-icon-button').setAttribute('aria-label','Carousel icon: '+(p.carousel_artwork?'custom image':p.icon==='entity'?'first entity icon':iconRef(p)?nameOf(iconRef(p))+'’s icon':p.icon||'default icon')+'. Choose another');$('page-icon-button').disabled=locked;
    $('page-up').disabled=locked||selectedPage===0;$('page-down').disabled=locked||selectedPage>=pageConfigs.length-1;$('delete-page').disabled=locked;
    const {width:w,height:h}=screen();
    const kindKey=JSON.stringify([shapeOf(p),locked,w,h]);if(drawn.kind!==kindKey){drawn.kind=kindKey;renderLayouts(p);renderRows(p)}
@@ -697,7 +698,7 @@ static const char PANEL_JS[] = R"ONXPANEL(
  async function renderIcons(){
   const mine=++iconQuery,q=$('icon-search').value.trim().toLowerCase(),p=pageConfigs[selectedPage];iconLimit=96;
   let list,caption;
-  if(!q){list=[p?.icon,...(p?.entities||[]).filter(Boolean).map(iconOf),...SUGGESTED];caption='Suggestions'}
+  if(!q){list=[ICON_RE.test(p?.icon||'')?p.icon:'',...(p?.entities||[]).filter(Boolean).map(iconOf),...SUGGESTED];caption='Suggestions'}
   else{$('icon-count').textContent='Searching…';try{list=await searchIcons(q)}catch(error){list=[];$('icon-count').textContent=error.message}caption='Results for “'+q+'”';if(ICON_RE.test(q)&&!list.includes(q))list.unshift(q);else if(ICON_RE.test('mdi:'+q)&&!list.includes('mdi:'+q)&&!iconNames)list.unshift('mdi:'+q)}
   if(mine!==iconQuery)return;
   iconList=[...new Set(list.filter(n=>ICON_RE.test(n||'')))];$('icon-caption').textContent=caption;$('icon-count').textContent=q?iconList.length+' icon'+(iconList.length===1?'':'s'):'';drawIcons();
@@ -722,9 +723,14 @@ static const char PANEL_JS[] = R"ONXPANEL(
  $('icon-picker').addEventListener('close',()=>{clearCrop();artTarget=null});
  $('close-icon-picker').onclick=()=>$('icon-picker').close();
  $('icon-picker').addEventListener('click',ev=>{if(ev.target!==$('icon-picker'))return;const r=ev.target.getBoundingClientRect();if(ev.clientX<r.left||ev.clientX>r.right||ev.clientY<r.top||ev.clientY>r.bottom)$('icon-picker').close()});
+ // Drop an entity from this page on the icon to use its icon for the page.
+ {const b=$('page-icon-button'),ok=()=>dragged&&pageConfigs[dragged.page]===pageConfigs[selectedPage];
+  b.addEventListener('dragover',ev=>{if(!dragKinds(ev).includes(MEMBER)||!ok())return;ev.preventDefault();ev.dataTransfer.dropEffect='move';b.classList.add('drop-target')});
+  b.addEventListener('dragleave',()=>b.classList.remove('drop-target'));
+  b.addEventListener('drop',ev=>{b.classList.remove('drop-target');if(!ok())return;ev.preventDefault();const p=pageConfigs[dragged.page],e=p.entities[dragged.pos];endDrag();if(!e)return;p.icon='entity:'+e;delete p.carousel_artwork;status('The page icon now follows '+nameOf(e)+'’s icon.');touch()})}
  $('page-icon-button').onclick=()=>{
   const p=pageConfigs[selectedPage];if(!p)return;
-  artTarget={page:p,pos:-1};clearCrop();$('art-role').value='off';$('art-role-field').hidden=true;$('icon-entity').hidden=false;$('icon-entity').disabled=!lead(p)||p.icon==='entity';$('icon-source').hidden=false;$('icon-picker-title').textContent='Choose a carousel icon';
+  artTarget={page:p,pos:-1};clearCrop();$('art-role').value='off';$('art-role-field').hidden=true;$('icon-entity').hidden=true;$('icon-source').hidden=false;$('icon-picker-title').textContent='Choose a carousel icon';
   $('icon-picker-context').textContent='Shown in the bottom bar for “'+pageTitle(p,selectedPage)+'”.';
   $('icon-search').value='';focusIcon(pageIcon(p));displayArt($('icon-focus'),p.carousel_artwork);if(p.carousel_artwork)$('icon-focus-name').textContent='Custom image';$('icon-default').disabled=!(p.icon||p.carousel_artwork);renderIcons();loadIcons();$('icon-picker').showModal();iconMode(!!p.carousel_artwork);
  };
@@ -776,7 +782,8 @@ static const char PANEL_JS[] = R"ONXPANEL(
    }
    leads.add(first);
   }
-  if(pageConfigs.some(p=>p.icon&&p.icon!=='entity'&&!ICON_RE.test(p.icon))){status('Icons use the mdi:name form, for example mdi:sofa.');return false}
+  for(const p of pageConfigs)if(iconRef(p)&&!p.entities.includes(iconRef(p)))p.icon='';
+  if(pageConfigs.some(p=>p.icon&&p.icon!=='entity'&&!iconRef(p)&&!ICON_RE.test(p.icon))){status('Icons use the mdi:name form, for example mdi:sofa.');return false}
   const a=app();if(!a)return false;
   return a.hold?a.hold(()=>commitPages(a)):commitPages(a);
  }
@@ -986,7 +993,10 @@ static const char PANEL_JS[] = R"ONXPANEL(
     symbol:Math.min(W,H)>=320?{size:28,lh:31,base:24,weight:400}:{size:20,lh:22,base:17,weight:400}};  // symbol_font: Montserrat 28 (3.5"), 20 (2.8").
   const line=f=>f.lh,family='MiSans, "Inter", "Segoe UI", Arial, sans-serif';
   const ruler=document.createElement('canvas').getContext('2d');
-  const width=(s,f)=>{ruler.font=`${f.weight} ${f.size}px ${family}`;return Math.ceil(ruler.measureText(String(s)).width)};
+  // The hero font's glyphs (MiSans Medium advances, per 1000 em) as the panel
+  // measures them, so the hero size is chosen as on the device.
+  const HERO_ADV={'0':641,'1':420,'2':576,'3':599,'4':601,'5':600,'6':601,'7':536,'8':638,'9':610,'.':253,',':264,':':253,'-':460,'%':835,'°':415,' ':291};
+  const width=(s,f)=>{s=String(s);if(f===F.hero&&[...s].every(c=>c in HERO_ADV))return [...s].reduce((w,c)=>w+Math.round(HERO_ADV[c]*f.size/1000),0);ruler.font=`${f.weight} ${f.size}px ${family}`;return Math.ceil(ruler.measureText(s).width)};
   const fit=(s,w,fonts)=>{let last=fonts[0];for(const f of fonts){last=f;if(width(s,f)<=w)return f}return last};
   // Word wrap into at most n lines, the last truncated with an ellipsis (LV_LABEL_LONG_DOT).
   const wrap=(s,f,w,n)=>{
@@ -1122,7 +1132,7 @@ static const char PANEL_JS[] = R"ONXPANEL(
   // for it; until then the preview reads the secondary sensor's history from
   // Home Assistant in this browser, when the entry shows a graph.
   const secondaryHistory=(e,range)=>{
-   const sensor=slot.entity===e&&slot.sensorGraph==='1'?slot.secondary:'';if(!sensor||!app()?.history)return {points:[]};
+   const g=Number(slot.sensorGraph)||0,sensor=slot.entity===e&&(g&1)&&(g&2||e.startsWith('switch.'))?slot.secondary:'';if(!sensor||!app()?.history)return {points:[]};
    const key=sensor+'|'+range;
    if(!haHistory.has(key)){haHistory.set(key,null);app().history(sensor,range).then(points=>{haHistory.set(key,{points,now:Math.trunc(Date.now()/1000)});redraw()}).catch(()=>{})}
    return haHistory.get(key)||{points:[]};
@@ -1688,6 +1698,8 @@ static const char PANEL_JS[] = R"ONXPANEL(
  // a Remote WebView server and streamed to the panel. Its own settings page.
  const anchor=$('page-stream');
  if(!anchor)return;
+ // Every link on this page opens in a new tab, so the settings stay open.
+ anchor.addEventListener('click',ev=>{const a=ev.target.closest?.('a[href]');if(a){a.target='_blank';a.rel='noopener noreferrer'}},true);
  const DOCS='https://github.com/fixtse/OpenNextion-Room-Companion/blob/main/docs/room-companion/dashboard-stream.md';
  const form=document.createElement('form');
  form.className='panel';form.id='panel-dashboard';

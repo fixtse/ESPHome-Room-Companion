@@ -1174,6 +1174,8 @@ inline void sample_sensor_history(time_t now) {
     auto &s=onx_sensor_view::states[i];s.bind(c);
     if(std::string(c.primary).rfind("switch.",0)==0) {
       if(s.received && s.available && (s.unit=="W" || s.unit=="kWh"))s.sample(now,detail_number(s.value));
+    } else if(onx_sensor_view::graphs_secondary(c)) {
+      if(s.received && s.available)s.sample(now,detail_number(s.value));
     } else {
       const auto *d=entity_detail(c.primary);
       if(d&&d->received&&d->available)s.sample(now,detail_number(d->state));

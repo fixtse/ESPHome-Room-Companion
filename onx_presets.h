@@ -277,7 +277,7 @@ inline bool slot_query(size_t index, JsonObjectConst slot, esphome::onx_config_w
   return query.entity.size() <= 128 && query.action.size() <= 128 && query.name.size() <= 192 &&
          query.area.size() <= 192 && query.action_name.size() <= 192 && query.type.size() <= 32 &&
          query.icon.size() <= 80 && query.icon_override.size() <= 1 && query.secondary.size() <= 128 &&
-         query.secondary_text.size() <= 160 && query.sensor_graph.size() <= 1 && query.timer_hidden.size() <= 1 &&
+         query.secondary_text.size() <= 160 && query.sensor_graph.size() <= 2 && query.timer_hidden.size() <= 1 &&
          query.cover_presets_enabled.size() <= 1 && query.cover_presets.size() <= 31 && query.gestures.size() <= 1600 && query.playlists.size() <= 2048;
 }
 

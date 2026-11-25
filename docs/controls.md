@@ -4,16 +4,16 @@
 
 Swipe left or right on the main view to browse your controls, or tap an icon in
 the bottom bar to jump to one. Tap a control to open it; swipe up or down to
-adjust it. Swipe from the **left edge** to go back. Pull down from the **top
+adjust it. Swipe **left or right** to go back. Pull down from the **top
 edge** on any screen to open notifications.
 
 | Gesture | What it does |
 | --- | --- |
 | Tap | Press: toggle, confirm, play/pause, run |
 | Touch and hold (about 0.35 s) | Hold: choose a secondary setting, open playlists |
-| Swipe up / left | Step up: increase, next |
-| Swipe down / right | Step down: decrease, previous |
-| Swipe from the left edge | Back to the main view |
+| Swipe up | Step up: increase, next |
+| Swipe down | Step down: decrease, previous |
+| Swipe left or right on an opened control | Back to the main view |
 | Swipe down from the top edge | Notification centre |
 
 A longer swipe applies several steps. **Swipe sensitivity** (Device settings)
@@ -96,7 +96,7 @@ trigger the reset.
 
 ## Sensor graphs and value bars
 
-Sensors open a 12-hour graph with the maximum and minimum beside the gridlines.
+Sensors with a graph open it at their default time (12 hours unless changed) with the maximum and minimum beside the gridlines.
 Numbers, input numbers, fan percentages and percentage sensors show a straight
 progress bar in the accent color, using the range advertised by Home Assistant.
 

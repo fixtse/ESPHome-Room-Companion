@@ -24,17 +24,28 @@ inline std::string axis_label(float value) {
 inline std::pair<std::string,std::string> axis_labels(float low,float high) {
   return {axis_label(low),axis_label(high)};
 }
+// graph: bit 0 shows the graph, bit 1 graphs the secondary entity, bits 2-3
+// pick the default range (0 = 12 h, 1 = 1 h, 2 = 24 h, 3 = 7 d).
+enum : uint8_t { GRAPH_ON = 1, GRAPH_SECONDARY = 2, GRAPH_MAX = 15 };
+inline uint32_t graph_range(uint8_t graph) {
+  static const uint32_t ranges[]{43200, 3600, 86400, 604800};
+  return ranges[(graph >> 2) & 3];
+}
 struct Config {
   char primary[129]{}, secondary[129]{}, text[161]{"{value}"};
   uint8_t graph{0};
 };
+// A switch always graphs its power/energy sensor.
+inline bool graphs_secondary(const Config &c) {
+  return c.secondary[0] && (std::string(c.primary).rfind("switch.",0)==0 || (c.graph & GRAPH_SECONDARY));
+}
 inline onx_memory::PagedArray<Config,onx_memory::ENTRY_COUNT> configs;
 struct Point { uint32_t epoch{0}; float value{NAN}; };
 struct State {
   std::string primary, secondary, value, unit;
   time_t secondary_epoch{0};
   bool received{false}, available{false}, pending{false}, requested{false}, failed{false};
-  uint32_t requested_ms{0}, range_seconds{43200};
+  uint32_t requested_ms{0}, range_seconds{43200}, default_range{43200};
   bool waiting(uint32_t now) const { return pending && now - requested_ms < 20000; }
   bool request_due(uint32_t now) const {
     return !requested || now - requested_ms >= (pending || failed ? 60000U : 300000U);
@@ -42,7 +53,10 @@ struct State {
   std::string range_label() const { return range_seconds == 3600 ? "1 h" : range_seconds == 86400 ? "24 h" : range_seconds == 604800 ? "7 d" : "12 h"; }
   std::array<Point,73> points{};
   void bind(const Config &c) {
-    if(primary!=c.primary || secondary!=c.secondary) { *this=State{};primary=c.primary;secondary=c.secondary; }
+    const uint32_t range=graph_range(c.graph);
+    if(primary!=c.primary || secondary!=c.secondary || default_range!=range) {
+      *this=State{};primary=c.primary;secondary=c.secondary;range_seconds=default_range=range;
+    }
   }
   void sample(uint32_t epoch, float value) {
     if(epoch<1577836800 || !std::isfinite(value)) return;
@@ -66,7 +80,7 @@ inline int index(const std::string &entity) {
 }
 inline std::string history_entity(const std::string &primary) {
   const int i=index(primary);
-  return primary.rfind("switch.",0)==0 && i>=0 && configs[i].secondary[0] ? std::string(configs[i].secondary) : primary;
+  return i>=0 && graphs_secondary(configs[i]) ? std::string(configs[i].secondary) : primary;
 }
 inline void replace(std::string &text,const std::string &key,const std::string &value) {
   size_t at=0;while((at=text.find(key,at))!=std::string::npos){text.replace(at,key.size(),value);at+=value.size();}

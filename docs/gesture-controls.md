@@ -17,7 +17,7 @@ already; this feature does not install a computer connection for you.
 
 Ordinary swipes do **not** need a held touch. The optional held swipes are
 separate. Actions run only inside the opened control, so you can still swipe to
-browse the main view. Swipe from the left edge to go back.
+browse the main view. Swipe left or right on an opened control to go back.
 
 Choose **Default** to keep a gesture's usual behavior. To ignore a particular
 gesture, type `none` in its action field. For a climate control's short press,

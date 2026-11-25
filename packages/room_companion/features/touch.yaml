@@ -41,14 +41,17 @@ onx_touch_input:
   native_touch: |-
     return !id(room_panel)->native_ui_has_touch() ||
            (id(normal_device_detail_active) && id(normal_device_detail_kind) == NORMAL_DEVICE_DETAIL_KIND_SETTINGS);
-  # Media and timers close with either horizontal swipe; other details use edge-back.
+  # Entity details close with a left or right swipe anywhere; the dashboard
+  # stream only from the left edge.
   edge_back: |-
     if (onx_panel_detail::timers.overlay) return false;
-    if (id(room_panel)->dashboard_open() && !onx_notification_ui::panel_open && onx_notification_ui::detail_id == 0)
-      return true;
+    return id(room_panel)->dashboard_open() && !onx_notification_ui::panel_open && onx_notification_ui::detail_id == 0;
+  # Except media and timers, a swipe that starts on a control (slider,
+  # scrolling row) stays with that control.
+  controls_own_swipes: |-
+    if (onx_panel_detail::timers.overlay || !id(normal_device_detail_active)) return false;
     const auto entity = id(ui_presenter)->get_normal_device_entity_id(id(normal_device_detail_index));
-    return id(normal_device_detail_active) && entity.rfind("media_player.", 0) != 0 &&
-           !custom_logic_entity_sub::is_timer_detail(entity) && id(room_panel)->native_ui_has_touch();
+    return entity.rfind("media_player.", 0) != 0 && !custom_logic_entity_sub::is_timer_detail(entity);
   swipe_left_back: |-
     return id(room_panel)->native_ui_has_touch() && id(normal_device_detail_active) &&
            id(ui_presenter)->get_normal_device_entity_id(id(normal_device_detail_index)).rfind("climate.", 0) == 0;

@@ -261,6 +261,7 @@
    "name": "Power usage",
    "state": "1243.5",
    "unit": "W",
+   "graph": 9,
    "history": [
     420,
     380,

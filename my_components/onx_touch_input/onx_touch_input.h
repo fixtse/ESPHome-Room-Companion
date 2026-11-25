@@ -46,6 +46,9 @@ class TouchInput : public Component, public touchscreen::TouchListener {
   void set_native_touch(std::function<bool()> &&f) { native_touch_ = std::move(f); }
   void set_edge_back(std::function<bool()> &&f) { edge_back_ = std::move(f); }
   void set_swipe_left_back(std::function<bool()> &&f) { swipe_left_back_ = std::move(f); }
+  // A swipe-anywhere back that starts on an LVGL control (slider, scrolling
+  // row) is left to the control.
+  void set_controls_own_swipes(std::function<bool()> &&f) { controls_own_swipes_ = std::move(f); }
   void set_pull_down_enabled(std::function<bool()> &&f) { pull_down_enabled_ = std::move(f); }
   // Photo idle screens: a horizontal swipe changes the photo (+1 next, -1
   // previous); a tap or any other swipe is a button press (leaves the screen).
@@ -172,7 +175,8 @@ class TouchInput : public Component, public touchscreen::TouchListener {
     const bool edge = x < EDGE && back_ && edge_back_ && edge_back_();
     const bool full_back = back_ && !(edge_back_ && edge_back_());
     const bool passthrough = !edge && passthrough_fn_ && passthrough_fn_(x, y);
-    if (passthrough && !left_back_ && !full_back) {
+    const bool owned = passthrough && controls_own_swipes_ && controls_own_swipes_();
+    if (passthrough && (owned || (!left_back_ && !full_back))) {
       state_ = State::IGNORED;
       return;
     }
@@ -318,7 +322,7 @@ class TouchInput : public Component, public touchscreen::TouchListener {
   static constexpr int EDGE = 32;  // Edge zone for back (left) and pull-down (top).
   touchscreen::Touchscreen *touch_{nullptr};
   onx_button::BufferedButton *button_{nullptr};
-  std::function<bool()> enabled_, back_enabled_, native_touch_, page_swipe_, edge_back_, swipe_left_back_, pull_down_enabled_,
+  std::function<bool()> enabled_, back_enabled_, native_touch_, page_swipe_, edge_back_, swipe_left_back_, controls_own_swipes_, pull_down_enabled_,
       pull_up_enabled_;
   std::function<bool(int, int)> passthrough_fn_;
   std::function<void(int)> pull_up_drag_, pull_down_drag_;

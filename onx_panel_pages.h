@@ -2,6 +2,7 @@
 #include "onx_panel_layout.h"
 #include <functional>
 #include <cstdio>
+#include <cstdlib>
 #include <cstring>
 #include <vector>
 #include "onx_entity_config.h"
@@ -97,6 +98,20 @@ inline int configured(const std::string &entity) {
 }
 inline std::string entry_entity(uint8_t entry) {
   return entry<onx_memory::ENTRY_COUNT?custom_logic::cached_device_entity_id(entry):std::string();
+}
+inline constexpr char ENTITY_ICON[]="entity";
+// "entity:<entity_id>" in the API uses that entity's live icon; it is stored
+// as "entity:#<entry>" (the entry index is stable and fits the icon field).
+inline constexpr char ENTITY_REF[]="entity:";
+inline bool entity_icon(const char *icon) {
+  return std::strcmp(icon,ENTITY_ICON)==0 || std::strncmp(icon,ENTITY_REF,7)==0;
+}
+// The entity whose icon the page shows, or "" for a fixed/default icon.
+inline std::string icon_entity(const StoredPage &page) {
+  if(std::strcmp(page.icon,ENTITY_ICON)==0)return entry_entity(lead(page));
+  if(std::strncmp(page.icon,"entity:#",8)!=0)return "";
+  const int entry=std::atoi(page.icon+8);
+  return entry>=0 && entry<int(onx_memory::ENTRY_COUNT)?entry_entity(uint8_t(entry)):std::string();
 }
 inline bool placed(const StoredPages &list,int entry) {
   for(int p=0;p<list.count;++p)for(auto e:list.pages[p].entries)if(e==entry)return true;
@@ -398,7 +413,7 @@ inline void encode(JsonArray out) {
   if(!load())return;refresh();
   for(int p=0;p<stored.count;++p) {
     const auto &page=stored.pages[p];auto item=out.add<JsonObject>();
-    item["name"]=std::string(page.name);item["icon"]=std::string(page.icon);
+    item["name"]=std::string(page.name);item["icon"]=std::strncmp(page.icon,"entity:#",8)==0?std::string(ENTITY_REF)+icon_entity(page):std::string(page.icon);
     item["layout"]=onx_panel_layout::name(Kind(page.kind));
     if(page.carousel_artwork)item["carousel_artwork"]=onx_panel_artwork::key(artwork_id(stored,page,-1));
     if(Kind(page.kind)==Kind::ACTION_GRID){item["rows"]=page.rows;item["columns"]=page.cols;}
@@ -435,9 +450,9 @@ inline void apply(const std::string &json) {
   if(result.find("\"error\"")!=std::string::npos)rpc("panel_pages_save","{\"pages\":[]}");
 }
 inline const bool presets_installed=(onx_presets::encode_pages=&encode,onx_presets::apply_pages=&apply,true);
-inline constexpr char ENTITY_ICON[]="entity";
 inline bool valid_icon(const std::string &icon) {
   if(icon.empty() || icon==ENTITY_ICON)return true;
+  if(icon.rfind(ENTITY_REF,0)==0)return onx_config::valid_entity(icon.substr(7));
   if(icon.size()>64 || icon.rfind("mdi:",0)!=0 || icon.size()<5)return false;
   for(size_t i=4;i<icon.size();++i){const char c=icon[i];if(!((c>='a'&&c<='z')||(c>='0'&&c<='9')||c=='-'))return false;}
   return true;
@@ -596,10 +611,15 @@ inline std::string rpc(const std::string &op,const std::string &data,const std::
     auto &next_effects=*next_fx_buffer;
     for(JsonObjectConst item:pages) {
       StoredPage page{};Kind kind;
-      const std::string name=item["name"] | "",icon=item["icon"] | "";
+      const std::string name=item["name"] | "";std::string icon=item["icon"] | "";
       if(!onx_panel_layout::parse(item["layout"] | "",kind))return "{\"error\":\"Choose a layout for every page\"}";
       if(name.size()>48)return "{\"error\":\"Page names are limited to 48 bytes\"}";
       if(!valid_icon(icon))return "{\"error\":\"Icons use the mdi:name form\"}";
+      if(icon.rfind(ENTITY_REF,0)==0) {
+        const int entry=configured(icon.substr(7));
+        if(entry<0)return R"({"error":"Save the icon's entity before the pages"})";
+        icon="entity:#"+std::to_string(entry);
+      }
       page.kind=uint8_t(kind);
       if(kind==Kind::ACTION_GRID) {
         const int rows=item["rows"] | 0, cols=item["columns"] | 0;

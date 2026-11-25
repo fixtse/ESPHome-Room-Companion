@@ -110,7 +110,10 @@ inline void build(JsonObject root, const std::string &query_entity, const Contex
         if(icon.empty())icon="mdi:"+onx_icon_state::fallback(neighbour,c.type_at(index));
         #ifdef USE_ROOM_COMPANION
         if(const auto *page=onx_panel_pages::led_by(neighbour);page) {
-          if(std::strcmp(page->icon,onx_panel_pages::ENTITY_ICON)!=0) {
+          if(const auto ref=onx_panel_pages::icon_entity(*page);!ref.empty()) {
+            icon=onx_icon_state::selected_icon(ref);
+            if(icon.empty())icon="mdi:"+onx_icon_state::fallback(ref);
+          } else if(!onx_panel_pages::entity_icon(page->icon)) {
             if(page->icon[0])icon=page->icon;
             else if(onx_panel_pages::Kind(page->kind)==onx_panel_pages::Kind::ACTION_GRID)icon="mdi:view-grid-outline";
           }

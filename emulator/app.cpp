@@ -266,11 +266,12 @@ std::vector<Shot> load_scenario(const std::string &path) {
       if (sec["in"].is<int>()) st.secondary_epoch = std::time(nullptr) + sec["in"].as<int>();
     }
     // "history": [values...] turns the entity's graph option on, with the values
-    // spread evenly over the last 12 h (oldest first).
+    // spread evenly over the default range (oldest first).
     if (e["history"].is<JsonArrayConst>()) {
       auto &cfg = onx_sensor_view::configs[slot];
       std::snprintf(cfg.primary, sizeof(cfg.primary), "%s", id.c_str());
-      cfg.graph = 1;
+      // "graph": the stored flags (default 1: main entity, 12 h).
+      cfg.graph = uint8_t(e["graph"] | 1);
       auto &st = onx_sensor_view::states[slot];
       st.bind(cfg);
       st.received = st.available = st.requested = true;

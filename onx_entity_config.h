@@ -254,8 +254,8 @@ inline void load_sensor_config_slot(size_t i) {
   onx_sensor_view::Config saved{};
   if(sensor_preferences[i].load(&saved)) {
     saved.primary[128]=saved.secondary[128]=saved.text[160]=0;
-    if((!saved.primary[0]||onx_config::valid_entity(saved.primary)) && (!saved.secondary[0]||onx_config::valid_entity(saved.secondary)) && saved.graph<=1) {
-      if(std::string(saved.primary).rfind("switch.",0)==0 && saved.secondary[0])saved.graph=1;
+    if((!saved.primary[0]||onx_config::valid_entity(saved.primary)) && (!saved.secondary[0]||onx_config::valid_entity(saved.secondary)) && saved.graph<=onx_sensor_view::GRAPH_MAX) {
+      if(std::string(saved.primary).rfind("switch.",0)==0 && saved.secondary[0])saved.graph|=onx_sensor_view::GRAPH_ON;
       onx_sensor_view::configs[i]=saved;
       onx_sensor_view::states[i].bind(onx_sensor_view::configs[i]);
     }
@@ -267,9 +267,12 @@ inline void load_sensor_configs() {
   for(size_t i=sensor_configs_loaded_limit;i<limit;++i)load_sensor_config_slot(i);
   if(limit>sensor_configs_loaded_limit)sensor_configs_loaded_limit=limit;
 }
-inline bool save_sensor_config(size_t i,const std::string &primary,const std::string &secondary,const std::string &text,bool graph) {
+inline bool save_sensor_config(size_t i,const std::string &primary,const std::string &secondary,const std::string &text,uint8_t graph) {
   load_sensor_configs();if(esphome::global_preferences==nullptr||i>=onx_memory::ENTRY_COUNT)return false;
-  const bool eff_graph=primary.rfind("switch.",0)==0 ? !secondary.empty() : graph;
+  uint8_t eff_graph=graph&onx_sensor_view::GRAPH_MAX;
+  if(!(eff_graph&onx_sensor_view::GRAPH_ON))eff_graph=0;
+  if(secondary.empty())eff_graph&=~onx_sensor_view::GRAPH_SECONDARY;
+  if(primary.rfind("switch.",0)==0)eff_graph=secondary.empty()?0:(eff_graph|onx_sensor_view::GRAPH_ON|onx_sensor_view::GRAPH_SECONDARY);
   const auto *existing=onx_sensor_view::configs.find(i);
   const std::string norm_text=text.empty()?"{value}":text;
   if(secondary.empty() && !eff_graph && norm_text=="{value}" &&
@@ -676,7 +679,7 @@ inline void encode_slot(size_t i, JsonObject slot) {
       slot["secondary"] = sensor->secondary;
       slot["secondaryText"] = sensor->text;
     }
-    if (sensor->graph) slot["sensorGraph"] = "1";
+    if (sensor->graph) slot["sensorGraph"] = std::to_string(sensor->graph);
   }
   if (const auto *icon = onx_icon_state::metadata.find(i); icon != nullptr && icon->entity == entity) {
     if (!icon->configured.empty()) slot["icon"] = icon->configured;

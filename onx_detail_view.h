@@ -202,7 +202,7 @@ inline View build(const std::string &entity, const std::string &name) {
       if(c.graph) {
         v.layout="graph";v.icon.clear();v.badge={onx_media::display_text(name),30,16,184,v.accent};
         v.value.y=61;v.value.size=24;v.context.text.clear();
-        v.hint={"12h ago                         Now",174,14,196,0xAAAAAA};
+        v.hint={state.range_label()+" ago                         Now",174,14,196,0xAAAAAA};
         if(state.history(std::time(nullptr)).size()<2) v.hint.text="Collecting history…";
         v.name.y=194;v.name.size=14;
       }
@@ -215,7 +215,7 @@ inline View build(const std::string &entity, const std::string &name) {
       const bool reading=s.received && s.available && (s.unit=="W" || s.unit=="kWh");
       v.layout="graph";v.icon.clear();v.badge={onx_media::display_text(name),30,16,184,v.accent};
       v.value={(d->state=="on"?std::string("On"):std::string("Off"))+" · "+(reading?compact(s.value)+" "+s.unit:"—"),61,24,196};
-      v.context.text.clear();v.hint={"12h ago                         Now",174,14,196,0xAAAAAA};
+      v.context.text.clear();v.hint={s.range_label()+" ago                         Now",174,14,196,0xAAAAAA};
       if(s.history(std::time(nullptr)).size()<2)v.hint.text="Collecting history…";
       v.name={"Press to toggle",198,12,156};
     }

@@ -364,7 +364,15 @@ script:
                   // Pages carry their own carousel icon.
                   const auto *page = onx_panel_pages::info(id(ui_presenter)->get_normal_device_entity_id(index));
                   if (page && onx_panel_pages::bind_carousel_artwork(icon,*page)) return;
-                  if (page && std::strcmp(page->icon,onx_panel_pages::ENTITY_ICON)!=0 && (page->icon[0] || onx_panel_pages::Kind(page->kind)==onx_panel_pages::Kind::ACTION_GRID)) {
+                  // A page icon taken from one of its entities follows that entity's icon.
+                  if (const auto ref = page ? onx_panel_pages::icon_entity(*page) : std::string(); !ref.empty()) {
+                    onx_render::style_image_recolor_opa(icon, LV_OPA_COVER, 0);
+                    id(apply_normal_entity_icon).execute(icon, ref, std::string(), active);
+                    onx_render::style_image_recolor(icon,lv_color_hex(active?onx_display_settings::accent():onx_display_settings::foreground()),0);
+                    lv_image_set_scale(icon, onx_navigation::icon_size() * 256 / 80);
+                    return;
+                  }
+                  if (page && !onx_panel_pages::entity_icon(page->icon) && (page->icon[0] || onx_panel_pages::Kind(page->kind)==onx_panel_pages::Kind::ACTION_GRID)) {
                     const bool grid=onx_panel_pages::Kind(page->kind)==onx_panel_pages::Kind::ACTION_GRID;
                     auto *fallback=grid?id(panel_action_grid_icon):id(fallback_toggle_switch_img);
                     if(page->icon[0]) {

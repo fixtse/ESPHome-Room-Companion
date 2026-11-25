@@ -324,12 +324,20 @@ onx_config_web:
           (domain == "cover" && (query.type == "Cover (Preset Off)" || query.type == "Cover (Preset On)"));
       if (!allowed) return onx_entity_config::error("Choose a type supported by this entity");
     }
+    int sensor_graph = 0;
+    if (!query.sensor_graph.empty()) {
+      if (query.sensor_graph.size() > 2 || query.sensor_graph.find_first_not_of("0123456789") != std::string::npos ||
+          (sensor_graph = std::stoi(query.sensor_graph)) > onx_sensor_view::GRAPH_MAX)
+        return onx_entity_config::error("Choose a valid graph setting");
+      if (!(sensor_graph & onx_sensor_view::GRAPH_ON)) sensor_graph = 0;
+    }
     if ((!query.secondary.empty() && (!onx_config::valid_entity(query.secondary) || (domain!="sensor" && domain!="switch") || (domain=="switch" && query.secondary.rfind("sensor.",0)!=0))) ||
-        (!query.sensor_graph.empty() && query.sensor_graph!="0" && query.sensor_graph!="1") ||
-        (query.sensor_graph=="1" && domain!="sensor" && domain!="switch") ||
-        (domain=="switch" && query.sensor_graph=="1" && query.secondary.empty()))
+        (sensor_graph && domain!="sensor" && domain!="switch") ||
+        (domain=="switch" && sensor_graph && query.secondary.empty()))
       return onx_entity_config::error("Choose a sensor, or a switch with a secondary power/energy sensor");
-    if(query.sensor_graph=="1" && domain=="sensor") {
+    if ((sensor_graph & onx_sensor_view::GRAPH_SECONDARY) && domain=="sensor" && query.secondary.empty())
+      return onx_entity_config::error("Choose a secondary entity to graph it");
+    if(sensor_graph && domain=="sensor" && !(sensor_graph & onx_sensor_view::GRAPH_SECONDARY)) {
       const auto *d=custom_logic_entity_sub::entity_detail(query.entity);
       if(d && d->received && d->available && !std::isfinite(custom_logic_entity_sub::detail_number(d->state)))
         return onx_entity_config::error("Graphs require a numeric sensor");
@@ -353,7 +361,7 @@ onx_config_web:
       return onx_entity_config::error("Could not save the displayed entity; retry");
     if (!onx_entity_config::save_action(query.slot, query.entity, query.action))
       return onx_entity_config::error("Entity saved, but press action could not be saved; retry");
-    if (!onx_entity_config::save_sensor_config(query.slot,query.entity,query.secondary,query.secondary_text,query.sensor_graph=="1"))
+    if (!onx_entity_config::save_sensor_config(query.slot,query.entity,query.secondary,query.secondary_text,uint8_t(sensor_graph)))
       return onx_entity_config::error("Could not save sensor display settings; retry");
     if (!onx_entity_config::save_timer_visibility(query.slot,query.entity,query.timer_hidden=="1"))
       return onx_entity_config::error("Could not save timer visibility; retry");
