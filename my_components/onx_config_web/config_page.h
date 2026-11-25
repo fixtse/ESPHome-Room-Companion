@@ -296,7 +296,7 @@ body.dragging-entity .page-drop-new{display:block}
 .layout-option:has(input:disabled){opacity:.5;cursor:default}
 .page-canvas{display:flex;flex-direction:column;align-items:center;gap:6px;padding:20px 16px 10px;margin-bottom:14px;border:1px solid var(--line);border-radius:16px;background:radial-gradient(circle at 50% 0,var(--wash),transparent 70%),var(--raised)}
 .page-canvas>.hint{text-align:center;font-size:12.5px;margin:6px 0 0}
-.page-grid{position:relative;width:100%;max-width:280px;border-radius:20px;background:var(--paper);border:7px solid #15181d;box-shadow:0 18px 40px -22px #000a,0 0 0 1px var(--line);container-type:inline-size}
+.page-grid{position:relative;box-sizing:content-box;width:100%;max-width:280px;border-radius:20px;background:var(--paper);border:7px solid #15181d;box-shadow:0 18px 40px -22px #000a,0 0 0 1px var(--line);container-type:inline-size}
 .page-grid.wide{max-width:420px}
 .page-chrome{position:absolute;left:5%;right:5%;display:flex;align-items:center;justify-content:space-between;font:600 10px var(--mono);color:var(--muted);pointer-events:none}
 .page-chrome.top{top:2.2%}

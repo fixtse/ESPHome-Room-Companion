@@ -5,7 +5,7 @@
 //   node emulator/preview-compare.cjs emulator/out      (run by emulator/render.sh)
 //
 // Reads <out>/preview/*.json and <out>/*.png; writes <out>/web/*.png and
-// <out>/compare/*.png, plus <out>/compare/<model>-all.png contact sheets.
+// <out>/editor/*.png (page editor, main pages) and <out>/compare/*.png, plus <out>/compare/<model>-all.png contact sheets.
 const fs = require('node:fs');
 const path = require('node:path');
 const {chromium} = require('playwright');
@@ -65,6 +65,9 @@ const fonts = font('fonts/MiSans-Medium.ttf', 500) + font('fonts/MiSans-Bold.ttf
       ONX_PAGES.set(shot.pages);
       const active = Math.max(0, slots.findIndex(s => s.entity === shot.entity));
       ONX_PANEL_EDITOR(slots, active, false, () => {});
+      // The page editor shows the page this screen belongs to.
+      const at = ONX_PAGES.get().findIndex(p => p.entities.includes(shot.entity));
+      if (at >= 0) ONX_PAGES.select(at);
       const svg = document.getElementById('device-preview');
       ONX_PANEL_PREVIEW(svg, slots[active], views.find(v => v.entity === shot.entity), views, shot.screen, {});
       const copy = svg.cloneNode(true);
@@ -72,6 +75,16 @@ const fonts = font('fonts/MiSans-Medium.ttf', 500) + font('fonts/MiSans-Bold.ttf
       copy.setAttribute('xmlns', 'http://www.w3.org/2000/svg');
       return copy.outerHTML;
     }, shot);
+    // Main pages: also the configuration page's page editor (its position
+    // cells over the live preview), as the user sees it in the browser.
+    if (shot.screen === 'main') {
+      fs.mkdirSync(path.join(out, 'editor'), {recursive: true});
+      const grid = page.locator('#page-grid');
+      if (await grid.isVisible().catch(() => false)) {
+        await page.evaluate(() => document.fonts.ready);
+        await grid.screenshot({path: path.join(out, 'editor', file.replace(/\.json$/, '.png'))}).catch(() => {});
+      }
+    }
     const shotPage = await context.newPage();
     await shotPage.setViewportSize({width: shot.width, height: shot.height});
     await shotPage.setContent(`<style>${fonts}html,body{margin:0;background:#000}svg{display:block}</style>${svg}`);

@@ -2651,6 +2651,14 @@ inline void card_weather(lv_obj_t *c, const Tile &t, const EntityDetailState &d)
   const int rows = std::min<int>(need, (r.h - pad - y + gap) / (th + gap));
   for (int i = 0; i < std::min<int>(stats.size(), rows * cols); ++i)
     tile(c, {gx + (i % cols) * (tw + gap), y + (i / cols) * (th + gap), tw, th}, stats[i].first, stats[i].second, INSET());
+  // Short cards: the first readings on one line instead of tiles.
+  const bool summary_line = rows == 0 && !stats.empty() && r.h - pad - y + P(14) >= line(fonts.small);
+  if (summary_line) {
+    std::string summary;
+    for (size_t i = 0; i < std::min<size_t>(stats.size(), 2); ++i)
+      summary += (i ? "  ·  " : "") + stats[i].first + " " + stats[i].second;
+    text(c, summary, fonts.small, MUTED(), pad, y - P(8), r.w - 2 * pad);
+  }
   // Compact cards: the next days in the space below the readings.
   if (compact && !split && d.forecast_count) {
     char today[11] = "";
@@ -2658,7 +2666,8 @@ inline void card_weather(lv_obj_t *c, const Tile &t, const EntityDetailState &d)
     struct tm local{};
     localtime_r(&now, &local);
     strftime(today, sizeof(today), "%Y-%m-%d", &local);
-    int fy = y + rows * (th + gap) + (rows ? P(2) : 0);
+    // Below the tiles, or below the summary line when it replaced them.
+    int fy = summary_line ? y - P(8) + line(fonts.small) + P(4) : y + rows * (th + gap) + (rows ? P(2) : 0);
     const int rh = line(fonts.small) + P(4), dw = r.w * 22 / 100, vw = r.w * 30 / 100;
     for (int i = 0; i < d.forecast_count && fy + rh <= r.h - pad + P(4); ++i, fy += rh) {
       const auto &f = d.forecast[i];
@@ -2668,13 +2677,6 @@ inline void card_weather(lv_obj_t *c, const Tile &t, const EntityDetailState &d)
       text(c, deg(f.low) + " / " + deg(f.high), fonts.small, TEXT(), r.w - pad - vw, fy, vw,
            LV_TEXT_ALIGN_RIGHT);
     }
-  }
-  // Short cards: the first readings on one line instead of tiles.
-  if (rows == 0 && !stats.empty() && r.h - pad - y + P(14) >= line(fonts.small)) {
-    std::string summary;
-    for (size_t i = 0; i < std::min<size_t>(stats.size(), 2); ++i)
-      summary += (i ? "  ·  " : "") + stats[i].first + " " + stats[i].second;
-    text(c, summary, fonts.small, MUTED(), pad, y - P(8), r.w - 2 * pad);
   }
 }
 
@@ -3337,8 +3339,18 @@ inline void card_generic(lv_obj_t *c, const Tile &t, const EntityDetailState *d)
   }
   lv_obj_t *chip = chip_icon(c, e, pad, pad, cs, t.on);
   lv_obj_t *chip_view = !icon_uses.empty() ? icon_uses.back().view : nullptr;
+  // Short sensor cards: too low for the large reading, so a smaller one
+  // replaces the context line (which repeats the value).
+  const bool short_numeric = available && !runnable && d != nullptr && std::isfinite(num(d->state)) &&
+                             (domain == "sensor" || domain == "number" || domain == "input_number");
+  const int short_room = r.h - pad - (t.ring >= 0 ? P(22) : 0) - (pad + cs + P(10));
+  const bool small_reading = short_numeric && short_room < line(fonts.big) && short_room >= line(fonts.title);
   const int before = lv_obj_get_child_count(c);
-  titled(c, t, tx, pad + P(2), r.w - tx - pad - (switchable ? P(62) : 0));
+  if (small_reading) {
+    Tile head = t;
+    head.context.clear();
+    titled(c, head, tx, pad + P(2), r.w - tx - pad);
+  } else titled(c, t, tx, pad + P(2), r.w - tx - pad - (switchable ? P(62) : 0));
   lv_obj_t *context = !t.context.empty() && int(lv_obj_get_child_count(c)) > before ? lv_obj_get_child(c, -1) : nullptr;
   if (switchable) {
     const bool on = shown_state(e, d->state) == "on";
@@ -3444,6 +3456,15 @@ inline void card_generic(lv_obj_t *c, const Tile &t, const EntityDetailState *d)
   const bool bar = t.ring >= 0 && !runnable;
   if (bar) bottom -= P(12) + P(10);
   const int vy = pad + cs + P(10);
+  if (small_reading) {
+    const std::string v = onx_detail_view::compact(d->state), u = d->unit;
+    const int vw = std::min(text_width(v, fonts.title) + 1, r.w - 2 * pad), vt = bottom - line(fonts.title);
+    text(c, v, fonts.title, TEXT(), pad, vt, vw);
+    if (!u.empty() && vw + P(4) < r.w - 2 * pad)
+      text(c, u, fonts.small, MUTED(), pad + vw + P(4), vt + line(fonts.title) - line(fonts.small) - P(2), r.w - 2 * pad - vw - P(4));
+    if (bar) level(c, pad, bottom + P(10), r.w - 2 * pad, P(12), t.ring / 1000.0f);
+    return;
+  }
   if (bottom - vy < line(fonts.big)) {
     if (bar && bottom + P(10) > vy) level(c, pad, bottom + P(10), r.w - 2 * pad, P(12), t.ring / 1000.0f);
     return;

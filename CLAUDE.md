@@ -87,6 +87,24 @@ Run it on devserv under the task lease, from the task's isolated checkout. Outpu
 - `28-NN-*.png` and `35-NN-*.png`: device renders of every page (with the dock) and every detail screen.
 - `web/`: the configuration page's preview of the same screens, drawn by `panel_web.h` from the same data (`onx_preview.h`).
 - `compare/`: emulator and web-preview pairs side by side, plus `28-all.png` and `35-all.png` contact sheets.
+- `editor/`: for main pages, the configuration page's page editor (`#page-grid`:
+  the position cells drawn over the live preview), as seen in the browser. Use
+  it to check editor changes (cells, overlays, `config_page.h` CSS) without a
+  real browser session.
+
+Test scenarios: add whatever case you need to check. Either add a page or
+entity to `emulator/scenarios/all-entities.json` (give pages a `name`, e.g.
+`weather-sensors`; kinds are `two`, `sensors` (Large + 3), `grid`, `stack`), or
+write a small scenario file for a one-off case. Then render just that image:
+
+```sh
+emulator/render.sh --only weather-sensors                       # both panels, one page
+emulator/render.sh --scenario emulator/scenarios/mine.json --only page01
+```
+
+Each render writes the device PNG, `web/`, `compare/` and (main pages)
+`editor/` images for the matching screens; show the `compare/` (and `editor/`
+when the editor changed) images for both panels.
 
 Rules:
 - Review the 2.8" and the 3.5" renders. Both panels show the same UI. The 2.8"

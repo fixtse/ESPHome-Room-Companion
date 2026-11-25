@@ -435,6 +435,16 @@
    ]
   },
   {
+   "name": "weather-sensors",
+   "kind": "sensors",
+   "entities": [
+    "weather.home",
+    "sensor.living_temperature",
+    "sensor.living_humidity",
+    "binary_sensor.front_door"
+   ]
+  },
+  {
    "kind": "grid",
    "rows": 2,
    "cols": 3,

@@ -404,6 +404,8 @@ static const char PANEL_JS[] = R"ONXPANEL(
   if(!grid||!p||!globalThis.ONX_PANEL_PREVIEW)return;
   let svg=grid.querySelector('svg.page-live');
   if(!svg){svg=document.createElementNS('http://www.w3.org/2000/svg','svg');svg.classList.add('page-live');svg.setAttribute('aria-hidden','true');grid.prepend(svg)}
+  // The panel reports its size after the first render: rebuild the cells to match.
+  {const {width:w,height:h}=screen();if(grid.style.aspectRatio.replace(/\s/g,'')!==w+'/'+h){renderCanvas(p);return}}
   const e=lead(p),a=app(),views=withDrafts(a?.views?.()||[],p.entities);
   // Hide the plain cell text only while live data is actually drawn; until
   // then (or if it is unavailable) the cells keep showing their entity.
@@ -824,7 +826,7 @@ static const char PANEL_JS[] = R"ONXPANEL(
   parked.clear();view='page';selectedPage=0;selectedPos=Math.max(0,pageConfigs[0]?.entities.findIndex(Boolean)??0);status('');
  }
  // Bridge for config_app.h: import/export, dirty state, discard and save.
- globalThis.ONX_PAGES={get:()=>pageConfigs,restore:list=>{parked.clear();pageConfigs=structuredClone(list);selectedPage=Math.max(0,Math.min(selectedPage,pageConfigs.length-1));selectedPos=Math.max(0,pageConfigs[selectedPage]?.entities.findIndex(Boolean)??0);renderPageEditor();redraw()},saved:()=>JSON.parse(panelPages),set:list=>{parked.clear();pageConfigs=normalize(list);selectPage(0)},dirty:dirtyPages,discard:()=>{parked.clear();pageConfigs=JSON.parse(savedPages);selectedPos=Math.max(0,pageConfigs[selectedPage]?.entities.findIndex(Boolean)??0);status('')},save:savePages};
+ globalThis.ONX_PAGES={get:()=>pageConfigs,select:i=>selectPage(i),restore:list=>{parked.clear();pageConfigs=structuredClone(list);selectedPage=Math.max(0,Math.min(selectedPage,pageConfigs.length-1));selectedPos=Math.max(0,pageConfigs[selectedPage]?.entities.findIndex(Boolean)??0);renderPageEditor();redraw()},saved:()=>JSON.parse(panelPages),set:list=>{parked.clear();pageConfigs=normalize(list);selectPage(0)},dirty:dirtyPages,discard:()=>{parked.clear();pageConfigs=JSON.parse(savedPages);selectedPos=Math.max(0,pageConfigs[selectedPage]?.entities.findIndex(Boolean)??0);status('')},save:savePages};
  globalThis.ONX_PANEL_EDITOR=(slots,active,busy,refresh,target=null)=>{
   editorSlots=slots;editorBusy=busy;redraw=refresh;
   const switched=(target||null)!==editorTarget;if(switched)loadTarget(target||null);
@@ -893,7 +895,7 @@ static const char PANEL_JS[] = R"ONXPANEL(
  let nativeSize=null;
  // The centre editor shows the main page; the side preview shows the opened entity.
  {const pick=$('preview-screen');if(pick){pick.value='detail';const label=pick.closest('label');if(label)label.hidden=true}}
- rpc({op:'panel_screen'}).then(r=>{if(r.width&&r.height){nativeSize={width:r.width,height:r.height};redraw()}}).catch(()=>{});
+ rpc({op:'panel_screen'}).then(r=>{if(r.width&&r.height){nativeSize={width:r.width,height:r.height};renderPageEditor();redraw()}}).catch(()=>{});
  globalThis.ONX_PANEL_SCREEN=settings=>{
   const base=globalThis.ONX_PANEL_SIZE||nativeSize||{width:320,height:480},turned=['90','270'].includes(String(settings?.orientation||'0'));
   const portrait={width:Math.min(base.width,base.height),height:Math.max(base.width,base.height)};
@@ -1444,16 +1446,17 @@ static const char PANEL_JS[] = R"ONXPANEL(
    const stats=[['Humidity',present(d.humidity,'%')],['Wind',present(d.wind,d.wind_unit)],['Pressure',present(d.pressure,d.pressure_unit)],['Visibility',present(d.visibility,d.visibility_unit)],['UV index',present(d.uv,'')],['Feels like',present(d.feels_like,'°')]].filter(s=>s[1]);
    const gap=compact?P(6):P(8),th=compact?P(50):P(56),tw=Math.trunc((r.w-2*pad-gap)/2),rows=Math.min(Math.ceil(stats.length/2),Math.trunc((r.y+r.h-pad-y+gap)/(th+gap)));
    for(let i=0;i<Math.min(stats.length,rows*2);i++)tile({x:r.x+pad+(i%2)*(tw+gap),y:y+Math.trunc(i/2)*(th+gap),w:tw,h:th},stats[i][0],stats[i][1],INSET);
+   const summary=rows<=0&&stats.length&&r.y+r.h-pad-y+P(14)>=F.small.lh;
+   if(summary)text(stats.slice(0,2).map(s=>s[0]+' '+s[1]).join('  ·  '),F.small,MUTED,r.x+pad,y-P(8),r.w-2*pad);
    const fc=Array.isArray(d.forecast)?d.forecast:[];
    if(compact&&fc.length){
     const n=new Date(),today=n.getFullYear()+'-'+String(n.getMonth()+1).padStart(2,'0')+'-'+String(n.getDate()).padStart(2,'0');
     const day=iso=>String(iso).slice(0,10)===today?'Today':new Date(String(iso).slice(0,10)+'T12:00:00').toLocaleDateString('en-US',{weekday:'short'});
     const deg=v=>present(v,'°')||'—',rh=F.small.lh+P(4),dw=Math.trunc(r.w*22/100),vw=Math.trunc(r.w*30/100);
-    let fy=y+rows*(th+gap)+(rows?P(2):0);
+    let fy=summary?y-P(8)+F.small.lh+P(4):y+rows*(th+gap)+(rows?P(2):0);
     for(const f of fc){if(fy+rh>r.y+r.h-pad+P(4))break;text(day(f.date),F.small,TEXT,r.x+pad,fy,dw);text(conditionText(f.condition),F.small,MUTED,r.x+pad+dw,fy,r.w-2*pad-dw-vw);
      text(deg(f.low)+' / '+deg(f.high),F.small,TEXT,r.x+r.w-pad-vw,fy,vw,'right');fy+=rh}
    }
-   if(rows<=0&&stats.length&&r.y+r.h-pad-y+P(14)>=F.small.lh)text(stats.slice(0,2).map(s=>s[0]+' '+s[1]).join('  ·  '),F.small,MUTED,r.x+pad,y-P(8),r.w-2*pad);
   };
   const cardLight=(t,d)=>{
    const r=t.r,on=!!d.light_on&&d.available!==false,dimmable=d.dimmable!==false,lvl=on?Number(d.brightness??0):0;
@@ -1520,7 +1523,14 @@ static const char PANEL_JS[] = R"ONXPANEL(
     const nx=pad+size+P(14),nw=r.w-nx-pad;let y=top;if(t.context){const cl=linesFor(t.context,F.body,nw,2);text(t.context,F.body,SOFT,r.x+nx,r.y+y,nw,'left',cl);y+=cl*F.body.lh+P(8)}
     const gh=r.h-pad-y;if(gh>=P(24))chart(hst.points,hst.now,hst.range,r.x+nx,r.y+y,nw,gh,ACCENT,false);return;
    }
-   chipIcon(e,r.x+pad,r.y+pad,cs,t.on);titled(t,r.x+tx,r.y+pad+P(2),r.w-tx-pad-(switchable?P(62):0));
+   // As card_generic: short sensor cards swap the context line for a smaller reading.
+   const shortRoom=r.h-pad-(t.ring>=0?P(22):0)-(pad+cs+P(10)),smallReading=available&&!runnable&&isFinite(pv)&&['sensor','number','input_number'].includes(domain)&&shortRoom<F.big.lh&&shortRoom>=F.title.lh;
+   chipIcon(e,r.x+pad,r.y+pad,cs,t.on);
+   if(smallReading){titled({...t,context:''},r.x+tx,r.y+pad+P(2),r.w-tx-pad);
+    const bottom=r.h-pad-(t.ring>=0?P(22):0),v=compact(d.state),u=d.unit||'',vw=Math.min(width(v,F.title)+1,r.w-2*pad),vt=bottom-F.title.lh;
+    text(v,F.title,TEXT,r.x+pad,r.y+vt,vw);if(u&&vw+P(4)<r.w-2*pad)text(u,F.small,MUTED,r.x+pad+vw+P(4),r.y+vt+F.title.lh-F.small.lh-P(2),r.w-2*pad-vw-P(4));
+    if(t.ring>=0)level(r.x+pad,r.y+bottom+P(10),r.w-2*pad,P(12),t.ring/1000);return}
+   titled(t,r.x+tx,r.y+pad+P(2),r.w-tx-pad-(switchable?P(62):0));
    if(switchable)toggle(r.x+r.w-pad-P(54),r.y+pad+P(7),d.state==='on');
    let bottom=r.h-pad;const top=pad+cs+P(10),strip=P(16)+2*F.small.lh+P(14);let room=bottom-top-F.body.lh-P(10);if(room-strip>=P(140))room-=strip;
    if(runnable&&room>=P(140)){const s=Math.min(P(150),room-P(16),r.w-2*pad),cy=top+P(8)+Math.trunc((room-P(16))/2);circle(r.x+r.w/2,r.y+cy,s,ACCENT,'play',TEXT,{stroke:CONTROL,'stroke-width':P(8)});
