@@ -2,6 +2,7 @@
 
 #include "esphome/core/log.h"
 #include "esphome/components/json/json_util.h"
+#include "esphome/components/network/ip_address.h"
 #include "esphome/components/wifi/wifi_component.h"
 #include "src/misc/cache/instance/lv_image_cache.h"
 #include "src/misc/cache/instance/lv_image_header_cache.h"
@@ -53,6 +54,58 @@ static bool valid_url(const std::string &value) {
   for (char c : value)
     if (static_cast<unsigned char>(c) <= 0x20 || c == '"' || c == '<' || c == '>') return false;
   return true;
+}
+
+static bool valid_camera_server(const std::string &value) {
+  return value.empty() || ((value.rfind("http://", 0) == 0 || value.rfind("https://", 0) == 0) && valid_url(value));
+}
+static bool stream_name_char(char c) {
+  return std::isalnum(static_cast<unsigned char>(c)) || c == '_' || c == '-' || c == '.' || c == ':' || c == '@';
+}
+// "camera.porch=porch_hd, camera.door=http://host/page": calls fn(entity, target)
+// for each entry; returns false on a malformed entry.
+template<typename F> static bool each_camera_stream(const std::string &list, F fn) {
+  size_t start = 0;
+  while (start <= list.size()) {
+    size_t end = list.find_first_of(",\n", start);
+    if (end == std::string::npos) end = list.size();
+    const std::string entry = trim(list.substr(start, end - start));
+    start = end + 1;
+    if (entry.empty()) continue;
+    const auto eq = entry.find('=');
+    if (eq == std::string::npos) return false;
+    const std::string entity = trim(entry.substr(0, eq)), target = trim(entry.substr(eq + 1));
+    if (entity.rfind("camera.", 0) != 0 || entity.size() <= 7 || entity.size() > 128 || target.empty()) return false;
+    for (char c : entity)
+      if (!(std::islower(static_cast<unsigned char>(c)) || std::isdigit(static_cast<unsigned char>(c)) || c == '_' || c == '.'))
+        return false;
+    if (target.rfind("http://", 0) == 0 || target.rfind("https://", 0) == 0) {
+      if (!valid_url(target)) return false;
+    } else {
+      if (target.size() > 64) return false;
+      for (char c : target)
+        if (!stream_name_char(c)) return false;
+    }
+    if (fn(entity, target)) return true;
+  }
+  return true;
+}
+static bool valid_camera_streams(const std::string &value) {
+  return value.size() <= 1024 && each_camera_stream(value, [](const std::string &, const std::string &) { return false; });
+}
+static std::string percent_encode(const std::string &value) {
+  static const char hex[] = "0123456789ABCDEF";
+  std::string out;
+  for (unsigned char c : value) {
+    if (std::isalnum(c) || c == '-' || c == '_' || c == '.' || c == '~') {
+      out += static_cast<char>(c);
+    } else {
+      out += '%';
+      out += hex[c >> 4];
+      out += hex[c & 15];
+    }
+  }
+  return out;
 }
 
 // ---------------------------------------------------------------- NVS
@@ -123,6 +176,7 @@ void RoomPanel::loop() {
   if (wifi_ok && dashboard_open_ && stream_ != nullptr && !stream_->is_started() && stream_->has_server())
     stream_->start();
   if (corner_requested_.exchange(false)) close_dashboard();
+  update_camera_(wifi_ok);
   update_owner_(now);
 }
 
@@ -138,6 +192,10 @@ void RoomPanel::load_() {
   const std::string side = doc["toolbar_side"] | std::string("right");
   settings_.dock_pin = doc["dock_pin"] | std::string("dashboard");
   if (side == "left" || side == "right") settings_.toolbar_side = side;
+  const std::string camera_server = doc["camera_server"] | std::string();
+  const std::string camera_streams = doc["camera_streams"] | std::string();
+  if (valid_camera_server(camera_server)) settings_.camera_server = camera_server;
+  if (valid_camera_streams(camera_streams)) settings_.camera_streams = camera_streams;
   if (valid_server(server)) settings_.server = server;
   if (valid_url(url)) settings_.url = url;
   if (std::isfinite(scale) && scale >= 0.5f && scale <= 4.0f) settings_.scale = scale;
@@ -152,6 +210,8 @@ std::string RoomPanel::settings_json_() const {
     root["scale"] = settings_.scale;
     root["dock_pin"] = settings_.dock_pin;
     root["toolbar_side"] = settings_.toolbar_side;
+    root["camera_server"] = settings_.camera_server;
+    root["camera_streams"] = settings_.camera_streams;
   });
 }
 
@@ -166,7 +226,8 @@ void RoomPanel::apply_(bool boot, const StreamSettings &previous) {
       // The WebSocket address and zoom are fixed once the stream runs.
       restart_required_ = settings_.server != boot_server_ || std::fabs(settings_.scale - boot_scale_) > 0.001f;
     }
-    if (boot || settings_.url != previous.url) {
+    // A live camera keeps the stream; the new address loads when it stops.
+    if ((boot || settings_.url != previous.url) && !camera_on_) {
       if (settings_.url.empty() || !stream_->open_url(settings_.url)) stream_->set_url(settings_.url);
     }
   }
@@ -218,6 +279,7 @@ void RoomPanel::set_overlay(Overlay overlay, bool on) {
 
 void RoomPanel::update_owner_(uint32_t now) {
   if (stream_ == nullptr || lvgl_ == nullptr) return;
+  if (dashboard_open_ && camera_on_) stop_camera_();
   const bool asleep = onx_power::sleeping || onx_power::waking;
   bool want = dashboard_open_ && !asleep && overlays_ == 0 && stream_->is_started();
   if (want && !stream_->is_connected()) {
@@ -283,8 +345,133 @@ void RoomPanel::give_display_to_(bool stream) {
   owner_trigger_.trigger(stream);
 }
 
+// ---------------------------------------------------------------- camera view
+std::string RoomPanel::camera_source_(const std::string &entity) const {
+  if (entity.rfind("camera.", 0) != 0) return "";
+  std::string name = entity.substr(7);
+  each_camera_stream(settings_.camera_streams, [&](const std::string &e, const std::string &target) {
+    if (e != entity) return false;
+    name = target;
+    return true;
+  });
+  if (name.rfind("http://", 0) == 0 || name.rfind("https://", 0) == 0) return name;
+  if (settings_.camera_server.empty()) return "";
+  std::string base = settings_.camera_server;
+  while (!base.empty() && base.back() == '/') base.pop_back();
+  // go2rtc's player page: WebRTC, else MSE; video only (the panel has no
+  // audio path from the stream).
+  return base + "/stream.html?src=" + percent_encode(name) + "&mode=webrtc,mse&media=video";
+}
+
+bool RoomPanel::camera_view(const std::string &entity, int x, int y, int w, int h) {
+  if (entity.empty() || stream_ == nullptr || settings_.server.empty() || camera_source_(entity).empty() || w <= 0 || h <= 0) {
+    camera_request_ = {};
+    return false;
+  }
+  // An even x keeps the cropped image's rows 4-byte aligned for LVGL; the
+  // page places the player at the same position.
+  camera_request_ = {entity, x & ~1, y, w, h};
+  return true;
+}
+
+std::string RoomPanel::camera_page_url(const std::string &entity) const {
+  const auto &r = camera_request_;
+  const int fw = stream_ != nullptr ? stream_->frame_width() : 0, fh = stream_ != nullptr ? stream_->frame_height() : 0;
+  const std::string source = camera_source_(entity);
+  if (source.empty() || fw <= 0 || fh <= 0 || r.x < 0 || r.y < 0 || r.x + r.w > fw || r.y + r.h > fh) return "";
+  if (wifi::global_wifi_component == nullptr) return "";
+  char address[network::IP_ADDRESS_BUFFER_SIZE] = {0};
+  for (const auto &ip : wifi::global_wifi_component->get_ip_addresses()) {
+    if (ip.is_set() && ip.is_ip4()) {
+      ip.str_to(address);
+      break;
+    }
+  }
+  if (!address[0]) return "";
+  // The panel serves the page (/panel/camera): the server's browser lets a
+  // page on the local network embed go2rtc, but not a data: URL. The frame
+  // is placed in percent of the screen, so the stream zoom does not matter.
+  char rect[96];
+  snprintf(rect, sizeof(rect), "&x=%.3f&y=%.3f&w=%.3f&h=%.3f", 100.0 * r.x / fw, 100.0 * r.y / fh, 100.0 * r.w / fw,
+           100.0 * r.h / fh);
+  return std::string("http://") + address + "/panel/camera?u=" + percent_encode(source) + rect;
+}
+
+void RoomPanel::update_camera_(bool wifi_ok) {
+  if (stream_ == nullptr) return;
+  const bool asleep = onx_power::sleeping || onx_power::waking;
+  const bool want = !camera_request_.entity.empty() && !dashboard_open_ && !asleep && wifi_ok && stream_->has_server() &&
+                    (!camera_visible_ || camera_visible_());
+  if (!want) {
+    if (camera_on_) stop_camera_();
+    return;
+  }
+  // Like the dashboard, the stream's tasks and buffers start on first use.
+  if (!stream_->is_started()) {
+    stream_->start();
+    return;
+  }
+  if (!stream_->is_connected()) return;  // A reconnect reopens the current page.
+  const std::string url = camera_page_url(camera_request_.entity);
+  if (url.empty()) {
+    if (camera_on_) stop_camera_();
+    return;
+  }
+  if (url != camera_url_) {
+    if (!stream_->open_url(url)) return;
+    ESP_LOGI(TAG, "Live camera: %s", camera_request_.entity.c_str());
+    camera_url_ = url;
+    camera_opened_ms_ = millis();
+    camera_shown_ = camera_request_;
+    if (camera_frames_ >= CAMERA_SHOW_AFTER_FRAMES && camera_frame_cb_) camera_frame_cb_(nullptr);
+    camera_frames_ = 0;
+  }
+  if (!camera_on_) {
+    stream_->set_offscreen(true);
+    stream_->set_active(true);
+    camera_on_ = true;
+  }
+  const uint8_t *pixels = stream_->take_offscreen_frame();
+  if (pixels == nullptr) return;
+  // Frames of the previous page do not count. The server reports the page it
+  // shows; if that never matches (an address it rewrote), go by time.
+  const bool on_page = stream_->get_current_url() == camera_url_ || millis() - camera_opened_ms_ > CAMERA_PAGE_TIMEOUT_MS;
+  if (camera_frames_ < CAMERA_SHOW_AFTER_FRAMES && on_page) ++camera_frames_;
+  if (camera_frames_ < CAMERA_SHOW_AFTER_FRAMES) return;
+  const int fw = stream_->frame_width();
+  const auto &r = camera_shown_;
+  camera_image_.header.magic = LV_IMAGE_HEADER_MAGIC;
+  camera_image_.header.cf = stream_->frame_big_endian() ? LV_COLOR_FORMAT_RGB565_SWAPPED : LV_COLOR_FORMAT_RGB565;
+  camera_image_.header.w = r.w;
+  camera_image_.header.h = r.h;
+  camera_image_.header.stride = fw * 2;
+  camera_image_.data_size = static_cast<uint32_t>(fw) * 2 * r.h;
+  camera_image_.data = pixels + (static_cast<size_t>(r.y) * fw + r.x) * 2;
+  if (camera_frame_cb_) camera_frame_cb_(&camera_image_);
+}
+
+void RoomPanel::stop_camera_() {
+  // Detach the image before its buffer is freed.
+  if (camera_frame_cb_) camera_frame_cb_(nullptr);
+  lv_image_cache_drop(&camera_image_);
+  lv_image_header_cache_drop(&camera_image_);
+  camera_image_.data = nullptr;
+  stream_->set_active(false);
+  stream_->set_offscreen(false);
+  stream_->release_frame_snapshot();
+  camera_on_ = false;
+  camera_url_.clear();
+  camera_frames_ = 0;
+  ESP_LOGI(TAG, "Live camera stopped");
+  // Ends the camera stream in the server's browser; the dashboard (when set)
+  // loads in its place, ready for the next time it opens.
+  const std::string next = settings_.url.empty() ? std::string("about:blank") : settings_.url;
+  if (!stream_->open_url(next)) stream_->set_url(next);
+}
+
 std::string RoomPanel::stream_status() const {
   if (stream_ == nullptr || settings_.server.empty()) return "not configured";
+  if (camera_on_) return "showing a camera";
   if (!stream_->is_started()) return dashboard_open_ ? "waiting for Wi-Fi" : "starts when opened";
   if (!stream_->is_connected()) return "connecting";
   return stream_owner_ ? "showing" : "ready";
@@ -298,6 +485,8 @@ std::string RoomPanel::state_json_() const {
     root["scale"] = settings_.scale;
     root["dock_pin"] = settings_.dock_pin;
     root["toolbar_side"] = settings_.toolbar_side;
+    root["camera_server"] = settings_.camera_server;
+    root["camera_streams"] = settings_.camera_streams;
     root["status"] = stream_status();
     root["restart_required"] = restart_required_;
   });
@@ -316,6 +505,12 @@ std::string RoomPanel::handle_web(const std::string &op, const std::string &data
   next.toolbar_side = doc["toolbar_side"] | settings_.toolbar_side;
   if (next.toolbar_side != "left" && next.toolbar_side != "right")
     return "{\"error\":\"Toolbar position must be left or right\"}";
+  next.camera_server = trim(doc["camera_server"] | settings_.camera_server);
+  next.camera_streams = trim(doc["camera_streams"] | settings_.camera_streams);
+  if (!valid_camera_server(next.camera_server))
+    return "{\"error\":\"go2rtc address must start with http:// or https://, for example http://192.168.1.10:1984\"}";
+  if (!valid_camera_streams(next.camera_streams))
+    return "{\"error\":\"Camera streams: one camera.entity=stream name (or page address) per line\"}";
   const float scale = doc["scale"] | settings_.scale;
   if (!valid_server(next.server)) return "{\"error\":\"Server must be host:port, for example 192.168.1.10:8081\"}";
   if (!valid_url(next.url)) return "{\"error\":\"Page address must start with http:// or https://\"}";

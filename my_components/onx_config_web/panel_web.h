@@ -1904,6 +1904,15 @@ static const char PANEL_JS[] = R"ONXPANEL(
   '<div class="row"><button id="dash-use-ha" type="button">Use my Home Assistant</button></div>'+
   '<p class="hint">Any http or https page the server can reach. For Home Assistant, add a dashboard path such as <code>/room-panel/0</code> to open a view made for the panel. '+
   'Changing the server or zoom needs a restart.</p>'+
+  '<fieldset class="settings-section"><legend>Live cameras</legend>'+
+  '<p class="hint">Plays cameras at full frame rate inside the camera screen, through the same Remote WebView server (no dashboard needed). '+
+  'Enter the web address of a <a href="https://github.com/AlexxIT/go2rtc" target="_blank" rel="noopener noreferrer">go2rtc</a> server, such as Frigate&rsquo;s (port 1984). '+
+  'Each camera plays the go2rtc stream named like its entity (<code>camera.front_door</code> plays <code>front_door</code>). '+
+  '<a href="'+DOCS+'#live-cameras" target="_blank" rel="noopener noreferrer">How it works</a></p>'+
+  '<label class="field">go2rtc address<input id="dash-camera-server" maxlength="256" placeholder="http://192.168.1.10:1984" autocomplete="off"></label>'+
+  '<label class="field">Other stream names (optional)<textarea id="dash-camera-streams" rows="3" maxlength="1024" spellcheck="false" '+
+  'placeholder="camera.porch=porch_hd&#10;camera.garage=http://192.168.1.20/live.html"></textarea></label>'+
+  '<p class="hint">One <code>camera.entity=stream name</code> per line, or a full page address to show instead.</p></fieldset>'+
   '<p class="hint" id="dash-status" role="status"></p>'+
   '<div class="settings-actions"><button class="primary" type="submit">Save streamed page</button></div>';
  anchor.append(form);
@@ -1917,6 +1926,7 @@ static const char PANEL_JS[] = R"ONXPANEL(
  };
  const show=state=>{
   $('dash-server').value=state.server||'';$('dash-url').value=state.url||'';$('dash-scale').value=state.scale||1;
+  $('dash-camera-server').value=state.camera_server||'';$('dash-camera-streams').value=(state.camera_streams||'').replace(/\s*,\s*/g,'\n');
 
   $('dash-status').textContent='Stream: '+state.status+(state.restart_required?' · restart the panel to apply the new server or zoom':'');
  };
@@ -1949,7 +1959,8 @@ static const char PANEL_JS[] = R"ONXPANEL(
   event.preventDefault();
   const button=form.querySelector('button');button.disabled=true;
   try{
-   show(await rpc({op:'panel_save',data:JSON.stringify({server:$('dash-server').value.trim(),url:$('dash-url').value.trim(),scale:parseFloat($('dash-scale').value)||1})}));
+   show(await rpc({op:'panel_save',data:JSON.stringify({server:$('dash-server').value.trim(),url:$('dash-url').value.trim(),scale:parseFloat($('dash-scale').value)||1,
+    camera_server:$('dash-camera-server').value.trim(),camera_streams:$('dash-camera-streams').value.split('\n').map(l=>l.trim()).filter(Boolean).join('\n')})}));
    $('dash-status').textContent='Saved. '+$('dash-status').textContent;
   }catch(e){$('dash-status').textContent=e.message}
   finally{button.disabled=false}

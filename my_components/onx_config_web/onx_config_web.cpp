@@ -20,6 +20,18 @@
 
 namespace esphome::onx_config_web {
 namespace {
+// Live camera view (Room Companion): the dashboard stream's browser opens this
+// page, which places a go2rtc player at the camera frame's position (u: the
+// player address; x, y, w, h: percent of the screen). The browser only lets a
+// page on the local network embed go2rtc, so the panel serves it.
+constexpr char CAMERA_PAGE[] =
+    "<!doctype html><meta charset=utf-8><meta name=viewport content=\"width=device-width,initial-scale=1\"><title>Camera</title>"
+    "<style>html,body{margin:0;height:100%;background:#000;overflow:hidden}"
+    "iframe{position:fixed;left:0;top:0;width:100%;height:100%;border:0;background:#000}</style>"
+    "<iframe id=f allow=autoplay scrolling=no></iframe><script>"
+    "const q=new URLSearchParams(location.search),f=document.getElementById('f'),u=q.get('u')||'';"
+    "for(const[k,p]of[['x','left'],['y','top'],['w','width'],['h','height']]){const v=parseFloat(q.get(k));if(isFinite(v))f.style[p]=v+'%'}"
+    "if(/^https?:\\/\\//i.test(u))f.src=u;</script>";
 class RequestTrace {
  public:
   explicit RequestTrace(RequestMethod method) {
@@ -79,7 +91,7 @@ bool ConfigWeb::canHandle(AsyncWebServerRequest *request) const {
   // address open our app after Wi-Fi connects. Do not expose the generic server
   // entity-control endpoints alongside the configuration app.
   if (wifi::global_wifi_component != nullptr && wifi::global_wifi_component->is_connected()) return true;
-  return url == "/panel/favicon.svg" || url == "/panel/fixtse-logo.png" || url == "/panel" || url == "/panel/" || url == "/panel/api" || url == "/panel/result" || url == "/panel/ha.js" || url == "/panel/app.js" || url == "/panel/panel.js";
+  return url == "/panel/favicon.svg" || url == "/panel/fixtse-logo.png" || url == "/panel" || url == "/panel/" || url == "/panel/api" || url == "/panel/result" || url == "/panel/ha.js" || url == "/panel/app.js" || url == "/panel/panel.js" || url == "/panel/camera";
 }
 void ConfigWeb::respond_(AsyncWebServerRequest *request, int code, const char *data, size_t size) {
   auto *response = request->beginResponse(code, "application/json", reinterpret_cast<const uint8_t *>(data), size);
@@ -109,6 +121,13 @@ void ConfigWeb::handleRequest(AsyncWebServerRequest *request) {
         logo ? FIXTSE_LOGO : reinterpret_cast<const uint8_t *>(PANEL_FAVICON),
         logo ? sizeof(FIXTSE_LOGO) : sizeof(PANEL_FAVICON) - 1);
     response->addHeader("Cache-Control", "public, max-age=86400");
+    request->send(response);
+    return;
+  }
+  if (url == "/panel/camera" && request->method() == HTTP_GET) {
+    auto *response = request->beginResponse(200, "text/html; charset=utf-8",
+        reinterpret_cast<const uint8_t *>(CAMERA_PAGE), sizeof(CAMERA_PAGE) - 1);
+    response->addHeader("Cache-Control", "public, max-age=3600");
     request->send(response);
     return;
   }

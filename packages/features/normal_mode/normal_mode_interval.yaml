@@ -333,7 +333,9 @@ interval:
             onx_media::artwork_refresh_pending = true;
           }
           // Refresh an active camera snapshot while visible (not when MJPEG streaming).
+          // Not while a live view shows the camera.
           if (!onx_media::downloading && !id(media_cover_image)->is_streaming() && onx_media::main_entity.rfind("camera.", 0) == 0 &&
+              !onx_media::live_camera_showing &&
               id(normal_ha_api_connected) && !id(screen_off_state) && !id(sleep_mode_state) &&
               !id(ui_presenter)->is_standby_active()) {
             const uint32_t now = millis();

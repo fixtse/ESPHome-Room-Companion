@@ -16,5 +16,10 @@ Room Companion changes, so the stream can share the panel with the native LVGL U
 - `is_connected()`, `is_started()`, `has_server()` and `is_active()` accessors.
 - Touch forwarding starts disabled.
 - `set_url()` takes the state mutex, so it can be called while the stream runs.
+- `set_offscreen(bool)` (camera view): frames are decoded only into the PSRAM
+  frame copy and never drawn to the display; touch stays with the native UI.
+  `take_offscreen_frame()` hands the newest complete frame to the main loop,
+  and the decode task waits (bounded) until it is taken before reusing the
+  other buffer.
 
 `web_client/`, the examples and the images are not included.

@@ -15,6 +15,7 @@
 #include "esphome/components/remote_webview/remote_webview.h"
 
 #include <atomic>
+#include <functional>
 #include <string>
 
 namespace esphome::room_companion {
@@ -32,6 +33,11 @@ struct StreamSettings {
   float scale{1.0f};
   std::string dock_pin{"dashboard"};
   std::string toolbar_side{"right"};
+  // Live camera view: a go2rtc web address (Frigate's go2rtc too) and
+  // optional per-camera stream names or page addresses
+  // ("camera.porch=porch_hd, camera.door=http://...").
+  std::string camera_server;
+  std::string camera_streams;
 };
 
 class RoomPanel;
@@ -75,6 +81,19 @@ class RoomPanel : public Component {
   void set_dashboard_url(const std::string &url);
   const StreamSettings &stream_settings() const { return settings_; }
 
+  // Live camera view. The camera detail calls camera_view() each time it is
+  // built, with the snapshot frame's screen rectangle (an empty entity when
+  // it goes away); it returns false when the camera has no live stream. While
+  // the visibility check passes, the stream renders the camera (go2rtc in the
+  // server's browser) into an offscreen buffer and on_camera_frame hands each
+  // new frame to the native UI (nullptr when the view stops).
+  bool camera_view(const std::string &entity, int x, int y, int w, int h);
+  bool camera_live() const { return camera_on_ && camera_frames_ >= CAMERA_SHOW_AFTER_FRAMES; }
+  const lv_image_dsc_t *camera_frame() const { return camera_live() ? &camera_image_ : nullptr; }
+  void set_camera_visible(std::function<bool()> check) { camera_visible_ = std::move(check); }
+  void set_camera_frame_callback(std::function<void(const lv_image_dsc_t *)> callback) { camera_frame_cb_ = std::move(callback); }
+  std::string camera_page_url(const std::string &entity) const;
+
   // Overlays and input.
   void set_overlay(Overlay overlay, bool on);
   void set_backdrop_changed(std::function<void(bool)> callback) { backdrop_changed_ = std::move(callback); }
@@ -99,6 +118,9 @@ class RoomPanel : public Component {
   void give_display_to_(bool stream);
   void show_backdrop_(bool show);
   void publish_();
+  void update_camera_(bool wifi_ok);
+  void stop_camera_();
+  std::string camera_source_(const std::string &entity) const;
 
   lvgl::LvglComponent *lvgl_{nullptr};
   remote_webview::RemoteWebView *stream_{nullptr};
@@ -122,6 +144,22 @@ class RoomPanel : public Component {
   lv_image_dsc_t backdrop_image_{};
   std::function<void(bool)> backdrop_changed_;
   uint32_t stream_lost_ms_{0};
+  // Camera view. A page that is still loading draws a frame or two; the
+  // image appears once frames keep coming (the video plays).
+  static constexpr uint32_t CAMERA_SHOW_AFTER_FRAMES = 3;
+  static constexpr uint32_t CAMERA_PAGE_TIMEOUT_MS = 4000;
+  uint32_t camera_opened_ms_{0};
+  struct CameraRequest {
+    std::string entity;
+    int x{0}, y{0}, w{0}, h{0};
+  } camera_request_;
+  std::function<bool()> camera_visible_;
+  std::function<void(const lv_image_dsc_t *)> camera_frame_cb_;
+  bool camera_on_{false};
+  std::string camera_url_;
+  CameraRequest camera_shown_;
+  uint32_t camera_frames_{0};
+  lv_image_dsc_t camera_image_{};
   std::atomic<uint32_t> corner_since_ms_{0};
   std::atomic<bool> corner_requested_{false};
 };

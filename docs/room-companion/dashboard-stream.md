@@ -110,6 +110,46 @@ so e.g. a *Night* preset can show a dimmed dashboard or the native panel.
 - If the server is unreachable, the native panel stays on screen and the
   **More** page and settings page show the stream status.
 
+## Live cameras
+
+The same server can play cameras at their full frame rate inside the native
+camera screen, without a dashboard made for it. The camera screen keeps its
+name, buttons and dock; only the picture comes from the stream.
+
+1. Run [go2rtc](https://github.com/AlexxIT/go2rtc) with a stream per camera.
+   Frigate already includes it: publish Frigate's port `1984`.
+2. On the **Streamed page** tab, set the **Remote WebView server** (the
+   dashboard **Page address** is not needed) and the **go2rtc address**, e.g.
+   `http://192.168.1.10:1984`.
+3. Each camera plays the go2rtc stream named like its entity:
+   `camera.front_door` plays `front_door`, which is how Frigate names its
+   cameras. For other names, add lines such as `camera.porch=porch_hd` under
+   **Other stream names**. A line can also give a full page address
+   (`camera.garage=http://…`) to show that page in the camera frame instead.
+
+How it works: when a camera screen opens, the panel asks the server to open a
+small page the panel serves itself (`/panel/camera`), which places go2rtc's
+player (WebRTC, else MSE) exactly over the camera frame. The server's Chromium
+plays H.264 natively. The panel decodes the stream into a PSRAM buffer and the
+native screen shows it as the camera image, so the stream never draws over the
+native UI. Snapshots fill the frame until the video plays; Home Assistant's
+MJPEG stream is not opened for a live camera.
+
+- The server's browser must reach go2rtc and the panel (port 80) on your
+  network. Chromium only lets a page on the local network embed go2rtc, which
+  is why the panel serves the page rather than the server opening go2rtc
+  directly.
+- The panel draws at most what it can decode (about 5–10 frames per second for
+  the camera area, depending on the panel and the server's minimum frame
+  interval); the camera itself is not limited.
+- Video only: the panel has no audio path from the stream.
+- When the camera screen closes, the server goes back to the dashboard page
+  (or a blank page without one), which stops the camera stream.
+- The dashboard and a live camera share the one stream: opening the dashboard
+  ends the live view, and returning to the camera reloads it.
+- Like the dashboard, the stream connects on first use and stays connected
+  until the panel restarts.
+
 ## Designing a dashboard for these panels
 
 These boards use SPI displays. Rough, unmeasured estimates: full-screen changes

@@ -22,14 +22,15 @@ h3{font-size:15px;margin:0 0 12px}
 p{margin:0;max-width:72ch}
 .hint,small{font-size:13.5px;color:var(--muted)}
 .hint{margin:10px 0;line-height:1.55}
-button,input,select{font:inherit;color:var(--ink)}
-button,input,select{border:1px solid var(--line);border-radius:10px;padding:9px 13px;background:var(--paper)}
-input,select{background:var(--raised)}
+button,input,select,textarea{font:inherit;color:var(--ink)}
+button,input,select,textarea{border:1px solid var(--line);border-radius:10px;padding:9px 13px;background:var(--paper)}
+input,select,textarea{background:var(--raised)}
+textarea{width:100%;min-width:0;box-sizing:border-box;resize:vertical;font-weight:400;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:13px}
 input::placeholder{color:color-mix(in oklab,var(--muted) 80%,transparent)}
 button{cursor:pointer;min-height:40px;font-weight:550;transition:background .12s,border-color .12s,color .12s,transform .12s}
 button:hover{border-color:var(--line-strong);background:var(--raised)}
 button:active{transform:translateY(1px)}
-button:focus-visible,input:focus-visible,select:focus-visible,summary:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-visible,summary:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
 input:focus,select:focus{border-color:var(--accent)}
 button:disabled{opacity:.45;cursor:default;transform:none}
 .primary{background:var(--accent);border-color:var(--accent);color:var(--accent-ink);font-weight:650}

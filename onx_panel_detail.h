@@ -75,6 +75,31 @@ inline std::function<const onx_playlist::Config *(const std::string &)> quick_ac
 inline std::function<void(const std::string &)> run_quick_action;
 inline std::function<void(const std::string &)> request_history;
 inline std::function<void()> refresh_camera;
+// Live camera view (Room Companion): live_camera(entity, screen x, y, w, h)
+// asks for the stream at the snapshot frame's position and returns false when
+// the camera has none; live_camera_frame() is the newest frame or nullptr.
+inline std::function<bool(const std::string &, int, int, int, int)> live_camera;
+inline std::function<const lv_image_dsc_t *()> live_camera_frame;
+inline lv_obj_t *live_image = nullptr;
+// Shows a new live frame over the snapshot (nullptr hides it).
+inline void show_live_frame(const lv_image_dsc_t *dsc) {
+  onx_media::live_camera_showing = dsc != nullptr && live_image != nullptr;
+  if (live_image == nullptr) return;
+  if (dsc == nullptr) {
+    lv_obj_add_flag(live_image, LV_OBJ_FLAG_HIDDEN);
+    lv_image_set_src(live_image, static_cast<const void *>(nullptr));
+    return;
+  }
+  // Same descriptor, new pixels: drop what the image cache remembers.
+  lv_image_cache_drop(dsc);
+  lv_image_set_src(live_image, dsc);
+  if (lv_obj_has_flag(live_image, LV_OBJ_FLAG_HIDDEN)) {
+    lv_obj_remove_flag(live_image, LV_OBJ_FLAG_HIDDEN);
+    // Above the placeholder icon and caption drawn over an empty frame.
+    lv_obj_move_foreground(lv_obj_get_parent(live_image));
+  }
+  lv_obj_invalidate(live_image);
+}
 inline std::function<void(const std::string &, const std::string &, const std::string &)> send_ptz;
 
 // ------------------------------------------------------------ geometry
@@ -3559,6 +3584,20 @@ __attribute__((noinline)) inline void build_camera(const Layout &base, const std
     icon(root, e, ax + b.w / 2, ay + b.h / 2 - P(10), std::min(b.h * 38 / 100, P(56)), is_on ? accent() : SOFT_TEXT());
     text(root, "Snapshot", fonts.small, MUTED(), ax + P(8), ay + b.h / 2 + P(22), b.w - P(16), LV_TEXT_ALIGN_CENTER);
   }
+  // Live view: the stream's frames cover the snapshot once the video plays.
+  if (live_camera) {
+    lv_obj_update_layout(frame);
+    lv_area_t area;
+    lv_obj_get_coords(frame, &area);
+    if (live_camera(e, area.x1, area.y1, b.w, b.h)) {
+      onx_media::live_camera_entity = e;
+      live_image = lv_image_create(frame);
+      lv_obj_remove_flag(live_image, LV_OBJ_FLAG_CLICKABLE);
+      lv_obj_add_flag(live_image, LV_OBJ_FLAG_HIDDEN);
+      lv_obj_set_pos(live_image, 0, 0);
+      show_live_frame(live_camera_frame ? live_camera_frame() : nullptr);
+    }
+  }
   struct Btn { const char *symbol; bool hot; std::function<void()> fn; };
   std::vector<Btn> btns;
   btns.push_back({LV_SYMBOL_REFRESH, false, []() { if (refresh_camera) refresh_camera(); toast("Refreshing snapshot"); }});
@@ -4852,6 +4891,12 @@ inline void clear(bool invalidate_root) {
   detach_icons();
   detach_artwork();
   onx_media::main_entity.clear();
+  // The live image is a child of root (deleted below); the stream stops
+  // unless the next build asks for it again.
+  live_image = nullptr;
+  onx_media::live_camera_entity.clear();
+  onx_media::live_camera_showing = false;
+  if (live_camera) live_camera("", 0, 0, 0, 0);
   main_mode = false;
   auto &t = onx_panel_ui::touch_targets;
   for (auto *o : targets) t.erase(std::remove(t.begin(), t.end(), o), t.end());

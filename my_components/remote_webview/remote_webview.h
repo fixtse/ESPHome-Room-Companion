@@ -71,6 +71,18 @@ class RemoteWebView : public Component {
   bool is_connected() const { return connected_client_() != nullptr; }
   void set_active(bool active);
   bool is_active() const { return active_.load(); }
+  // Room Companion camera view: frames are decoded only into the PSRAM frame
+  // copy, which the native UI shows as an image; nothing is drawn to the
+  // display, so LVGL keeps the screen. Change only while inactive.
+  void set_offscreen(bool offscreen);
+  bool is_offscreen() const { return offscreen_.load(); }
+  // Main loop only: the newest complete frame (display-sized RGB565), or
+  // nullptr when no new frame finished since the last call. The returned
+  // buffer stays untouched until the next call.
+  const uint8_t *take_offscreen_frame();
+  int frame_width() const { return display_width_; }
+  int frame_height() const { return display_height_; }
+  bool frame_big_endian() const { return rgb565_big_endian_; }
   bool open_url(const std::string &s);
   std::string get_current_url() const;
   void set_url_sensor(text_sensor::TextSensor *s) { url_sensor_ = s; }
@@ -151,6 +163,11 @@ class RemoteWebView : public Component {
   SnapshotBounds snapshot_dirty_{};
   uint8_t *snapshot_front_{nullptr}, *snapshot_work_{nullptr};
   bool capture_snapshot_{false};
+  // Camera view (see set_offscreen): frame_seq_ counts swapped frames, and the
+  // decode task does not write the next one until the main loop consumed it.
+  std::atomic<bool> offscreen_{false};
+  std::atomic<uint32_t> frame_seq_{0};
+  std::atomic<uint32_t> consumed_seq_{0};
   bool snapshot_attempted_{false}, snapshot_valid_{false}, snapshot_synced_{false}, snapshot_open_{false};
 
 #if REMOTE_WEBVIEW_HW_JPEG

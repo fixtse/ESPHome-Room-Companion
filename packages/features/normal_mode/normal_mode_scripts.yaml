@@ -2376,7 +2376,9 @@ script:
           const bool playable = (media || main_art) && detail != nullptr && detail->available && id(normal_ha_api_connected) &&
               (main_art || id(normal_device_detail_online)) && !id(screen_off_state) && !id(sleep_mode_state) &&
               !id(ui_presenter)->is_standby_active() && (cam || onx_media::has_playback(detail->state));
-          const bool want_stream = playable && cam && id(normal_device_detail_active) && onx_panel_detail::active;
+          // A live view (go2rtc, Room Companion) replaces Home Assistant's MJPEG stream.
+          const bool want_stream = playable && cam && id(normal_device_detail_active) && onx_panel_detail::active &&
+                                   onx_media::live_camera_entity != entity;
           std::string stream_url = want_stream ? onx_media::camera_stream_url(origin, detail->picture) : "";
           if (!stream_url.empty() && onx_media::stream_failed_ms != 0 && millis() - onx_media::stream_failed_ms < 60000 &&
               onx_media::same_camera(stream_url, onx_media::stream_failed_url))

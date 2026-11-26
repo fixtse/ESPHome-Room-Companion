@@ -250,7 +250,7 @@ const { chromium } = require('playwright');
   backup.presets.push({name:'Weekend',slots:backup.presets[0].slots.map((slot,i)=>({...slot,entity:slot.entity||'sensor.weekend_'+i,name:'Estación 🌙 '+'x'.repeat(140)}))});
   await page.locator('#import-file').setInputFiles({name:'backup.json',mimeType:'application/json',buffer:Buffer.from(JSON.stringify(backup))});
   assert.deepEqual(backup.idle_screen,{url:'http://frame.test:8080',idle:'2',fit:'1',split:'1',details:'date,album',fade:'1',interval:'45',overlay:'1'});
-  assert.deepEqual(backup.dashboard,{server:'192.168.1.5:8081',url:'http://ha.test:8123/lovelace/0',scale:1.5,dock_pin:'dashboard',toolbar_side:'left'});
+  assert.deepEqual(backup.dashboard,{server:'192.168.1.5:8081',url:'http://ha.test:8123/lovelace/0',scale:1.5,dock_pin:'dashboard',toolbar_side:'left',camera_server:'',camera_streams:''});
   assert.equal(backup.ha_url,'http://ha.test:8123');
   assert.ok(backup.settings&&backup.settings.brightness==='100','Device settings are exported');
   await page.locator('#import-pick').waitFor({state:'visible'});

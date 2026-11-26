@@ -252,6 +252,11 @@ inline bool downloading{false}, artwork_refresh_pending{false};
 inline std::string candidate_url, artwork_wait_reason;
 inline uint32_t candidate_ms{0}, last_artwork_end_ms{0};
 inline uint32_t camera_refresh_seq{0};
+// Room Companion live camera view (go2rtc through the dashboard stream): the
+// camera detail with a live stream configured, and whether its frames show.
+// Snapshots stand in until then; no MJPEG stream is opened for it.
+inline std::string live_camera_entity;
+inline bool live_camera_showing{false};
 inline std::string artwork_url(const std::string &origin, const std::string &picture) {
   if (picture.empty() || picture == "None" || picture == "unknown" || picture == "unavailable") return "";
   if (picture.rfind("http://", 0) == 0 || picture.rfind("https://", 0) == 0) return picture;

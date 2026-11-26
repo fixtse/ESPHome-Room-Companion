@@ -1102,6 +1102,21 @@ script:
             }
             return nullptr;
           };
+          // Live camera view: go2rtc rendered by the dashboard stream's server
+          // into an offscreen buffer, shown over the camera detail's snapshot.
+          onx_panel_detail::live_camera = [](const std::string &entity, int x, int y, int w, int h) {
+            return id(room_panel)->camera_view(entity, x, y, w, h);
+          };
+          onx_panel_detail::live_camera_frame = []() { return id(room_panel)->camera_frame(); };
+          id(room_panel)->set_camera_frame_callback([](const lv_image_dsc_t *frame) {
+            onx_panel_detail::show_live_frame(frame);
+          });
+          id(room_panel)->set_camera_visible([]() {
+            auto *image = onx_panel_detail::live_image;
+            return image != nullptr && onx_panel_detail::active && !onx_panel_detail::main_mode &&
+                   id(normal_device_detail_active) && lv_obj_is_visible(lv_obj_get_parent(image)) &&
+                   !id(screen_off_state) && !id(sleep_mode_state) && !id(ui_presenter)->is_standby_active();
+          });
           onx_panel_detail::refresh_camera = []() {
             if (id(media_cover_image)->is_streaming()) {
               if (onx_media::detach_main_artwork) onx_media::detach_main_artwork();

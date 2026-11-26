@@ -226,13 +226,29 @@ void RemoteWebView::set_active(bool active) {
     }
     return;
   }
-  touch_disabled_ = false;
+  // The camera view is shown inside the native UI, which keeps the touches.
+  touch_disabled_ = offscreen_.load();
   active_.store(true);
   // Frames were discarded while inactive: repaint the whole screen.
   decode_dirty_.store(true);
   last_full_frame_req_us_.store(0);
   if (ws_send_request_full_frame_()) last_full_frame_req_us_.store(esp_timer_get_time());
   notify_ws_task_();
+}
+
+void RemoteWebView::set_offscreen(bool offscreen) {
+  if (active_.load() || offscreen == offscreen_.load()) return;
+  offscreen_.store(offscreen);
+  consumed_seq_.store(frame_seq_.load());
+}
+
+const uint8_t *RemoteWebView::take_offscreen_frame() {
+  if (!offscreen_.load() || !draw_mtx_ || frame_seq_.load() == consumed_seq_.load()) return nullptr;
+  if (xSemaphoreTake(draw_mtx_, pdMS_TO_TICKS(20)) != pdTRUE) return nullptr;
+  const uint8_t *front = snapshot_valid_ ? snapshot_front_ : nullptr;
+  consumed_seq_.store(frame_seq_.load());
+  xSemaphoreGive(draw_mtx_);
+  return front;
 }
 
 RemoteWebView::FrameSnapshot RemoteWebView::frame_snapshot() const {
@@ -253,7 +269,12 @@ void RemoteWebView::release_frame_snapshot() {
 }
 
 void RemoteWebView::begin_snapshot_() {
-  if (!capture_snapshot_ || !draw_mtx_ || xSemaphoreTake(draw_mtx_, portMAX_DELAY) != pdTRUE) return;
+  const bool offscreen = offscreen_.load();
+  // The camera view may still show the buffer this frame is about to reuse:
+  // wait (briefly) until the main loop has taken the last finished frame.
+  for (int i = 0; offscreen && i < 50 && active_.load() && consumed_seq_.load() != frame_seq_.load(); ++i)
+    vTaskDelay(pdMS_TO_TICKS(4));
+  if ((!capture_snapshot_ && !offscreen) || !draw_mtx_ || xSemaphoreTake(draw_mtx_, portMAX_DELAY) != pdTRUE) return;
   if (active_.load()) {
     if (!snapshot_attempted_ && frame_is_full_) {
       snapshot_attempted_ = true;
@@ -290,6 +311,7 @@ void RemoteWebView::finish_snapshot_(bool complete) {
   if (!snapshot_synced_) return;
   std::swap(snapshot_front_, snapshot_work_);
   snapshot_valid_ = true;
+  frame_seq_.fetch_add(1);
 }
 
 void RemoteWebView::copy_snapshot_pixels_(int x, int y, int w, int h, const uint8_t *pixels, size_t stride) {
@@ -939,11 +961,12 @@ void RemoteWebView::draw_rgb565_clipped_(int x, int y, int w, int h, int stride,
   const size_t stride_bytes = static_cast<size_t>(stride) * 2;
   const auto *src = pixels + y_off * stride_bytes + x_off * 2;
   copy_snapshot_pixels_(x, y, w, h, src, stride_bytes);
-  display_->draw_pixels_at(x, y, w, h, pixels,
-                           esphome::display::COLOR_ORDER_RGB,
-                           esphome::display::COLOR_BITNESS_565,
-                           rgb565_big_endian_,
-                           x_off, y_off, stride - x_off - w);
+  if (!offscreen_.load())
+    display_->draw_pixels_at(x, y, w, h, pixels,
+                             esphome::display::COLOR_ORDER_RGB,
+                             esphome::display::COLOR_BITNESS_565,
+                             rgb565_big_endian_,
+                             x_off, y_off, stride - x_off - w);
   xSemaphoreGive(draw_mtx_);
   ft_draw_us_ += (uint32_t)(esp_timer_get_time() - t0);
 }
