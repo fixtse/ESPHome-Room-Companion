@@ -638,14 +638,27 @@ void RoomPanel::update_camera_(bool wifi_ok) {
     stream_->set_active(true);
     camera_on_ = true;
   }
+  const uint32_t now = millis();
+  if (!camera_url_.empty()) {
+    const bool showing = camera_frames_ >= CAMERA_SHOW_AFTER_FRAMES;
+    const uint32_t wait = std::min(CAMERA_RETRY_FIRST_MS + camera_retries_ * CAMERA_RETRY_STEP_MS, CAMERA_RETRY_MAX_MS);
+    if ((!showing && now - camera_opened_ms_ > wait) || (showing && now - camera_frame_ms_ > CAMERA_STALL_MS)) {
+      ++camera_retries_;
+      ESP_LOGI(TAG, "Live camera %s, reloading (attempt %u)", showing ? "stalled" : "shows no video", (unsigned) camera_retries_);
+      reload_camera();
+      return;
+    }
+  }
   const uint8_t *pixels = stream_->take_offscreen_frame();
   if (pixels == nullptr) return;
+  camera_frame_ms_ = now;
   // Frames of the previous page do not count. The server reports the page it
   // shows; if that never matches (an address it rewrote), go by time.
   const bool on_page = !camera_url_.empty() && (stream_->get_current_url() == camera_url_ ||
                                                  millis() - camera_opened_ms_ > CAMERA_PAGE_TIMEOUT_MS);
   if (camera_frames_ < CAMERA_SHOW_AFTER_FRAMES && on_page) ++camera_frames_;
   if (camera_frames_ < CAMERA_SHOW_AFTER_FRAMES) return;
+  camera_retries_ = 0;
   const int fw = stream_->frame_width();
   const auto &r = camera_shown_;
   camera_image_.header.magic = LV_IMAGE_HEADER_MAGIC;
@@ -672,6 +685,7 @@ void RoomPanel::stop_camera_() {
   camera_url_.clear();
   link_for_url_.clear();
   camera_frames_ = 0;
+  camera_retries_ = 0;
   if (camera_fullscreen_) {
     camera_fullscreen_ = false;
     if (fullscreen_exit_) fullscreen_exit_();

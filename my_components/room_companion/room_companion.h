@@ -194,6 +194,16 @@ class RoomPanel : public Component {
   // image appears once frames keep coming (the video plays).
   static constexpr uint32_t CAMERA_SHOW_AFTER_FRAMES = 3;
   static constexpr uint32_t CAMERA_PAGE_TIMEOUT_MS = 4000;
+  // Watchdog: a camera page that shows no video (a camera just turned on, its
+  // stream not up yet; the player itself retries only after a long wait) is
+  // reloaded after 6 s, then up to every 20 s; a picture that stops updating
+  // for 15 s is reloaded too.
+  static constexpr uint32_t CAMERA_RETRY_FIRST_MS = 6000;
+  static constexpr uint32_t CAMERA_RETRY_STEP_MS = 4000;
+  static constexpr uint32_t CAMERA_RETRY_MAX_MS = 20000;
+  static constexpr uint32_t CAMERA_STALL_MS = 15000;
+  uint32_t camera_retries_{0};
+  uint32_t camera_frame_ms_{0};
   uint32_t camera_opened_ms_{0};
   // WebRTC Camera links: registered before each open (Home Assistant keeps
   // them in memory only), then the page opens once the action had time.

@@ -113,9 +113,31 @@ The image appears after three frames of the camera page (a loading page draws
 one or two). Closing the camera navigates the server back to the dashboard
 address, or `about:blank`.
 
+**Full screen** (tap the live picture) is an overlay on LVGL's top layer that
+survives rebuilds of the same camera and closes with any other screen, on back,
+or when the stream stops. `set_camera_fullscreen()` makes the stream render the
+whole screen; on a portrait screen the page turns the player (`rotate(90deg)`
+or `270deg` in the card's style, or `r=` for the go2rtc page), so the panel's
+orientation and LVGL are untouched. The browser's video controls are hidden.
+
+A camera whose state is `off` shows **Camera is off** and asks for no stream;
+turning it on rebuilds the screen, which opens the page again.
+`reload_camera()` (the refresh button) navigates to `about:blank` and back,
+since the server ignores an address it already shows, registering a new
+WebRTC Camera link. A watchdog in `update_camera_()` reloads a page that shows
+no video 6 s after opening (then after 10, 14, 18 and 20 s) and a picture that
+has not changed for 15 s: a camera that has just been turned on accepts the
+connection only after a few seconds, and the player's own retry waits much
+longer.
+
 Camera sound does not use the stream: the panel calls `media_player.play_media`
 (announce) on its own speaker entity with go2rtc's RTSP output; Home
 Assistant's ESPHome ffmpeg proxy converts it to the speaker's FLAC format.
+The settings page finds that entity through the browser's Home Assistant
+sign-in (the device whose connections include the panel's MAC, reported by
+`panel_state`) and saves it; the fallback is
+`media_player.<friendly name>_speaker`. The "Dashboard page" URL sensor is
+shortened to Home Assistant's 255-character state limit.
 
 ## Not ported
 

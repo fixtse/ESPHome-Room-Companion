@@ -153,6 +153,11 @@ A camera that reports `off` shows **Camera is off** instead of a picture and
 opens no stream; turning it on opens the stream again. On a live camera the
 refresh button reloads the stream rather than the snapshot.
 
+The panel reloads the stream by itself when the camera page shows no video
+6 s after opening (for example a camera just turned on, whose stream is not up
+yet; the player's own retry waits much longer), then again with growing waits
+up to 20 s until the video plays, and when the picture stops updating for 15 s.
+
 ### Camera sound
 
 Panels with a speaker (not the Lite builds) show a speaker button on a live

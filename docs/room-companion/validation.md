@@ -263,3 +263,26 @@ version and the release assets' MD5s matched.
 Not verified: the offscreen decode and LVGL image on hardware, frame rate,
 memory while streaming, `webrtc.create_link` and the integration's go2rtc
 stream naming against a real Home Assistant, and camera sound.
+
+### 2026-11-26: live camera fixes and full screen (2026.11.1.22 to .24) — OTA releases
+
+Diagnosed on the owner's server: Home Assistant's `X-Frame-Options:
+SAMEORIGIN` blocked the WebRTC Camera embed inside the panel's camera page
+(`ERR_BLOCKED_BY_RESPONSE` in the Remote WebView browser), the guessed speaker
+entity did not exist (`media_player.bedroom_onx3248g035_dbc6e4_speaker` in
+Home Assistant), and the URL sensor exceeded the 255-character state limit.
+Opening the embed directly, placed by the card's style, played the bedroom
+camera over WebRTC (1920 px source, ~19 fps in the server's browser) exactly
+over the 3.5-inch frame, and full screen turned 90° filled 320×480 with the
+video controls hidden. The camera's audio (G.711 A-law, 8 kHz) was readable by
+Home Assistant's ffmpeg from the integration's go2rtc RTSP output.
+
+Builds on devserv with `ghcr.io/esphome/esphome:2026.11.1` (shared toolchain
+cache): both wake-word roots compiled for .22, .23 and .24, and
+`tests/test_config_web.cjs` passed. The panel-pages test was updated (set-aside
+wording, page-icon drop) but not rerun, at the owner's request.
+
+Owner reports on hardware: 2026.11.1.22's live view and sound worked; with
+.23 the stream came back slowly, or not at all, after turning the camera on
+(fixed by the .24 watchdog, not yet confirmed). Full screen, the off notice
+and the .24 watchdog have not been checked on a panel.

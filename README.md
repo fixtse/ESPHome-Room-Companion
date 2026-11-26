@@ -26,7 +26,7 @@ cards or full-screen detail views:
 | **Switches, helpers & automations** | Toggle switches, input booleans, and automations, or run scenes, scripts (with Stop while running), and buttons. Pair switches with a power/energy sensor (W or kWh) for live readings and a 12-hour graph. |
 | **Numbers, selects & sirens** | Adjust numbers and input numbers with sliders or − / + steps, pick from scrollable select lists, and configure siren tone, volume, and duration. |
 | **Media players** | View album artwork, title, artist, and a live playback progress bar; use play/pause/skip transport and swipe volume; launch up to **8 saved playlists or radio stations** per player. |
-| **Cameras** | View live **MJPEG streams** on the full screen (via Home Assistant’s `/api/camera_proxy_stream/`) or full-frame-rate video from the **WebRTC Camera** integration, **Frigate** or **go2rtc** through the Remote WebView server, with the **camera’s sound** on the panel speaker ([live cameras](docs/room-companion/dashboard-stream.md#live-cameras)), and auto-refreshing snapshots on main cards, toggle power or motion detection where supported, and optionally link an **ONVIF PTZ** camera entity for pan, tilt, and zoom icon controls. |
+| **Cameras** | View live **MJPEG streams** on the full screen (via Home Assistant’s `/api/camera_proxy_stream/`) or full-frame-rate video from the **WebRTC Camera** integration, **Frigate** or **go2rtc** through the Remote WebView server—tap it for **full screen** (turned to fill a portrait screen), with the **camera’s sound** on the panel speaker and automatic recovery when a camera comes back on ([live cameras](docs/room-companion/dashboard-stream.md#live-cameras))—and auto-refreshing snapshots on main cards, a **Camera is off** notice for switched-off cameras, toggle power or motion detection where supported, and optionally link an **ONVIF PTZ** camera entity for pan, tilt, and zoom icon controls. |
 | **Vacuums** | Monitor cleaning status and battery ring, trigger play/pause, stop, dock, locate, and spot clean with icon buttons, and cycle fan speed presets. |
 | **Locks & alarms** | Lock, unlock, or unlatch doors (`lock.*`), and arm or disarm `alarm_control_panel.*` entities with an on-screen **PIN keypad** when a code is required. |
 | **Weather & sensors** | Check current conditions, feels-like, humidity, wind, pressure, visibility, UV, and a 5-day forecast. View sensor values, percentage bars, secondary readings with custom templates (such as relative reset times), **1 h / 12 h / 24 h / 7 d history graphs** (min / avg / max), and persisted recent history for binary sensors and events. |
@@ -95,8 +95,12 @@ touchscreen using
 - **Live cameras in the native camera screen.** The same server plays cameras
   at full frame rate inside the panel's own camera screen—no dashboard to build.
   Pick the **WebRTC Camera** integration (each camera plays its own stream,
-  nothing else to set up) or a **go2rtc / Frigate** server, and tap the speaker
-  button to hear the camera on the panel. [Live cameras](docs/room-companion/dashboard-stream.md#live-cameras)
+  nothing else to set up) or a **go2rtc / Frigate** server. Tap the picture for
+  full screen—on a portrait panel only the video turns, the panel keeps its
+  orientation—and tap the speaker button to hear the camera on the panel (the
+  settings page finds the panel’s speaker in Home Assistant for you). The
+  refresh button reloads the stream, and the panel reloads it by itself when a
+  camera is turned back on or the picture freezes. [Live cameras](docs/room-companion/dashboard-stream.md#live-cameras)
 - **Easy deployment.** Run RemoteWebViewServer as a Home Assistant OS add-on or
   with the included Docker Compose setup. [Dashboard streaming setup](docs/room-companion/dashboard-stream.md)
 
