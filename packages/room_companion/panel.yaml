@@ -1093,10 +1093,16 @@ script:
             static constexpr char v_dist[] = "0.2";
             call.service = {svc, sizeof(svc) - 1};
             call.data.init(4);
-            call.data.push_back({{k_entity, sizeof(k_entity) - 1}, {entity.data(), entity.size()}});
-            call.data.push_back({{param.data(), param.size()}, {dir.data(), dir.size()}});
-            call.data.push_back({{k_mode, sizeof(k_mode) - 1}, {v_mode, sizeof(v_mode) - 1}});
-            call.data.push_back({{k_dist, sizeof(k_dist) - 1}, {v_dist, sizeof(v_dist) - 1}});
+            auto add = [&](const char *k, size_t kl, const char *v, size_t vl) {
+              esphome::api::HomeassistantServiceMap item;
+              item.key = {k, kl};
+              item.value = {v, vl};
+              call.data.push_back(item);
+            };
+            add(k_entity, sizeof(k_entity) - 1, entity.data(), entity.size());
+            add(param.data(), param.size(), dir.data(), dir.size());
+            add(k_mode, sizeof(k_mode) - 1, v_mode, sizeof(v_mode) - 1);
+            add(k_dist, sizeof(k_dist) - 1, v_dist, sizeof(v_dist) - 1);
             id(api_server)->send_homeassistant_action(call);
             #endif
           };
