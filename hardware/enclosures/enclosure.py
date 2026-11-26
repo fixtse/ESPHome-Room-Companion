@@ -60,7 +60,7 @@ def make_case(panel, portrait, audio):
     width, height = (panel.width, panel.height) if portrait else (panel.height, panel.width)
     case_width = width + 16
     bottom = -height / 2 - 7
-    top = height / 2 + (24 if audio else 7)
+    top = height / 2 + 7
     middle = (top + bottom) / 2
     case_height = top - bottom
     rear = 40 if audio else 22
@@ -120,14 +120,20 @@ def make_case(panel, portrait, audio):
     cover = cover.cut(*vents)
 
     if audio:
-        # Install the mic board port side down against the perforated landing.
-        mic_y = height / 2 + 12
-        mic_recess = block(0, mic_y, FACE, 52, 18, 5)
+        # The mic lies inside the top wall, behind the display and facing up.
+        mic_z = 27
         mic_ports = [
-            hole(mic_x + x, mic_y + y, -EPS, 1.6, FACE + 2 * EPS)
-            for mic_x in (-20, 20) for x in (-2.8, 0, 2.8) for y in (-2.8, 0, 2.8)
+            cq.Solid.makeCylinder(
+                0.8, WALL + 2 * EPS,
+                cq.Vector(mic_x + x, top - WALL - EPS, mic_z + z),
+                cq.Vector(0, 1, 0),
+            )
+            for mic_x in (-20, 20) for x in (-2.8, 0, 2.8) for z in (-2.8, 0, 2.8)
         ]
-        body = body.cut(mic_recess, *mic_ports)
+        body = body.cut(*mic_ports)
+        mic_space = block(0, top - WALL - 3.25, mic_z - 7, 48, 6, 14)
+        if body.intersect(mic_space).Volume() > 0.05:
+            raise ValueError("Top microphone space intersects the bezel")
         # The Nextion BOX Speaker's tabs are on a 36.6 mm pitch. Its own
         # acoustic enclosure faces the grille with a thin foam gasket.
         speaker_y = bottom + 25

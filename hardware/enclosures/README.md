@@ -1,8 +1,9 @@
 # Room Companion desktop enclosures
 
 Print a matching **bezel**, **back**, and **stand** for your panel. Both
-orientations lean back 16°. The audio versions add two front mic grilles and a
-rear mount for the Nextion BOX Speaker.
+orientations lean back 16°. The audio versions use the same front outline as
+the plain cases. The microphone vents through the top edge, and the Nextion
+BOX Speaker mounts behind the rear grille.
 
 ![Eight Room Companion enclosure variants shown from the front and back](renders/overview.png)
 
@@ -29,10 +30,10 @@ rear mount for the Nextion BOX Speaker.
    inner lip, where it meets the black border of the glass. Keep the active
    area free. Press only around the edge of the glass.
 3. On an audio version, center the [Nextion Dual MIC Board](https://itead.cc/product/nextion-dual-mic-board/)
-   on the 52 × 18 mm landing behind the bezel's two grilles. Face both acoustic
-   ports toward the grilles and fasten the board with thin foam tape clear of
-   the ports and flex connector. Route the flex to MIC_PDM without a sharp
-   fold. Point the [Nextion BOX Speaker](https://itead.cc/wp-content/uploads/2022/03/Box-Speaker-Dimension.pdf)
+   inside the top wall, behind the display. The 48 × 14 mm mounting area is
+   centered on the two grilles. Face both acoustic ports up toward the grilles
+   and fasten the board with thin foam tape clear of the ports and flex
+   connector. Route the flex down to MIC_PDM without a sharp fold. Point the [Nextion BOX Speaker](https://itead.cc/wp-content/uploads/2022/03/Box-Speaker-Dimension.pdf)
    into the back cover's grille with a thin foam gasket around the opening.
    Use two M2 × 6 mm thread-forming screws in the printed pilot holes.
    Check that the speaker seats against the gasket before tightening. Connect

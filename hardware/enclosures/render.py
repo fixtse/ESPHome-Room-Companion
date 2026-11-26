@@ -85,7 +85,7 @@ def render_case(panel, portrait, audio, parts, gauge, path):
     scale = max(bounds.ylen, bounds.xlen, bounds.zlen) * 0.64
     # The front view in landscape shows the connector side. The low rear
     # view in portrait shows the connector access underneath.
-    front = (110 if not portrait else -110, 63, -260)
+    front = (110 if not portrait else -110, 145 if audio else 63, -260)
     rear = (130, 33 if portrait else 86, 250)
     if portrait:
         rear = (130, -48, 250)
