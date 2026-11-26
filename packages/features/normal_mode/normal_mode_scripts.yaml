@@ -730,7 +730,7 @@ script:
                   case 3: id(enter_normal_settings_input_detail).execute(); break;
                   case 4:
                     {
-                      static const uint32_t colors[]={0x101418,0x000000,0x0E1A2B,0x18141F,0x0F1D18,0x211C17,0xFFFFFF,0xF4F4F4,0xE9EEF4,0xF3EDE4,0xE8F0EA};
+                      static const uint32_t colors[]={0x101418,0x000000,0x0E1A2B,0x18141F,0x0F1D18,0x211C17,0xECEFF2,0xF2F2F2,0xE1EAF6,0xEDE5F4,0xE0EEE5,0xF3E9DC};
                       const auto current=onx_display_settings::background();size_t next=0;
                       for(size_t i=0;i<std::size(colors);++i)if(colors[i]==current)next=(i+1)%std::size(colors);
                       if(onx_entity_config::save_background_color(onx_display_settings::color_text(colors[next]))) {

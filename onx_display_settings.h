@@ -103,9 +103,16 @@ inline bool light_color(uint32_t c) {return ((c>>16)*299+((c>>8)&255)*587+(c&255
 }
 inline bool light_background() {return light_color(background());}
 inline uint32_t foreground() { return light_background()?0x161B22:0xFFFFFF; }
-inline uint32_t surface() { return mix(light_background()?0x000000:0xFFFFFF,background(),8); }
-inline uint32_t control_surface() { return mix(light_background()?0x000000:0xFFFFFF,background(),13); }
-inline uint32_t track_surface() { return mix(light_background()?0x000000:0xFFFFFF,background(),23); }
+// Light theme: white cards on a tinted background. 0xFEFEFE draws as white
+// (RGB565) but stays distinct from widgets that are deliberately pure white,
+// so the palette mapper never confuses them. A near-white custom background
+// falls back to slightly darker cards so they still stand out.
+inline uint32_t surface() {
+  if(!light_background())return mix(0xFFFFFF,background(),8);
+  return ((background()>>16)*299+((background()>>8)&255)*587+(background()&255)*114)>247000?mix(0x000000,background(),5):0xFEFEFE;
+}
+inline uint32_t control_surface() { return mix(light_background()?0x000000:0xFFFFFF,background(),light_background()?7:13); }
+inline uint32_t track_surface() { return mix(light_background()?0x000000:0xFFFFFF,background(),light_background()?14:23); }
 inline uint32_t muted_text() { return mix(foreground(),background(),68); }
 inline uint32_t accent_strong() { return mix(accent(), 0x000000, 80); }  // Filled buttons (white symbol).
 inline uint32_t accent_soft() { return mix(accent(), background(), 28); }    // Tinted selection surfaces.

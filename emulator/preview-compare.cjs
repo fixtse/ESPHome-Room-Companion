@@ -56,11 +56,12 @@ const fonts = font('fonts/MiSans-Medium.ttf', 500) + font('fonts/MiSans-Bold.ttf
   fs.mkdirSync(path.join(out, 'web'), {recursive: true});
   for (const file of files) {
     const shot = JSON.parse(read(path.join(out, 'preview', file)));
-    const svg = await page.evaluate(shot => {
+    const svg = await page.evaluate(([shot, background]) => {
+      const settings = background ? {background_color: background} : {};
       globalThis.ONX_PANEL_SIZE = {width: shot.width, height: shot.height};
       const slots = shot.entities.map(e => ({entity: e.entity_id, name: e.name || e.entity_id}));
       const views = shot.data.slots || [];
-      globalThis.ONX_APP = {slots: () => slots, views: () => views, settings: () => ({}), select: () => {}, refresh: () => {},
+      globalThis.ONX_APP = {slots: () => slots, views: () => views, settings: () => settings, select: () => {}, refresh: () => {},
         pick: () => {}, item: () => null, add: () => -1, clear: () => {}, setTimer: () => {}, dirtyAt: () => false, message: () => {}};
       ONX_PAGES.set(shot.pages);
       const active = Math.max(0, slots.findIndex(s => s.entity === shot.entity));
@@ -69,12 +70,12 @@ const fonts = font('fonts/MiSans-Medium.ttf', 500) + font('fonts/MiSans-Bold.ttf
       const at = ONX_PAGES.get().findIndex(p => p.entities.includes(shot.entity));
       if (at >= 0) ONX_PAGES.select(at);
       const svg = document.getElementById('device-preview');
-      ONX_PANEL_PREVIEW(svg, slots[active], views.find(v => v.entity === shot.entity), views, shot.screen, {});
+      ONX_PANEL_PREVIEW(svg, slots[active], views.find(v => v.entity === shot.entity), views, shot.screen, settings);
       const copy = svg.cloneNode(true);
       copy.setAttribute('width', shot.width); copy.setAttribute('height', shot.height);
       copy.setAttribute('xmlns', 'http://www.w3.org/2000/svg');
       return copy.outerHTML;
-    }, shot);
+    }, [shot, process.env.RC_BACKGROUND || '']);
     // Main pages: also the configuration page's page editor (its position
     // cells over the live preview), as the user sees it in the browser.
     if (shot.screen === 'main') {

@@ -4,7 +4,7 @@
 # configuration preview of each screen, and writes side-by-side sheets.
 # Run on devserv under the task lease, from any checkout:
 #
-#   emulator/render.sh [--scenario FILE] [--model 28|35] [--only TEXT] [--no-compare] [--landscape]
+#   emulator/render.sh [--scenario FILE] [--model 28|35] [--only TEXT] [--no-compare] [--landscape] [--background '#RRGGBB']
 #   (--landscape adds 28L-/35L- renders of the quarter-turned panel)
 #
 # Output (emulator/out/):
@@ -26,6 +26,8 @@ models=(28 35)
 only=()
 compare=1
 landscape=0
+background=()
+bg_env=
 while [ $# -gt 0 ]; do
   case "$1" in
     --scenario) scenario="$2"; shift 2 ;;
@@ -33,6 +35,7 @@ while [ $# -gt 0 ]; do
     --only) only=(--only "$2"); shift 2 ;;
     --no-compare) compare=0; shift ;;
     --landscape) landscape=1; shift ;;
+    --background) background=(--background "$2"); bg_env="$2"; shift 2 ;;
     *) sed -n '2,20p' "$0"; exit 2 ;;
   esac
 done
@@ -72,11 +75,11 @@ run sh -c "cmake -S emulator -B emulator/build -DCMAKE_BUILD_TYPE=Release ${cmak
   { grep -E 'error' emulator/build/build.log | head -20; echo "emulator build failed (emulator/build/build.log)"; exit 1; }
 rm -rf emulator/out
 for model in "${models[@]}"; do
-  run emulator/build/rc-emulator --model "$model" --scenario "$scenario" --out emulator/out --preview emulator/out/preview "${only[@]}"
-  if [ "$landscape" = 1 ]; then run emulator/build/rc-emulator --model "$model" --landscape 1 --scenario "$scenario" --out emulator/out --preview emulator/out/preview "${only[@]}"; fi
+  run emulator/build/rc-emulator --model "$model" --scenario "$scenario" --out emulator/out --preview emulator/out/preview "${background[@]}" "${only[@]}"
+  if [ "$landscape" = 1 ]; then run emulator/build/rc-emulator --model "$model" --landscape 1 --scenario "$scenario" --out emulator/out --preview emulator/out/preview "${background[@]}" "${only[@]}"; fi
 done
 if [ "$compare" = 1 ]; then
-  docker run --rm --name "rc-emulator-compare-$$" -u "$(id -u):$(id -g)" -e HOME=/tmp -v "$PWD":/src -v "$cache/npm":/cache/npm -w /src \
+  docker run --rm --name "rc-emulator-compare-$$" -e RC_BACKGROUND="$bg_env" -u "$(id -u):$(id -g)" -e HOME=/tmp -v "$PWD":/src -v "$cache/npm":/cache/npm -w /src \
     --entrypoint bash mcr.microsoft.com/playwright:v1.56.1-noble -lc \
     'm=/cache/npm/node_modules ok=/cache/npm/.ready-playwright-1.56.1-mdi-7.4.47
      { flock 9; [ -f $ok ] || { npm install --silent --prefix /cache/npm --no-audit --no-fund playwright@1.56.1 @mdi/svg@7.4.47 >/dev/null && touch $ok; }; } 9>/cache/npm/.lock &&

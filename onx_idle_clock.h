@@ -485,6 +485,17 @@ inline void update_photo_overlay(int W, int H, const std::string &weather_state)
                         : small ? fonts.clock_ampm
                         : ampm || fonts.clock == nullptr ? fonts.clock_ampm : fonts.clock;
   if (tf != nullptr) onx_render::style_text_font(slide_time, tf, 0);
+  // Photos always carry white text over the dark fade, whatever the panel
+  // theme. Set directly (not via the themed helpers) so a light background
+  // can never turn the overlay dark; only the notification badge follows it.
+  auto white = [](lv_obj_t *l, uint32_t c) {
+    lv_style_value_t v;
+    if (lv_obj_get_local_style_prop(l, LV_STYLE_TEXT_COLOR, &v, 0) == LV_STYLE_RES_FOUND &&
+        (lv_color_to_u32(v.color) & 0xFFFFFF) == c) return;
+    lv_obj_set_style_text_color(l, lv_color_hex(c), 0);
+  };
+  white(slide_time, 0xFFFFFF); white(slide_temp, 0xFFFFFF);
+  white(slide_date, 0xE0E0E0); white(slide_media, 0xE0E0E0);
   // Photo only: the time alone in a translucent pill, no fade band.
   show(slide_date, !only);
   if (only) {

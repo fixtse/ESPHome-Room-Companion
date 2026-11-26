@@ -560,6 +560,11 @@ lvgl_emu::App lvgl_emu_app(const lvgl_emu::Args &args) {
     rc::board.strip_center_y = rc::board.height - (old_h - rc::board.strip_center_y);
     rc::model_name = model + "L";
   }
+  // --background '#RRGGBB': the panel background setting (light or dark theme).
+  if (const auto bg = args.get("background", ""); !bg.empty()) {
+    uint32_t c;
+    if (onx_display_settings::parse_color(bg, c)) { onx_display_settings::background_settings.color = c; onx_render::panel_palette = true; }
+  }
   rc::preview_dir = args.get("preview");
   if (!rc::preview_dir.empty()) std::system(("mkdir -p '" + rc::preview_dir + "'").c_str());
   std::printf("%s: %dx%d ui_scale=%.4f font_scale=%.4f dock y=%d icon=%d marker=%d symbols=%s\n", rc::board.model.c_str(),

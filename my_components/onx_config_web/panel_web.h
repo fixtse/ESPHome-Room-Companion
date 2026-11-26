@@ -991,7 +991,7 @@ static const char PANEL_JS[] = R"ONXPANEL(
   svg.setAttribute('aria-label',(slot.name||slot.entity||'Empty page')+' rectangular panel preview');
   // Colours (onx_display_settings).
   const BG=settings?.background_color||'#101418',lum=c=>{const n=parseInt(c.slice(1),16);return ((n>>16)*299+((n>>8)&255)*587+(n&255)*114)},lightBg=lum(BG)>150000;
-  const TEXT=lightBg?'#161b22':'#ffffff',CARD=mix(lightBg?'#000000':'#ffffff',BG,8),CONTROL=mix(lightBg?'#000000':'#ffffff',BG,13),TRACK=mix(lightBg?'#000000':'#ffffff',BG,23),MUTED=mix(TEXT,BG,68),SOFT=MUTED;
+  const TEXT=lightBg?'#161b22':'#ffffff',CARD=!lightBg?mix('#ffffff',BG,8):lum(BG)>247000?mix('#000000',BG,5):'#fefefe',CONTROL=mix(lightBg?'#000000':'#ffffff',BG,lightBg?7:13),TRACK=mix(lightBg?'#000000':'#ffffff',BG,lightBg?14:23),MUTED=mix(TEXT,BG,68),SOFT=MUTED;
   const ACCENT=settings?.media_color||'#62b0ff',STRONG=mix(ACCENT,'#000000',80),TINT=mix(ACCENT,BG,28),INSET=CONTROL;
   const ink=bg=>lum(bg)>150000?'#161b22':'#ffffff';
   svg.replaceChildren(node('rect',{width:W,height:H,fill:BG}));
