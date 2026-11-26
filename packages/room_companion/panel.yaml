@@ -277,13 +277,18 @@ interval:
           if (onx_notification_ui::panel_open || onx_notification_ui::detail_id != 0) return;
           // The timer screen (features/timers.yaml) covers the
           // screen, except while Assist itself is on screen.
-          if (onx_panel_detail::timers.overlay && !onx_assist::overlay_visible()) {
+          static bool timers_were_up = false;
+          const bool timers_up = onx_panel_detail::timers.overlay && !onx_assist::overlay_visible();
+          const bool raise_timers = timers_up && !timers_were_up;
+          timers_were_up = timers_up;
+          if (timers_up) {
             onx_notification_ui::set_bell_visible(false);
             // The shared Wi-Fi/HA status icons (top layer) belong to the carousel and idle clock.
             for (auto *icon : {id(normal_device_wifi_online_widget), id(normal_device_wifi_offline_widget),
                                id(normal_device_homeassistant_online_widget), id(normal_device_homeassistant_offline_widget)})
               lv_obj_add_flag(icon, LV_OBJ_FLAG_HIDDEN);
-            onx_panel_pages::show_timers(onx_panel_ui::width, onx_panel_ui::height);
+            onx_panel_pages::show_timers(onx_panel_ui::width, onx_panel_ui::height, raise_timers);
+            if (raise_timers) onx_notification_ui::refresh();  // Keep banners above it.
             return;
           }
           // Native rectangular pages reuse the existing HA state and actions.

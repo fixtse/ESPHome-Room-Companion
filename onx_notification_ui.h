@@ -14,6 +14,7 @@
 #include <functional>
 #include <string>
 #include "lvgl.h"
+#include "onx_render.h"
 #include "esphome/core/hal.h"
 #include "onx_geom.h"
 #include "onx_display_settings.h"
@@ -141,9 +142,18 @@ inline void hide(lv_obj_t *obj, bool hidden) {
   if (hidden) lv_obj_add_flag(obj, LV_OBJ_FLAG_HIDDEN);
   else lv_obj_remove_flag(obj, LV_OBJ_FLAG_HIDDEN);
 }
+// The dark design colours above stand for theme roles; resolve them to the
+// current panel palette so light themes get light cards and dark text.
+inline uint32_t themed(uint32_t c) {
+  if (c == BG) return bg();
+  if (c == CARD) return surface();
+  if (c == TEXT) return foreground();
+  if (c == MUTED) return muted();
+  return c;
+}
 inline lv_obj_t *box(lv_obj_t *parent, uint32_t color, int radius) {
   lv_obj_t *obj = lv_obj_create(parent);
-  lv_obj_set_style_bg_color(obj, lv_color_hex(color), 0);
+  lv_obj_set_style_bg_color(obj, lv_color_hex(themed(color)), 0);
   lv_obj_set_style_bg_opa(obj, LV_OPA_COVER, 0);
   lv_obj_set_style_border_width(obj, 0, 0);
   lv_obj_set_style_radius(obj, radius, 0);
@@ -154,7 +164,8 @@ inline lv_obj_t *box(lv_obj_t *parent, uint32_t color, int radius) {
 inline lv_obj_t *text(lv_obj_t *parent, const lv_font_t *font, uint32_t color, const char *value) {
   lv_obj_t *label = lv_label_create(parent);
   lv_obj_set_style_text_font(label, font, 0);
-  lv_obj_set_style_text_color(label, lv_color_hex(color), 0);
+  // As the palette sweep: readable ink on accent-filled buttons.
+  lv_obj_set_style_text_color(label, lv_color_hex(onx_render::panel_property_color(label, LV_STYLE_TEXT_COLOR, themed(color))), 0);
   onx_emoji::set_label(label, value);
   return label;
 }
@@ -621,7 +632,7 @@ inline void init(int screen_width, int screen_height, Fonts f, Hooks h) {
   if (bell_image != nullptr) {
     lv_obj_t *glyph = lv_image_create(bell);
     lv_image_set_src(glyph, bell_image);
-    lv_obj_set_style_image_recolor(glyph, lv_color_hex(TEXT), 0);
+    lv_obj_set_style_image_recolor(glyph, lv_color_hex(themed(TEXT)), 0);
     lv_obj_set_style_image_recolor_opa(glyph, LV_OPA_COVER, 0);
     lv_obj_remove_flag(glyph, LV_OBJ_FLAG_CLICKABLE);
     lv_obj_center(glyph);
@@ -670,6 +681,9 @@ inline void init(int screen_width, int screen_height, Fonts f, Hooks h) {
   lv_obj_set_style_pad_hor(badge, S(4), 0);
   lv_obj_align_to(badge, bell, LV_ALIGN_TOP_RIGHT, 0, 0);
   badge_label = text(badge, fonts.small, TEXT, "");
+  // White count on the red badge in every theme.
+  lv_obj_set_style_text_color(badge_label, lv_color_hex(0xFFFFFF), 0);
+  lv_obj_add_flag(badge, onx_render::FIXED_PALETTE);
   lv_obj_center(badge_label);
   lv_obj_remove_flag(badge, LV_OBJ_FLAG_CLICKABLE);
 
