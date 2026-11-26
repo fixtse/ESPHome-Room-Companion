@@ -86,6 +86,8 @@ const {chromium}=require('playwright');
    ONX_PAGES.set([{name:'',icon:'',layout:'single',entities:['light.kitchen']}]);
    ONX_PANEL_EDITOR(testSlots,0,false,testDraw);testDraw();
    window.dropEntity=(pos,item)=>{const dt=new DataTransfer();dt.setData('application/x-onx-entity',JSON.stringify(item));document.querySelector(`[data-member="${pos}"]`).dispatchEvent(new DragEvent('drop',{dataTransfer:dt,bubbles:true,cancelable:true}))};
+   // Drag a position onto the page icon: the page icon follows that entity's icon.
+   window.dropOnPageIcon=pos=>{const dt=new DataTransfer();document.querySelector(`[data-member="${pos}"]`).dispatchEvent(new DragEvent('dragstart',{dataTransfer:dt,bubbles:true}));document.getElementById('page-icon-button').dispatchEvent(new DragEvent('drop',{dataTransfer:dt,bubbles:true,cancelable:true}))};
    window.dropCell=(from,to)=>{const dt=new DataTransfer();dt.setData('application/x-onx-cell',String(from));document.querySelector(`[data-member="${to}"]`).dispatchEvent(new DragEvent('drop',{dataTransfer:dt,bubbles:true,cancelable:true}))};
   });
   assert.equal(await page.locator('#device-preview').getAttribute('viewBox'),'0 0 320 480');
@@ -119,7 +121,7 @@ const {chromium}=require('playwright');
   assert.deepEqual(payloads.at(-1),{pages:[{name:'Living',icon:'mdi:sofa',layout:'two_controls',entities:['light.kitchen','switch.fan']}]});
   // Large + three compact: picker, a new (unconfigured) entity, compact-only rule, swap, duplicates.
   await layout('control_sensors');assert.equal(await page.locator('#page-grid [data-member]').count(),4);
-  assert.match(await status(),/Fan was removed/,'Non-sensors leave compact positions');
+  assert.match(await status(),/Fan is set aside/,'Non-sensors leave compact positions');
   assert.equal(await page.evaluate(()=>added.length),0);
   await page.evaluate(()=>dropEntity(1,{entity:'light.other',name:'Other'}));assert.match(await status(),/Compact positions/);
   await page.evaluate(()=>{nextPick={entity:'sensor.temperature',name:'Temperature'}});await page.click('[data-member="1"] .cell-main');
@@ -258,8 +260,7 @@ const {chromium}=require('playwright');
   assert.equal(await page.locator('#page-grid [data-member]').count(),16);
   await page.evaluate(()=>dropCell(0,15));
   assert.match(await page.locator('#slots .slot-icon .mdi').getAttribute('style'),/view-grid-outline/);
-  await page.click('#page-icon-button');
-  await page.click('#icon-entity');
+  await page.evaluate(()=>dropOnPageIcon(15));
   assert.match(await page.locator('#slots .slot-icon .mdi').getAttribute('style'),/lightbulb/);
   await page.click('#page-icon-button');
   await page.click('#icon-default');
