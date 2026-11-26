@@ -496,6 +496,14 @@ inline void update_photo_overlay(int W, int H, const std::string &weather_state)
   };
   white(slide_time, 0xFFFFFF); white(slide_temp, 0xFFFFFF);
   white(slide_date, 0xE0E0E0); white(slide_media, 0xE0E0E0);
+  // The fade band and the letterbox stay black on every theme.
+  auto black = [](lv_obj_t *o, lv_style_prop_t prop) {
+    lv_style_value_t v;
+    if (lv_obj_get_local_style_prop(o, prop, &v, 0) == LV_STYLE_RES_FOUND && (lv_color_to_u32(v.color) & 0xFFFFFF) == 0) return;
+    v.color = lv_color_hex(0x000000);
+    lv_obj_set_local_style_prop(o, prop, v, 0);
+  };
+  black(slide_bar, LV_STYLE_BG_COLOR); black(slide_bar, LV_STYLE_BG_GRAD_COLOR); black(slide_layer, LV_STYLE_BG_COLOR);
   // Photo only: the time alone in a translucent pill, no fade band.
   show(slide_date, !only);
   if (only) {
