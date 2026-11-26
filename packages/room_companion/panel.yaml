@@ -1081,9 +1081,25 @@ script:
             if (path != std::string::npos) origin.resize(path);
             const auto base = onx_media::artwork_url(origin, d->picture);
             const auto stream = cam ? onx_media::camera_stream_url(origin, d->picture) : std::string();
+            if (cam && base.empty()) {
+              static std::string logged_picture = "\x01";
+              if (d->picture != logged_picture) {
+                logged_picture = d->picture;
+                ESP_LOGI("camera", "%s has no usable entity_picture: '%.60s'", entity.c_str(), d->picture.c_str());
+              }
+            }
             if (base.empty() || onx_media::ready_url.empty()) return nullptr;
             if (onx_media::ready_url == base || (cam && (onx_media::ready_url.rfind(base, 0) == 0 || (!stream.empty() && onx_media::ready_url == stream))))
               return id(media_cover_image)->get_lv_image_dsc();
+            // Diagnostics: why a downloaded camera snapshot is not shown (logged once per URL pair).
+            if (cam) {
+              static std::string logged;
+              const auto key = base + '|' + onx_media::ready_url;
+              if (key != logged) {
+                logged = key;
+                ESP_LOGI("camera", "%s snapshot not matched: picture=%.60s ready=%.60s", entity.c_str(), base.c_str(), onx_media::ready_url.c_str());
+              }
+            }
             return nullptr;
           };
           onx_panel_detail::refresh_camera = []() {

@@ -364,10 +364,11 @@ onx_config_web:
         return onx_entity_config::error("Choose a valid graph setting");
       if (!(sensor_graph & onx_sensor_view::GRAPH_ON)) sensor_graph = 0;
     }
-    if ((!query.secondary.empty() && (!onx_config::valid_entity(query.secondary) || (domain!="sensor" && domain!="switch") || (domain=="switch" && query.secondary.rfind("sensor.",0)!=0))) ||
+    if ((!query.secondary.empty() && (!onx_config::valid_entity(query.secondary) || (domain!="sensor" && domain!="switch" && domain!="camera") ||
+          (domain=="switch" && query.secondary.rfind("sensor.",0)!=0) || (domain=="camera" && query.secondary.rfind("camera.",0)!=0))) ||
         (sensor_graph && domain!="sensor" && domain!="switch") ||
         (domain=="switch" && sensor_graph && query.secondary.empty()))
-      return onx_entity_config::error("Choose a sensor, or a switch with a secondary power/energy sensor");
+      return onx_entity_config::error("Secondary entities: a sensor, a switch's power/energy sensor, or a camera's ONVIF camera");
     if ((sensor_graph & onx_sensor_view::GRAPH_SECONDARY) && domain=="sensor" && query.secondary.empty())
       return onx_entity_config::error("Choose a secondary entity to graph it");
     if(sensor_graph && domain=="sensor" && !(sensor_graph & onx_sensor_view::GRAPH_SECONDARY)) {

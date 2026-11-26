@@ -1436,6 +1436,11 @@ script:
             detail_kind = NORMAL_DEVICE_DETAIL_KIND_AUTOMATION;
           }
           const auto graph_entity=id(ui_presenter)->get_normal_device_entity_id(detail_index);
+          // Newer domains have no stored type option; their detail screens follow the entity.
+          if (detail_kind == NORMAL_DEVICE_DETAIL_KIND_NONE && raw_selected_index != settings_index) {
+            for (const char *pre : {"camera.", "vacuum.", "lock.", "alarm_control_panel.", "siren.", "event."})
+              if (graph_entity.rfind(pre, 0) == 0) { detail_kind = NORMAL_DEVICE_DETAIL_KIND_AUTOMATION; break; }
+          }
           const int graph_index=onx_sensor_view::index(graph_entity);
           if(graph_entity.rfind("switch.",0)==0 && graph_index>=0 && onx_sensor_view::configs[graph_index].secondary[0] && onx_sensor_view::configs[graph_index].graph)
             detail_kind=NORMAL_DEVICE_DETAIL_KIND_AUTOMATION;
