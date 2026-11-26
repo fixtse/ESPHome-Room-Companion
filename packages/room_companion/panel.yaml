@@ -479,6 +479,16 @@ interval:
             lv_obj_add_flag(id(normal_device_wifi_online_widget), LV_OBJ_FLAG_HIDDEN);
             lv_obj_add_flag(id(normal_device_homeassistant_online_widget), LV_OBJ_FLAG_HIDDEN);
           }
+          // Online Wi-Fi/HA icons are white artwork: dark on light themes,
+          // left white over ImmichFrame photos. Offline icons stay red.
+          {
+            const bool photos = standby && id(panel_idle_screen).active_index().value_or(0) == onx_panel_ui::IDLE_IMMICHFRAME;
+            const bool tint = onx_display_settings::light_background() && !photos;
+            for (auto *icon : {id(normal_device_wifi_online_widget), id(normal_device_homeassistant_online_widget)}) {
+              onx_render::style_image_recolor(icon, lv_color_hex(onx_display_settings::foreground()), 0);
+              onx_render::style_image_recolor_opa(icon, tint ? LV_OPA_COVER : LV_OPA_TRANSP, 0);
+            }
+          }
           // "Page" select: keep its options and the shown page current (1 s).
           static uint32_t last_page_sync = 0;
           if (millis() - last_page_sync >= 1000) {

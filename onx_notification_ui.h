@@ -112,7 +112,7 @@ inline void set_timer_chip(const std::string &text) {
   update_timer_chip();
 }
 
-constexpr uint32_t BG = 0x1A1D21, CARD = 0x272B30, TEXT = 0xFFFFFF, MUTED = 0xB8B8B8;
+constexpr uint32_t BG = 0x1A1D21, CARD = 0x272B30, CONTROL = 0x3A3F45, TEXT = 0xFFFFFF, MUTED = 0xB8B8B8;
 inline uint32_t accent() { return onx_display_settings::accent(); }
 // The list follows the panel's saved palette.
 inline uint32_t bg() { return onx_display_settings::background(); }
@@ -147,6 +147,7 @@ inline void hide(lv_obj_t *obj, bool hidden) {
 inline uint32_t themed(uint32_t c) {
   if (c == BG) return bg();
   if (c == CARD) return surface();
+  if (c == CONTROL) return control();
   if (c == TEXT) return foreground();
   if (c == MUTED) return muted();
   return c;
@@ -860,7 +861,7 @@ inline void init(int screen_width, int screen_height, Fonts f, Hooks h) {
     lv_obj_set_width(label, lv_pct(100));
     lv_label_set_long_mode(label, LV_LABEL_LONG_WRAP);
   }
-  lv_obj_t *dismiss = button(detail, "Dismiss", 0x3A3F45, on_detail_dismiss, nullptr);
+  lv_obj_t *dismiss = button(detail, "Dismiss", CONTROL, on_detail_dismiss, nullptr);
   lv_obj_set_width(dismiss, lv_pct(100));
 
   for (auto *obj : {toast, panel, detail}) hide(obj, true);

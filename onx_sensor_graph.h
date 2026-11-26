@@ -1,6 +1,7 @@
 #pragma once
 #include "onx_sensor_view.h"
 #include "onx_geom.h"
+#include "onx_display_settings.h"
 #ifdef USE_LVGL
 namespace onx_sensor_graph {
 inline lv_obj_t *canvas=nullptr,*minimum_label=nullptr,*maximum_label=nullptr;
@@ -17,7 +18,7 @@ inline bool panel_owned=false;
 inline void draw(lv_event_t *event) {
   lv_area_t area;lv_obj_get_coords(canvas,&area);
   auto *layer=lv_event_get_layer(event);
-  lv_draw_line_dsc_t line;lv_draw_line_dsc_init(&line);line.width=1;line.color=lv_color_hex(0x344653);
+  lv_draw_line_dsc_t line;lv_draw_line_dsc_init(&line);line.width=1;line.color=lv_color_hex(onx_display_settings::light_background()?onx_display_settings::track_surface():0x344653);
   using onx_geom::S;
   for(int y : {0,plot_bottom/2,plot_bottom}) {
     line.p1.x=area.x1+plot_left;line.p1.y=area.y1+y;line.p2.x=area.x1+plot_right;line.p2.y=area.y1+y;
