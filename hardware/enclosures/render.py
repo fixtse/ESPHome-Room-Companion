@@ -8,7 +8,7 @@ import vtk
 from PIL import Image, ImageDraw, ImageFont
 from vtk.util.numpy_support import vtk_to_numpy
 
-from enclosure import FACE, TAPE, TILT, rounded
+from enclosure import GLASS_Z, TILT, rounded
 
 BACKGROUND = (236, 241, 244)
 TEXT = (37, 53, 64)
@@ -72,10 +72,11 @@ def model_view(actors, target, look, scale):
 def render_case(panel, portrait, audio, parts, controls, gauge, path):
     width, height = (panel.width, panel.height) if portrait else (panel.height, panel.width)
     active_w, active_h = panel.active if portrait else panel.active[::-1]
-    glass = rounded(0, 0, FACE + TAPE, width, height, 0.7, 2.5)
-    display = rounded(0, 0, FACE + TAPE - 0.06, active_w, active_h, 0.08, 0.25)
+    glass = rounded(0, 0, GLASS_Z, width, height, 0.7, 2.5)
+    display = rounded(0, 0, GLASS_Z - 0.06, active_w, active_h, 0.08, 0.25)
     solids = (*parts, glass, display, *controls)
-    colors = ((191, 98, 60), (154, 77, 50), (25, 31, 35), (42, 53, 62))
+    shell_colors = ((223, 219, 211), (198, 194, 185)) if portrait else ((191, 98, 60), (154, 77, 50))
+    colors = (*shell_colors, (25, 31, 35), (42, 53, 62))
     colors += ((48, 43, 39),) * len(controls)
     actors = [
         actor(solid.rotate((0, 0, 0), (1, 0, 0), TILT), color)
@@ -84,9 +85,9 @@ def render_case(panel, portrait, audio, parts, controls, gauge, path):
     bounds = cq.Compound.makeCompound(parts).rotate((0, 0, 0), (1, 0, 0), TILT).BoundingBox()
     target = (0, (bounds.ymin + bounds.ymax) / 2, (bounds.zmin + bounds.zmax) / 2)
     scale = max(bounds.ylen, bounds.xlen, bounds.zlen) * 0.64
-    # Show the landscape connector side and the portrait rear cable exit.
-    front = (110 if not portrait else -110, 145 if audio else 63, -260)
-    rear = (130, 45 if portrait else 86, 250)
+    # Show the side USB-C opening in both orientations.
+    front = (110, 145 if audio else 63, -260)
+    rear = (-130 if portrait else 130, 45 if portrait else 86, 250)
     combined = Image.new("RGB", (1400, 645), BACKGROUND)
     combined.paste(model_view(actors, target, front, scale), (0, 0))
     combined.paste(model_view(actors, target, rear, scale), (700, 0))
@@ -98,8 +99,8 @@ def render_case(panel, portrait, audio, parts, controls, gauge, path):
     if portrait and audio and panel.name == "ONX3248G035":
         plug = gauge.rotate((0, 0, 0), (1, 0, 0), TILT)
         center = plug.Center().toTuple()
-        # Remove the back cover in this view to show the internal plug.
-        detail = model_view([actors[0], actor(plug, (237, 156, 70))], center, (85, 38, 210), 38)
+        # With the cover removed, the cable and elbow are visible together.
+        detail = model_view([actors[0], actor(plug, (237, 156, 70))], center, (75, 52, 220), 31)
         detail.save(path.with_name("portrait-usb-detail.png"), optimize=True)
 
 

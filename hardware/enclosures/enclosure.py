@@ -37,12 +37,12 @@ PANELS = (
         ((21.15, 27, 0.95), (29.15, 27, 0.95)), (24, -27.3, 0.7), -0.75,
     ),
 )
-FACE = 1.8
+FACE = 1.16
 TAPE = 0.25
-TILT = 16
-WALL = 2.4
-LID = 3.4
-TAPER = 0.34
+GLASS_Z = FACE - 0.72 - TAPE
+TILT = 12
+WALL = 1.65
+LID = 2.8
 EPS = 0.04
 
 
@@ -75,7 +75,7 @@ def make_controls(panel, portrait, case_width, top, floor):
         slider = index == len(panel.buttons)
         x, y, z = position
         x -= panel.step_center_x
-        z += FACE + TAPE - panel.step_glass_z
+        z += GLASS_Z - panel.step_glass_z
         direction = 1 if y > 0 else -1
         underside = not portrait and direction < 0
         face = direction * case_width / 2 if portrait else (floor(z) if underside else top)
@@ -123,23 +123,25 @@ def make_controls(panel, portrait, case_width, top, floor):
 
 def make_case(panel, portrait, audio):
     width, height = (panel.width, panel.height) if portrait else (panel.height, panel.width)
-    case_width = width + 16
-    bottom = -height / 2 - 7
-    top = height / 2 + 7
-    floor_at_face = bottom - 39 if portrait else bottom + 0.8
+    case_width = width + 4.6
+    bottom = -height / 2 - 2.7
+    if portrait:
+        bottom -= 12.5 if panel.name == "ONX2432G028" else 7.5
+    top = height / 2 + 2.7
     slope = tan(radians(TILT))
-    top_depth = 35 if audio else 25
-    low = floor_at_face - 2
-    max_depth = 105
+    top_depth = 34 if audio else 20
+    taper = 0.17 if portrait else 0.29
+    low = bottom - 1
+    max_depth = 70
     span = case_width + 2
 
     def floor(z):
-        return floor_at_face + z * slope
+        return bottom + z * slope
 
     def rear(y):
-        return top_depth + (top - y) * TAPER
+        return top_depth + (top - y) * taper
 
-    def behind_floor(lift):
+    def above_floor(lift):
         return section(-span / 2, span, [
             (floor(0) + lift, 0), (top + 1, 0),
             (top + 1, max_depth), (floor(max_depth) + lift, max_depth),
@@ -152,16 +154,13 @@ def make_case(panel, portrait, audio):
         ])
 
     def on_cover(shape, y):
-        return shape.rotate((0, 0, 0), (1, 0, 0), -degrees(atan(TAPER))).translate(
+        return shape.rotate((0, 0, 0), (1, 0, 0), -degrees(atan(taper))).translate(
             (0, y, rear(y))
         )
 
-    screw_x = case_width / 2 - 4.3
-    lower_screws = bottom - 7 if portrait else bottom + 24
-    screws = [(x, y) for x in (-screw_x, screw_x) for y in (lower_screws, top - 6)]
     usb_x, usb_y, usb_z = panel.usb
     usb_x -= panel.step_center_x
-    usb_z += FACE + TAPE - panel.step_glass_z
+    usb_z += GLASS_Z - panel.step_glass_z
     # The 3.5-inch assembly narrows the first few millimetres behind the
     # receptacle. The broad overmold can start just past this neck.
     if panel.name == "ONX3248G035":
@@ -171,68 +170,63 @@ def make_case(panel, portrait, audio):
     else:
         gauge = block(usb_x + 17, usb_y, usb_z - 5, 31, 18, 10)
     if portrait:
-        gauge = gauge.rotate((0, 0, 0), (0, 0, 1), -90)
-        exit_z = (rear(floor_at_face) + LID) / (1 + TAPER * slope)
-        # Open the rear at the desk edge so the cover can close over an
-        # already-routed cable. The front edge remains continuous.
-        exit_y = floor(exit_z)
-        usb_relief = block(usb_y, exit_y + 5, exit_z - 12, 28, 24, 27)
+        # A side-exit 90-degree plug folds along the screen plane. The
+        # undercut admits the cable from beneath without threading a plug.
+        neck = block(usb_x + 3.5, usb_y, usb_z - 2.75, 4, 12.5, 5.5)
+        elbow = block(usb_x + 8.65, usb_y + 2, usb_z - 4.5, 6.3, 18, 9)
+        cable_y = -usb_x - 9.15
+        lead = cq.Solid.makeCylinder(
+            2.2, case_width / 2 + 2 - usb_y - 10,
+            cq.Vector(usb_y + 10, cable_y, usb_z), cq.Vector(1, 0, 0),
+        )
+        gauge = neck.fuse(elbow).rotate((0, 0, 0), (0, 0, 1), -90).fuse(lead)
+        usb_relief = block(case_width / 2, cable_y - 5, usb_z - 3.4, 9, 16, 6.8)
     else:
         start, end = usb_x + 1, case_width / 2 + 2
         usb_relief = block((start + end) / 2, usb_y, usb_z - 6, end - start, 21, 12)
 
-    if min(vertex.Y - floor(vertex.Z) for vertex in gauge.Vertices()) < 3:
-        raise ValueError("USB-C overmold is too close to the desktop")
-
-    outline = rounded(0, (top + low) / 2, 0, case_width, top - low, max_depth, 5)
-    outer = outline.intersect(behind_floor(0)).intersect(rear_limit(LID))
+    outline = rounded(0, (top + low) / 2, 0, case_width, top - low, max_depth, 3.6)
+    outer = outline.intersect(above_floor(0)).intersect(rear_limit(LID))
     interior = rounded(
-        0, (top + low) / 2, FACE + 2.2,
-        case_width - 2 * WALL, top - low - 2 * WALL, max_depth, 3,
-    ).intersect(behind_floor(WALL))
-    if portrait:
-        # Recess the cable bay behind the display's lower bezel. A diagonal
-        # transition joins the bezel to the full-width front of the base.
-        def front_relief(offset):
-            return section(-span / 2, span, [
-                (low, -1), (bottom + offset + 3, -1),
-                (bottom + offset - 4, 2.5 + offset), (low, 2.5 + offset),
-            ])
-
-        outer = outer.cut(front_relief(0))
-        interior = interior.cut(front_relief(WALL))
+        0, (top + low) / 2, FACE + 1.5,
+        case_width - 2 * WALL, top - low - 2 * WALL, max_depth, 2.1,
+    ).intersect(above_floor(WALL))
 
     split = rear_limit(0)
     body = outer.intersect(split)
     cover = outer.cut(split)
-    seat = rounded(0, 0, FACE, width + 0.8, height + 0.8, 3, 2.9)
-    window = rounded(0, 0, -EPS, width - 2.6, height - 2.6, FACE + 2 * EPS, 1.5)
+    # The glass drops in from the front, leaving two side ledges for tape.
+    seat = rounded(0, 0, -EPS, width + 0.8, height + 0.8, FACE + EPS, 2.9)
+    window = rounded(0, 0, FACE - EPS, width - 2.2, height + 0.8, 3.5, 2.5)
     apertures, controls, endpoints, controls_for_print = make_controls(
         panel, portrait, case_width, top, floor
     )
-    bosses = [hole(x, y, FACE, 6.8, max_depth) for x, y in screws]
-    # Clip the bosses to the outside, including the desk and rear planes.
-    body = body.cut(interior, seat, window).fuse(
-        *(boss.intersect(body) for boss in bosses)
-    ).cut(
-        seat, window, usb_relief, *apertures,
-        *(hole(x, y, rear(y) - 9, 2.6, 12) for x, y in screws),
-    )
-    cover = cover.cut(
-        usb_relief,
-        *(hole(x, y, rear(y) - 2, 3.4, 8) for x, y in screws),
-        *(hole(x, y, rear(y) + 1.65, 6.4, 8) for x, y in screws),
-    )
+    # Screw into the cover's tabs from the sides. The shell stays clear so
+    # the glass can pass through the rear opening during assembly.
+    fastener_rows = (bottom + 18, top - 16)
+    tabs, through, pilot = [], [], []
+    for y in fastener_rows:
+        for side in (-1, 1):
+            x = side * case_width / 2
+            z = rear(y) - 4
+            tab = block(x - side * (WALL + 2.7), y, z - 2.8, 4.8, 7.5, 9)
+            tabs.append(tab.intersect(interior).intersect(outer))
+            start = cq.Vector(x + side * EPS, y, z)
+            direction = cq.Vector(-side, 0, 0)
+            through.append(cq.Solid.makeCylinder(1.15, WALL + 0.24, start, direction))
+            pilot.append(cq.Solid.makeCylinder(0.85, 5.7, start, direction))
+    body = body.cut(interior, seat, window, usb_relief, *apertures, *through)
+    cover = cover.fuse(*tabs).cut(usb_relief, *pilot)
 
     vent_rows = [top - 8 - i * 3.6 for i in range(3)]
     if not audio:
-        vent_rows += [lower_screws + i * 3.6 for i in range(3)]
+        vent_rows += [bottom + 17 + i * 3.6 for i in range(3)]
     vents = [on_cover(rounded(0, 0, -EPS, 31, 1.9, LID + 1, 0.9), y) for y in vent_rows]
     cover = cover.cut(*vents)
 
     if audio:
         # The mic lies inside the top wall, behind the display and facing up.
-        mic_z = 27
+        mic_z = 26
         mic_ports = [
             cq.Solid.makeCylinder(
                 0.8, WALL + 2 * EPS,
@@ -247,7 +241,7 @@ def make_case(panel, portrait, audio):
             raise ValueError("Top microphone space intersects the bezel")
         # The Nextion BOX Speaker's tabs are on a 36.6 mm pitch. Its own
         # acoustic enclosure faces the grille with a thin foam gasket.
-        speaker_y = bottom + (20 if portrait else 31)
+        speaker_y = bottom + (28 if portrait else 24)
         grill = [
             on_cover(hole(x, y, -EPS, 2.2, LID + 1), speaker_y)
             for x in range(-10, 11, 4) for y in range(-10, 11, 4)
@@ -274,7 +268,7 @@ def export(parts, gauge, controls, controls_for_print, panel, portrait, audio, o
     # Print the canted rear face flat on the build plate.
     printable = {
         "bezel": body,
-        "back": cover.rotate((0, 0, 0), (1, 0, 0), 180 + degrees(atan(TAPER))),
+        "back": cover.rotate((0, 0, 0), (1, 0, 0), 180 + degrees(atan(0.17 if portrait else 0.29))),
     }
     printable.update(controls_for_print)
     for name, part in printable.items():
@@ -304,7 +298,7 @@ def clearance(shape, board):
 
 def verify_fit(panel, portrait, parts, controls, gauge, step_directory):
     board = read_board(step_directory / f"{panel.name}.stp")
-    board = board.translate((-panel.step_center_x, 0, FACE + TAPE - panel.step_glass_z))
+    board = board.translate((-panel.step_center_x, 0, GLASS_Z - panel.step_glass_z))
     if portrait:
         board = board.rotate((0, 0, 0), (0, 0, 1), -90)
     for part in parts:

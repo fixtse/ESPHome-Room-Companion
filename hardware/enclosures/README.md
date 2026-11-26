@@ -1,10 +1,17 @@
 # Room Companion desktop enclosures
 
 Print a matching **bezel and base** and **back cover** for your panel. The
-base is built into the bezel and holds the display at a 16° lean. The printed
+base is built into the bezel and holds the display at a 12° lean. The printed
 power slider and BOOT and RESET buttons operate the original board controls.
-The audio versions keep the same front outline as the plain cases, with the
-mic facing up and the Nextion BOX Speaker firing through the rear grille.
+The glass sits nearly flush inside a narrow printed rim. The portrait shell
+has a shallower taper and a short cable pocket at the bottom. Audio variants
+use the same front outline, with extra room behind the top edge for the
+upward-facing mic and a rear grille for the Nextion BOX Speaker.
+
+The visible printed rim is about 2 mm wide along the sides and top. The
+portrait shell is 60.6 mm wide on the 2.8″ and 65.6 mm wide on the 3.5″.
+The corresponding desk depths are 42.4 and 44.2 mm for the plain cases,
+or 56.1 and 57.9 mm for the audio cases, excluding controls and cables.
 
 ![Eight Room Companion enclosure variants shown from the front and back](renders/overview.png)
 
@@ -41,12 +48,11 @@ shared by the audio and plain cases of the same panel and orientation.
 2. Test-fit the printed controls before mounting the board. Insert the two
    plungers and the slider from inside the shell, with the retaining flanges
    inside. Remove any burrs, especially between the two teeth of the slider.
-3. Test-fit the display through the back of the bezel and plug in your cable.
-   As you seat the display, line the slider's fork up with the board's power
-   tab. Check that the slider reaches both positions and both buttons click
-   and release. Apply about 0.25 mm of removable double-sided tape along the
-   bezel's inner lip, where it meets the black border of the glass. Keep the
-   active area free. Press only around the edge of the glass.
+3. Test-fit the display through the front of the bezel. Line the slider's
+   fork up with the board's power tab. Check that the slider reaches both
+   positions and both buttons click and release. Use 0.25 mm thick removable
+   double-sided tape on the two side ledges under the black glass border.
+   Press only around the edge of the glass.
 4. On an audio version, center the [Nextion Dual MIC Board](https://itead.cc/product/nextion-dual-mic-board/)
    inside the top wall, behind the display. The 48 × 14 mm mounting area is
    centered on the two grilles. Face both acoustic ports up toward the grilles
@@ -56,10 +62,11 @@ shared by the audio and plain cases of the same panel and orientation.
    Use two M2 × 6 mm thread-forming screws in the printed pilot holes.
    Check that the speaker seats against the gasket before tightening. Connect
    it to SPK and tuck the wires away from the cover rim and USB socket.
-5. In portrait, connect USB-C with the back cover open and route the lead
-   through the opening at the rear edge of the base. Seat the cover and
-   hand-tighten four M3 × 10 mm thread-forming screws in the printed bosses.
-   In landscape, plug in USB-C at the left side when facing the display.
+5. In portrait, connect a low-profile 90° USB-C plug with the back cover open
+   and fit the cable into the left-side notch from below. Seat the cover and
+   hand-tighten four M2 × 6 mm thread-forming screws through the sides into
+   the cover tabs. In landscape the USB-C plug inserts from the left side
+   when facing the display.
 6. Set the screen orientation in Room Companion.
 
 ## Access the board controls
@@ -77,20 +84,21 @@ Tilt the case back to reach underside controls in landscape. [2.8″ board contr
 
 ## USB-C clearance
 
-The portrait base has room for the straight plug below the board and a rear
-exit for the cable. The landscape shell has a 21 × 12 mm side opening. The
-glass extends about 1.9 mm past the socket on the 2.8″ and 7.4 mm on the 3.5″.
-Choose a straight plug that fits the tested CAD envelope, with a flexible
-lead that can turn toward the rear inside the portrait base.
+The **portrait** case takes a low-profile right-angle plug with its cable
+leaving to the left, parallel to the bottom edge of the display. The tested
+CAD envelope has a neck up to 12.5 × 5.5 mm between 1.5 and 5.5 mm from the
+socket face, an elbow up to 18 × 9 mm through 11.8 mm from the socket face,
+and a cable up to 4.4 mm in diameter. Check the molded shoulder and strain
+relief on your cable. [Portrait USB-C cutaway](renders/portrait-usb-detail.png)
 
-- **2.8″** — 18 × 10 mm plug body up to 31 mm long, starting 1.5 mm from
-  the socket face when seated.
-- **3.5″** — the plug neck can be up to 12.5 mm wide and 5.5 mm thick
-  between 1.5 and 5.5 mm from the socket face. The wider 18 × 10 mm
-  part of the plug can start 5.5 mm from the socket face. A plug with a
-  thick molded shoulder right behind the metal tip can hit the display.
+The **landscape** shell takes a straight plug through a 21 × 12 mm side
+opening. The glass extends about 1.9 mm past the socket on the 2.8″ and
+7.4 mm on the 3.5″.
 
-[Portrait clearance render with the nominal plug envelope](renders/portrait-usb-detail.png)
+- **2.8″** — 18 × 10 mm plug body up to 31 mm long, starting 1.5 mm from the
+  socket face when seated.
+- **3.5″** — neck up to 12.5 × 5.5 mm between 1.5 and 5.5 mm from the socket
+  face. The wider 18 × 10 mm plug body can start 5.5 mm from the socket face.
 
 ## CAD sources and validation
 
