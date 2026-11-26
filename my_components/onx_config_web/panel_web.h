@@ -1266,7 +1266,7 @@ static const char PANEL_JS[] = R"ONXPANEL(
    if(speeds.length&&y+rh<=bottomOf(l.ctl)+P(4))row({x:l.ctl.x,y,w:l.ctl.w,h:rh},'Fan speed',label(!speed||speed==='None'?speeds[0]:speed)+'  ›');
   };
   const buildCamera=(base,e,d,title,v)=>{
-   const on=['streaming','recording'].includes(d.state),hasMotion=['True','true','False','false'].includes(d.motion_detection),motionOn=['True','true'].includes(d.motion_detection);
+   const on=['streaming','recording','on'].includes(d.state),hasMotion=['True','true','False','false'].includes(d.motion_detection),motionOn=['True','true'].includes(d.motion_detection);
    const ptz=d.ptz||(slot.entity===e?slot.secondary:'');
    // Landscape: name on top, wide snapshot, button column(s) on the right (camera_layout).
    let l=base;if(!wide){const pad=P(16),rh=P(48),rows=ptz?2:1,ch=rows*rh+(rows-1)*P(8),top=pad+P(52),ctl={x:pad,y:H-pad-ch,w:W-2*pad,h:ch};l={head:{x:pad,y:pad,w:W-2*pad,h:P(48)},ctl,vis:{x:pad,y:top,w:W-2*pad,h:ctl.y-P(12)-top}}}if(wide){const pad=P(16),g=P(12),col=P(52),top=pad+P(44),cw=ptz?2*col+P(8):col,vis={x:pad,y:top,w:W-2*pad-cw-g,h:H-pad-top};l={head:{x:pad,y:pad,w:W-2*pad,h:P(48)},vis,ctl:{x:vis.x+vis.w+g,y:top,w:cw,h:vis.h}}}

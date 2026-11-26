@@ -2377,7 +2377,10 @@ script:
               (main_art || id(normal_device_detail_online)) && !id(screen_off_state) && !id(sleep_mode_state) &&
               !id(ui_presenter)->is_standby_active() && (cam || onx_media::has_playback(detail->state));
           const bool want_stream = playable && cam && id(normal_device_detail_active) && onx_panel_detail::active;
-          const std::string stream_url = want_stream ? onx_media::camera_stream_url(origin, detail->picture) : "";
+          std::string stream_url = want_stream ? onx_media::camera_stream_url(origin, detail->picture) : "";
+          if (!stream_url.empty() && onx_media::stream_failed_ms != 0 && millis() - onx_media::stream_failed_ms < 60000 &&
+              onx_media::same_camera(stream_url, onx_media::stream_failed_url))
+            stream_url.clear();  // Snapshots until the stream is worth retrying.
           const bool use_stream = !stream_url.empty();
           const std::string desired = !playable ? ""
               : use_stream ? stream_url
@@ -2387,8 +2390,11 @@ script:
           if (desired != onx_media::candidate_url) {
             onx_media::candidate_url = desired; onx_media::candidate_ms = now;
           }
+          // A camera snapshot in flight finishes (it keeps the frame on screen)
+          // instead of being cancelled, which would free the shown pixels.
           const bool stale_download = onx_media::downloading && !desired.empty() &&
-                                      desired != onx_media::requested_url && now - onx_media::candidate_ms >= 300;
+                                      desired != onx_media::requested_url && now - onx_media::candidate_ms >= 300 &&
+                                      !(cam && !id(media_cover_image)->is_streaming() && onx_media::same_camera(desired, onx_media::requested_url));
           if ((!playable || stale_download) && onx_media::downloading) {
             // Detach the LVGL source before release invalidates the pixel buffer.
             if (onx_media::detach_main_artwork) onx_media::detach_main_artwork();
@@ -2439,11 +2445,15 @@ script:
           onx_media::retry_at_ms = 0;
           onx_media::artwork_wait_reason.clear();
           id(media_cover_image)->set_cache_entries(4, 512 * 1024);
-          // The detail's artwork image still holds the old buffer; detach it.
-          if (onx_media::detach_main_artwork) onx_media::detach_main_artwork();
-          lv_image_cache_drop(id(media_cover_image)->get_lv_image_dsc());
-          lv_image_header_cache_drop(id(media_cover_image)->get_lv_image_dsc());
-          onx_media::ready_url.clear();
+          // A camera keeps its last frame on screen: the image swaps its pixels
+          // only once the next frame has decoded (as streaming frames do).
+          if (!(cam && onx_media::same_camera(onx_media::ready_url, desired))) {
+            // The detail's artwork image still holds the old buffer; detach it.
+            if (onx_media::detach_main_artwork) onx_media::detach_main_artwork();
+            lv_image_cache_drop(id(media_cover_image)->get_lv_image_dsc());
+            lv_image_header_cache_drop(id(media_cover_image)->get_lv_image_dsc());
+            onx_media::ready_url.clear();
+          }
           onx_media::requested_url = desired;
           onx_media::requested_ms = now;
           onx_media::downloading = true;

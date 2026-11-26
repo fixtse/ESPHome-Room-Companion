@@ -153,8 +153,10 @@ void OnlineImage::update() {
   // Home Assistant camera snapshots can take seconds (e.g. ONVIF falling back to
   // FFmpeg); give their headers longer, still inside the 13 s artwork watchdog.
   const bool slow_snapshot=!stream_mode_ && url_.find("/api/camera_proxy/")!=std::string::npos;
-  const uint32_t read_timeout=stream_mode_?5000:slow_snapshot?8000:2500;
-  const uint32_t budget=slow_snapshot?11000:is_https?10000:7000;
+  // HA starts a camera's MJPEG stream through FFmpeg too, which can take seconds.
+  const bool camera_stream=stream_mode_ && url_.find("/api/camera_proxy_stream/")!=std::string::npos;
+  const uint32_t read_timeout=camera_stream?9000:stream_mode_?5000:slow_snapshot?8000:2500;
+  const uint32_t budget=camera_stream?12000:slow_snapshot?11000:is_https?10000:7000;
   auto *work=new(std::nothrow) Work{this,url_,{},generation_,open_timeout,read_timeout,budget,allow_redirects_,stream_mode_};
   if(!work) { last_error_="Request allocation failed";failed_.call(); return; }
   if(parent_) {

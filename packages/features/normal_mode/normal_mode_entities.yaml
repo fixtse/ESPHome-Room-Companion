@@ -1178,6 +1178,9 @@ image:
             id(entity_icon_downloader)->set_artwork_busy(false);
             onx_media::last_artwork_end_ms = millis();
             onx_media::artwork_refresh_pending = true;
+            // A camera's next frame replaced the pixels under the shown image.
+            lv_image_cache_drop(id(media_cover_image)->get_lv_image_dsc());
+            if (onx_panel_detail::main_artwork != nullptr) lv_obj_invalidate(onx_panel_detail::main_artwork);
             onx_runtime::record("artwork_ready");
             // OnlineImage still owns its connection until this callback returns.
             // Refresh only on the next interval, after its cleanup has finished.
@@ -1186,8 +1189,13 @@ image:
         - lambda: |-
             onx_media::downloading = false;
             id(entity_icon_downloader)->set_artwork_busy(false);
-            onx_media::ready_url.clear();
             const uint32_t now = millis();
+            if (onx_media::requested_url.find("/api/camera_proxy_stream/") != std::string::npos) {
+              onx_media::stream_failed_url = onx_media::requested_url;
+              onx_media::stream_failed_ms = now ? now : 1;
+            }
+            // A failed camera refresh keeps showing the last frame.
+            if (!onx_media::same_camera(onx_media::ready_url, onx_media::requested_url)) onx_media::ready_url.clear();
             onx_media::last_artwork_end_ms = now;
             onx_media::stat_end(false, now);
             { const auto &f = id(media_cover_image)->last_stats(); auto &d = onx_media::last_fetch;

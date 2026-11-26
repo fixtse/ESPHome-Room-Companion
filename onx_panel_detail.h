@@ -3532,7 +3532,9 @@ inline Layout camera_layout(const Layout &base, bool ptz) {
 __attribute__((noinline)) inline void build_camera(const Layout &base, const std::string &e, const EntityDetailState &d, const std::string &title) {
   onx_media::main_entity = e;
   const Layout l = camera_layout(base, !camera_ptz_entity(e).empty());
-  const bool is_on = d.state == "streaming" || d.state == "recording";
+  // Integrations such as yi-hack report on/off rather than idle/streaming.
+  const bool on_off_states = d.state == "on" || d.state == "off";
+  const bool is_on = d.state == "streaming" || d.state == "recording" || d.state == "on";
   const bool has_motion = d.motion_detection == "True" || d.motion_detection == "true" ||
                           d.motion_detection == "False" || d.motion_detection == "false";
   const bool motion_on = d.motion_detection == "True" || d.motion_detection == "true";
@@ -3561,8 +3563,8 @@ __attribute__((noinline)) inline void build_camera(const Layout &base, const std
   std::vector<Btn> btns;
   btns.push_back({LV_SYMBOL_REFRESH, false, []() { if (refresh_camera) refresh_camera(); toast("Refreshing snapshot"); }});
   if (d.features & 1) {
-    btns.push_back({LV_SYMBOL_POWER, is_on, [e, is_on]() {
-      request(e, is_on ? "camera.turn_off" : "camera.turn_on", "", is_on ? "idle" : "streaming", "state");
+    btns.push_back({LV_SYMBOL_POWER, is_on, [e, is_on, on_off_states]() {
+      request(e, is_on ? "camera.turn_off" : "camera.turn_on", "", on_off_states ? (is_on ? "off" : "on") : is_on ? "idle" : "streaming", "state");
       toast(is_on ? "Turning camera off" : "Turning camera on");
     }});
   }

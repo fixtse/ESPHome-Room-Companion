@@ -271,5 +271,23 @@ inline std::string camera_stream_url(const std::string &origin, const std::strin
   url.replace(pos, 18, "/api/camera_proxy_stream/");
   return url;
 }
+// The camera entity a Home Assistant camera_proxy(_stream) URL points at, or "".
+inline std::string camera_of_url(const std::string &url) {
+  size_t pos = url.find("/api/camera_proxy/");
+  size_t len = 18;
+  if (pos == std::string::npos) { pos = url.find("/api/camera_proxy_stream/"); len = 25; }
+  if (pos == std::string::npos) return "";
+  const size_t start = pos + len, end = url.find_first_of("?&#/", start);
+  return url.substr(start, end == std::string::npos ? std::string::npos : end - start);
+}
+// True when both URLs show the same camera: its last frame stays on screen
+// while the next snapshot or stream loads.
+inline bool same_camera(const std::string &a, const std::string &b) {
+  const auto ca = camera_of_url(a);
+  return !ca.empty() && ca == camera_of_url(b);
+}
+// A failed MJPEG stream falls back to snapshots for a minute.
+inline std::string stream_failed_url;
+inline uint32_t stream_failed_ms = 0;
 
 }
