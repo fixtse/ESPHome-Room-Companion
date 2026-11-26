@@ -103,6 +103,8 @@ script:
     then:
       - lambda: |-
           id(ui_presenter)->notify_user_activity();
+          // A full-screen camera closes first, back to its screen.
+          if (onx_panel_detail::live_fullscreen) { onx_panel_detail::exit_live_fullscreen(); return; }
           if (onx_notification_ui::detail_id != 0) { onx_notification_ui::close_detail(); return; }
           if (onx_notification_ui::panel_open) { onx_notification_ui::close_panel(); return; }
           if (onx_panel_detail::timers.overlay) { id(timer_close).execute(); return; }

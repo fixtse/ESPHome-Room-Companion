@@ -41,6 +41,9 @@ struct StreamSettings {
   // Camera sound: the panel's speaker entity in Home Assistant ("" = the
   // default media_player.<panel name>_speaker).
   std::string speaker_entity;
+  // Full-screen camera on a portrait screen: "90" (clockwise), "270"
+  // (counter-clockwise) or "0" (not turned). Only the stream page turns.
+  std::string camera_rotation{"90"};
   std::string camera_server;
   std::string camera_streams;
 };
@@ -108,6 +111,14 @@ class RoomPanel : public Component {
     audio_play_ = std::move(play);
     audio_stop_ = std::move(stop);
   }
+  // Full screen: the stream renders the camera over the whole screen (turned
+  // for a portrait screen), shown by the native UI's overlay.
+  void set_camera_fullscreen(bool on);
+  // Called when the stream stops while full screen (the UI closes its overlay).
+  void set_camera_fullscreen_exit(std::function<void()> exit) { fullscreen_exit_ = std::move(exit); }
+  bool camera_fullscreen() const { return camera_fullscreen_; }
+  // Opens the camera page again (a fresh connection), keeping the snapshot.
+  void reload_camera();
   // -1: no sound for this camera, 0: off, 1: on.
   int camera_audio(const std::string &entity) const;
   void toggle_camera_audio(const std::string &entity);
@@ -132,6 +143,10 @@ class RoomPanel : public Component {
   void on_release_();
 
  protected:
+  struct CameraRequest {
+    std::string entity;
+    int x{0}, y{0}, w{0}, h{0};
+  };
   void load_();
   bool save_();
   std::string settings_json_() const;
@@ -149,6 +164,8 @@ class RoomPanel : public Component {
   std::string webrtc_link_id_(const std::string &entity) const;
   std::string camera_audio_url_(const std::string &entity) const;
   std::string default_speaker_entity_() const;
+  CameraRequest shown_rect_() const;
+  int camera_turn_() const;
   void stop_camera_audio_();
 
   lvgl::LvglComponent *lvgl_{nullptr};
@@ -187,12 +204,11 @@ class RoomPanel : public Component {
   std::function<bool(const std::string &, const std::string &)> audio_play_;
   std::function<void()> audio_stop_;
   std::string audio_entity_;
+  bool camera_fullscreen_{false};
+  std::function<void()> fullscreen_exit_;
   std::string link_for_url_;
   uint32_t link_ms_{0};
-  struct CameraRequest {
-    std::string entity;
-    int x{0}, y{0}, w{0}, h{0};
-  } camera_request_;
+  CameraRequest camera_request_;
   std::function<bool()> camera_visible_;
   std::function<void(const lv_image_dsc_t *)> camera_frame_cb_;
   bool camera_on_{false};

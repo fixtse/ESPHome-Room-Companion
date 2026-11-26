@@ -31,6 +31,8 @@ constexpr char CAMERA_PAGE[] =
     "<iframe id=f allow=autoplay scrolling=no></iframe><script>"
     "const q=new URLSearchParams(location.search),f=document.getElementById('f'),u=q.get('u')||'';"
     "for(const[k,p]of[['x','left'],['y','top'],['w','width'],['h','height']]){const v=parseFloat(q.get(k));if(isFinite(v))f.style[p]=v+'%'}"
+    // r: full screen on a portrait screen, the player turned by r degrees.
+    "const r=parseFloat(q.get('r'));if(r){Object.assign(f.style,{left:'50%',top:'50%',width:'100vh',height:'100vw',transform:'translate(-50%,-50%) rotate('+r+'deg)'})}"
     "if(/^https?:\\/\\//i.test(u))f.src=u;</script>";
 class RequestTrace {
  public:

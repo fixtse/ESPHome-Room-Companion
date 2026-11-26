@@ -84,24 +84,91 @@ inline lv_obj_t *live_image = nullptr;
 // Camera sound for a live camera: -1 none, 0 off, 1 on; toggled by a button.
 inline std::function<int(const std::string &)> live_audio;
 inline std::function<void(const std::string &)> toggle_live_audio;
-// Shows a new live frame over the snapshot (nullptr hides it).
+// Full screen (tap the live picture): an overlay on the top layer that
+// survives detail rebuilds; the stream page itself turns the video for a
+// portrait screen, so the device orientation never changes.
+inline bool live_fullscreen = false;
+inline std::string live_full_entity;
+inline bool live_full_orphan = false;
+inline lv_obj_t *live_full = nullptr, *live_full_image = nullptr, *live_full_label = nullptr;
+inline std::function<void(bool)> live_camera_fullscreen;
+// Reloads the live stream (the refresh button of a live camera).
+inline std::function<void()> reload_live_camera;
+// Shows a new live frame over the snapshot, or full screen (nullptr hides it).
 inline void show_live_frame(const lv_image_dsc_t *dsc) {
-  onx_media::live_camera_showing = dsc != nullptr && live_image != nullptr;
-  if (live_image == nullptr) return;
+  lv_obj_t *target = live_fullscreen ? live_full_image : live_image;
+  onx_media::live_camera_showing = dsc != nullptr && target != nullptr;
+  if (target == nullptr) return;
   if (dsc == nullptr) {
-    lv_obj_add_flag(live_image, LV_OBJ_FLAG_HIDDEN);
-    lv_image_set_src(live_image, static_cast<const void *>(nullptr));
+    lv_obj_add_flag(target, LV_OBJ_FLAG_HIDDEN);
+    lv_image_set_src(target, static_cast<const void *>(nullptr));
+    if (live_fullscreen && live_full_label) lv_obj_remove_flag(live_full_label, LV_OBJ_FLAG_HIDDEN);
     return;
   }
   // Same descriptor, new pixels: drop what the image cache remembers.
   lv_image_cache_drop(dsc);
-  lv_image_set_src(live_image, dsc);
-  if (lv_obj_has_flag(live_image, LV_OBJ_FLAG_HIDDEN)) {
-    lv_obj_remove_flag(live_image, LV_OBJ_FLAG_HIDDEN);
-    // Above the placeholder icon and caption drawn over an empty frame.
-    lv_obj_move_foreground(lv_obj_get_parent(live_image));
+  lv_image_set_src(target, dsc);
+  if (lv_obj_has_flag(target, LV_OBJ_FLAG_HIDDEN)) {
+    lv_obj_remove_flag(target, LV_OBJ_FLAG_HIDDEN);
+    if (live_fullscreen) {
+      if (live_full_label) lv_obj_add_flag(live_full_label, LV_OBJ_FLAG_HIDDEN);
+    } else {
+      // Above the placeholder icon and caption drawn over an empty frame.
+      lv_obj_move_foreground(lv_obj_get_parent(target));
+    }
   }
-  lv_obj_invalidate(live_image);
+  lv_obj_invalidate(target);
+}
+inline void exit_live_fullscreen() {
+  if (!live_fullscreen) return;
+  live_fullscreen = false;
+  live_full_orphan = false;
+  live_full_entity.clear();
+  if (live_full) {
+    lv_image_set_src(live_full_image, static_cast<const void *>(nullptr));
+    lv_obj_add_flag(live_full, LV_OBJ_FLAG_HIDDEN);
+    auto &t = onx_panel_ui::touch_targets;
+    t.erase(std::remove(t.begin(), t.end(), live_full), t.end());
+  }
+  onx_media::live_camera_showing = false;
+  if (live_camera_fullscreen) live_camera_fullscreen(false);
+  onx_panel_ui::request_render();
+}
+inline void enter_live_fullscreen(const std::string &entity) {
+  if (live_fullscreen || live_image == nullptr) return;
+  if (live_full == nullptr) {
+    live_full = lv_obj_create(lv_layer_top());
+    lv_obj_remove_flag(live_full, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_add_flag(live_full, LV_OBJ_FLAG_CLICKABLE);
+    lv_obj_set_style_bg_color(live_full, lv_color_black(), 0);
+    lv_obj_set_style_bg_opa(live_full, LV_OPA_COVER, 0);
+    lv_obj_set_style_border_width(live_full, 0, 0);
+    lv_obj_set_style_radius(live_full, 0, 0);
+    lv_obj_set_style_pad_all(live_full, 0, 0);
+    lv_obj_add_event_cb(live_full, [](lv_event_t *) { exit_live_fullscreen(); }, LV_EVENT_CLICKED, nullptr);
+    live_full_image = lv_image_create(live_full);
+    lv_obj_remove_flag(live_full_image, LV_OBJ_FLAG_CLICKABLE);
+    lv_obj_set_pos(live_full_image, 0, 0);
+    live_full_label = lv_label_create(live_full);
+    lv_label_set_text(live_full_label, "Starting live view");
+    lv_obj_set_style_text_color(live_full_label, lv_color_hex(0xB0B0B0), 0);
+    lv_obj_center(live_full_label);
+  }
+  lv_obj_set_pos(live_full, 0, 0);
+  lv_obj_set_size(live_full, onx_panel_ui::width, onx_panel_ui::height);
+  lv_obj_add_flag(live_full_image, LV_OBJ_FLAG_HIDDEN);
+  lv_obj_remove_flag(live_full_label, LV_OBJ_FLAG_HIDDEN);
+  lv_obj_remove_flag(live_full, LV_OBJ_FLAG_HIDDEN);
+  lv_obj_move_foreground(live_full);
+  onx_panel_ui::touch_targets.push_back(live_full);
+  // The frame's picture stops; the full-screen one takes the frames.
+  lv_obj_add_flag(live_image, LV_OBJ_FLAG_HIDDEN);
+  lv_image_set_src(live_image, static_cast<const void *>(nullptr));
+  live_fullscreen = true;
+  live_full_entity = entity;
+  live_full_orphan = false;
+  if (live_camera_fullscreen) live_camera_fullscreen(true);
+  onx_panel_ui::request_render();
 }
 inline std::function<void(const std::string &, const std::string &, const std::string &)> send_ptz;
 
@@ -3566,6 +3633,9 @@ __attribute__((noinline)) inline void build_camera(const Layout &base, const std
   const bool has_motion = d.motion_detection == "True" || d.motion_detection == "true" ||
                           d.motion_detection == "False" || d.motion_detection == "false";
   const bool motion_on = d.motion_detection == "True" || d.motion_detection == "true";
+  // Switched off (on/off integrations): no picture or stream, just a notice.
+  // Turning it back on rebuilds this screen, which opens the stream afresh.
+  const bool is_off = d.state == "off";
   const std::string ptz = camera_ptz_entity(e);
   // The power button already shows on/off; the line keeps motion and PTZ only.
   std::string context;
@@ -3580,15 +3650,22 @@ __attribute__((noinline)) inline void build_camera(const Layout &base, const std
   auto *frame = box(root, ax, ay, b.w, b.h, CONTROL(), P(14));
   lv_obj_set_style_clip_corner(frame, true, 0);
   interactive(frame, false);
-  on(frame, LV_EVENT_CLICKED, [](lv_event_t *) { if (allowed() && refresh_camera) refresh_camera(); });
-  if (source) {
+  // A live camera opens full screen; otherwise a tap refreshes the snapshot.
+  on(frame, LV_EVENT_CLICKED, [e, is_off](lv_event_t *) {
+    if (!allowed() || is_off) return;
+    if (live_image != nullptr) enter_live_fullscreen(e);
+    else if (refresh_camera) refresh_camera();
+  });
+  if (source && !is_off) {
     place_artwork(frame, source, b, true);
   } else {
     icon(root, e, ax + b.w / 2, ay + b.h / 2 - P(10), std::min(b.h * 38 / 100, P(56)), is_on ? accent() : SOFT_TEXT());
-    text(root, "Snapshot", fonts.small, MUTED(), ax + P(8), ay + b.h / 2 + P(22), b.w - P(16), LV_TEXT_ALIGN_CENTER);
+    text(root, is_off ? "Camera is off" : "Snapshot", is_off ? fonts.body : fonts.small, MUTED(), ax + P(8),
+         ay + b.h / 2 + P(22), b.w - P(16), LV_TEXT_ALIGN_CENTER);
   }
+  if (is_off && live_fullscreen && live_full_entity == e) exit_live_fullscreen();
   // Live view: the stream's frames cover the snapshot once the video plays.
-  if (live_camera) {
+  if (live_camera && !is_off) {
     lv_obj_update_layout(frame);
     lv_area_t area;
     lv_obj_get_coords(frame, &area);
@@ -3598,12 +3675,22 @@ __attribute__((noinline)) inline void build_camera(const Layout &base, const std
       lv_obj_remove_flag(live_image, LV_OBJ_FLAG_CLICKABLE);
       lv_obj_add_flag(live_image, LV_OBJ_FLAG_HIDDEN);
       lv_obj_set_pos(live_image, 0, 0);
-      show_live_frame(live_camera_frame ? live_camera_frame() : nullptr);
+      if (live_fullscreen && live_full_entity == e) live_full_orphan = false;  // Rebuilt under the overlay.
+      else show_live_frame(live_camera_frame ? live_camera_frame() : nullptr);
     }
   }
   struct Btn { const char *symbol; bool hot; std::function<void()> fn; };
   std::vector<Btn> btns;
-  btns.push_back({LV_SYMBOL_REFRESH, false, []() { if (refresh_camera) refresh_camera(); toast("Refreshing snapshot"); }});
+  // A live camera reloads its stream (no snapshot); others refresh the snapshot.
+  btns.push_back({LV_SYMBOL_REFRESH, false, []() {
+    if (live_image != nullptr && reload_live_camera) {
+      reload_live_camera();
+      toast("Reloading live view");
+    } else {
+      if (refresh_camera) refresh_camera();
+      toast("Refreshing snapshot");
+    }
+  }});
   if (d.features & 1) {
     btns.push_back({LV_SYMBOL_POWER, is_on, [e, is_on, on_off_states]() {
       request(e, is_on ? "camera.turn_off" : "camera.turn_on", "", on_off_states ? (is_on ? "off" : "on") : is_on ? "idle" : "streaming", "state");
@@ -4905,8 +4992,15 @@ inline void clear(bool invalidate_root) {
   // unless the next build asks for it again.
   live_image = nullptr;
   onx_media::live_camera_entity.clear();
-  onx_media::live_camera_showing = false;
+  if (!live_fullscreen) onx_media::live_camera_showing = false;
   if (live_camera) live_camera("", 0, 0, 0, 0);
+  // Full screen stays through a rebuild of the same camera; anything else
+  // (another screen, standby) closes it once this build has finished.
+  if (live_fullscreen) {
+    live_full_orphan = true;
+    lv_timer_t *check = lv_timer_create([](lv_timer_t *) { if (live_full_orphan) exit_live_fullscreen(); }, 0, nullptr);
+    lv_timer_set_repeat_count(check, 1);
+  }
   main_mode = false;
   auto &t = onx_panel_ui::touch_targets;
   for (auto *o : targets) t.erase(std::remove(t.begin(), t.end(), o), t.end());

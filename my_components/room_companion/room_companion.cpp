@@ -239,6 +239,8 @@ void RoomPanel::load_() {
   // Settings from 2026.11.1.20 had only the go2rtc address.
   const std::string camera_source = doc["camera_source"] | std::string(settings_.camera_server.empty() ? "off" : "go2rtc");
   if (valid_camera_source(camera_source)) settings_.camera_source = camera_source;
+  const std::string rotation = doc["camera_rotation"] | std::string("90");
+  if (rotation == "0" || rotation == "90" || rotation == "270") settings_.camera_rotation = rotation;
   const std::string speaker = doc["speaker_entity"] | std::string();
   if (valid_speaker_entity(speaker)) settings_.speaker_entity = speaker;
   if (valid_camera_streams(camera_streams)) settings_.camera_streams = camera_streams;
@@ -260,6 +262,7 @@ std::string RoomPanel::settings_json_() const {
     root["camera_server"] = settings_.camera_server;
     root["camera_streams"] = settings_.camera_streams;
     root["speaker_entity"] = settings_.speaker_entity;
+    root["camera_rotation"] = settings_.camera_rotation;
   });
 }
 
@@ -514,8 +517,39 @@ bool RoomPanel::camera_view(const std::string &entity, int x, int y, int w, int 
   return true;
 }
 
+// ---------------------------------------------------------------- full screen
+void RoomPanel::set_camera_fullscreen(bool on) {
+  if (on == camera_fullscreen_) return;
+  camera_fullscreen_ = on;  // The next loop opens the page for the new size.
+  ESP_LOGI(TAG, "Live camera %s", on ? "full screen" : "in its frame");
+}
+
+void RoomPanel::reload_camera() {
+  if (!camera_on_ || stream_ == nullptr) return;
+  // The server skips an address it already shows: leave it, then reopen it
+  // (registering a WebRTC Camera link again).
+  if (camera_frames_ >= CAMERA_SHOW_AFTER_FRAMES && camera_frame_cb_) camera_frame_cb_(nullptr);
+  camera_frames_ = 0;
+  stream_->open_url("about:blank");
+  camera_url_.clear();
+  link_for_url_.clear();
+  ESP_LOGI(TAG, "Live camera reloading");
+}
+
+RoomPanel::CameraRequest RoomPanel::shown_rect_() const {
+  if (!camera_fullscreen_ || stream_ == nullptr) return camera_request_;
+  return {camera_request_.entity, 0, 0, stream_->frame_width(), stream_->frame_height()};
+}
+
+// Degrees the stream page turns the video: full screen on a portrait screen.
+int RoomPanel::camera_turn_() const {
+  if (!camera_fullscreen_ || stream_ == nullptr || stream_->frame_height() <= stream_->frame_width()) return 0;
+  return std::atoi(settings_.camera_rotation.c_str());
+}
+
 std::string RoomPanel::camera_page_url(const std::string &entity) const {
-  const auto &r = camera_request_;
+  const CameraRequest r = shown_rect_();
+  const int turn = camera_turn_();
   const int fw = stream_ != nullptr ? stream_->frame_width() : 0, fh = stream_ != nullptr ? stream_->frame_height() : 0;
   const std::string source = camera_source_(entity);
   if (source.empty() || fw <= 0 || fh <= 0 || r.x < 0 || r.y < 0 || r.x + r.w > fw || r.y + r.h > fh) return "";
@@ -525,11 +559,17 @@ std::string RoomPanel::camera_page_url(const std::string &entity) const {
     // so the server opens the embed page itself and the card's style option
     // places the player: inside its shadow root, :host with !important wins
     // over the page's 100% size.
-    char style[200];
-    snprintf(style, sizeof(style),
-             ":host{position:fixed!important;left:%.3f%%!important;top:%.3f%%!important;width:%.3f%%!important;"
-             "height:%.3f%%!important}.header{display:none}",
-             100.0 * r.x / fw, 100.0 * r.y / fh, 100.0 * r.w / fw, 100.0 * r.h / fh);
+    char style[320];
+    if (turn)
+      snprintf(style, sizeof(style),
+               ":host{position:fixed!important;left:50%%!important;top:50%%!important;width:100vh!important;"
+               "height:100vw!important;transform:translate(-50%%,-50%%) rotate(%ddeg)!important}.header{display:none}video::-webkit-media-controls{display:none!important}",
+               turn);
+    else
+      snprintf(style, sizeof(style),
+               ":host{position:fixed!important;left:%.3f%%!important;top:%.3f%%!important;width:%.3f%%!important;"
+               "height:%.3f%%!important}.header{display:none}video::-webkit-media-controls{display:none!important}",
+               100.0 * r.x / fw, 100.0 * r.y / fh, 100.0 * r.w / fw, 100.0 * r.h / fh);
     return source + "&style=" + percent_encode(style);
   }
   if (wifi::global_wifi_component == nullptr) return "";
@@ -544,8 +584,8 @@ std::string RoomPanel::camera_page_url(const std::string &entity) const {
   // The panel serves the page (/panel/camera): the server's browser lets a
   // page on the local network embed go2rtc, but not a data: URL. The frame
   // is placed in percent of the screen, so the stream zoom does not matter.
-  snprintf(rect, sizeof(rect), "&x=%.3f&y=%.3f&w=%.3f&h=%.3f", 100.0 * r.x / fw, 100.0 * r.y / fh, 100.0 * r.w / fw,
-           100.0 * r.h / fh);
+  snprintf(rect, sizeof(rect), "&x=%.3f&y=%.3f&w=%.3f&h=%.3f&r=%d", 100.0 * r.x / fw, 100.0 * r.y / fh,
+           100.0 * r.w / fw, 100.0 * r.h / fh, turn);
   return std::string("http://") + address + "/panel/camera?u=" + percent_encode(source) + rect;
 }
 
@@ -589,7 +629,7 @@ void RoomPanel::update_camera_(bool wifi_ok) {
     ESP_LOGI(TAG, "Live camera: %s", camera_request_.entity.c_str());
     camera_url_ = url;
     camera_opened_ms_ = millis();
-    camera_shown_ = camera_request_;
+    camera_shown_ = shown_rect_();
     if (camera_frames_ >= CAMERA_SHOW_AFTER_FRAMES && camera_frame_cb_) camera_frame_cb_(nullptr);
     camera_frames_ = 0;
   }
@@ -602,7 +642,8 @@ void RoomPanel::update_camera_(bool wifi_ok) {
   if (pixels == nullptr) return;
   // Frames of the previous page do not count. The server reports the page it
   // shows; if that never matches (an address it rewrote), go by time.
-  const bool on_page = stream_->get_current_url() == camera_url_ || millis() - camera_opened_ms_ > CAMERA_PAGE_TIMEOUT_MS;
+  const bool on_page = !camera_url_.empty() && (stream_->get_current_url() == camera_url_ ||
+                                                 millis() - camera_opened_ms_ > CAMERA_PAGE_TIMEOUT_MS);
   if (camera_frames_ < CAMERA_SHOW_AFTER_FRAMES && on_page) ++camera_frames_;
   if (camera_frames_ < CAMERA_SHOW_AFTER_FRAMES) return;
   const int fw = stream_->frame_width();
@@ -631,6 +672,10 @@ void RoomPanel::stop_camera_() {
   camera_url_.clear();
   link_for_url_.clear();
   camera_frames_ = 0;
+  if (camera_fullscreen_) {
+    camera_fullscreen_ = false;
+    if (fullscreen_exit_) fullscreen_exit_();
+  }
   ESP_LOGI(TAG, "Live camera stopped");
   // Ends the camera stream in the server's browser; the dashboard (when set)
   // loads in its place, ready for the next time it opens.
@@ -658,6 +703,7 @@ std::string RoomPanel::state_json_() const {
     root["camera_server"] = settings_.camera_server;
     root["camera_streams"] = settings_.camera_streams;
     root["speaker_entity"] = settings_.speaker_entity;
+    root["camera_rotation"] = settings_.camera_rotation;
     root["default_speaker_entity"] = audio_play_ ? default_speaker_entity_() : std::string();
     // Lets the settings page find this panel's speaker in Home Assistant.
     uint8_t mac[6];
@@ -685,6 +731,9 @@ std::string RoomPanel::handle_web(const std::string &op, const std::string &data
     return "{\"error\":\"Toolbar position must be left or right\"}";
   next.camera_source = doc["camera_source"] | settings_.camera_source;
   if (!valid_camera_source(next.camera_source)) return "{\"error\":\"Unknown camera source\"}";
+  next.camera_rotation = doc["camera_rotation"] | settings_.camera_rotation;
+  if (next.camera_rotation != "0" && next.camera_rotation != "90" && next.camera_rotation != "270")
+    return "{\"error\":\"Full-screen rotation must be 0, 90 or 270\"}";
   next.speaker_entity = trim(doc["speaker_entity"] | settings_.speaker_entity);
   if (!valid_speaker_entity(next.speaker_entity))
     return "{\"error\":\"Panel speaker must be a media_player entity, for example media_player.onx3248g035_speaker\"}";

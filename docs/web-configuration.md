@@ -263,7 +263,8 @@ the same tab. Choose a **Camera source**:
 
 **Other stream names** maps a camera to a different stream name, an `rtsp://`
 address or a page to show instead. On panels with a speaker, the camera screen
-gets a speaker button for the camera's sound; set **Panel speaker in Home
+gets a speaker button for the camera's sound. **Full screen** chooses which way
+the video turns to fill a portrait screen when you tap the live picture; set **Panel speaker in Home
 Assistant** only if you renamed the panel's Speaker entity.
 
 [Live cameras setup and requirements](room-companion/dashboard-stream.md#live-cameras)

@@ -140,6 +140,19 @@ Under **Other stream names**, a line per camera can give a go2rtc stream name
 full page address (`camera.garage=http://…`) to show in the camera frame
 instead.
 
+### Full screen and the camera switched off
+
+Tap the live picture to fill the screen; tap again or swipe back to return.
+On a portrait screen the stream page turns the video (clockwise by default;
+**Full screen** under Live cameras sets the direction or keeps it upright), so
+a landscape camera fills the screen while the panel keeps its orientation. Full
+screen sends the whole screen as video, so it updates less often than the
+camera frame (the panel decodes and draws a full screen per frame).
+
+A camera that reports `off` shows **Camera is off** instead of a picture and
+opens no stream; turning it on opens the stream again. On a live camera the
+refresh button reloads the stream rather than the snapshot.
+
 ### Camera sound
 
 Panels with a speaker (not the Lite builds) show a speaker button on a live

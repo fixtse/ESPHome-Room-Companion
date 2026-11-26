@@ -1918,6 +1918,11 @@ static const char PANEL_JS[] = R"ONXPANEL(
   '<label class="field" data-camera-source="webrtc go2rtc">Other stream names (optional)<textarea id="dash-camera-streams" rows="3" maxlength="1024" spellcheck="false" '+
   'placeholder="camera.porch=porch_hd&#10;camera.shed=rtsp://192.168.1.30/stream1&#10;camera.garage=http://192.168.1.20/live.html"></textarea></label>'+
   '<p class="hint" data-camera-source="webrtc go2rtc">One per line: <code>camera.entity=</code> a go2rtc stream name, an <code>rtsp://</code> address, or a full page address to show instead.</p>'+
+  '<label class="field" data-camera-source="webrtc go2rtc">Full screen (tap the live picture)<select id="dash-camera-rotation">'+
+  '<option value="90">Turn the video clockwise (portrait screens)</option>'+
+  '<option value="270">Turn the video counter-clockwise (portrait screens)</option>'+
+  '<option value="0">Don’t turn the video</option></select></label>'+
+  '<p class="hint" data-camera-source="webrtc go2rtc">Only the video turns, to fill a portrait screen with a landscape camera; the panel keeps its orientation. Tap again or swipe back to close.</p>'+
   '<div id="dash-camera-sound" data-camera-source="webrtc go2rtc"><label class="field">Panel speaker in Home Assistant (for camera sound)<input id="dash-speaker-entity" maxlength="128" autocomplete="off" spellcheck="false"></label>'+
   '<p class="hint">The speaker button on a camera screen asks Home Assistant to play the camera’s sound (go2rtc’s RTSP output, port 8554) on this panel. '+
   'Found automatically when this browser is signed in to Home Assistant (Home Assistant tab); otherwise enter the panel’s Speaker entity. The sound runs a second or two behind the picture.</p></div></fieldset>'+
@@ -1966,6 +1971,7 @@ static const char PANEL_JS[] = R"ONXPANEL(
   $('dash-server').value=state.server||'';$('dash-url').value=state.url||'';$('dash-scale').value=state.scale||1;
   $('dash-camera-source').value=state.camera_source||(state.camera_server?'go2rtc':'off');showCameraSource();
   $('dash-camera-server').value=state.camera_server||'';
+  $('dash-camera-rotation').value=state.camera_rotation||'90';
   $('dash-speaker-entity').value=state.speaker_entity||'';$('dash-speaker-entity').placeholder=state.default_speaker_entity||'media_player.panel_speaker';
   $('dash-camera-sound').dataset.noSpeaker=state.default_speaker_entity?'':'1';showCameraSource();$('dash-camera-streams').value=(state.camera_streams||'').replace(/\s*,\s*/g,'\n');
 
@@ -2001,7 +2007,7 @@ static const char PANEL_JS[] = R"ONXPANEL(
   const button=form.querySelector('button');button.disabled=true;
   try{
    show(await rpc({op:'panel_save',data:JSON.stringify({server:$('dash-server').value.trim(),url:$('dash-url').value.trim(),scale:parseFloat($('dash-scale').value)||1,
-    camera_source:$('dash-camera-source').value,camera_server:$('dash-camera-server').value.trim(),speaker_entity:$('dash-speaker-entity').value.trim(),camera_streams:$('dash-camera-streams').value.split('\n').map(l=>l.trim()).filter(Boolean).join('\n')})}));
+    camera_source:$('dash-camera-source').value,camera_server:$('dash-camera-server').value.trim(),speaker_entity:$('dash-speaker-entity').value.trim(),camera_rotation:$('dash-camera-rotation').value,camera_streams:$('dash-camera-streams').value.split('\n').map(l=>l.trim()).filter(Boolean).join('\n')})}));
    $('dash-status').textContent='Saved. '+$('dash-status').textContent;
   }catch(e){$('dash-status').textContent=e.message}
   finally{button.disabled=false}
