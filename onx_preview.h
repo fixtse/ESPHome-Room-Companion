@@ -180,7 +180,10 @@ inline void build(JsonObject root, const std::string &query_entity, const Contex
         panel["cover_presets_enabled"] = cover.enabled ? "1" : "0";
       }
       panel["position"] = detail->position; panel["options"] = detail->options;
-        panel["event_type"] = detail->event_type;
+      panel["event_type"] = detail->event_type;
+      panel["battery_level"] = detail->battery_level; panel["status"] = detail->status;
+      panel["motion_detection"] = detail->motion_detection;
+      if (entity.rfind("vacuum.", 0) == 0) panel["fan_speed"] = onx_controls::effective(*detail, "fan_speed");
       if(std::isfinite(detail->progress.duration))panel["duration"] = detail->progress.duration;
       panel["value"] = onx_controls::effective(*detail,"state");
       if(std::isfinite(detail->minimum))panel["minimum"] = detail->minimum;
@@ -210,6 +213,8 @@ inline void build(JsonObject root, const std::string &query_entity, const Contex
           panel["power"]=onx_detail_view::compact(reading.value);panel["power_unit"]=reading.unit;
         }
       }
+      if(sensor>=0 && entity.rfind("camera.",0)==0 && onx_sensor_view::configs[sensor].secondary[0])
+        panel["ptz"]=onx_sensor_view::configs[sensor].secondary;
       if(entity.rfind("media_player.",0)==0 && (detail->features & 4))
         panel["volume"]=onx_controls::effective(*detail,"volume_level");
       #endif
@@ -242,7 +247,8 @@ inline void build(JsonObject root, const std::string &query_entity, const Contex
       slot["pause_path"] = onx_media::overlay_path(onx_media::Overlay::PAUSE);
       slot["overlay_ms"] = onx_media::transport.remaining_ms(entity, esphome::millis());
       slot["ring_color"] = onx_display_settings::current.media_color;
-      slot["artwork"] = onx_media::has_playback(detail->state) ? onx_media::artwork_url(c.ha_host, detail->picture) : "";
+      slot["artwork"] = (entity.rfind("camera.", 0) == 0 && detail->available) || onx_media::has_playback(detail->state)
+          ? onx_media::artwork_url(c.ha_host, detail->picture) : "";
     }
   }
 }

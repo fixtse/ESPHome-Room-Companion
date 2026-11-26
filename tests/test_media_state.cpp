@@ -48,6 +48,10 @@ int main() {
   assert(artwork_url(origin,"https://art.example/album.png")=="https://art.example/album.png");
   for (const auto &missing : {"", "None", "unknown", "unavailable", "//other.example/cover", "file:///etc/passwd"})
     assert(artwork_url(origin,missing).empty());
+  assert(camera_snapshot_url(origin, "/api/camera_proxy/camera.front?token=abc", 0) == origin + "/api/camera_proxy/camera.front?token=abc");
+  assert(camera_snapshot_url(origin, "/api/camera_proxy/camera.front?token=abc", 3) == origin + "/api/camera_proxy/camera.front?token=abc&_onx=3");
+  assert(camera_snapshot_url(origin, "/api/camera_proxy/camera.front", 2) == origin + "/api/camera_proxy/camera.front?_onx=2");
+  assert(camera_snapshot_url(origin, "", 2).empty());
   Progress p;
   p.set_state("playing", 1000); p.set_duration(200); p.set_position(20, 1000); p.set_updated_at(1000);
   auto view = p.view(2000, 1005.5, true);

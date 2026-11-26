@@ -392,6 +392,7 @@ inline void create_slideshow(lv_obj_t *standby_page, const lv_font_t *time_font,
   lv_obj_set_style_pad_all(slide_layer, 0, 0);
   lv_obj_remove_flag(slide_layer, LV_OBJ_FLAG_SCROLLABLE);
   lv_obj_remove_flag(slide_layer, LV_OBJ_FLAG_CLICKABLE);
+  lv_obj_add_flag(slide_layer, onx_render::FIXED_PALETTE);
   slide_image = lv_image_create(slide_layer);
   lv_obj_center(slide_image);
   slide_hint = lv_label_create(slide_layer);

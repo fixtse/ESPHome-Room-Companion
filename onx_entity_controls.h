@@ -7,7 +7,7 @@
 namespace onx_controls {
 using namespace custom_logic_entity_sub;
 inline bool handles(const std::string &id) {
-  return control_domain(id) || has_prefix(id, "climate.") || has_prefix(id, "media_player.");
+  return control_domain(id) || has_prefix(id, "climate.") || has_prefix(id, "media_player.") || has_prefix(id, "vacuum.");
 }
 inline std::string domain(const std::string &id) { return id.substr(0, id.find('.')); }
 inline std::string actual(const EntityDetailState &d, const std::string &key) {
@@ -16,7 +16,7 @@ inline std::string actual(const EntityDetailState &d, const std::string &key) {
   if (key == "target_temp_high") return d.high;
   if (key == "percentage") return d.percentage;
   if (key == "preset_mode") return d.preset;
-  if (key == "fan_mode") return d.fan_mode;
+  if (key == "fan_mode" || key == "fan_speed") return d.fan_mode;
   if (key == "swing_mode") return d.swing_mode;
   if (key == "swing_horizontal_mode") return d.hswing_mode;
   if (key == "humidity") return d.humidity;
@@ -55,6 +55,9 @@ inline std::vector<std::string> settings(const EntityDetailState &d) {
     list("source", d.sources, 2048);
     if (d.features & 8) out.push_back("is_volume_muted");
     if (out.empty()) out.push_back("state");
+  } else if (has_prefix(d.entity_id, "vacuum.")) {
+    list("fan_speed", d.fan_modes, 32);
+    if (out.empty()) out.push_back("state");
   } else out.push_back("state");
   return out;
 }
@@ -80,7 +83,7 @@ inline void request(const EntityDetailState &d, const std::string &service, cons
 }
 inline std::string choices(const EntityDetailState &d, const std::string &key) {
   if (key == "preset_mode") return d.presets;
-  if (key == "fan_mode") return d.fan_modes;
+  if (key == "fan_mode" || key == "fan_speed") return d.fan_modes;
   if (key == "swing_mode") return d.swing_modes;
   if (key == "swing_horizontal_mode") return d.hswing_modes;
   if (key == "source") return d.sources;
@@ -177,6 +180,15 @@ inline void press(const std::string &id) {
     const bool on = effective(*d, "state") == "on";
     // Fans predating TURN_ON/TURN_OFF flags still support these standard actions.
     request(*d, on ? "fan.turn_off" : "fan.turn_on", "state", "", on ? "off" : "on");
+  } else if (has_prefix(id, "vacuum.")) {
+    const auto state = effective(*d, "state");
+    if (state == "cleaning") {
+      if (d->features & 4) request(*d, "vacuum.pause", "state", "", "paused");
+      else if (d->features & 8) request(*d, "vacuum.stop", "state", "", "idle");
+      else if (d->features & 16) request(*d, "vacuum.return_to_base", "state", "", "returning");
+    } else {
+      request(*d, "vacuum.start", "state", "", "cleaning");
+    }
   } else if (has_prefix(id, "scene.") || has_prefix(id, "button.") || has_prefix(id, "input_button.")) {
     request(*d, domain(id) + (has_prefix(id, "scene.") ? ".turn_on" : ".press"), "state", "", "activated");
   }

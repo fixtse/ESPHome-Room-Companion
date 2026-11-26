@@ -922,8 +922,9 @@ static const char PANEL_JS[] = R"ONXPANEL(
    temperature:t('temperature'),current:t('current_temperature'),humidity:t('humidity'),feels_like:t('apparent_temperature'),
    wind:t('wind_speed'),wind_unit:t('wind_speed_unit'),pressure:t('pressure'),pressure_unit:t('pressure_unit'),visibility:t('visibility'),visibility_unit:t('visibility_unit'),uv:t('uv_index'),wind_bearing:t('wind_bearing'),
    title:t('media_title'),artist:t('media_artist'),low:t('target_temp_low'),high:t('target_temp_high'),target_low:t('target_temp_low'),target_high:t('target_temp_high'),
-   modes:t('hvac_modes'),presets:t('preset_modes'),preset:t('preset_mode'),preset_mode:t('preset_mode'),fan_modes:t('fan_modes'),fan_mode:t('fan_mode'),swing_modes:t('swing_modes'),swing_mode:t('swing_mode'),
+   modes:t('hvac_modes'),presets:t('preset_modes'),preset:t('preset_mode'),preset_mode:t('preset_mode'),fan_modes:domain==='vacuum'?t('fan_speed_list'):t('fan_modes'),fan_mode:domain==='vacuum'?t('fan_speed'):t('fan_mode'),fan_speed:t('fan_speed'),swing_modes:t('swing_modes'),swing_mode:t('swing_mode'),
    percentage:t('percentage'),oscillating:t('oscillating'),direction:t('direction'),position:t('current_position'),options:t('options'),event_type:t('event_type'),
+   battery_level:t('battery_level'),status:t('status'),motion_detection:t('motion_detection'),
    sensor_class:t('device_class'),forecast:[],actions:[],forecast_pending:false};
   const min=num('min','min_temp'),max=num('max','max_temp'),step=num('step','percentage_step','target_temp_step');
   if(min!==undefined)d.minimum=min;if(max!==undefined)d.maximum=max;if(step!==undefined)d.step=step;
@@ -947,6 +948,8 @@ static const char PANEL_JS[] = R"ONXPANEL(
   else if(domain==='fan'){value=haCompact(d.percentage)+'%';badge=st==='off'?'Off':'Fan'}
   else if(domain==='media_player'){value='Volume: '+haPercent(Number(a.volume_level)||0);context=/^(playing|paused)$/.test(st)?d.title||st:'Nothing playing'}
   else if(domain==='event'){value=st&&st!=='unknown'?(d.event_type?haLabel(d.event_type):'Event'):'No events'}
+  else if(domain==='vacuum'){value=haLabel(st);badge='Vacuum';const bat=num('battery_level');if(bat!==undefined)context=Math.round(bat)+'% battery';else if(d.fan_speed&&d.fan_speed!=='None')context=haLabel(d.fan_speed)}
+  else if(domain==='camera'){value=haLabel(st);badge='Camera';if(d.motion_detection==='True'||d.motion_detection==='true')context='Motion on'}
   // Main-page lines (onx_detail_view::carousel).
   let cValue=value,cContext='';
   if(available){
@@ -955,6 +958,8 @@ static const char PANEL_JS[] = R"ONXPANEL(
    else if(domain==='climate'||domain==='fan')cContext=badge;
    else if(domain==='media_player'){cValue=haLabel(st);cContext=/^(playing|paused)$/.test(st)?d.title:''}
    else if(domain==='timer'){cValue=haLabel(st);cContext=t('remaining')}
+   else if(domain==='vacuum'){cValue=haLabel(st);const bat=num('battery_level');if(bat!==undefined)cContext=Math.round(bat)+'% battery';else if(d.fan_speed&&d.fan_speed!=='None')cContext=haLabel(d.fan_speed)}
+   else if(domain==='camera'){cValue=haLabel(st);if(d.motion_detection==='True'||d.motion_detection==='true')cContext='Motion on'}
   }
   const ring=(lo,hi,v)=>{const n=Number(v);return available&&isFinite(n)&&hi>lo?Math.round(Math.max(0,Math.min(1,(n-lo)/(hi-lo)))*1000):-1};
   const vring=/^(number|input_number)$/.test(domain)?ring(min,max,st):domain==='sensor'&&unit==='%'?ring(0,100,st):domain==='fan'?ring(0,100,d.percentage):-1;
@@ -1024,7 +1029,7 @@ static const char PANEL_JS[] = R"ONXPANEL(
    rows.forEach((row,i)=>{const t=add(node('text',{x:ax,y:y+i*f.lh+f.base,'font-size':f.size,'font-weight':f.weight,fill:color,'font-family':family,'text-anchor':anchor}));t.textContent=row});
   };
   // Icons: the entity's icon, or LVGL symbols drawn with their MDI equivalents.
-  const SYMBOL={power:'mdi:power',play:'mdi:play',pause:'mdi:pause',prev:'mdi:skip-previous',next:'mdi:skip-next',minus:'mdi:minus',plus:'mdi:plus',list:'mdi:format-list-bulleted',close:'mdi:close',stop:'mdi:stop',ok:'mdi:check',volume:'mdi:volume-high'};
+  const SYMBOL={power:'mdi:power',play:'mdi:play',pause:'mdi:pause',prev:'mdi:skip-previous',next:'mdi:skip-next',minus:'mdi:minus',plus:'mdi:plus',list:'mdi:format-list-bulleted',close:'mdi:close',stop:'mdi:stop',ok:'mdi:check',volume:'mdi:volume-high',home:'mdi:home',gps:'mdi:crosshairs-gps',loop:'mdi:autorenew',refresh:'mdi:refresh',up:'mdi:chevron-up',down:'mdi:chevron-down',left:'mdi:chevron-left',right:'mdi:chevron-right',eye:'mdi:eye',eyeOff:'mdi:eye-off'};
   let currentArt='';
   const glyph=(name,cx,cy,size,color)=>{
    if(currentArt){add(node('image',{href:currentArt,x:cx-size/2,y:cy-size/2,width:size,height:size}));return}
@@ -1036,9 +1041,10 @@ static const char PANEL_JS[] = R"ONXPANEL(
   // LVGL symbols fill more of their font size than an MDI glyph fills its box.
   // Per glyph: how much larger the MDI box must be than the font size to match
   // the LVGL (FontAwesome) symbol's drawn size.
-  const SYMBOL_SCALE={stop:1.3,play:1.75,pause:1.6,prev:1.4,next:1.4,power:1.25,minus:1.3,plus:1.3,volume:1.2,list:1.2,close:1.3,ok:1.3};
+  const SYMBOL_SCALE={stop:1.3,play:1.75,pause:1.6,prev:1.4,next:1.4,power:1.25,minus:1.3,plus:1.3,volume:1.2,list:1.2,close:1.3,ok:1.3,home:1.3,gps:1.25,loop:1.25,refresh:1.25,up:1.4,down:1.4,left:1.4,right:1.4,eye:1.25,eyeOff:1.25};
   const symbol=(name,cx,cy,color)=>glyph(SYMBOL[name],cx,cy,Math.round(F.symbol.size*(SYMBOL_SCALE[name]||1.2)),color);
   const button=(x,y,w,h,r,bg,caption,f,fg,attrs={})=>{if(bg===ACCENT||bg===STRONG)fg=ink(bg);box(x,y,w,h,bg,r,attrs);if(caption)text(caption,f,fg,x+P(4),y+(h-f.lh)/2,w-P(8),'center')};
+  const iconButton=(x,y,w,h,r,bg,sym,fg,attrs={})=>{if(bg===ACCENT||bg===STRONG)fg=ink(bg);box(x,y,w,h,bg,r,attrs);symbol(sym,x+w/2,y+h/2,fg)};
   const circle=(cx,cy,size,bg,sym,fg,attrs={})=>{add(node('circle',{cx,cy,r:size/2,fill:bg,...attrs}));if(bg===ACCENT||bg===STRONG)fg=ink(bg);symbol(sym,cx,cy,fg)};
   const chips=(r,labels,sel)=>{if(!labels.length)return;const gap=P(8),n=labels.length,w=Math.trunc((r.w-gap*(n-1))/n);labels.forEach((l,i)=>{const on=i===sel;button(r.x+i*(w+gap),r.y,w,r.h,r.h/2,on?TINT:CONTROL,l,F.small,on?ACCENT:SOFT,on?{stroke:ACCENT,'stroke-width':P(2)}:{})})};
   const row=(r,name,value,bg=CARD)=>{box(r.x,r.y,r.w,r.h,bg,P(10));const pad=P(12),lh=F.small.lh;text(name,F.small,MUTED,r.x+pad,r.y+(r.h-lh)/2,r.w/2-pad);text(value,F.small,TEXT,r.x+r.w/2,r.y+(r.h-lh)/2,r.w/2-pad,'right')};
@@ -1226,6 +1232,51 @@ static const char PANEL_JS[] = R"ONXPANEL(
    if(presets.length){const cols=Math.min(wide&&W<400?2:4,presets.length),pg=P(8),ph=P(40),y=l.ctl.y+bh+P(12),pw=Math.trunc((l.ctl.w-(cols-1)*pg)/cols);
     text('Positions',F.small,MUTED,l.ctl.x,y,l.ctl.w);const top=y+F.small.lh+P(6);
     presets.forEach((v,i)=>{const py=top+Math.floor(i/cols)*(ph+pg);if(py+ph>bottomOf(l.ctl))return;const on=known&&Math.abs(position-v)<.51;button(l.ctl.x+(i%cols)*(pw+pg),py,pw,ph,ph/2,on?TINT:CONTROL,v+'%',F.small,on?ACCENT:SOFT,on?{stroke:ACCENT,'stroke-width':P(2)}:{})});
+   }
+  };
+  const buildVacuum=(l,e,d,title)=>{
+   const state=d.hvac||d.state||'idle',active=['cleaning','returning','on'].includes(state),cleaning=state==='cleaning';
+   const bat=num(d.battery_level),hasBat=isFinite(bat),speeds=(d.features&32)?options(d.fan_modes):[],speed=d.fan_speed||d.fan_mode||'';
+   let context=d.status&&d.status!=='None'?d.status:label(state);
+   if(hasBat)context+=' · '+pct(bat);if(speed&&speed!=='None')context+=' · '+label(speed);
+   header(l.head,title,context);
+   const size=Math.min(P(176),l.vis.w,l.vis.h-P(8)),cx=l.vis.x+l.vis.w/2,cy=l.vis.y+l.vis.h/2;
+   if(hasBat){arc(cx,cy,size,P(12),0,359.9,CONTROL,false);if(bat>0)arc(cx,cy,size,P(12),270,270+359.9*Math.max(0,Math.min(1,bat/100)),active?ACCENT:SOFT)}
+   else add(node('circle',{cx,cy,r:size/2-P(1.5),fill:active?TINT:CARD,stroke:active?ACCENT:CONTROL,'stroke-width':P(3)}));
+   const iw=size-P(36),stLabel=label(state),sf=fit(stLabel,iw,[F.title,F.body,F.small]),bhTxt=sf.lh+(hasBat?P(2)+F.small.lh:0);
+   text(stLabel,sf,active?ACCENT:TEXT,cx-iw/2,cy-bhTxt/2,iw,'center');
+   if(hasBat)text(pct(bat),F.small,MUTED,cx-iw/2,cy-bhTxt/2+sf.lh+P(2),iw,'center');
+   const primary=[],secondary=[];
+   if(cleaning&&(d.features&4))primary.push(['pause',true]);
+   else if(!d.features||(d.features&8192))primary.push(['play',!active]);
+   if(d.features&8)primary.push(['stop',cleaning&&!(d.features&4)]);
+   if(!d.features||(d.features&16))primary.push(['home',state==='returning']);
+   if(d.features&512)secondary.push(['gps',false]);
+   if(d.features&1024)secondary.push(['loop',false]);
+   const rows=(primary.length?1:0)+(secondary.length?1:0)+(speeds.length?1:0);if(!rows)return;
+   const gap=P(8),rh=Math.min(P(48),Math.trunc((l.ctl.h-gap*(rows-1))/rows));let y=l.ctl.y;
+   const drawRow=list=>{if(!list.length||y+rh>bottomOf(l.ctl)+P(4))return;const n=list.length,bw=Math.trunc((l.ctl.w-gap*(n-1))/n);
+    list.forEach((a,i)=>iconButton(l.ctl.x+i*(bw+gap),y,i===n-1?l.ctl.w-i*(bw+gap):bw,rh,P(14),a[1]?STRONG:CONTROL,a[0],TEXT));y+=rh+gap};
+   drawRow(primary);drawRow(secondary);
+   if(speeds.length&&y+rh<=bottomOf(l.ctl)+P(4))row({x:l.ctl.x,y,w:l.ctl.w,h:rh},'Fan speed',label(!speed||speed==='None'?speeds[0]:speed)+'  ›');
+  };
+  const buildCamera=(l,e,d,title,v)=>{
+   const on=['streaming','recording'].includes(d.state),hasMotion=['True','true','False','false'].includes(d.motion_detection),motionOn=['True','true'].includes(d.motion_detection);
+   const ptz=d.ptz||(slot.entity===e?slot.secondary:'');
+   let context=label(d.state||'idle');if(hasMotion)context+=motionOn?' · Motion on':' · Motion off';if(ptz)context+=' · PTZ';
+   header(l.head,title,context);
+   const square=Math.min(l.vis.w,l.vis.h),b=v?.artwork?artBox(v.artwork,square,l.vis.w,l.vis.h):{w:l.vis.w,h:Math.min(l.vis.h,Math.trunc(l.vis.w*9/16)),shaped:true};
+   const ax=l.vis.x+Math.trunc((l.vis.w-b.w)/2),ay=l.vis.y+Math.trunc((l.vis.h-b.h)/2);
+   if(!artwork(v?.artwork,ax,ay,b,P(14))){icon(e,ax+b.w/2,ay+b.h/2-P(10),Math.min(Math.trunc(b.h*38/100),P(56)),on?ACCENT:SOFT);text('Snapshot',F.small,MUTED,ax+P(8),ay+b.h/2+P(22),b.w-P(16),'center')}
+   const btns=[['refresh',false]];
+   if(d.features&1)btns.push(['power',on]);
+   if(hasMotion)btns.push([motionOn?'eye':'eyeOff',motionOn]);
+   const gap=P(8),rows=ptz?2:1,rh=Math.min(P(48),Math.trunc((l.ctl.h-gap*(rows-1))/rows));let y=l.ctl.y;
+   {const n=btns.length,bw=Math.trunc((l.ctl.w-gap*(n-1))/n);
+    btns.forEach((b,i)=>iconButton(l.ctl.x+i*(bw+gap),y,i===n-1?l.ctl.w-i*(bw+gap):bw,rh,P(14),b[1]?STRONG:CONTROL,b[0],TEXT));y+=rh+gap}
+   if(ptz&&y+rh<=bottomOf(l.ctl)+P(4)){
+    const moves=['left','up','down','right','minus','plus'],pgap=P(6),n=moves.length,bw=Math.trunc((l.ctl.w-pgap*(n-1))/n);
+    moves.forEach((sym,i)=>iconButton(l.ctl.x+i*(bw+pgap),y,i===n-1?l.ctl.w-i*(bw+pgap):bw,rh,P(12),CONTROL,sym,TEXT));
    }
   };
   const buildToggle=(l,e,d,title,v)=>{
@@ -1426,6 +1477,8 @@ static const char PANEL_JS[] = R"ONXPANEL(
    else if(/^(automation|scene|script|button|input_button)\./.test(e))buildAction(l,e,d,title);
    else if(e.startsWith('binary_sensor.'))buildBinary(l,e,d,title);
    else if(e.startsWith('event.'))buildEvent(l,e,d,title);
+   else if(e.startsWith('vacuum.'))buildVacuum(l,e,d,title);
+   else if(e.startsWith('camera.'))buildCamera(l,e,d,title,v);
    else if(e.startsWith('sensor.'))buildSensor(l,e,d,title,v);
    else if(/^(number|input_number)\./.test(e))buildNumber(l,e,d,title);
    else if(/^(select|input_select)\./.test(e))buildSelect(l,e,d,title);
@@ -1497,6 +1550,30 @@ static const char PANEL_JS[] = R"ONXPANEL(
    if(by<pad+art||d.available===false)return;
    if(progY>=(tall?y:pad+art)&&v?.progress>=0)progressBar(v,r.x+pad,r.y+progY,r.w-2*pad,true);
    transport(r.x+r.w/2,r.y+by+bh/2,bh-P(8),bh,P(22),playing);
+  };
+  const cardVacuum=(t,d)=>{
+   const r=t.r,pad=P(14),cs=P(44),tx=pad+cs+P(12),state=d.hvac||d.state||'idle',cleaning=state==='cleaning',bat=num(d.battery_level),hasBat=isFinite(bat);
+   chipIcon(t.entity,r.x+pad,r.y+pad,cs,t.on);
+   let bottom=r.h-pad;const bh=P(44),gap=P(8),btns=[];
+   if(cleaning&&(d.features&4))btns.push(['pause',true]);
+   else if(!d.features||(d.features&8192))btns.push(['play',false]);
+   if(d.features&8)btns.push(['stop',cleaning&&!(d.features&4)]);
+   if(!d.features||(d.features&16))btns.push(['home',state==='returning']);
+   const showBtns=btns.length&&bottom-bh>=pad+cs+P(8),availBottom=showBtns?bottom-bh-P(10):bottom,top=pad+cs+P(10),showBig=availBottom-top>=F.title.lh;
+   titled(showBig?t:{...t,context:label(state)+(hasBat?' · '+pct(bat):'')},r.x+tx,r.y+pad+P(2),r.w-tx-pad);
+   if(showBtns){bottom-=bh;const n=btns.length,bw=Math.trunc((r.w-2*pad-gap*(n-1))/n);
+    btns.forEach((b,i)=>iconButton(r.x+pad+i*(bw+gap),r.y+bottom,i===n-1?r.w-2*pad-i*(bw+gap):bw,bh,P(14),b[1]?STRONG:INSET,b[0],TEXT));bottom-=P(10)}
+   const bar=hasBat&&bottom-top>=F.title.lh+P(18);if(bar)bottom-=P(10)+P(8);
+   if(showBig){const v=label(state),vf=bottom-top>=F.big.lh?fit(v,r.w-2*pad,[F.big,F.title]):F.title;text(v,vf,t.on?ACCENT:TEXT,r.x+pad,r.y+bottom-vf.lh,r.w-2*pad)}
+   if(bar)level(r.x+pad,r.y+bottom+P(8),r.w-2*pad,P(10),Math.max(0,Math.min(1,bat/100)));
+  };
+  const cardCamera=(t,d,v)=>{
+   const r=t.r,pad=P(12),st=label(d.state||'idle'),sw=Math.min(width(st,F.small)+1,Math.trunc(r.w/3)),footH=F.body.lh,fw=r.w-2*pad,fh=r.h-2*pad-footH-P(8);
+   if(fh>=P(40)){const cover=currentArt||t.artwork?'':v?.artwork,b=cover?artBox(cover,Math.min(fw,fh),fw,fh):{w:fw,h:fh,shaped:true};
+    const ax=pad+Math.trunc((fw-b.w)/2),ay=pad+Math.trunc((fh-b.h)/2);
+    if(currentArt||!artwork(cover,r.x+ax,r.y+ay,b,P(10),false)){if(!currentArt)box(r.x+ax,r.y+ay,b.w,b.h,INSET,P(10));icon(t.entity,r.x+ax+b.w/2,r.y+ay+b.h/2,Math.trunc(Math.min(b.w,b.h,P(96))*46/100),t.on?ACCENT:SOFT)}}
+   const fy=r.h-pad-footH;text(t.name,fit(t.name,r.w-2*pad-sw-P(8),[F.body,F.small]),TEXT,r.x+pad,r.y+fy,r.w-2*pad-sw-P(8));
+   text(st,F.small,t.on?ACCENT:MUTED,r.x+r.w-pad-sw,r.y+fy+(footH-F.small.lh)/2,sw,'right');
   };
   const cardGeneric=(t,d,v)=>{
    // As card_generic: a cover's position is its bar.
@@ -1571,6 +1648,7 @@ static const char PANEL_JS[] = R"ONXPANEL(
    if(d.available===false||!t.v||r.w<P(180))return r.w-pad;
    if(['light','switch','input_boolean','fan','automation','siren'].includes(domain)){const x=r.w-pad-P(54);toggle(r.x+x,r.y+(r.h-P(30))/2,d.state==='on');return x}
    if(['scene','script','button','input_button'].includes(domain)){const sz=Math.min(P(36),r.h-P(10));circle(r.x+r.w-pad-sz/2,r.y+r.h/2,sz,TINT,'play',ACCENT);return r.w-pad-sz}
+   if(domain==='vacuum'){const cleaning=d.state==='cleaning',sz=Math.min(P(36),r.h-P(10));circle(r.x+r.w-pad-sz/2,r.y+r.h/2,sz,cleaning?STRONG:TINT,cleaning?'pause':'play',cleaning?TEXT:ACCENT);return r.w-pad-sz}
    return r.w-pad;
   };
   // As card_chip.
@@ -1665,7 +1743,7 @@ static const char PANEL_JS[] = R"ONXPANEL(
    const tiles=rects.map((r,i)=>{const e=ids[i]||'',v=viewOf(e),c=v?{...v,...v.carousel}:null,lines=c?.lines||[],d=v?.panel||{};
     const name=e===slot.entity?(slot.name||lines[4]?.text||e):(editorSlots.find(s=>s.entity===e)?.name||v?.lines?.[4]?.text||e);
     let context=lines[2]?.text||'';if(/^(sensor|binary_sensor)\./.test(e)&&lines[4]?.text&&lines[4].text!==name)context=lines[4].text;
-    const st=d.state,on=d.available!==false&&(['on','playing','open','opening','active'].includes(st)||(e.startsWith('climate.')&&st&&st!=='off'));
+    const st=d.state,on=d.available!==false&&(['on','playing','open','opening','active','cleaning','returning','recording','streaming'].includes(st)||(e.startsWith('climate.')&&st&&st!=='off'));
     return {entity:e,name,value:lines[1]?.text||'',context,ring:c?.value_ring??-1,on,r,compact:p.layout==='control_sensors'&&i>0,key:grid,v,d,art:artUrl(positionArt(p,i)),
      ...(stacked?(at=>({compact:at?.type==='compact',chip:at?.type==='chips',slot:true}))(rowAt(p,i)):{})}});
    if(tiles.length){const cb=tiles[0].r.y;  // As refresh_carousel_clock: every main page, grids included.
@@ -1687,6 +1765,8 @@ static const char PANEL_JS[] = R"ONXPANEL(
     else if(ready&&t.entity.startsWith('light.'))cardLight(t,t.d);
     else if(ready&&t.entity.startsWith('climate.'))cardClimate(t,t.d);
     else if(ready&&t.entity.startsWith('media_player.'))cardMedia({...t,artwork:t.art},t.d,t.v);
+    else if(ready&&t.entity.startsWith('vacuum.'))cardVacuum(t,t.d);
+    else if(ready&&t.entity.startsWith('camera.'))cardCamera({...t,artwork:t.art},t.d,t.v);
     else cardGeneric(t,t.d,t.v);
     currentArt='';});
    // The dock: the selected page on an accent-tinted marker. Strip constants

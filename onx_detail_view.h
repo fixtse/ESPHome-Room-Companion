@@ -177,6 +177,18 @@ inline View build(const std::string &entity, const std::string &name) {
     v.context = {onx_media::has_playback(d->state) ? onx_media::display_text(d->media_title.empty()?d->state:d->media_title) : "Nothing playing",122,16,196};
     v.hint = {onx_media::display_text(feedback.empty()?(onx_media::has_playback(d->state)?d->media_artist:""):feedback),144,16,196,0xD2D2D2};
     v.badge.text.clear(); v.name.y=192; v.name.width=180;
+  } else if (has_prefix(entity, "vacuum.")) {
+    v.badge.x = 0; v.badge.text = "Vacuum";
+    v.value.text = label(onx_controls::effective(*d, "state"));
+    const float bat = onx_control::number(d->battery_level);
+    if (std::isfinite(bat)) v.context.text = std::to_string(int(std::lround(bat))) + "% battery";
+    else if (!d->fan_mode.empty() && d->fan_mode != "None") v.context.text = label(d->fan_mode);
+    v.icon_x = 0; v.icon_y = 134; v.icon_size = 40;
+  } else if (has_prefix(entity, "camera.")) {
+    v.badge.x = 0; v.badge.text = "Camera";
+    v.value.text = label(d->state);
+    if (d->motion_detection == "True" || d->motion_detection == "true") v.context.text = "Motion on";
+    v.icon_x = 0; v.icon_y = 134; v.icon_size = 40;
   } else if (onx_controls::handles(entity)) {
     const auto key = selected_setting(*d);
     const bool number = has_prefix(entity,"number.") || has_prefix(entity,"input_number.");
@@ -314,6 +326,14 @@ inline View carousel(const std::string &entity, const std::string &name) {
     v.value.text = label(d->state); v.context.text = d->timer_remaining;
   } else if (domain == "event") {
     event_view(v, *d);
+  } else if (domain == "vacuum") {
+    v.value.text = label(d->state);
+    const float bat = onx_control::number(d->battery_level);
+    if (std::isfinite(bat)) v.context.text = std::to_string(int(std::lround(bat))) + "% battery";
+    else if (!d->fan_mode.empty() && d->fan_mode != "None") v.context.text = label(d->fan_mode);
+  } else if (domain == "camera") {
+    v.value.text = label(d->state);
+    if (d->motion_detection == "True" || d->motion_detection == "true") v.context.text = "Motion on";
   }
   if (!v.context.text.empty()) {
     v.context.y = domain == "climate" ? 30 : 130;

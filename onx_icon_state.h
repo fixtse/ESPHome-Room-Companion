@@ -54,6 +54,8 @@ inline std::string fallback(const std::string &entity, const std::string &type =
   if (domain == "automation") return "robot";
   if (domain == "weather") return "weather-partly-cloudy";
   if (domain == "timer") return "timer-outline";
+  if (domain == "camera") return "video";
+  if (domain == "vacuum") return "robot";
   return "toggle-switch";
 }
 inline std::string weather_icon(const std::string &condition) {
@@ -81,6 +83,8 @@ struct Metadata {
     if (entity.rfind("event.", 0) == 0)
       return device_class == "button" ? "mdi:gesture-tap-button" : device_class == "motion" ? "mdi:motion-sensor" : "mdi:doorbell";
     if (entity.rfind("siren.", 0) == 0) return "mdi:bullhorn";
+    if (entity.rfind("camera.", 0) == 0) return "mdi:video";
+    if (entity.rfind("vacuum.", 0) == 0) return "mdi:robot-vacuum";
     if (entity.rfind("sensor.", 0) == 0) {
       if (device_class == "temperature") return "mdi:thermometer";
       if (device_class == "humidity") return "mdi:water-percent";

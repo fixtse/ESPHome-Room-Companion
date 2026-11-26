@@ -74,6 +74,8 @@ inline std::function<void()> run_shortcut;
 inline std::function<const onx_playlist::Config *(const std::string &)> quick_actions;
 inline std::function<void(const std::string &)> run_quick_action;
 inline std::function<void(const std::string &)> request_history;
+inline std::function<void()> refresh_camera;
+inline std::function<void(const std::string &, const std::string &, const std::string &)> send_ptz;
 
 // ------------------------------------------------------------ geometry
 inline int W = 320, H = 480;
@@ -395,6 +397,14 @@ inline lv_obj_t *button(lv_obj_t *parent, int x, int y, int w, int h, int radius
     lv_obj_center(l);
   }
   on(b, LV_EVENT_CLICKED, [fn](lv_event_t *) { if (allowed()) fn(); });
+  return b;
+}
+inline lv_obj_t *icon_button(lv_obj_t *parent, int x, int y, int w, int h, int radius, uint32_t bg,
+                             const char *symbol, uint32_t fg, std::function<void()> fn) {
+  lv_obj_t *b = button(parent, x, y, w, h, radius, bg, "", fonts.symbol, fg, std::move(fn));
+  if (bg == accent() || bg == strong()) fg = onx_display_settings::light_color(bg) ? 0x161B22 : 0xFFFFFF;
+  lv_obj_t *l = text(b, symbol, fonts.symbol, fg, 0, 0);
+  lv_obj_center(l);
   return b;
 }
 inline lv_obj_t *chip(lv_obj_t *parent, int x, int y, int w, int h, const std::string &caption, bool selected,
@@ -1195,6 +1205,91 @@ __attribute__((noinline)) inline void build_siren(const Layout &l, const std::st
       siren_save(s);
       built_signature.clear();
     });
+}
+
+__attribute__((noinline)) inline void build_vacuum(const Layout &l, const std::string &e, const EntityDetailState &d, const std::string &title) {
+  using onx_controls::effective;
+  const auto state = effective(d, "state");
+  const bool active = state == "cleaning" || state == "returning" || state == "on";
+  const bool cleaning = state == "cleaning";
+  const float bat = num(d.battery_level);
+  const bool has_bat = std::isfinite(bat);
+  const auto speeds = (d.features & 32) ? onx_control::options(d.fan_modes) : std::vector<std::string>{};
+  const auto speed = effective(d, "fan_speed");
+  std::string context = !d.status.empty() && d.status != "None" ? d.status : label(state.empty() ? "idle" : state);
+  if (has_bat) context += " · " + pct(bat);
+  if (!speed.empty() && speed != "None") context += " · " + label(speed);
+  header(l.head, title, context);
+  const int size = std::min({P(176), l.vis.w, l.vis.h - P(8)});
+  const int cx = l.vis.x + l.vis.w / 2, cy = l.vis.y + l.vis.h / 2;
+  if (has_bat) {
+    lv_obj_t *arc = lv_arc_create(root);
+    lv_obj_set_size(arc, size, size);
+    lv_obj_set_pos(arc, cx - size / 2, cy - size / 2);
+    lv_arc_set_rotation(arc, 270);
+    lv_arc_set_bg_angles(arc, 0, 360);
+    lv_arc_set_range(arc, 0, 1000);
+    lv_arc_set_value(arc, int(std::clamp(bat, 0.0f, 100.0f) * 10));
+    const int aw = P(12);
+    lv_obj_set_style_arc_width(arc, aw, LV_PART_MAIN);
+    lv_obj_set_style_arc_width(arc, aw, LV_PART_INDICATOR);
+    lv_obj_set_style_arc_color(arc, lv_color_hex(CONTROL()), LV_PART_MAIN);
+    lv_obj_set_style_arc_color(arc, lv_color_hex(active ? accent() : SOFT_TEXT()), LV_PART_INDICATOR);
+    lv_obj_set_style_arc_rounded(arc, true, LV_PART_INDICATOR);
+    lv_obj_set_style_bg_opa(arc, LV_OPA_TRANSP, LV_PART_KNOB);
+    lv_obj_set_style_pad_all(arc, 0, LV_PART_KNOB);
+    lv_obj_set_style_bg_opa(arc, LV_OPA_TRANSP, LV_PART_MAIN);
+    lv_obj_set_style_border_width(arc, 0, LV_PART_MAIN);
+    lv_obj_set_style_pad_all(arc, 0, LV_PART_MAIN);
+    lv_obj_remove_flag(arc, static_cast<lv_obj_flag_t>(LV_OBJ_FLAG_CLICKABLE | LV_OBJ_FLAG_SCROLLABLE));
+  } else {
+    lv_obj_t *badge = box(root, cx - size / 2, cy - size / 2, size, size, active ? soft() : CARD(), LV_RADIUS_CIRCLE);
+    lv_obj_set_style_border_width(badge, P(3), 0);
+    lv_obj_set_style_border_color(badge, lv_color_hex(active ? accent() : CONTROL()), 0);
+  }
+  const int iw = size - P(36);
+  const std::string st_label = label(state.empty() ? "idle" : state);
+  const lv_font_t *sf = fit(st_label, iw, {fonts.title, fonts.body, fonts.small});
+  const int bh_txt = line(sf) + (has_bat ? P(2) + line(fonts.small) : 0);
+  text(root, st_label, sf, active ? accent() : TEXT(), cx - iw / 2, cy - bh_txt / 2, iw, LV_TEXT_ALIGN_CENTER);
+  if (has_bat) text(root, pct(bat), fonts.small, MUTED(), cx - iw / 2, cy - bh_txt / 2 + line(sf) + P(2), iw, LV_TEXT_ALIGN_CENTER);
+
+  struct Act { const char *symbol; const char *service; const char *target; bool hot; };
+  std::vector<Act> primary, secondary;
+  if (cleaning && (d.features & 4)) primary.push_back({LV_SYMBOL_PAUSE, "vacuum.pause", "paused", true});
+  else if (d.features == 0 || (d.features & 8192)) primary.push_back({LV_SYMBOL_PLAY, "vacuum.start", "cleaning", !active});
+  if (d.features & 8) primary.push_back({LV_SYMBOL_STOP, "vacuum.stop", "idle", cleaning && !(d.features & 4)});
+  if (d.features == 0 || (d.features & 16)) primary.push_back({LV_SYMBOL_HOME, "vacuum.return_to_base", "returning", state == "returning"});
+  if (d.features & 512) secondary.push_back({LV_SYMBOL_GPS, "vacuum.locate", "", false});
+  if (d.features & 1024) secondary.push_back({LV_SYMBOL_LOOP, "vacuum.clean_spot", "cleaning", false});
+
+  const int rows = (!primary.empty() ? 1 : 0) + (!secondary.empty() ? 1 : 0) + (!speeds.empty() ? 1 : 0);
+  if (!rows) return;
+  const int gap = P(8), rh = std::min(P(48), (l.ctl.h - gap * (rows - 1)) / rows);
+  int y = l.ctl.y;
+  auto draw_row = [&](const std::vector<Act> &list) {
+    if (list.empty() || y + rh > l.ctl.bottom() + P(4)) return;
+    const int n = list.size(), bw = (l.ctl.w - gap * (n - 1)) / n;
+    for (int i = 0; i < n; ++i) {
+      const auto a = list[i];
+      const int w = i == n - 1 ? l.ctl.w - i * (bw + gap) : bw;
+      icon_button(root, l.ctl.x + i * (bw + gap), y, w, rh, P(14), a.hot ? strong() : CONTROL(), a.symbol, TEXT(),
+                  [e, a]() { request(e, a.service, "", a.target, a.target[0] ? "state" : "panel_vacuum"); });
+    }
+    y += rh + gap;
+  };
+  draw_row(primary);
+  draw_row(secondary);
+  if (!speeds.empty() && y + rh <= l.ctl.bottom() + P(4)) {
+    const auto cur = speed.empty() || speed == "None" ? speeds.front() : speed;
+    row(root, {l.ctl.x, y, l.ctl.w, rh}, "Fan speed", label(cur) + "  ›", [e, cur]() {
+      const auto *dd = custom_logic_entity_sub::entity_detail(e);
+      if (!dd) return;
+      custom_logic_entity_sub::select_control_entity(e);
+      onx_controls::request(*dd, "vacuum.set_fan_speed", "fan_speed", "fan_speed",
+                            custom_logic_entity_sub::next_option(dd->fan_modes, cur));
+    });
+  }
 }
 
 __attribute__((noinline)) inline void build_toggle(const Layout &l, const std::string &e, const EntityDetailState &d, const std::string &title) {
@@ -3243,6 +3338,80 @@ __attribute__((noinline)) inline void build_media(const Layout &l, const std::st
   tick_media_progress();
 }
 
+inline std::string camera_ptz_entity(const std::string &e) {
+  const int i = onx_sensor_view::index(e);
+  return i >= 0 && onx_sensor_view::configs[i].secondary[0] ? std::string(onx_sensor_view::configs[i].secondary) : std::string();
+}
+
+__attribute__((noinline)) inline void build_camera(const Layout &l, const std::string &e, const EntityDetailState &d, const std::string &title) {
+  onx_media::main_entity = e;
+  const bool is_on = d.state == "streaming" || d.state == "recording";
+  const bool has_motion = d.motion_detection == "True" || d.motion_detection == "true" ||
+                          d.motion_detection == "False" || d.motion_detection == "false";
+  const bool motion_on = d.motion_detection == "True" || d.motion_detection == "true";
+  const std::string ptz = camera_ptz_entity(e);
+  std::string context = label(d.state.empty() ? "idle" : d.state);
+  if (has_motion) context += motion_on ? " · Motion on" : " · Motion off";
+  if (!ptz.empty()) context += " · PTZ";
+  header(l.head, title, context);
+  const void *source = artwork_source ? artwork_source(e) : nullptr;
+  const int square = std::min(l.vis.w, l.vis.h);
+  const ArtBox b = source ? art_box(source, square, l.vis.w, l.vis.h)
+                          : ArtBox{l.vis.w, std::min(l.vis.h, l.vis.w * 9 / 16), true};
+  const int ax = l.vis.x + (l.vis.w - b.w) / 2, ay = l.vis.y + (l.vis.h - b.h) / 2;
+  auto *frame = box(root, ax, ay, b.w, b.h, CONTROL(), P(14));
+  lv_obj_set_style_clip_corner(frame, true, 0);
+  interactive(frame, false);
+  on(frame, LV_EVENT_CLICKED, [](lv_event_t *) { if (allowed() && refresh_camera) refresh_camera(); });
+  if (source) {
+    place_artwork(frame, source, b, true);
+  } else {
+    icon(root, e, ax + b.w / 2, ay + b.h / 2 - P(10), std::min(b.h * 38 / 100, P(56)), is_on ? accent() : SOFT_TEXT());
+    text(root, "Snapshot", fonts.small, MUTED(), ax + P(8), ay + b.h / 2 + P(22), b.w - P(16), LV_TEXT_ALIGN_CENTER);
+  }
+  struct Btn { const char *symbol; bool hot; std::function<void()> fn; };
+  std::vector<Btn> btns;
+  btns.push_back({LV_SYMBOL_REFRESH, false, []() { if (refresh_camera) refresh_camera(); }});
+  if (d.features & 1) {
+    btns.push_back({LV_SYMBOL_POWER, is_on, [e, is_on]() {
+      request(e, is_on ? "camera.turn_off" : "camera.turn_on", "", is_on ? "idle" : "streaming", "state");
+    }});
+  }
+  if (has_motion) {
+    btns.push_back({motion_on ? LV_SYMBOL_EYE_OPEN : LV_SYMBOL_EYE_CLOSE, motion_on, [e, motion_on]() {
+      request(e, motion_on ? "camera.disable_motion_detection" : "camera.enable_motion_detection",
+              "", motion_on ? "false" : "true", "motion_detection");
+    }});
+  }
+  const int gap = P(8), rows = ptz.empty() ? 1 : 2;
+  const int rh = std::min(P(48), (l.ctl.h - gap * (rows - 1)) / rows);
+  int y = l.ctl.y;
+  {
+    const int n = btns.size(), bw = (l.ctl.w - gap * (n - 1)) / n;
+    for (int i = 0; i < n; ++i) {
+      const int w = i == n - 1 ? l.ctl.w - i * (bw + gap) : bw;
+      icon_button(root, l.ctl.x + i * (bw + gap), y, w, rh, P(14), btns[i].hot ? strong() : CONTROL(),
+                  btns[i].symbol, TEXT(), btns[i].fn);
+    }
+    y += rh + gap;
+  }
+  if (!ptz.empty() && y + rh <= l.ctl.bottom() + P(4)) {
+    struct Ptz { const char *symbol; const char *param; const char *dir; };
+    static constexpr Ptz moves[] = {
+        {LV_SYMBOL_LEFT, "pan", "LEFT"},     {LV_SYMBOL_UP, "tilt", "UP"},
+        {LV_SYMBOL_DOWN, "tilt", "DOWN"},    {LV_SYMBOL_RIGHT, "pan", "RIGHT"},
+        {LV_SYMBOL_MINUS, "zoom", "ZOOM_OUT"}, {LV_SYMBOL_PLUS, "zoom", "ZOOM_IN"},
+    };
+    const int pgap = P(6), n = 6, bw = (l.ctl.w - pgap * (n - 1)) / n;
+    for (int i = 0; i < n; ++i) {
+      const auto m = moves[i];
+      const int w = i == n - 1 ? l.ctl.w - i * (bw + pgap) : bw;
+      icon_button(root, l.ctl.x + i * (bw + pgap), y, w, rh, P(12), CONTROL(), m.symbol, TEXT(),
+                  [ptz, m]() { if (send_ptz) send_ptz(ptz, m.param, m.dir); });
+    }
+  }
+}
+
 inline void card_generic(lv_obj_t *c, const Tile &t, const EntityDetailState *d) {
   // Covers: the position as the card's bar.
   // Only where the reading still fits above it.
@@ -3578,6 +3747,14 @@ inline int row_control(lv_obj_t *c, const Tile &t, const EntityDetailState *d, i
       if (domain == "script") request(e, "script.turn_on", "", "on", "panel_run");
       else onx_controls::press(e);
     });
+    return r.w - pad - s;
+  }
+  if (domain == "vacuum") {
+    const bool cleaning = shown_state(e, d->state) == "cleaning";
+    const int s = std::min(P(36), r.h - P(10));
+    circle(c, r.w - pad - s / 2, r.h / 2, s, cleaning ? strong() : soft(),
+           cleaning ? LV_SYMBOL_PAUSE : LV_SYMBOL_PLAY, cleaning ? TEXT() : accent(),
+           [e]() { onx_controls::press(e); });
     return r.w - pad - s;
   }
   return r.w - pad;
@@ -3957,6 +4134,74 @@ inline void refresh_grid_icons() {
   }
 }
 
+inline void card_vacuum(lv_obj_t *c, const Tile &t, const EntityDetailState &d) {
+  const Rect r = t.r;
+  const int pad = P(14), cs = P(44), tx = pad + cs + P(12);
+  const auto state = onx_controls::effective(d, "state");
+  const bool cleaning = state == "cleaning";
+  const float bat = num(d.battery_level);
+  const bool has_bat = std::isfinite(bat);
+  chip_icon(c, t.entity, pad, pad, cs, t.on);
+  int bottom = r.h - pad;
+  const int bh = P(44), gap = P(8);
+  struct Act { const char *symbol; const char *service; const char *target; bool hot; };
+  std::vector<Act> btns;
+  if (cleaning && (d.features & 4)) btns.push_back({LV_SYMBOL_PAUSE, "vacuum.pause", "paused", true});
+  else if (d.features == 0 || (d.features & 8192)) btns.push_back({LV_SYMBOL_PLAY, "vacuum.start", "cleaning", false});
+  if (d.features & 8) btns.push_back({LV_SYMBOL_STOP, "vacuum.stop", "idle", cleaning && !(d.features & 4)});
+  if (d.features == 0 || (d.features & 16)) btns.push_back({LV_SYMBOL_HOME, "vacuum.return_to_base", "returning", state == "returning"});
+  const std::string e = t.entity;
+  const bool show_btns = !btns.empty() && bottom - bh >= pad + cs + P(8);
+  const int avail_bottom = show_btns ? bottom - bh - P(10) : bottom;
+  const int top = pad + cs + P(10);
+  const bool show_big = avail_bottom - top >= line(fonts.title);
+  Tile head = t;
+  if (!show_big) head.context = label(state.empty() ? "idle" : state) + (has_bat ? " · " + pct(bat) : "");
+  titled(c, head, tx, pad + P(2), r.w - tx - pad);
+  if (show_btns) {
+    bottom -= bh;
+    const int n = btns.size(), bw = (r.w - 2 * pad - gap * (n - 1)) / n;
+    for (int i = 0; i < n; ++i) {
+      const auto a = btns[i];
+      const int w = i == n - 1 ? r.w - 2 * pad - i * (bw + gap) : bw;
+      icon_button(c, pad + i * (bw + gap), bottom, w, bh, P(14), a.hot ? strong() : INSET(), a.symbol, TEXT(),
+                  [e, a]() { request(e, a.service, "", a.target, "state"); });
+    }
+    bottom -= P(10);
+  }
+  const bool bar = has_bat && bottom - top >= line(fonts.title) + P(18);
+  if (bar) bottom -= P(10) + P(8);
+  if (show_big) {
+    const std::string v = label(state.empty() ? "idle" : state);
+    const lv_font_t *vf = bottom - top >= line(fonts.big) ? fit(v, r.w - 2 * pad, {fonts.big, fonts.title}) : fonts.title;
+    text(c, v, vf, t.on ? accent() : TEXT(), pad, bottom - line(vf), r.w - 2 * pad);
+  }
+  if (bar) level(c, pad, bottom + P(8), r.w - 2 * pad, P(10), std::clamp(bat, 0.0f, 100.0f) / 100.0f);
+}
+
+inline void card_camera(lv_obj_t *c, const Tile &t, const EntityDetailState &d) {
+  const Rect r = t.r;
+  const int pad = P(12);
+  if (onx_media::main_entity.empty()) onx_media::main_entity = t.entity;
+  const void *source = !t.artwork && artwork_source && onx_media::main_entity == t.entity
+      ? artwork_source(t.entity) : nullptr;
+  const std::string st = label(d.state.empty() ? "idle" : d.state);
+  const int sw = std::min(text_width(st, fonts.small) + 1, r.w / 3);
+  const int foot_h = line(fonts.body);
+  const int fw = r.w - 2 * pad, fh = r.h - 2 * pad - foot_h - P(8);
+  if (fh >= P(40)) {
+    const ArtBox b = source ? art_box(source, std::min(fw, fh), fw, fh) : ArtBox{fw, fh, true};
+    const int ax = pad + (fw - b.w) / 2, ay = pad + (fh - b.h) / 2;
+    auto *frame = box(c, ax, ay, b.w, b.h, INSET(), P(10));
+    lv_obj_set_style_clip_corner(frame, true, 0);
+    if (source) place_artwork(frame, source, b, false);
+    else icon(c, t.entity, ax + b.w / 2, ay + b.h / 2, std::min({b.w, b.h, P(96)}) * 46 / 100, t.on ? accent() : SOFT_TEXT());
+  }
+  const int fy = r.h - pad - foot_h;
+  text(c, t.name, fit(t.name, r.w - 2 * pad - sw - P(8), {fonts.body, fonts.small}), TEXT(), pad, fy, r.w - 2 * pad - sw - P(8));
+  text(c, st, fonts.small, t.on ? accent() : MUTED(), r.w - pad - sw, fy + (foot_h - line(fonts.small)) / 2, sw, LV_TEXT_ALIGN_RIGHT);
+}
+
 __attribute__((noinline)) inline void build_card(const Tile &t) {
   const auto *d = custom_logic_entity_sub::entity_detail(t.entity);
   const bool ready = d != nullptr && d->received && d->available;
@@ -4014,6 +4259,8 @@ __attribute__((noinline)) inline void build_card(const Tile &t) {
   else if (ready && has_prefix(t.entity, "light.")) card_light(c, t, *d);
   else if (ready && has_prefix(t.entity, "climate.")) card_climate(c, t, *d);
   else if (ready && has_prefix(t.entity, "media_player.")) card_media(c, t, *d);
+  else if (ready && has_prefix(t.entity, "vacuum.")) card_vacuum(c, t, *d);
+  else if (ready && has_prefix(t.entity, "camera.")) card_camera(c, t, *d);
   else card_generic(c, t, d);
 }
 
@@ -4037,18 +4284,21 @@ inline std::vector<std::string> built_tile_sigs;
 inline std::string main_page_key;
 inline void build_main_cards(const std::vector<Tile> &tiles) {
   card_patches.clear();
-  // One cover downloads at a time: give it to the first media card that is
-  // playing (or paused), else the first media card on the page.
+  // One cover or camera snapshot downloads at a time: prefer a playing media
+  // card, then a camera card, then an idle media card.
   if (onx_media::main_entity.empty()) {
-    std::string first;
+    std::string first_camera, first_media;
     for (const auto &t : tiles) {
-      if (t.chip || t.compact || t.key || t.artwork || !has_prefix(t.entity, "media_player.")) continue;
+      if (t.chip || t.compact || t.key || t.artwork) continue;
+      const bool media = has_prefix(t.entity, "media_player."), cam = has_prefix(t.entity, "camera.");
+      if (!media && !cam) continue;
       const auto *d = custom_logic_entity_sub::entity_detail(t.entity);
       if (d == nullptr || !d->received || !d->available) continue;
-      if (first.empty()) first = t.entity;
+      if (cam) { if (first_camera.empty()) first_camera = t.entity; continue; }
+      if (first_media.empty()) first_media = t.entity;
       if (onx_media::has_playback(d->state)) { onx_media::main_entity = t.entity; break; }
     }
-    if (onx_media::main_entity.empty()) onx_media::main_entity = first;
+    if (onx_media::main_entity.empty()) onx_media::main_entity = !first_camera.empty() ? first_camera : first_media;
   }
   for (const auto &t : tiles) {
     card_artwork = t.artwork;
@@ -4220,7 +4470,7 @@ inline bool supports(const std::string &e) {
   if (custom_logic_entity_sub::is_timer_detail(e)) return true;
   for (const char *p : {"light.", "climate.", "fan.", "cover.", "switch.", "input_boolean.", "automation.", "scene.",
                         "script.", "button.", "input_button.", "sensor.", "binary_sensor.", "number.", "input_number.",
-                        "select.", "input_select.", "weather.", "media_player.", "siren.", "event."})
+                        "select.", "input_select.", "weather.", "media_player.", "siren.", "event.", "camera.", "vacuum."})
     if (has_prefix(e, p)) return true;
   return false;
 }
@@ -4237,7 +4487,8 @@ inline std::string signature(const std::string &e, const EntityDetailState *d, c
        std::to_string(d->features) + '|' + std::to_string(d->available) + '|' + std::to_string(d->received) + '|' +
        std::to_string(d->forecast_count) + '|' + std::to_string(d->forecast_waiting(esphome::millis())) + '|' + d->timer_duration;
   for (int i = 0; i < d->forecast_count; ++i) s += '|' + d->forecast[i].date + d->forecast[i].high + d->forecast[i].low;
-  s += '|' + d->media_title + '|' + d->media_artist + '|' + d->picture + '|' + onx_media::ready_url;
+  s += '|' + d->media_title + '|' + d->media_artist + '|' + d->picture + '|' + onx_media::ready_url +
+       '|' + d->battery_level + '|' + d->status + '|' + d->motion_detection + '|' + camera_ptz_entity(e);
   if (has_prefix(e, "media_player.")) s += '|' + std::to_string(onx_lyrics::store().version);
   s += '|' + v.value.text + '|' + v.context.text + '|' + v.name.text + '|' + std::to_string(v.value_ring);
   if (has_prefix(e, "light.") && light_state) {
@@ -4624,6 +4875,8 @@ inline void render(lv_obj_t *parent, const std::string &e, const std::string &ti
   else if (has_prefix(e, "binary_sensor.")) build_binary(l, e, *d, title);
   else if (has_prefix(e, "event.")) build_event(l, e, *d, title);
   else if (has_prefix(e, "siren.")) build_siren(l, e, *d, title);
+  else if (has_prefix(e, "vacuum.")) build_vacuum(l, e, *d, title);
+  else if (has_prefix(e, "camera.")) build_camera(l, e, *d, title);
   else if (has_prefix(e, "sensor.")) build_sensor(l, e, *d, title, v);
   else if (has_prefix(e, "number.") || has_prefix(e, "input_number.")) build_number(l, e, *d, title);
   else if (has_prefix(e, "select.") || has_prefix(e, "input_select.")) build_select(l, e, *d, title);

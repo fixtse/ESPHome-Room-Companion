@@ -1057,12 +1057,39 @@ script:
           onx_media::detach_main_artwork = []() { onx_panel_detail::detach_artwork(); };
           onx_panel_detail::artwork_source = [](const std::string &entity) -> const void * {
             const auto *d = custom_logic_entity_sub::entity_detail(entity);
-            if (!d || !d->available || !onx_media::has_playback(d->state)) return nullptr;
+            const bool cam = entity.rfind("camera.", 0) == 0;
+            if (!d || !d->available || (!cam && !onx_media::has_playback(d->state))) return nullptr;
             auto origin = custom_logic::build_ha_http_state_url(id(ha_host).state, "media_player.cover");
             const auto path = origin.find("/api/states/");
             if (path != std::string::npos) origin.resize(path);
-            const auto url = onx_media::artwork_url(origin, d->picture);
-            return !url.empty() && url == onx_media::ready_url ? id(media_cover_image)->get_lv_image_dsc() : nullptr;
+            const auto base = onx_media::artwork_url(origin, d->picture);
+            if (base.empty() || onx_media::ready_url.empty()) return nullptr;
+            if (onx_media::ready_url == base || (cam && onx_media::ready_url.rfind(base, 0) == 0))
+              return id(media_cover_image)->get_lv_image_dsc();
+            return nullptr;
+          };
+          onx_panel_detail::refresh_camera = []() {
+            ++onx_media::camera_refresh_seq;
+            onx_media::artwork_refresh_pending = true;
+          };
+          onx_panel_detail::send_ptz = [](const std::string &entity, const std::string &param, const std::string &dir) {
+#ifdef USE_API_HOMEASSISTANT_SERVICES
+            if (!id(normal_ha_api_connected) || entity.empty() || param.empty() || dir.empty()) return;
+            esphome::api::HomeassistantActionRequest call;
+            static constexpr char svc[] = "onvif.ptz";
+            static constexpr char k_entity[] = "entity_id";
+            static constexpr char k_mode[] = "move_mode";
+            static constexpr char v_mode[] = "ContinuousMove";
+            static constexpr char k_dist[] = "distance";
+            static constexpr char v_dist[] = "0.2";
+            call.service = {svc, sizeof(svc) - 1};
+            call.data.init(4);
+            call.data.push_back({{k_entity, sizeof(k_entity) - 1}, {entity.data(), entity.size()}});
+            call.data.push_back({{param.data(), param.size()}, {dir.data(), dir.size()}});
+            call.data.push_back({{k_mode, sizeof(k_mode) - 1}, {v_mode, sizeof(v_mode) - 1}});
+            call.data.push_back({{k_dist, sizeof(k_dist) - 1}, {v_dist, sizeof(v_dist) - 1}});
+            id(api_server)->send_homeassistant_action(call);
+#endif
           };
           onx_panel_detail::quick_actions = [](const std::string &entity) {
             const int config = onx_panel_pages::configured(entity);
@@ -1117,8 +1144,10 @@ script:
             const auto domain = entity.substr(0, entity.find('.'));
             const auto *d = custom_logic_entity_sub::entity_detail(entity);
             if (!d || !d->available) return;
-            if (domain == "scene" || domain == "button" || domain == "input_button" || domain == "media_player") {
+            if (domain == "scene" || domain == "button" || domain == "input_button" || domain == "media_player" || domain == "vacuum") {
               onx_controls::press(entity);
+            } else if (domain == "camera") {
+              if (onx_panel_pages::open) onx_panel_pages::open(entity);
             } else if (domain == "script" || domain == "automation") {
               const auto service = domain == "script" ? "script.turn_on" : "automation.trigger";
               onx_panel_detail::request(entity, service, "", "on", "panel_run");

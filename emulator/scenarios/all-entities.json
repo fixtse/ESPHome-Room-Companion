@@ -418,6 +418,31 @@
    "name": "Dew point",
    "state": "-3.5",
    "unit": "\u00b0C"
+  },
+  {
+   "entity_id": "camera.front_door",
+   "name": "Front door",
+   "state": "streaming",
+   "motion_detection": "true",
+   "features": 3,
+   "artwork": "wide",
+   "secondary": {
+    "entity": "camera.front_door"
+   }
+  },
+  {
+   "entity_id": "vacuum.roborock",
+   "name": "Roborock",
+   "state": "cleaning",
+   "battery_level": "82",
+   "fan_speed_list": [
+    "Quiet",
+    "Balanced",
+    "Turbo",
+    "Max"
+   ],
+   "fan_speed": "Turbo",
+   "features": 14204
   }
  ],
  "pages": [
@@ -600,6 +625,14 @@
    "entities": [
     "sensor.pump_mode",
     "sensor.outdoor_dew_point"
+   ]
+  },
+  {
+   "name": "camera-vacuum",
+   "kind": "two",
+   "entities": [
+    "camera.front_door",
+    "vacuum.roborock"
    ]
   }
  ]

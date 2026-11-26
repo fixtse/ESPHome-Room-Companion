@@ -40,6 +40,9 @@ int main() {
   meta.configured = "mdi:weather-fog"; meta.registry_override = true;
   meta.runtime = "mdi:thermometer"; assert(meta.chosen() == "mdi:weather-fog");
   meta.bind("light.office"); assert(meta.chosen().empty());
+  meta.bind("camera.front_door"); assert(meta.chosen() == "mdi:video");
+  meta.bind("vacuum.roborock"); assert(meta.chosen() == "mdi:robot-vacuum");
+  assert(fallback("vacuum.roborock") == "robot");
   onx_recovery::Retry retry;
   assert(!retry.due("sensor.later", false, 100));
   assert(!retry.due("sensor.later", false, 10099)); assert(retry.due("sensor.later", false, 10100));

@@ -371,6 +371,7 @@ struct EntityDetailState {
   std::string event_type, tones;
   std::string options, presets, preset, fan_modes, fan_mode, swing_modes, swing_mode, hswing_modes, hswing_mode;
   std::string percentage, oscillating, direction, sources, source, muted;
+  std::string battery_level, status, motion_detection;
   uint32_t features{0}, received_ms{0};
   bool received{false}, available{false};
   bool media_player_off_transition_pending{false};
@@ -542,7 +543,8 @@ class DeviceSlotStateUpdater {
     }
     if (has_prefix(this->entity_id_, "sensor.") || has_prefix(this->entity_id_, "binary_sensor.") ||
         has_prefix(this->entity_id_, "climate.") || has_prefix(this->entity_id_, "media_player.") || has_prefix(this->entity_id_, "script.") ||
-        has_prefix(this->entity_id_, "weather.") || has_prefix(this->entity_id_, "timer.") || control_domain(this->entity_id_)) {
+        has_prefix(this->entity_id_, "weather.") || has_prefix(this->entity_id_, "timer.") ||
+        has_prefix(this->entity_id_, "camera.") || has_prefix(this->entity_id_, "vacuum.") || control_domain(this->entity_id_)) {
       if (ui_slot == static_cast<size_t>(-1)) return;
       auto &detail = entity_details[this->slot_];
       if (detail.entity_id != this->entity_id_) {
@@ -653,8 +655,11 @@ class DeviceSlotStateUpdater {
       else if (field == "available_tones") detail.tones = value;
       else if (field == "preset_modes") detail.presets = value;
       else if (field == "preset_mode") detail.preset = value;
-      else if (field == "fan_modes") detail.fan_modes = value;
-      else if (field == "fan_mode") detail.fan_mode = value;
+      else if (field == "fan_modes" || field == "fan_speed_list") detail.fan_modes = value;
+      else if (field == "fan_mode" || field == "fan_speed") detail.fan_mode = value;
+      else if (field == "battery_level") detail.battery_level = value;
+      else if (field == "status") detail.status = value;
+      else if (field == "motion_detection") detail.motion_detection = value;
       else if (field == "swing_modes") detail.swing_modes = value;
       else if (field == "swing_mode") detail.swing_mode = value;
       else if (field == "swing_horizontal_modes") detail.hswing_modes = value;
@@ -676,7 +681,7 @@ class DeviceSlotStateUpdater {
       else if (field == "target_temp_step") detail.step = detail_number(value);
       if (control_entity == this->entity_id_) {
         std::string feedback = value;
-        if (field == "oscillating" || field == "is_volume_muted") {
+        if (field == "oscillating" || field == "is_volume_muted" || field == "motion_detection") {
           if (value == "True" || value == "true") feedback = "true";
           else if (value == "False" || value == "false") feedback = "false";
         }
@@ -1148,7 +1153,7 @@ inline void subscribe_secondary(esphome::api::APIServer *api_server,size_t slot,
   if(slot>=onx_memory::ENTRY_COUNT)return;
   const auto who=onx_subs::owner(onx_subs::Kind::SECONDARY,slot);
   const auto &config=onx_sensor_view::configs[slot];
-  if(!api_server || primary.empty() || primary!=config.primary || !config.secondary[0]) {onx_subs::registry.release(who);return;}
+  if(!api_server || primary.empty() || primary!=config.primary || !config.secondary[0] || has_prefix(primary,"camera.")) {onx_subs::registry.release(who);return;}
   const std::string secondary=config.secondary;
   onx_subs::registry.release(who,&secondary);
   for(const std::string attribute : {std::string(""),std::string("unit_of_measurement")}) {
@@ -1282,6 +1287,12 @@ inline void subscribe_entity(esphome::api::APIServer *api_server, size_t slot, c
     subscribe_field(api_server, slot, entity_id, "event_type", "event_type");
   } else if (has_prefix(entity_id, "siren.")) {
     for (const char *attribute : {"supported_features", "available_tones"})
+      subscribe_field(api_server, slot, entity_id, attribute, attribute);
+  } else if (has_prefix(entity_id, "camera.")) {
+    for (const char *attribute : {"entity_picture", "supported_features", "motion_detection"})
+      subscribe_field(api_server, slot, entity_id, attribute, attribute);
+  } else if (has_prefix(entity_id, "vacuum.")) {
+    for (const char *attribute : {"supported_features", "battery_level", "fan_speed_list", "fan_speed", "status"})
       subscribe_field(api_server, slot, entity_id, attribute, attribute);
   } else if (has_prefix(entity_id, "light.")) {
     for (const char *attribute : light_attributes()) {

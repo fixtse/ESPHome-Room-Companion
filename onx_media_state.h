@@ -251,11 +251,18 @@ inline void stat_end(bool ok, uint32_t now) {
 inline bool downloading{false}, artwork_refresh_pending{false};
 inline std::string candidate_url, artwork_wait_reason;
 inline uint32_t candidate_ms{0}, last_artwork_end_ms{0};
+inline uint32_t camera_refresh_seq{0};
 inline std::string artwork_url(const std::string &origin, const std::string &picture) {
   if (picture.empty() || picture == "None" || picture == "unknown" || picture == "unavailable") return "";
   if (picture.rfind("http://", 0) == 0 || picture.rfind("https://", 0) == 0) return picture;
   if (picture[0] == '/' && picture.rfind("//", 0) != 0 && !origin.empty()) return origin + picture;
   return "";
+}
+inline std::string camera_snapshot_url(const std::string &origin, const std::string &picture, uint32_t seq) {
+  std::string url = artwork_url(origin, picture);
+  if (url.empty() || seq == 0) return url;
+  url += (url.find('?') == std::string::npos ? "?_onx=" : "&_onx=") + std::to_string(seq);
+  return url;
 }
 
 }

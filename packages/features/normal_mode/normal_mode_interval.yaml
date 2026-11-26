@@ -332,6 +332,16 @@ interval:
             onx_media::retry_at_ms = 0;
             onx_media::artwork_refresh_pending = true;
           }
+          // Refresh an active camera snapshot every 10 seconds while visible.
+          if (!onx_media::downloading && onx_media::main_entity.rfind("camera.", 0) == 0 &&
+              id(normal_ha_api_connected) && !id(screen_off_state) && !id(sleep_mode_state) &&
+              !id(ui_presenter)->is_standby_active()) {
+            const uint32_t now = millis();
+            if (onx_media::last_artwork_end_ms != 0 && now - onx_media::last_artwork_end_ms >= 10000) {
+              ++onx_media::camera_refresh_seq;
+              onx_media::artwork_refresh_pending = true;
+            }
+          }
           if (onx_media::artwork_refresh_pending) {
             onx_media::artwork_refresh_pending = false;
             id(refresh_normal_media_cover).execute();

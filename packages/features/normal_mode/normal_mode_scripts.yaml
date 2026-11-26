@@ -730,7 +730,7 @@ script:
                   case 3: id(enter_normal_settings_input_detail).execute(); break;
                   case 4:
                     {
-                      static const uint32_t colors[]={0x101418,0x000000,0x232323,0x14283D,0x23372C,0xF4F4F4};
+                      static const uint32_t colors[]={0x101418,0x000000,0x0E1A2B,0x18141F,0x0F1D18,0x211C17,0xFFFFFF,0xF4F4F4,0xE9EEF4,0xF3EDE4,0xE8F0EA};
                       const auto current=onx_display_settings::background();size_t next=0;
                       for(size_t i=0;i<std::size(colors);++i)if(colors[i]==current)next=(i+1)%std::size(colors);
                       if(onx_entity_config::save_background_color(onx_display_settings::color_text(colors[next]))) {
@@ -2361,16 +2361,20 @@ script:
           const bool main_art = (!id(normal_device_detail_active) || onx_panel_detail::active) && !onx_media::main_entity.empty();
           const auto entity = main_art ? onx_media::main_entity : id(ui_presenter)->get_normal_device_entity_id(id(normal_device_detail_index));
           auto *detail = custom_logic_entity_sub::entity_detail(entity);
+          const bool cam = entity.rfind("camera.", 0) == 0;
           const bool media = !main_art && id(normal_device_detail_active) &&
                              id(normal_device_detail_kind) == NORMAL_DEVICE_DETAIL_KIND_AUTOMATION &&
-                             entity.rfind("media_player.", 0) == 0 && detail != nullptr;
+                             (entity.rfind("media_player.", 0) == 0 || cam) && detail != nullptr;
           std::string origin = custom_logic::build_ha_http_state_url(id(ha_host).state, "media_player.cover");
           const auto path = origin.find("/api/states/");
           if (path != std::string::npos) origin.resize(path);
           const bool playable = (media || main_art) && detail != nullptr && detail->available && id(normal_ha_api_connected) &&
               (main_art || id(normal_device_detail_online)) && !id(screen_off_state) && !id(sleep_mode_state) &&
-              !id(ui_presenter)->is_standby_active() && onx_media::has_playback(detail->state);
-          const std::string desired = playable ? onx_media::artwork_url(origin, detail->picture) : "";
+              !id(ui_presenter)->is_standby_active() && (cam || onx_media::has_playback(detail->state));
+          const std::string desired = playable
+              ? (cam ? onx_media::camera_snapshot_url(origin, detail->picture, onx_media::camera_refresh_seq)
+                     : onx_media::artwork_url(origin, detail->picture))
+              : "";
           const uint32_t now = millis();
           if (desired != onx_media::candidate_url) {
             onx_media::candidate_url = desired; onx_media::candidate_ms = now;
