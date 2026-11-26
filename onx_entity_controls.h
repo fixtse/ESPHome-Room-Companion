@@ -7,7 +7,7 @@
 namespace onx_controls {
 using namespace custom_logic_entity_sub;
 inline bool handles(const std::string &id) {
-  return control_domain(id) || has_prefix(id, "climate.") || has_prefix(id, "media_player.") || has_prefix(id, "vacuum.");
+  return control_domain(id) || has_prefix(id, "climate.") || has_prefix(id, "media_player.") || has_prefix(id, "vacuum.") || has_prefix(id, "lock.");
 }
 inline std::string domain(const std::string &id) { return id.substr(0, id.find('.')); }
 inline std::string actual(const EntityDetailState &d, const std::string &key) {
@@ -189,6 +189,10 @@ inline void press(const std::string &id) {
     } else {
       request(*d, "vacuum.start", "state", "", "cleaning");
     }
+  } else if (has_prefix(id, "lock.")) {
+    if (!d->code_format.empty() && d->code_format != "None") return;
+    const bool locked = effective(*d, "state") == "locked";
+    request(*d, locked ? "lock.unlock" : "lock.lock", "state", "", locked ? "unlocked" : "locked");
   } else if (has_prefix(id, "scene.") || has_prefix(id, "button.") || has_prefix(id, "input_button.")) {
     request(*d, domain(id) + (has_prefix(id, "scene.") ? ".turn_on" : ".press"), "state", "", "activated");
   }

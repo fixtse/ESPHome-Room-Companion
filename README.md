@@ -26,10 +26,13 @@ cards or full-screen detail views:
 | **Switches, helpers & automations** | Toggle switches, input booleans, and automations, or run scenes, scripts (with Stop while running), and buttons. Pair switches with a power/energy sensor (W or kWh) for live readings and a 12-hour graph. |
 | **Numbers, selects & sirens** | Adjust numbers and input numbers with sliders or − / + steps, pick from scrollable select lists, and configure siren tone, volume, and duration. |
 | **Media players** | View album artwork, title, artist, and a live playback progress bar; use play/pause/skip transport and swipe volume; launch up to **8 saved playlists or radio stations** per player. |
+| **Cameras** | View live **MJPEG streams** on the full screen (via Home Assistant’s `/api/camera_proxy_stream/`) and auto-refreshing snapshots on main cards, toggle power or motion detection where supported, and optionally link an **ONVIF PTZ** camera entity for pan, tilt, and zoom icon controls. |
+| **Vacuums** | Monitor cleaning status and battery ring, trigger play/pause, stop, dock, locate, and spot clean with icon buttons, and cycle fan speed presets. |
+| **Locks & alarms** | Lock, unlock, or unlatch doors (`lock.*`), and arm or disarm `alarm_control_panel.*` entities with an on-screen **PIN keypad** when a code is required. |
 | **Weather & sensors** | Check current conditions, feels-like, humidity, wind, pressure, visibility, UV, and a 5-day forecast. View sensor values, percentage bars, secondary readings with custom templates (such as relative reset times), **1 h / 12 h / 24 h / 7 d history graphs** (min / avg / max), and persisted recent history for binary sensors and events. |
 
 Main cards include direct touch controls (switches, brightness sliders, climate
-− / +, cover buttons, media transport, and Run buttons) so common actions take
+− / +, cover buttons, vacuum and lock controls, media transport, and Run buttons) so common actions take
 one tap; tap a card outside its controls to open the full screen.
 
 ### Pages, layouts & appearance

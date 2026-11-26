@@ -183,6 +183,8 @@ inline void build(JsonObject root, const std::string &query_entity, const Contex
       panel["event_type"] = detail->event_type;
       panel["battery_level"] = detail->battery_level; panel["status"] = detail->status;
       panel["motion_detection"] = detail->motion_detection;
+      panel["changed_by"] = detail->changed_by; panel["code_format"] = detail->code_format;
+      panel["code_arm_required"] = detail->code_arm_required;
       if (entity.rfind("vacuum.", 0) == 0) panel["fan_speed"] = onx_controls::effective(*detail, "fan_speed");
       if(std::isfinite(detail->progress.duration))panel["duration"] = detail->progress.duration;
       panel["value"] = onx_controls::effective(*detail,"state");

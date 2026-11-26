@@ -264,5 +264,12 @@ inline std::string camera_snapshot_url(const std::string &origin, const std::str
   url += (url.find('?') == std::string::npos ? "?_onx=" : "&_onx=") + std::to_string(seq);
   return url;
 }
+inline std::string camera_stream_url(const std::string &origin, const std::string &picture) {
+  std::string url = artwork_url(origin, picture);
+  const size_t pos = url.find("/api/camera_proxy/");
+  if (pos == std::string::npos) return "";
+  url.replace(pos, 18, "/api/camera_proxy_stream/");
+  return url;
+}
 
 }

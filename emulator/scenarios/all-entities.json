@@ -443,6 +443,21 @@
    ],
    "fan_speed": "Turbo",
    "features": 14204
+  },
+  {
+   "entity_id": "lock.front_door",
+   "name": "Front door lock",
+   "state": "locked",
+   "changed_by": "Keypad",
+   "features": 1
+  },
+  {
+   "entity_id": "alarm_control_panel.home_alarm",
+   "name": "Home alarm",
+   "state": "armed_away",
+   "code_format": "number",
+   "code_arm_required": "false",
+   "features": 7
   }
  ],
  "pages": [
@@ -633,6 +648,14 @@
    "entities": [
     "camera.front_door",
     "vacuum.roborock"
+   ]
+  },
+  {
+   "name": "lock-alarm",
+   "kind": "two",
+   "entities": [
+    "lock.front_door",
+    "alarm_control_panel.home_alarm"
    ]
   }
  ]

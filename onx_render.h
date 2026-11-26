@@ -33,13 +33,6 @@ inline constexpr PalettePair DARK_TEXTS[] = {
   {0xB8B8B8, 0x858587}, {0xAAAAAA, 0x7A7A7C},
 };
 inline bool panel_palette = false;
-// Subtrees drawn in fixed colours over photos (ImmichFrame overlay) keep their
-// colours whatever the panel background is.
-constexpr lv_obj_flag_t FIXED_PALETTE = LV_OBJ_FLAG_USER_3;
-inline bool fixed_palette(lv_obj_t *obj) {
-  for(;obj;obj=lv_obj_get_parent(obj))if(lv_obj_has_flag(obj,FIXED_PALETTE))return true;
-  return false;
-}
 struct PanelColors { uint32_t bg, surface, control, track, text, muted; };
 inline std::array<PanelColors,8> panel_history{};
 inline size_t panel_history_count=0;
@@ -86,6 +79,13 @@ inline uint32_t panel_property_color(lv_obj_t *obj,lv_style_prop_t prop,uint32_t
     }
   }
   return panel_color(color,text);
+}
+// Subtrees drawn in fixed colours over photos (ImmichFrame overlay) keep their
+// colours whatever the panel background is.
+constexpr lv_obj_flag_t FIXED_PALETTE = LV_OBJ_FLAG_USER_3;
+inline bool fixed_palette(lv_obj_t *obj) {
+  for(;obj;obj=lv_obj_get_parent(obj))if(lv_obj_has_flag(obj,FIXED_PALETTE))return true;
+  return false;
 }
 inline void apply_panel_palette(lv_obj_t *obj) {
   if(!panel_palette||!obj||lv_obj_has_flag(obj,FIXED_PALETTE))return;

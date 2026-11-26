@@ -64,6 +64,10 @@ Each type has a direct touch control next to the usual swipe/knob step:
 | Binary sensor | State disc (Home Assistant device-class wording) and the last changes the panel has seen; kept in flash across reboots (saved at most every 10 minutes), not fetched from Home Assistant |
 | Event | Latest event type and how long ago it fired, plus recent events (kept across reboots like binary sensors). Icon follows the device class (doorbell, button, motion). Events are read-only |
 | Siren | Power plus the advertised options: tone (tap to cycle), volume and duration steps. Choices are stored per siren and sent with the next turn-on |
+| Camera | Live MJPEG stream (via Home Assistant's `/api/camera_proxy_stream/`, falling back to snapshots on main cards), tap to refresh, icon buttons for refresh, power (`ON_OFF`) and motion detection, plus an optional **ONVIF PTZ** icon bar (pan, tilt, zoom via `onvif.ptz`) configured per camera in the web UI |
+| Vacuum | Status badge or battery ring (`battery_level`), icon buttons for play/pause, stop, dock, locate and spot clean based on `supported_features`, and a fan speed row (`vacuum.set_fan_speed`) |
+| Lock | Status disc (or on-screen PIN keypad when `code_format` is set) with Lock, Unlock and optional Open (`OPEN` feature) buttons; main cards and compact rows expose direct lock/unlock controls when no code is required |
+| Alarm (`alarm_control_panel`) | Status disc or on-screen numeric PIN keypad when `code_format` is set, with Disarm (while armed/triggered) or supported Home / Away / Night arm buttons |
 | Number | Large value, horizontal slider (sent on release) and − / + steps |
 | Select | Scrollable option list; tap selects immediately |
 | Weather | Place name with the condition icon in the top-right corner, large temperature with conditions, feels-like and today's range beside it, humidity / wind / rain tiles and a five-day list (day, conditions, low, range bar, high) |

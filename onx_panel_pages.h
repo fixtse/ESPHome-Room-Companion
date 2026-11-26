@@ -727,6 +727,8 @@ inline Item item(const std::string &entity,bool detail=false) {
     const auto &st=d->state;
     out.on=st=="on" || st=="playing" || st=="open" || st=="opening" || st=="active" ||
         st=="cleaning" || st=="returning" || st=="recording" || st=="streaming" ||
+        st=="unlocked" || st=="unlocking" || st=="jammed" ||
+        (entity.rfind("alarm_control_panel.",0)==0 && st!="disarmed") ||
         (entity.rfind("climate.",0)==0 && st!="off");
   }
   return out;
@@ -891,7 +893,7 @@ inline std::string grid_badge(const std::string &cell, const Item &v, const cust
   }
   // Text states (text sensors, selects, weather, media, timers): the card's
   // reading when it is short enough for the tile.
-  for (const char *pre : {"sensor.", "select.", "input_select.", "input_text.", "weather.", "media_player.", "timer.", "vacuum.", "camera."}) {
+  for (const char *pre : {"sensor.", "select.", "input_select.", "input_text.", "weather.", "media_player.", "timer.", "vacuum.", "camera.", "lock.", "alarm_control_panel."}) {
     if (!has_prefix(cell, pre)) continue;
     const std::string s = has_prefix(cell, "timer.") && v.context.find(':') != std::string::npos ? v.context : v.value;
     return s != "—" && s != "--" && onx_media::display_text(s).size() <= 14 ? onx_media::display_text(s) : "";

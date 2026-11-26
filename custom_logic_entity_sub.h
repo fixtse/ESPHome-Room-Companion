@@ -372,6 +372,7 @@ struct EntityDetailState {
   std::string options, presets, preset, fan_modes, fan_mode, swing_modes, swing_mode, hswing_modes, hswing_mode;
   std::string percentage, oscillating, direction, sources, source, muted;
   std::string battery_level, status, motion_detection;
+  std::string changed_by, code_format, code_arm_required;
   uint32_t features{0}, received_ms{0};
   bool received{false}, available{false};
   bool media_player_off_transition_pending{false};
@@ -544,7 +545,8 @@ class DeviceSlotStateUpdater {
     if (has_prefix(this->entity_id_, "sensor.") || has_prefix(this->entity_id_, "binary_sensor.") ||
         has_prefix(this->entity_id_, "climate.") || has_prefix(this->entity_id_, "media_player.") || has_prefix(this->entity_id_, "script.") ||
         has_prefix(this->entity_id_, "weather.") || has_prefix(this->entity_id_, "timer.") ||
-        has_prefix(this->entity_id_, "camera.") || has_prefix(this->entity_id_, "vacuum.") || control_domain(this->entity_id_)) {
+        has_prefix(this->entity_id_, "camera.") || has_prefix(this->entity_id_, "vacuum.") ||
+        has_prefix(this->entity_id_, "lock.") || has_prefix(this->entity_id_, "alarm_control_panel.") || control_domain(this->entity_id_)) {
       if (ui_slot == static_cast<size_t>(-1)) return;
       auto &detail = entity_details[this->slot_];
       if (detail.entity_id != this->entity_id_) {
@@ -660,6 +662,9 @@ class DeviceSlotStateUpdater {
       else if (field == "battery_level") detail.battery_level = value;
       else if (field == "status") detail.status = value;
       else if (field == "motion_detection") detail.motion_detection = value;
+      else if (field == "changed_by") detail.changed_by = value;
+      else if (field == "code_format") detail.code_format = value;
+      else if (field == "code_arm_required") detail.code_arm_required = value;
       else if (field == "swing_modes") detail.swing_modes = value;
       else if (field == "swing_mode") detail.swing_mode = value;
       else if (field == "swing_horizontal_modes") detail.hswing_modes = value;
@@ -1293,6 +1298,12 @@ inline void subscribe_entity(esphome::api::APIServer *api_server, size_t slot, c
       subscribe_field(api_server, slot, entity_id, attribute, attribute);
   } else if (has_prefix(entity_id, "vacuum.")) {
     for (const char *attribute : {"supported_features", "battery_level", "fan_speed_list", "fan_speed", "status"})
+      subscribe_field(api_server, slot, entity_id, attribute, attribute);
+  } else if (has_prefix(entity_id, "lock.")) {
+    for (const char *attribute : {"supported_features", "changed_by", "code_format"})
+      subscribe_field(api_server, slot, entity_id, attribute, attribute);
+  } else if (has_prefix(entity_id, "alarm_control_panel.")) {
+    for (const char *attribute : {"supported_features", "changed_by", "code_format", "code_arm_required"})
       subscribe_field(api_server, slot, entity_id, attribute, attribute);
   } else if (has_prefix(entity_id, "light.")) {
     for (const char *attribute : light_attributes()) {

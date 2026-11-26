@@ -189,6 +189,16 @@ inline View build(const std::string &entity, const std::string &name) {
     v.value.text = label(d->state);
     if (d->motion_detection == "True" || d->motion_detection == "true") v.context.text = "Motion on";
     v.icon_x = 0; v.icon_y = 134; v.icon_size = 40;
+  } else if (has_prefix(entity, "lock.")) {
+    v.badge.x = 0; v.badge.text = "Lock";
+    v.value.text = label(onx_controls::effective(*d, "state"));
+    if (!d->changed_by.empty() && d->changed_by != "None") v.context.text = d->changed_by;
+    v.icon_x = 0; v.icon_y = 134; v.icon_size = 40;
+  } else if (has_prefix(entity, "alarm_control_panel.")) {
+    v.badge.x = 0; v.badge.text = "Alarm";
+    v.value.text = d->state == "armed_custom_bypass" ? "Armed bypass" : label(d->state);
+    if (!d->changed_by.empty() && d->changed_by != "None") v.context.text = d->changed_by;
+    v.icon_x = 0; v.icon_y = 134; v.icon_size = 40;
   } else if (onx_controls::handles(entity)) {
     const auto key = selected_setting(*d);
     const bool number = has_prefix(entity,"number.") || has_prefix(entity,"input_number.");
@@ -334,6 +344,12 @@ inline View carousel(const std::string &entity, const std::string &name) {
   } else if (domain == "camera") {
     v.value.text = label(d->state);
     if (d->motion_detection == "True" || d->motion_detection == "true") v.context.text = "Motion on";
+  } else if (domain == "lock") {
+    v.value.text = label(d->state);
+    if (!d->changed_by.empty() && d->changed_by != "None") v.context.text = d->changed_by;
+  } else if (domain == "alarm_control_panel") {
+    v.value.text = d->state == "armed_custom_bypass" ? "Armed bypass" : label(d->state);
+    if (!d->changed_by.empty() && d->changed_by != "None") v.context.text = d->changed_by;
   }
   if (!v.context.text.empty()) {
     v.context.y = domain == "climate" ? 30 : 130;

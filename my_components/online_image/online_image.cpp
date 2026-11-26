@@ -68,6 +68,7 @@ OnlineImage::~OnlineImage() {
   for (auto &entry : cache_) heap_caps_free(entry.data);
   cache_.clear();
   cache_bytes_ = 0;
+  if (stream_frame_) { heap_caps_free(stream_frame_); stream_frame_ = nullptr; }
 }
 const OnlineImage::CacheEntry *OnlineImage::cache_find_(const std::string &url) {
   for (auto &entry : cache_) {
@@ -120,7 +121,7 @@ void OnlineImage::update() {
     const size_t end=url_.find_first_of(":/?",begin);
     host=url_.substr(begin,std::min<size_t>(end==std::string::npos?url_.size()-begin:end-begin,64));
   }
-  if (const auto *hit = cache_find_(url_)) {
+  if (!stream_mode_) if (const auto *hit = cache_find_(url_)) {
     auto *copy = static_cast<uint8_t *>(heap_caps_malloc(hit->size, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT));
     if (copy) {
       std::memcpy(copy, hit->data, hit->size);
@@ -149,9 +150,9 @@ void OnlineImage::update() {
   }
   if(!memory_ready()) {last_error_="Waiting for artwork worker memory";failed_.call();return;}
   const uint32_t open_timeout=is_https?5500:3500;
-  const uint32_t read_timeout=2500;
+  const uint32_t read_timeout=stream_mode_?5000:2500;
   const uint32_t budget=is_https?10000:7000;
-  auto *work=new(std::nothrow) Work{this,url_,{},generation_,open_timeout,read_timeout,budget,allow_redirects_};
+  auto *work=new(std::nothrow) Work{this,url_,{},generation_,open_timeout,read_timeout,budget,allow_redirects_,stream_mode_};
   if(!work) { last_error_="Request allocation failed";failed_.call(); return; }
   if(parent_) {
     work->open_timeout_ms=std::min<uint32_t>(work->open_timeout_ms,parent_->get_timeout());
@@ -208,7 +209,7 @@ void OnlineImage::fetch_task_(void *arg) {
   };
   bool okay=false;
   if(client) {
-    esp_http_client_set_header(client,"Accept","image/jpeg,image/png,image/bmp");
+    esp_http_client_set_header(client,"Accept",work->stream_mode?"multipart/x-mixed-replace,image/jpeg":"image/jpeg,image/png,image/bmp");
     esp_http_client_set_header(client,"Accept-Encoding","identity");
     for(const auto &header:work->headers) esp_http_client_set_header(client,header.name.c_str(),header.value.c_str());
     bool opened=false;
@@ -250,7 +251,69 @@ void OnlineImage::fetch_task_(void *arg) {
       }
       error="HTTP "+std::to_string(status);break;
     }
-    if(opened) {
+    if(opened && work->stream_mode) {
+      auto *chunk=static_cast<uint8_t *>(heap_caps_malloc(4096,MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT));
+      auto *frame=static_cast<uint8_t *>(heap_caps_malloc(MAX_BYTES,MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT));
+      if(!chunk || !frame) {
+        error="Stream PSRAM allocation failed";
+      } else {
+        bool in_frame=false;
+        uint8_t prev=0;
+        size_t f_used=0;
+        uint32_t last_rx=millis();
+        unsigned zero_reads=0;
+        while(!work->owner->cancelled_(work->generation)) {
+          esp_http_client_set_timeout_ms(client,static_cast<int>(work->read_timeout_ms));
+          const int count=esp_http_client_read(client,reinterpret_cast<char *>(chunk),4096);
+          if(count<0) {error="Stream read failed";break;}
+          if(count==0) {
+            const int err=esp_http_client_get_errno(client);
+            ++zero_reads;
+            if((err!=0 && err!=EAGAIN && err!=EWOULDBLOCK) || (err==0 && zero_reads>=4) ||
+               (millis()-last_rx>=8000)) {
+              error="Camera stream disconnected";
+              break;
+            }
+            vTaskDelay(pdMS_TO_TICKS(10));
+            continue;
+          }
+          last_rx=millis();
+          zero_reads=0;
+          for(int i=0;i<count;++i) {
+            const uint8_t b=chunk[i];
+            if(!in_frame) {
+              if(prev==0xFF && b==0xD8) {
+                frame[0]=0xFF; frame[1]=0xD8; f_used=2; in_frame=true;
+              }
+            } else {
+              if(f_used<MAX_BYTES) frame[f_used++]=b;
+              else { in_frame=false; f_used=0; }
+              if(in_frame && prev==0xFF && b==0xD9 && f_used>256) {
+                auto *copy=static_cast<uint8_t *>(heap_caps_malloc(f_used,MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT));
+                if(copy) {
+                  std::memcpy(copy,frame,f_used);
+                  LockGuard lock(work->owner->mutex_);
+                  if(work->generation==work->owner->generation_) {
+                    if(work->owner->stream_frame_) heap_caps_free(work->owner->stream_frame_);
+                    work->owner->stream_frame_=copy;
+                    work->owner->stream_frame_size_=f_used;
+                    work->owner->stream_frame_generation_=work->generation;
+                  } else {
+                    heap_caps_free(copy);
+                  }
+                }
+                work->stats.bytes=f_used;
+                in_frame=false; f_used=0;
+                vTaskDelay(pdMS_TO_TICKS(120));
+              }
+            }
+            prev=b;
+          }
+        }
+      }
+      heap_caps_free(chunk);
+      heap_caps_free(frame);
+    } else if(opened) {
       if(length>static_cast<int64_t>(MAX_BYTES)) error="Artwork exceeds 512 KB";
       else {
         capacity=length>0?static_cast<size_t>(length):MAX_BYTES;
@@ -324,8 +387,60 @@ void OnlineImage::reap_worker_() {
   vTaskDeleteWithCaps(handle);
   worker_=nullptr;
 }
+bool OnlineImage::decode_buffer_(uint8_t *data, size_t size) {
+  if(!source_pixels_within_limit(data,size,source_pixel_limit_)) {
+    last_error_="Image source dimensions exceed limit or are invalid";
+    return false;
+  }
+  runtime_image::ImageFormat format=get_format();
+  if(format==runtime_image::AUTO) {
+    if(size>=3 && data[0]==0xFF && data[1]==0xD8 && data[2]==0xFF) format=runtime_image::JPEG;
+    else if(size>=8 && std::memcmp(data,"\x89PNG\r\n\x1a\n",8)==0) format=runtime_image::PNG;
+    else if(size>=2 && data[0]=='B' && data[1]=='M') format=runtime_image::BMP;
+  }
+#ifdef USE_RUNTIME_IMAGE_JPEG
+  if(format==runtime_image::JPEG && (!decoder_ || decoder_->get_format()!=runtime_image::JPEG)) {
+    auto *jpeg=new(std::nothrow) PsramJpegDecoder(this);
+    if(!jpeg) {
+      last_error_="JPEG workspace PSRAM allocation failed";
+      return false;
+    }
+    decoder_.reset(jpeg);
+  }
+#endif
+  if(format!=runtime_image::AUTO && begin_decode(size,format)) {
+    size_t offset=0;
+    while(offset<size) {
+      int consumed=feed_data(data+offset,size-offset);
+      if(consumed<=0 || static_cast<size_t>(consumed)>size-offset) break;
+      offset+=static_cast<size_t>(consumed);
+      App.feed_wdt();
+      if(is_decode_finished()) break;
+    }
+    if(is_decode_finished() && end_decode()) return true;
+  }
+  last_error_="Artwork decode failed (unsupported or invalid image)";
+  return false;
+}
 void OnlineImage::loop() {
   reap_worker_();
+  {
+    uint8_t *frame=nullptr;
+    size_t fsize=0;
+    uint32_t fgen=0;
+    {
+      LockGuard lock(mutex_);
+      if(stream_frame_) {
+        frame=stream_frame_; fsize=stream_frame_size_; fgen=stream_frame_generation_;
+        stream_frame_=nullptr; stream_frame_size_=0;
+      }
+    }
+    if(frame) {
+      const bool ok=fgen==generation_ && decode_buffer_(frame,fsize);
+      heap_caps_free(frame);
+      if(ok) finished_.call(false);
+    }
+  }
   // Never clear busy_ or fire callbacks while the previous worker stack still exists.
   if(worker_!=nullptr) return;
   uint8_t *data;
@@ -346,47 +461,17 @@ void OnlineImage::loop() {
   busy_=false;
   if(generation!=generation_) {heap_caps_free(data);return;}
   if(!data) {last_error_=error;ESP_LOGW(TAG,"Artwork unavailable: %s",error.c_str());failed_.call();return;}
-  if(!source_pixels_within_limit(data,size,source_pixel_limit_)) {
-    heap_caps_free(data);last_error_="Image source dimensions exceed limit or are invalid";
-    failed_.call();return;
-  }
-  runtime_image::ImageFormat format=get_format();
-  if(format==runtime_image::AUTO) {
-    if(size>=3 && data[0]==0xFF && data[1]==0xD8 && data[2]==0xFF) format=runtime_image::JPEG;
-    else if(size>=8 && std::memcmp(data,"\x89PNG\r\n\x1a\n",8)==0) format=runtime_image::PNG;
-    else if(size>=2 && data[0]=='B' && data[1]=='M') format=runtime_image::BMP;
-  }
-#ifdef USE_RUNTIME_IMAGE_JPEG
-  if(format==runtime_image::JPEG && (!decoder_ || decoder_->get_format()!=runtime_image::JPEG)) {
-    auto *jpeg=new(std::nothrow) PsramJpegDecoder(this);
-    if(!jpeg) {
-      heap_caps_free(data);last_error_="JPEG workspace PSRAM allocation failed";
-      failed_.call();return;
-    }
-    decoder_.reset(jpeg);
-  }
-#endif
-  bool okay=false;
-  if(format!=runtime_image::AUTO && begin_decode(size,format)) {
-    size_t offset=0;
-    while(offset<size) {
-      int consumed=feed_data(data+offset,size-offset);
-      if(consumed<=0 || static_cast<size_t>(consumed)>size-offset) break;
-      offset+=static_cast<size_t>(consumed);
-      App.feed_wdt();
-      if(is_decode_finished()) break;
-    }
-    okay=is_decode_finished() && end_decode();
-  }
+  const bool okay=decode_buffer_(data,size);
   if(okay && !cached) cache_store_(url, data, size);
   heap_caps_free(data);
   if(okay) {ESP_LOGI(TAG,"Artwork loaded (%u bytes%s)",static_cast<unsigned>(size),cached?", cached":"");finished_.call(cached);}
-  else {last_error_="Artwork decode failed (unsupported or invalid image)";RuntimeImage::release();ESP_LOGW(TAG,"Artwork decode failed");failed_.call();}
+  else {RuntimeImage::release();ESP_LOGW(TAG,"Artwork decode failed");failed_.call();}
 }
 void OnlineImage::release() {
   {
     LockGuard lock(mutex_);
     ++generation_;
+    if(stream_frame_) {heap_caps_free(stream_frame_);stream_frame_=nullptr;stream_frame_size_=0;}
   }
   // Worker keeps its own request snapshot and discards cancelled generations.
   // Only the UI task owns the decoder, pixels, and LVGL descriptors.

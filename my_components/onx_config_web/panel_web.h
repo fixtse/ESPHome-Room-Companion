@@ -925,6 +925,7 @@ static const char PANEL_JS[] = R"ONXPANEL(
    modes:t('hvac_modes'),presets:t('preset_modes'),preset:t('preset_mode'),preset_mode:t('preset_mode'),fan_modes:domain==='vacuum'?t('fan_speed_list'):t('fan_modes'),fan_mode:domain==='vacuum'?t('fan_speed'):t('fan_mode'),fan_speed:t('fan_speed'),swing_modes:t('swing_modes'),swing_mode:t('swing_mode'),
    percentage:t('percentage'),oscillating:t('oscillating'),direction:t('direction'),position:t('current_position'),options:t('options'),event_type:t('event_type'),
    battery_level:t('battery_level'),status:t('status'),motion_detection:t('motion_detection'),
+   changed_by:t('changed_by'),code_format:t('code_format'),code_arm_required:t('code_arm_required'),
    sensor_class:t('device_class'),forecast:[],actions:[],forecast_pending:false};
   const min=num('min','min_temp'),max=num('max','max_temp'),step=num('step','percentage_step','target_temp_step');
   if(min!==undefined)d.minimum=min;if(max!==undefined)d.maximum=max;if(step!==undefined)d.step=step;
@@ -950,6 +951,8 @@ static const char PANEL_JS[] = R"ONXPANEL(
   else if(domain==='event'){value=st&&st!=='unknown'?(d.event_type?haLabel(d.event_type):'Event'):'No events'}
   else if(domain==='vacuum'){value=haLabel(st);badge='Vacuum';const bat=num('battery_level');if(bat!==undefined)context=Math.round(bat)+'% battery';else if(d.fan_speed&&d.fan_speed!=='None')context=haLabel(d.fan_speed)}
   else if(domain==='camera'){value=haLabel(st);badge='Camera';if(d.motion_detection==='True'||d.motion_detection==='true')context='Motion on'}
+  else if(domain==='lock'){value=haLabel(st);badge='Lock';if(d.changed_by&&d.changed_by!=='None')context=d.changed_by}
+  else if(domain==='alarm_control_panel'){value=st==='armed_custom_bypass'?'Armed bypass':haLabel(st);badge='Alarm';if(d.changed_by&&d.changed_by!=='None')context=d.changed_by}
   // Main-page lines (onx_detail_view::carousel).
   let cValue=value,cContext='';
   if(available){
@@ -960,6 +963,8 @@ static const char PANEL_JS[] = R"ONXPANEL(
    else if(domain==='timer'){cValue=haLabel(st);cContext=t('remaining')}
    else if(domain==='vacuum'){cValue=haLabel(st);const bat=num('battery_level');if(bat!==undefined)cContext=Math.round(bat)+'% battery';else if(d.fan_speed&&d.fan_speed!=='None')cContext=haLabel(d.fan_speed)}
    else if(domain==='camera'){cValue=haLabel(st);if(d.motion_detection==='True'||d.motion_detection==='true')cContext='Motion on'}
+   else if(domain==='lock'){cValue=haLabel(st);if(d.changed_by&&d.changed_by!=='None')cContext=d.changed_by}
+   else if(domain==='alarm_control_panel'){cValue=st==='armed_custom_bypass'?'Armed bypass':haLabel(st);if(d.changed_by&&d.changed_by!=='None')cContext=d.changed_by}
   }
   const ring=(lo,hi,v)=>{const n=Number(v);return available&&isFinite(n)&&hi>lo?Math.round(Math.max(0,Math.min(1,(n-lo)/(hi-lo)))*1000):-1};
   const vring=/^(number|input_number)$/.test(domain)?ring(min,max,st):domain==='sensor'&&unit==='%'?ring(0,100,st):domain==='fan'?ring(0,100,d.percentage):-1;
@@ -1279,6 +1284,43 @@ static const char PANEL_JS[] = R"ONXPANEL(
     moves.forEach((sym,i)=>iconButton(l.ctl.x+i*(bw+pgap),y,i===n-1?l.ctl.w-i*(bw+pgap):bw,rh,P(12),CONTROL,sym,TEXT));
    }
   };
+  const drawKeypad=area=>{
+   const gap=P(6),dispH=P(32);box(area.x,area.y,area.w,dispH,CARD,P(10));
+   text('Enter code',F.small,MUTED,area.x+P(8),area.y+(dispH-F.small.lh)/2,area.w-P(16),'center');
+   const top=area.y+dispH+gap,kh=area.h-dispH-gap,rows=4,cols=3,bw=Math.trunc((area.w-gap*(cols-1))/cols),bh=Math.trunc((kh-gap*(rows-1))/rows);
+   if(bh<P(18))return;
+   ['1','2','3','4','5','6','7','8','9','C','0','<'].forEach((k,i)=>{
+    const r=Math.floor(i/cols),c=i%cols,x=area.x+c*(bw+gap),y=top+r*(bh+gap),w=c===cols-1?area.w-c*(bw+gap):bw,sp=k==='C'||k==='<';
+    button(x,y,w,bh,P(10),sp?CARD:CONTROL,k,F.body,sp?SOFT:TEXT);
+   });
+  };
+  const buildLock=(l,e,d,title)=>{
+   const state=d.hvac||d.state||'locked',locked=state==='locked',needsCode=!!d.code_format&&d.code_format!=='None';
+   let context=label(state);if(d.changed_by&&d.changed_by!=='None')context+=' · '+d.changed_by;
+   header(l.head,title,context);
+   if(needsCode)drawKeypad(l.vis);
+   else{const size=Math.min(P(176),l.vis.w,l.vis.h-P(8)),cx=l.vis.x+l.vis.w/2,cy=l.vis.y+l.vis.h/2,iw=size-P(28),st=label(state),sf=fit(st,iw,[F.title,F.body,F.small]);
+    add(node('circle',{cx,cy,r:size/2-P(1.5),fill:locked?CARD:TINT,stroke:locked?CONTROL:ACCENT,'stroke-width':P(3)}));
+    text(st,sf,locked?TEXT:ACCENT,cx-iw/2,cy-sf.lh/2,iw,'center')}
+   const btns=[['Lock',locked],['Unlock',!locked]];if(d.features&1)btns.push(['Open',state==='open']);
+   const gap=P(8),n=btns.length,bw=Math.trunc((l.ctl.w-gap*(n-1))/n),bh=Math.min(P(52),l.ctl.h);
+   btns.forEach((b,i)=>button(l.ctl.x+i*(bw+gap),l.ctl.y,i===n-1?l.ctl.w-i*(bw+gap):bw,bh,P(14),b[1]?STRONG:CONTROL,b[0],n>=3?F.small:F.body,TEXT));
+  };
+  const buildAlarm=(l,e,d,title)=>{
+   const state=d.state||'disarmed',disarmed=state==='disarmed',needsCode=d.code_format==='number'||(!!d.code_format&&d.code_format!=='None');
+   const st=state==='armed_custom_bypass'?'Armed bypass':label(state);
+   let context=st;if(d.changed_by&&d.changed_by!=='None')context+=' · '+d.changed_by;
+   header(l.head,title,context);
+   if(needsCode)drawKeypad(l.vis);
+   else{const size=Math.min(P(176),l.vis.w,l.vis.h-P(8)),cx=l.vis.x+l.vis.w/2,cy=l.vis.y+l.vis.h/2,iw=size-P(28),sf=fit(st,iw,[F.title,F.body,F.small]);
+    add(node('circle',{cx,cy,r:size/2-P(1.5),fill:disarmed?CARD:TINT,stroke:disarmed?CONTROL:ACCENT,'stroke-width':P(3)}));
+    text(st,sf,disarmed?TEXT:ACCENT,cx-iw/2,cy-sf.lh/2,iw,'center')}
+   const btns=[];
+   if(!disarmed)btns.push(['Disarm',true]);
+   else{if(d.features&1)btns.push(['Home',false]);if(d.features&2)btns.push(['Away',true]);if(d.features&4)btns.push(['Night',false]);if(!btns.length)btns.push(['Home',false],['Away',true])}
+   const gap=P(8),n=btns.length,bw=Math.trunc((l.ctl.w-gap*(n-1))/n),bh=Math.min(P(52),l.ctl.h);
+   btns.forEach((b,i)=>button(l.ctl.x+i*(bw+gap),l.ctl.y,i===n-1?l.ctl.w-i*(bw+gap):bw,bh,P(14),b[1]?STRONG:CONTROL,b[0],n>=3?F.small:F.body,TEXT));
+  };
   const buildToggle=(l,e,d,title,v)=>{
    const on=d.state==='on';header(l.head,title,d.available!==false?(on?'On':'Off'):'Unavailable');
    const size=Math.min(P(150),l.vis.w,l.vis.h-F.big.lh-P(16)),cx=l.vis.x+l.vis.w/2,cy=l.vis.y+(l.vis.h-F.big.lh-P(12))/2;
@@ -1479,6 +1521,8 @@ static const char PANEL_JS[] = R"ONXPANEL(
    else if(e.startsWith('event.'))buildEvent(l,e,d,title);
    else if(e.startsWith('vacuum.'))buildVacuum(l,e,d,title);
    else if(e.startsWith('camera.'))buildCamera(l,e,d,title,v);
+   else if(e.startsWith('lock.'))buildLock(l,e,d,title);
+   else if(e.startsWith('alarm_control_panel.'))buildAlarm(l,e,d,title);
    else if(e.startsWith('sensor.'))buildSensor(l,e,d,title,v);
    else if(/^(number|input_number)\./.test(e))buildNumber(l,e,d,title);
    else if(/^(select|input_select)\./.test(e))buildSelect(l,e,d,title);
@@ -1575,6 +1619,27 @@ static const char PANEL_JS[] = R"ONXPANEL(
    const fy=r.h-pad-footH;text(t.name,fit(t.name,r.w-2*pad-sw-P(8),[F.body,F.small]),TEXT,r.x+pad,r.y+fy,r.w-2*pad-sw-P(8));
    text(st,F.small,t.on?ACCENT:MUTED,r.x+r.w-pad-sw,r.y+fy+(footH-F.small.lh)/2,sw,'right');
   };
+  const cardLock=(t,d)=>{
+   const r=t.r,pad=P(14),cs=P(44),tx=pad+cs+P(12),state=d.hvac||d.state||'locked',locked=state==='locked',needsCode=!!d.code_format&&d.code_format!=='None';
+   chipIcon(t.entity,r.x+pad,r.y+pad,cs,t.on);
+   let bottom=r.h-pad;const bh=P(44),gap=P(8),showBtns=!needsCode&&bottom-bh>=pad+cs+P(8),availBottom=showBtns?bottom-bh-P(10):bottom,top=pad+cs+P(10),showBig=availBottom-top>=F.title.lh;
+   titled(showBig?t:{...t,context:label(state)},r.x+tx,r.y+pad+P(2),r.w-tx-pad);
+   if(showBtns){bottom-=bh;const btns=[['Lock',locked],['Unlock',!locked]];if(d.features&1)btns.push(['Open',state==='open']);
+    const n=btns.length,bw=Math.trunc((r.w-2*pad-gap*(n-1))/n);
+    btns.forEach((b,i)=>button(r.x+pad+i*(bw+gap),r.y+bottom,i===n-1?r.w-2*pad-i*(bw+gap):bw,bh,P(14),b[1]?STRONG:INSET,b[0],n>=3?F.small:F.body,TEXT));bottom-=P(10)}
+   if(showBig){const v=label(state),vf=bottom-top>=F.big.lh?fit(v,r.w-2*pad,[F.big,F.title]):F.title;text(v,vf,t.on?ACCENT:TEXT,r.x+pad,r.y+bottom-vf.lh,r.w-2*pad)}
+  };
+  const cardAlarm=(t,d)=>{
+   const r=t.r,pad=P(14),cs=P(44),tx=pad+cs+P(12),state=d.state||'disarmed',disarmed=state==='disarmed';
+   const needsCode=d.code_format==='number'||(!!d.code_format&&d.code_format!=='None'),armCode=needsCode&&(!d.code_arm_required||d.code_arm_required==='True'||d.code_arm_required==='true');
+   const st=state==='armed_custom_bypass'?'Armed bypass':label(state);
+   chipIcon(t.entity,r.x+pad,r.y+pad,cs,t.on);
+   let bottom=r.h-pad;const bh=P(44),gap=P(8),canAct=disarmed?!armCode:!needsCode,showBtns=canAct&&bottom-bh>=pad+cs+P(8),availBottom=showBtns?bottom-bh-P(10):bottom,top=pad+cs+P(10),showBig=availBottom-top>=F.title.lh;
+   titled(showBig?(needsCode&&!disarmed?{...t,context:'Tap to disarm'}:t):{...t,context:st},r.x+tx,r.y+pad+P(2),r.w-tx-pad);
+   if(showBtns){bottom-=bh;if(!disarmed)button(r.x+pad,r.y+bottom,r.w-2*pad,bh,P(14),STRONG,'Disarm',F.body,TEXT);
+    else{const bw=Math.trunc((r.w-2*pad-gap)/2);button(r.x+pad,r.y+bottom,bw,bh,P(14),INSET,'Home',F.body,TEXT);button(r.x+pad+bw+gap,r.y+bottom,r.w-2*pad-bw-gap,bh,P(14),INSET,'Away',F.body,TEXT)}bottom-=P(10)}
+   if(showBig){const vf=bottom-top>=F.big.lh?fit(st,r.w-2*pad,[F.big,F.title]):F.title;text(st,vf,t.on?ACCENT:TEXT,r.x+pad,r.y+bottom-vf.lh,r.w-2*pad)}
+  };
   const cardGeneric=(t,d,v)=>{
    // As card_generic: a cover's position is its bar.
    if(t.ring<0&&d.available!==false&&v&&t.entity.startsWith('cover.')&&isFinite(num(d.position))&&t.r.h-P(14)*2-P(44)-P(10)-P(22)>=F.big.lh)return cardGeneric({...t,ring:Math.round(Math.min(100,Math.max(0,num(d.position)))*10)},d,v);
@@ -1649,6 +1714,7 @@ static const char PANEL_JS[] = R"ONXPANEL(
    if(['light','switch','input_boolean','fan','automation','siren'].includes(domain)){const x=r.w-pad-P(54);toggle(r.x+x,r.y+(r.h-P(30))/2,d.state==='on');return x}
    if(['scene','script','button','input_button'].includes(domain)){const sz=Math.min(P(36),r.h-P(10));circle(r.x+r.w-pad-sz/2,r.y+r.h/2,sz,TINT,'play',ACCENT);return r.w-pad-sz}
    if(domain==='vacuum'){const cleaning=d.state==='cleaning',sz=Math.min(P(36),r.h-P(10));circle(r.x+r.w-pad-sz/2,r.y+r.h/2,sz,cleaning?STRONG:TINT,cleaning?'pause':'play',cleaning?TEXT:ACCENT);return r.w-pad-sz}
+   if(domain==='lock'&&(!d.code_format||d.code_format==='None')){const x=r.w-pad-P(54);toggle(r.x+x,r.y+(r.h-P(30))/2,d.state!=='locked');return x}
    return r.w-pad;
   };
   // As card_chip.
@@ -1743,7 +1809,7 @@ static const char PANEL_JS[] = R"ONXPANEL(
    const tiles=rects.map((r,i)=>{const e=ids[i]||'',v=viewOf(e),c=v?{...v,...v.carousel}:null,lines=c?.lines||[],d=v?.panel||{};
     const name=e===slot.entity?(slot.name||lines[4]?.text||e):(editorSlots.find(s=>s.entity===e)?.name||v?.lines?.[4]?.text||e);
     let context=lines[2]?.text||'';if(/^(sensor|binary_sensor)\./.test(e)&&lines[4]?.text&&lines[4].text!==name)context=lines[4].text;
-    const st=d.state,on=d.available!==false&&(['on','playing','open','opening','active','cleaning','returning','recording','streaming'].includes(st)||(e.startsWith('climate.')&&st&&st!=='off'));
+    const st=d.state,on=d.available!==false&&(['on','playing','open','opening','active','cleaning','returning','recording','streaming','unlocked','unlocking','jammed'].includes(st)||(e.startsWith('alarm_control_panel.')&&st&&st!=='disarmed')||(e.startsWith('climate.')&&st&&st!=='off'));
     return {entity:e,name,value:lines[1]?.text||'',context,ring:c?.value_ring??-1,on,r,compact:p.layout==='control_sensors'&&i>0,key:grid,v,d,art:artUrl(positionArt(p,i)),
      ...(stacked?(at=>({compact:at?.type==='compact',chip:at?.type==='chips',slot:true}))(rowAt(p,i)):{})}});
    if(tiles.length){const cb=tiles[0].r.y;  // As refresh_carousel_clock: every main page, grids included.
@@ -1767,6 +1833,8 @@ static const char PANEL_JS[] = R"ONXPANEL(
     else if(ready&&t.entity.startsWith('media_player.'))cardMedia({...t,artwork:t.art},t.d,t.v);
     else if(ready&&t.entity.startsWith('vacuum.'))cardVacuum(t,t.d);
     else if(ready&&t.entity.startsWith('camera.'))cardCamera({...t,artwork:t.art},t.d,t.v);
+    else if(ready&&t.entity.startsWith('lock.'))cardLock(t,t.d);
+    else if(ready&&t.entity.startsWith('alarm_control_panel.'))cardAlarm(t,t.d);
     else cardGeneric(t,t.d,t.v);
     currentArt='';});
    // The dock: the selected page on an accent-tinted marker. Strip constants

@@ -159,7 +159,8 @@ void set_field(custom_logic_entity_sub::EntityDetailState &d, const std::string 
       {"visibility_unit", &d.visibility_unit}, {"wind_bearing", &d.wind_bearing}, {"timer_duration", &d.timer_duration},
       {"timer_remaining", &d.timer_remaining}, {"timer_finishes_at", &d.timer_finishes_at}, {"tones", &d.tones},
       {"battery_level", &d.battery_level}, {"status", &d.status}, {"motion_detection", &d.motion_detection},
-      {"fan_speed_list", &d.fan_modes}, {"fan_speed", &d.fan_mode}};
+      {"fan_speed_list", &d.fan_modes}, {"fan_speed", &d.fan_mode},
+      {"changed_by", &d.changed_by}, {"code_format", &d.code_format}, {"code_arm_required", &d.code_arm_required}};
   if (auto it = strings.find(k); it != strings.end()) { *it->second = s; return; }
   if (k == "features") d.features = v.as<uint32_t>();
   else if (k == "minimum") d.minimum = v.as<float>();

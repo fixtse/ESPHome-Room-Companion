@@ -1292,6 +1292,128 @@ __attribute__((noinline)) inline void build_vacuum(const Layout &l, const std::s
   }
 }
 
+inline std::string pin_entity, pin_code;
+inline void draw_keypad(const Rect &area, const std::string &e) {
+  if (pin_entity != e) { pin_entity = e; pin_code.clear(); }
+  const int gap = P(6), disp_h = P(32);
+  std::string dots;
+  for (size_t i = 0; i < pin_code.size(); ++i) dots += "•";
+  box(root, area.x, area.y, area.w, disp_h, CARD(), P(10));
+  text(root, dots.empty() ? "Enter code" : dots, dots.empty() ? fonts.small : fonts.title,
+       dots.empty() ? MUTED() : TEXT(), area.x + P(8),
+       area.y + (disp_h - line(dots.empty() ? fonts.small : fonts.title)) / 2, area.w - P(16), LV_TEXT_ALIGN_CENTER);
+  const int top = area.y + disp_h + gap, kh = area.h - disp_h - gap;
+  const int rows = 4, cols = 3;
+  const int bw = (area.w - gap * (cols - 1)) / cols, bh = (kh - gap * (rows - 1)) / rows;
+  if (bh < P(18)) return;
+  static constexpr const char *keys[12] = {"1", "2", "3", "4", "5", "6", "7", "8", "9", "C", "0", "<"};
+  for (int i = 0; i < 12; ++i) {
+    const int r = i / cols, c = i % cols;
+    const int x = area.x + c * (bw + gap), y = top + r * (bh + gap);
+    const int w = c == cols - 1 ? area.w - c * (bw + gap) : bw;
+    const char *k = keys[i];
+    const bool special = k[0] == 'C' || k[0] == '<';
+    button(root, x, y, w, bh, P(10), special ? CARD() : CONTROL(), k, fonts.body, special ? SOFT_TEXT() : TEXT(), [e, k]() {
+      if (pin_entity != e) { pin_entity = e; pin_code.clear(); }
+      if (k[0] == 'C') pin_code.clear();
+      else if (k[0] == '<') { if (!pin_code.empty()) pin_code.pop_back(); }
+      else if (pin_code.size() < 8) pin_code.push_back(k[0]);
+      built_signature.clear();
+    });
+  }
+}
+
+__attribute__((noinline)) inline void build_lock(const Layout &l, const std::string &e, const EntityDetailState &d, const std::string &title) {
+  const auto state = onx_controls::effective(d, "state");
+  const bool locked = state == "locked";
+  const bool needs_code = !d.code_format.empty() && d.code_format != "None";
+  std::string context = label(state.empty() ? "locked" : state);
+  if (!d.changed_by.empty() && d.changed_by != "None") context += " · " + d.changed_by;
+  header(l.head, title, context);
+  if (needs_code) {
+    draw_keypad(l.vis, e);
+  } else {
+    const int size = std::min({P(176), l.vis.w, l.vis.h - P(8)});
+    const int cx = l.vis.x + l.vis.w / 2, cy = l.vis.y + l.vis.h / 2;
+    lv_obj_t *badge = box(root, cx - size / 2, cy - size / 2, size, size, locked ? CARD() : soft(), LV_RADIUS_CIRCLE);
+    lv_obj_set_style_border_width(badge, P(3), 0);
+    lv_obj_set_style_border_color(badge, lv_color_hex(locked ? CONTROL() : accent()), 0);
+    const std::string st = label(state.empty() ? "locked" : state);
+    const int iw = size - P(28);
+    const lv_font_t *sf = fit(st, iw, {fonts.title, fonts.body, fonts.small});
+    text(root, st, sf, locked ? TEXT() : accent(), cx - iw / 2, cy - line(sf) / 2, iw, LV_TEXT_ALIGN_CENTER);
+  }
+  struct Act { const char *caption; const char *service; const char *target; bool hot; bool send_code; };
+  std::vector<Act> btns;
+  btns.push_back({"Lock", "lock.lock", "locked", locked, false});
+  btns.push_back({"Unlock", "lock.unlock", "unlocked", !locked, needs_code});
+  if (d.features & 1) btns.push_back({"Open", "lock.open", "open", state == "open", needs_code});
+  const int gap = P(8), n = btns.size(), bw = (l.ctl.w - gap * (n - 1)) / n, bh = std::min(P(52), l.ctl.h);
+  for (int i = 0; i < n; ++i) {
+    const auto a = btns[i];
+    const int w = i == n - 1 ? l.ctl.w - i * (bw + gap) : bw;
+    button(root, l.ctl.x + i * (bw + gap), l.ctl.y, w, bh, P(14), a.hot ? strong() : CONTROL(), a.caption,
+           n >= 3 ? fonts.small : fonts.body, TEXT(), [e, a]() {
+             std::vector<onx_control::Value> vals{{"state", "", a.target}};
+             if (a.send_code && pin_entity == e && !pin_code.empty()) vals.push_back({"code", "code", pin_code, true});
+             custom_logic_entity_sub::select_control_entity(e);
+             custom_logic_entity_sub::request_control(e, a.service, std::move(vals));
+             pin_code.clear();
+             built_signature.clear();
+           });
+  }
+}
+
+__attribute__((noinline)) inline void build_alarm(const Layout &l, const std::string &e, const EntityDetailState &d, const std::string &title) {
+  const auto state = d.state.empty() ? "disarmed" : d.state;
+  const bool disarmed = state == "disarmed";
+  const bool needs_code = d.code_format == "number" || (!d.code_format.empty() && d.code_format != "None");
+  const bool arm_code = needs_code && (d.code_arm_required.empty() || d.code_arm_required == "True" || d.code_arm_required == "true");
+  const std::string st = state == "armed_custom_bypass" ? "Armed bypass" : label(state);
+  std::string context = st;
+  if (!d.changed_by.empty() && d.changed_by != "None") context += " · " + d.changed_by;
+  header(l.head, title, context);
+  if (needs_code) {
+    draw_keypad(l.vis, e);
+  } else {
+    const int size = std::min({P(176), l.vis.w, l.vis.h - P(8)});
+    const int cx = l.vis.x + l.vis.w / 2, cy = l.vis.y + l.vis.h / 2;
+    lv_obj_t *badge = box(root, cx - size / 2, cy - size / 2, size, size, disarmed ? CARD() : soft(), LV_RADIUS_CIRCLE);
+    lv_obj_set_style_border_width(badge, P(3), 0);
+    lv_obj_set_style_border_color(badge, lv_color_hex(disarmed ? CONTROL() : accent()), 0);
+    const int iw = size - P(28);
+    const lv_font_t *sf = fit(st, iw, {fonts.title, fonts.body, fonts.small});
+    text(root, st, sf, disarmed ? TEXT() : accent(), cx - iw / 2, cy - line(sf) / 2, iw, LV_TEXT_ALIGN_CENTER);
+  }
+  struct Act { const char *caption; const char *service; const char *target; bool hot; bool send_code; };
+  std::vector<Act> btns;
+  if (!disarmed) {
+    btns.push_back({"Disarm", "alarm_control_panel.alarm_disarm", "disarmed", true, needs_code});
+  } else {
+    if (d.features & 1) btns.push_back({"Home", "alarm_control_panel.alarm_arm_home", "armed_home", false, arm_code});
+    if (d.features & 2) btns.push_back({"Away", "alarm_control_panel.alarm_arm_away", "armed_away", true, arm_code});
+    if (d.features & 4) btns.push_back({"Night", "alarm_control_panel.alarm_arm_night", "armed_night", false, arm_code});
+    if (btns.empty()) {
+      btns.push_back({"Home", "alarm_control_panel.alarm_arm_home", "armed_home", false, arm_code});
+      btns.push_back({"Away", "alarm_control_panel.alarm_arm_away", "armed_away", true, arm_code});
+    }
+  }
+  const int gap = P(8), n = btns.size(), bw = (l.ctl.w - gap * (n - 1)) / n, bh = std::min(P(52), l.ctl.h);
+  for (int i = 0; i < n; ++i) {
+    const auto a = btns[i];
+    const int w = i == n - 1 ? l.ctl.w - i * (bw + gap) : bw;
+    button(root, l.ctl.x + i * (bw + gap), l.ctl.y, w, bh, P(14), a.hot ? strong() : CONTROL(), a.caption,
+           n >= 3 ? fonts.small : fonts.body, TEXT(), [e, a]() {
+             std::vector<onx_control::Value> vals{{"state", "", a.target}};
+             if (a.send_code && pin_entity == e && !pin_code.empty()) vals.push_back({"code", "code", pin_code, true});
+             custom_logic_entity_sub::select_control_entity(e);
+             custom_logic_entity_sub::request_control(e, a.service, std::move(vals));
+             pin_code.clear();
+             built_signature.clear();
+           });
+  }
+}
+
 __attribute__((noinline)) inline void build_toggle(const Layout &l, const std::string &e, const EntityDetailState &d, const std::string &title) {
   const bool on = shown_state(e, d.state) == "on";
   const auto domain = e.substr(0, e.find('.'));
@@ -3757,6 +3879,12 @@ inline int row_control(lv_obj_t *c, const Tile &t, const EntityDetailState *d, i
            [e]() { onx_controls::press(e); });
     return r.w - pad - s;
   }
+  if (domain == "lock" && (d->code_format.empty() || d->code_format == "None")) {
+    const bool unlocked = shown_state(e, d->state) != "locked";
+    const int x = r.w - pad - P(54);
+    toggle(c, x, (r.h - th) / 2, unlocked, [e]() { onx_controls::press(e); });
+    return x;
+  }
   return r.w - pad;
 }
 // One line: icon, name, value (with a smaller unit) on the right.
@@ -4202,6 +4330,85 @@ inline void card_camera(lv_obj_t *c, const Tile &t, const EntityDetailState &d) 
   text(c, st, fonts.small, t.on ? accent() : MUTED(), r.w - pad - sw, fy + (foot_h - line(fonts.small)) / 2, sw, LV_TEXT_ALIGN_RIGHT);
 }
 
+inline void card_lock(lv_obj_t *c, const Tile &t, const EntityDetailState &d) {
+  const Rect r = t.r;
+  const int pad = P(14), cs = P(44), tx = pad + cs + P(12);
+  const auto state = onx_controls::effective(d, "state");
+  const bool locked = state == "locked";
+  const bool needs_code = !d.code_format.empty() && d.code_format != "None";
+  chip_icon(c, t.entity, pad, pad, cs, t.on);
+  int bottom = r.h - pad;
+  const int bh = P(44), gap = P(8);
+  const bool show_btns = !needs_code && bottom - bh >= pad + cs + P(8);
+  const int avail_bottom = show_btns ? bottom - bh - P(10) : bottom;
+  const int top = pad + cs + P(10);
+  const bool show_big = avail_bottom - top >= line(fonts.title);
+  Tile head = t;
+  if (!show_big) head.context = label(state.empty() ? "locked" : state);
+  titled(c, head, tx, pad + P(2), r.w - tx - pad);
+  if (show_btns) {
+    bottom -= bh;
+    const std::string e = t.entity;
+    struct Act { const char *caption; const char *service; const char *target; bool hot; };
+    std::vector<Act> btns{{"Lock", "lock.lock", "locked", locked}, {"Unlock", "lock.unlock", "unlocked", !locked}};
+    if (d.features & 1) btns.push_back({"Open", "lock.open", "open", state == "open"});
+    const int n = btns.size(), bw = (r.w - 2 * pad - gap * (n - 1)) / n;
+    for (int i = 0; i < n; ++i) {
+      const auto a = btns[i];
+      const int w = i == n - 1 ? r.w - 2 * pad - i * (bw + gap) : bw;
+      button(c, pad + i * (bw + gap), bottom, w, bh, P(14), a.hot ? strong() : INSET(), a.caption,
+             n >= 3 ? fonts.small : fonts.body, TEXT(), [e, a]() { request(e, a.service, "", a.target, "state"); });
+    }
+    bottom -= P(10);
+  }
+  if (show_big) {
+    const std::string v = label(state.empty() ? "locked" : state);
+    const lv_font_t *vf = bottom - top >= line(fonts.big) ? fit(v, r.w - 2 * pad, {fonts.big, fonts.title}) : fonts.title;
+    text(c, v, vf, t.on ? accent() : TEXT(), pad, bottom - line(vf), r.w - 2 * pad);
+  }
+}
+
+inline void card_alarm(lv_obj_t *c, const Tile &t, const EntityDetailState &d) {
+  const Rect r = t.r;
+  const int pad = P(14), cs = P(44), tx = pad + cs + P(12);
+  const auto state = d.state.empty() ? "disarmed" : d.state;
+  const bool disarmed = state == "disarmed";
+  const bool needs_code = d.code_format == "number" || (!d.code_format.empty() && d.code_format != "None");
+  const bool arm_code = needs_code && (d.code_arm_required.empty() || d.code_arm_required == "True" || d.code_arm_required == "true");
+  const std::string st = state == "armed_custom_bypass" ? "Armed bypass" : label(state);
+  chip_icon(c, t.entity, pad, pad, cs, t.on);
+  int bottom = r.h - pad;
+  const int bh = P(44), gap = P(8);
+  const bool can_act = disarmed ? !arm_code : !needs_code;
+  const bool show_btns = can_act && bottom - bh >= pad + cs + P(8);
+  const int avail_bottom = show_btns ? bottom - bh - P(10) : bottom;
+  const int top = pad + cs + P(10);
+  const bool show_big = avail_bottom - top >= line(fonts.title);
+  Tile head = t;
+  if (!show_big) head.context = st;
+  else if (needs_code && !disarmed) head.context = "Tap to disarm";
+  titled(c, head, tx, pad + P(2), r.w - tx - pad);
+  if (show_btns) {
+    bottom -= bh;
+    const std::string e = t.entity;
+    if (!disarmed) {
+      button(c, pad, bottom, r.w - 2 * pad, bh, P(14), strong(), "Disarm", fonts.body, TEXT(),
+             [e]() { request(e, "alarm_control_panel.alarm_disarm", "", "disarmed", "state"); });
+    } else {
+      const int bw = (r.w - 2 * pad - gap) / 2;
+      button(c, pad, bottom, bw, bh, P(14), INSET(), "Home", fonts.body, TEXT(),
+             [e]() { request(e, "alarm_control_panel.alarm_arm_home", "", "armed_home", "state"); });
+      button(c, pad + bw + gap, bottom, r.w - 2 * pad - bw - gap, bh, P(14), INSET(), "Away", fonts.body, TEXT(),
+             [e]() { request(e, "alarm_control_panel.alarm_arm_away", "", "armed_away", "state"); });
+    }
+    bottom -= P(10);
+  }
+  if (show_big) {
+    const lv_font_t *vf = bottom - top >= line(fonts.big) ? fit(st, r.w - 2 * pad, {fonts.big, fonts.title}) : fonts.title;
+    text(c, st, vf, t.on ? accent() : TEXT(), pad, bottom - line(vf), r.w - 2 * pad);
+  }
+}
+
 __attribute__((noinline)) inline void build_card(const Tile &t) {
   const auto *d = custom_logic_entity_sub::entity_detail(t.entity);
   const bool ready = d != nullptr && d->received && d->available;
@@ -4261,6 +4468,8 @@ __attribute__((noinline)) inline void build_card(const Tile &t) {
   else if (ready && has_prefix(t.entity, "media_player.")) card_media(c, t, *d);
   else if (ready && has_prefix(t.entity, "vacuum.")) card_vacuum(c, t, *d);
   else if (ready && has_prefix(t.entity, "camera.")) card_camera(c, t, *d);
+  else if (ready && has_prefix(t.entity, "lock.")) card_lock(c, t, *d);
+  else if (ready && has_prefix(t.entity, "alarm_control_panel.")) card_alarm(c, t, *d);
   else card_generic(c, t, d);
 }
 
@@ -4470,7 +4679,7 @@ inline bool supports(const std::string &e) {
   if (custom_logic_entity_sub::is_timer_detail(e)) return true;
   for (const char *p : {"light.", "climate.", "fan.", "cover.", "switch.", "input_boolean.", "automation.", "scene.",
                         "script.", "button.", "input_button.", "sensor.", "binary_sensor.", "number.", "input_number.",
-                        "select.", "input_select.", "weather.", "media_player.", "siren.", "event.", "camera.", "vacuum."})
+                        "select.", "input_select.", "weather.", "media_player.", "siren.", "event.", "camera.", "vacuum.", "lock.", "alarm_control_panel."})
     if (has_prefix(e, p)) return true;
   return false;
 }
@@ -4488,7 +4697,8 @@ inline std::string signature(const std::string &e, const EntityDetailState *d, c
        std::to_string(d->forecast_count) + '|' + std::to_string(d->forecast_waiting(esphome::millis())) + '|' + d->timer_duration;
   for (int i = 0; i < d->forecast_count; ++i) s += '|' + d->forecast[i].date + d->forecast[i].high + d->forecast[i].low;
   s += '|' + d->media_title + '|' + d->media_artist + '|' + d->picture + '|' + onx_media::ready_url +
-       '|' + d->battery_level + '|' + d->status + '|' + d->motion_detection + '|' + camera_ptz_entity(e);
+       '|' + d->battery_level + '|' + d->status + '|' + d->motion_detection + '|' + camera_ptz_entity(e) +
+       '|' + d->changed_by + '|' + d->code_format + '|' + d->code_arm_required + '|' + (pin_entity == e ? std::to_string(pin_code.size()) : "");
   if (has_prefix(e, "media_player.")) s += '|' + std::to_string(onx_lyrics::store().version);
   s += '|' + v.value.text + '|' + v.context.text + '|' + v.name.text + '|' + std::to_string(v.value_ring);
   if (has_prefix(e, "light.") && light_state) {
@@ -4877,6 +5087,8 @@ inline void render(lv_obj_t *parent, const std::string &e, const std::string &ti
   else if (has_prefix(e, "siren.")) build_siren(l, e, *d, title);
   else if (has_prefix(e, "vacuum.")) build_vacuum(l, e, *d, title);
   else if (has_prefix(e, "camera.")) build_camera(l, e, *d, title);
+  else if (has_prefix(e, "lock.")) build_lock(l, e, *d, title);
+  else if (has_prefix(e, "alarm_control_panel.")) build_alarm(l, e, *d, title);
   else if (has_prefix(e, "sensor.")) build_sensor(l, e, *d, title, v);
   else if (has_prefix(e, "number.") || has_prefix(e, "input_number.")) build_number(l, e, *d, title);
   else if (has_prefix(e, "select.") || has_prefix(e, "input_select.")) build_select(l, e, *d, title);

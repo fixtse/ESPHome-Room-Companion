@@ -1154,6 +1154,8 @@ image:
     on_download_finished:
       then:
         - lambda: |-
+            const bool streaming = id(media_cover_image)->is_streaming();
+            const bool same_stream = streaming && onx_media::ready_url == onx_media::requested_url;
             onx_media::ready_url = onx_media::requested_url;
             onx_media::artwork_retry.on_success(onx_media::requested_url);
             onx_media::artwork_wait_reason.clear();
@@ -1161,6 +1163,17 @@ image:
             { const auto &f = id(media_cover_image)->last_stats(); auto &d = onx_media::last_fetch;
               d.attempts=f.attempts; d.open_ms=f.open_ms; d.read_ms=f.read_ms; d.bytes=f.bytes; d.heap_free_start=f.heap_free_start;
               d.heap_largest_start=f.heap_largest_start; d.heap_free_after_open=f.heap_free_after_open; d.https=f.https; d.stack_psram=f.stack_psram; d.cached=f.cached; d.host=f.host; }
+            if (streaming) {
+              onx_media::requested_ms = millis();
+              onx_media::last_artwork_end_ms = millis();
+              if (same_stream) {
+                lv_image_cache_drop(id(media_cover_image)->get_lv_image_dsc());
+                if (onx_panel_detail::main_artwork != nullptr) lv_obj_invalidate(onx_panel_detail::main_artwork);
+              } else {
+                onx_media::artwork_refresh_pending = true;
+              }
+              return;
+            }
             onx_media::downloading = false;
             id(entity_icon_downloader)->set_artwork_busy(false);
             onx_media::last_artwork_end_ms = millis();

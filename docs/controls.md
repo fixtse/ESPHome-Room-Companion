@@ -30,6 +30,10 @@ sets how many steps one swipe position moves.
 | Choices | Browse the options | Confirm your choice | — |
 | Scenes and buttons | — | Activate | — |
 | Media players | Up / down: volume | Play/pause (or the transport buttons) | Next / previous track |
+| Cameras | — | Tap snapshot to refresh; use icon buttons for refresh, power, motion detection, and optional ONVIF PTZ | — |
+| Vacuums | Preview fan speed (when supported) | Start / pause cleaning, or use icon buttons for stop, dock, locate, spot clean, and fan speed | — |
+| Locks | — | Lock / unlock (or enter PIN on the detail screen when a code is required) | — |
+| Alarms | — | Enter PIN (when required) and tap Disarm or an arm mode (Home / Away / Night) | — |
 | Weather | Browse readings and daily forecasts | Retry unavailable forecasts | — |
 
 Some devices offer fewer options. Home Assistant must allow the panel to perform
