@@ -1269,8 +1269,8 @@ static const char PANEL_JS[] = R"ONXPANEL(
    const on=['streaming','recording'].includes(d.state),hasMotion=['True','true','False','false'].includes(d.motion_detection),motionOn=['True','true'].includes(d.motion_detection);
    const ptz=d.ptz||(slot.entity===e?slot.secondary:'');
    // Landscape: name on top, wide snapshot, button column(s) on the right (camera_layout).
-   let l=base;if(wide){const pad=P(16),g=P(12),col=P(52),top=pad+P(56),cw=ptz?2*col+P(8):col,vis={x:pad,y:top,w:W-2*pad-cw-g,h:H-pad-top};l={head:{x:pad,y:pad,w:W-2*pad,h:P(48)},vis,ctl:{x:vis.x+vis.w+g,y:top,w:cw,h:vis.h}}}
-   let context=label(d.state||'idle');if(hasMotion)context+=motionOn?' · Motion on':' · Motion off';if(ptz)context+=' · PTZ';
+   let l=base;if(!wide){const pad=P(16),rh=P(48),rows=ptz?2:1,ch=rows*rh+(rows-1)*P(8),top=pad+P(52),ctl={x:pad,y:H-pad-ch,w:W-2*pad,h:ch};l={head:{x:pad,y:pad,w:W-2*pad,h:P(48)},ctl,vis:{x:pad,y:top,w:W-2*pad,h:ctl.y-P(12)-top}}}if(wide){const pad=P(16),g=P(12),col=P(52),top=pad+P(44),cw=ptz?2*col+P(8):col,vis={x:pad,y:top,w:W-2*pad-cw-g,h:H-pad-top};l={head:{x:pad,y:pad,w:W-2*pad,h:P(48)},vis,ctl:{x:vis.x+vis.w+g,y:top,w:cw,h:vis.h}}}
+   let context=hasMotion?(motionOn?'Motion on':'Motion off'):'';if(ptz)context+=context?' · PTZ':'PTZ';
    header(l.head,title,context);
    const square=Math.min(l.vis.w,l.vis.h),b=v?.artwork?artBox(v.artwork,square,l.vis.w,l.vis.h):{w:l.vis.w,h:Math.min(l.vis.h,Math.trunc(l.vis.w*9/16)),shaped:true};
    const ax=l.vis.x+Math.trunc((l.vis.w-b.w)/2),ay=l.vis.y+Math.trunc((l.vis.h-b.h)/2);

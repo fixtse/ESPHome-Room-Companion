@@ -332,12 +332,15 @@ interval:
             onx_media::retry_at_ms = 0;
             onx_media::artwork_refresh_pending = true;
           }
-          // Refresh an active camera snapshot every 10 seconds while visible (not when MJPEG streaming).
+          // Refresh an active camera snapshot while visible (not when MJPEG streaming).
           if (!onx_media::downloading && !id(media_cover_image)->is_streaming() && onx_media::main_entity.rfind("camera.", 0) == 0 &&
               id(normal_ha_api_connected) && !id(screen_off_state) && !id(sleep_mode_state) &&
               !id(ui_presenter)->is_standby_active()) {
             const uint32_t now = millis();
-            if (onx_media::last_artwork_end_ms != 0 && now - onx_media::last_artwork_end_ms >= 10000) {
+            // Near-continuous while the camera view is open (a stand-in for a
+            // stream); every 5 s for the main page card.
+            const bool viewing = id(normal_device_detail_active) && onx_panel_detail::active;
+            if (onx_media::last_artwork_end_ms != 0 && now - onx_media::last_artwork_end_ms >= (viewing ? 300u : 5000u)) {
               ++onx_media::camera_refresh_seq;
               onx_media::artwork_refresh_pending = true;
             }

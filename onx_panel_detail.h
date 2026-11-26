@@ -407,6 +407,37 @@ inline lv_obj_t *icon_button(lv_obj_t *parent, int x, int y, int w, int h, int r
   lv_obj_center(l);
   return b;
 }
+// Short confirmation near the bottom of the screen (e.g. "Turning camera on"),
+// hidden again after 1.5 s. Lives on the top layer so rebuilds keep it.
+inline lv_obj_t *toast_box = nullptr;
+inline lv_obj_t *toast_text = nullptr;
+inline lv_timer_t *toast_timer = nullptr;
+inline void toast(const std::string &message) {
+  if (toast_box == nullptr) {
+    toast_box = lv_obj_create(lv_layer_top());
+    lv_obj_remove_flag(toast_box, static_cast<lv_obj_flag_t>(LV_OBJ_FLAG_SCROLLABLE | LV_OBJ_FLAG_CLICKABLE));
+    lv_obj_set_style_bg_color(toast_box, lv_color_hex(0x000000), 0);
+    lv_obj_set_style_bg_opa(toast_box, LV_OPA_80, 0);
+    lv_obj_set_style_border_width(toast_box, 0, 0);
+    lv_obj_set_style_radius(toast_box, P(14), 0);
+    lv_obj_set_style_pad_hor(toast_box, P(14), 0);
+    lv_obj_set_style_pad_ver(toast_box, P(8), 0);
+    lv_obj_set_size(toast_box, LV_SIZE_CONTENT, LV_SIZE_CONTENT);
+    toast_text = lv_label_create(toast_box);
+    lv_obj_set_style_text_font(toast_text, fonts.small, 0);
+    lv_obj_set_style_text_color(toast_text, lv_color_hex(0xFFFFFF), 0);
+    toast_timer = lv_timer_create([](lv_timer_t *t) {
+      if (toast_box != nullptr) lv_obj_add_flag(toast_box, LV_OBJ_FLAG_HIDDEN);
+      lv_timer_pause(t);
+    }, 1500, nullptr);
+  }
+  lv_label_set_text(toast_text, message.c_str());
+  lv_obj_align(toast_box, LV_ALIGN_BOTTOM_MID, 0, -P(24));
+  lv_obj_remove_flag(toast_box, LV_OBJ_FLAG_HIDDEN);
+  lv_obj_move_foreground(toast_box);
+  lv_timer_reset(toast_timer);
+  lv_timer_resume(toast_timer);
+}
 inline lv_obj_t *chip(lv_obj_t *parent, int x, int y, int w, int h, const std::string &caption, bool selected,
                       std::function<void()> fn) {
   lv_obj_t *b = button(parent, x, y, w, h, h / 2, selected ? soft() : CONTROL(), caption, fonts.small,
@@ -3465,12 +3496,27 @@ inline std::string camera_ptz_entity(const std::string &e) {
   return i >= 0 && onx_sensor_view::configs[i].secondary[0] ? std::string(onx_sensor_view::configs[i].secondary) : std::string();
 }
 
+inline const char *ptz_caption(const char *dir) {
+  const std::string d = dir;
+  return d == "LEFT" ? "Panning left" : d == "RIGHT" ? "Panning right" : d == "UP" ? "Tilting up" : d == "DOWN" ? "Tilting down"
+       : d == "ZOOM_IN" ? "Zooming in" : "Zooming out";
+}
 // Landscape camera: the name across the top, a wide snapshot below it and the
 // buttons in a narrow column (two with PTZ) on the right, so the 16:9 frame
 // gets most of the screen rather than the default half-width visual column.
 inline Layout camera_layout(const Layout &base, bool ptz) {
-  if (!wide()) return base;
-  const int pad = P(16), gap = P(12), col = P(52), top = pad + P(56);
+  if (!wide()) {
+    // Portrait: the snapshot fills everything between the name and a bottom
+    // row of buttons (two rows with PTZ).
+    const int pad = P(16), gap = P(8), rh = P(48), rows = ptz ? 2 : 1;
+    const int ctl_h = rows * rh + (rows - 1) * gap, top = pad + P(52);
+    Layout l{};
+    l.head = {pad, pad, W - 2 * pad, P(48)};
+    l.ctl = {pad, H - pad - ctl_h, W - 2 * pad, ctl_h};
+    l.vis = {pad, top, W - 2 * pad, l.ctl.y - P(12) - top};
+    return l;
+  }
+  const int pad = P(16), gap = P(12), col = P(52), top = pad + P(44);
   const int cw = ptz ? 2 * col + P(8) : col;
   Layout l{};
   l.head = {pad, pad, W - 2 * pad, P(48)};
@@ -3486,9 +3532,10 @@ __attribute__((noinline)) inline void build_camera(const Layout &base, const std
                           d.motion_detection == "False" || d.motion_detection == "false";
   const bool motion_on = d.motion_detection == "True" || d.motion_detection == "true";
   const std::string ptz = camera_ptz_entity(e);
-  std::string context = label(d.state.empty() ? "idle" : d.state);
-  if (has_motion) context += motion_on ? " · Motion on" : " · Motion off";
-  if (!ptz.empty()) context += " · PTZ";
+  // The power button already shows on/off; the line keeps motion and PTZ only.
+  std::string context;
+  if (has_motion) context = motion_on ? "Motion on" : "Motion off";
+  if (!ptz.empty()) context += context.empty() ? "PTZ" : " · PTZ";
   header(l.head, title, context);
   const void *source = artwork_source ? artwork_source(e) : nullptr;
   const int square = std::min(l.vis.w, l.vis.h);
@@ -3507,16 +3554,18 @@ __attribute__((noinline)) inline void build_camera(const Layout &base, const std
   }
   struct Btn { const char *symbol; bool hot; std::function<void()> fn; };
   std::vector<Btn> btns;
-  btns.push_back({LV_SYMBOL_REFRESH, false, []() { if (refresh_camera) refresh_camera(); }});
+  btns.push_back({LV_SYMBOL_REFRESH, false, []() { if (refresh_camera) refresh_camera(); toast("Refreshing snapshot"); }});
   if (d.features & 1) {
     btns.push_back({LV_SYMBOL_POWER, is_on, [e, is_on]() {
       request(e, is_on ? "camera.turn_off" : "camera.turn_on", "", is_on ? "idle" : "streaming", "state");
+      toast(is_on ? "Turning camera off" : "Turning camera on");
     }});
   }
   if (has_motion) {
     btns.push_back({motion_on ? LV_SYMBOL_EYE_OPEN : LV_SYMBOL_EYE_CLOSE, motion_on, [e, motion_on]() {
       request(e, motion_on ? "camera.disable_motion_detection" : "camera.enable_motion_detection",
               "", motion_on ? "false" : "true", "motion_detection");
+      toast(motion_on ? "Motion detection off" : "Motion detection on");
     }});
   }
   if (wide()) {
@@ -3537,7 +3586,7 @@ __attribute__((noinline)) inline void build_camera(const Layout &base, const std
       for (int i = 0; i < 6; ++i) {
         const auto m = moves[i];
         icon_button(root, x, l.ctl.y + i * (ph + pgap), l.ctl.w - col - gap, ph, P(12), CONTROL(), m.symbol, TEXT(),
-                    [ptz, m]() { if (send_ptz) send_ptz(ptz, m.param, m.dir); });
+                    [ptz, m]() { if (send_ptz) send_ptz(ptz, m.param, m.dir); toast(ptz_caption(m.dir)); });
       }
     }
     return;
@@ -3566,7 +3615,7 @@ __attribute__((noinline)) inline void build_camera(const Layout &base, const std
       const auto m = moves[i];
       const int w = i == n - 1 ? l.ctl.w - i * (bw + pgap) : bw;
       icon_button(root, l.ctl.x + i * (bw + pgap), y, w, rh, P(12), CONTROL(), m.symbol, TEXT(),
-                  [ptz, m]() { if (send_ptz) send_ptz(ptz, m.param, m.dir); });
+                  [ptz, m]() { if (send_ptz) send_ptz(ptz, m.param, m.dir); toast(ptz_caption(m.dir)); });
     }
   }
 }
@@ -4531,7 +4580,13 @@ inline std::string main_page_key;
 inline void build_main_cards(const std::vector<Tile> &tiles) {
   card_patches.clear();
   // One cover or camera snapshot downloads at a time: prefer a playing media
-  // card, then a camera card, then an idle media card.
+  // card, then a camera card, then an idle media card. Swiping pages does not
+  // clear the choice, so drop one that is not a card on this page.
+  if (!onx_media::main_entity.empty() &&
+      std::none_of(tiles.begin(), tiles.end(), [](const Tile &t) {
+        return !t.chip && !t.compact && !t.key && !t.artwork && t.entity == onx_media::main_entity;
+      }))
+    onx_media::main_entity.clear();
   if (onx_media::main_entity.empty()) {
     std::string first_camera, first_media;
     for (const auto &t : tiles) {
