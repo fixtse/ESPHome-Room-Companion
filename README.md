@@ -1,4 +1,4 @@
-# OpenNextion Room Companion by fixtSE
+# ESPHome Room Companion by fixtSE
 
 **The Home Assistant controls you reach for every day, right where you use them.**
 
@@ -133,7 +133,7 @@ the [fixtSE ImmichFrame fork](https://github.com/fixtse/ImmichFrame):
   plugin to send desktop notifications with chat avatars, website icons, and
   screenshot previews (Linux) or app logos (experimental Windows port).
 
-  [![Import the KDE for Home Assistant notifications blueprint](https://my.home-assistant.io/badges/blueprint_import.svg)](https://my.home-assistant.io/redirect/blueprint_import/?blueprint_url=https%3A%2F%2Fgithub.com%2Ffixtse%2FOpenNextion-Room-Companion%2Fblob%2Fmain%2Fblueprints%2Fautomation%2Fnotifications_on_esphome_display.yaml)
+  [![Import the KDE for Home Assistant notifications blueprint](https://my.home-assistant.io/badges/blueprint_import.svg)](https://my.home-assistant.io/redirect/blueprint_import/?blueprint_url=https%3A%2F%2Fgithub.com%2Ffixtse%2FESPHome-Room-Companion%2Fblob%2Fmain%2Fblueprints%2Fautomation%2Fnotifications_on_esphome_display.yaml)
 - **Pull-down quick toggles & status chips.** The notification shade includes
   quick tiles to toggle the standby clock timer, **switch presets on the
   panel**, and rotate screen orientation. Live status chips in the top bar let

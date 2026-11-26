@@ -1804,7 +1804,7 @@ static const char PANEL_JS[] = R"ONXPANEL(
  if(!anchor)return;
  // Every link on this page opens in a new tab, so the settings stay open.
  anchor.addEventListener('click',ev=>{const a=ev.target.closest?.('a[href]');if(a){a.target='_blank';a.rel='noopener noreferrer'}},true);
- const DOCS='https://github.com/fixtse/OpenNextion-Room-Companion/blob/main/docs/room-companion/dashboard-stream.md';
+ const DOCS='https://github.com/fixtse/ESPHome-Room-Companion/blob/main/docs/room-companion/dashboard-stream.md';
  const form=document.createElement('form');
  form.className='panel';form.id='panel-dashboard';
  form.innerHTML='<h2>Streamed page</h2>'+
@@ -1813,7 +1813,7 @@ static const char PANEL_JS[] = R"ONXPANEL(
   'You can also add <strong>Dashboard</strong> as a control to open it from the icon strip, or use the Streamed page switch in Home Assistant. Swipe left or right to return.</p>'+
   '<fieldset class="settings-section"><legend>Set it up</legend><ol class="setup-steps">'+
   '<li><b>Run a Remote WebView server.</b> On Home Assistant OS, add the <a href="https://my.home-assistant.io/redirect/supervisor_add_addon_repository/?repository_url=https%3A%2F%2Fgithub.com%2Fstrange-v%2FRemoteWebViewServer" target="_blank" rel="noopener noreferrer">Remote WebView Server app repository</a>, then install and start it. '+
-  'Elsewhere, use the <a href="https://github.com/fixtse/OpenNextion-Room-Companion/blob/main/deploy/remote-webview/compose.yaml" target="_blank" rel="noopener noreferrer">Docker Compose example</a>, already tuned for these panels.</li>'+
+  'Elsewhere, use the <a href="https://github.com/fixtse/ESPHome-Room-Companion/blob/main/deploy/remote-webview/compose.yaml" target="_blank" rel="noopener noreferrer">Docker Compose example</a>, already tuned for these panels.</li>'+
   '<li><b>Use the recommended stream settings.</b> Tile size 32, a minimum frame interval of 120 ms, JPEG quality 80 and reduced motion on. These panels draw a full frame in about a tenth of a second; '+
   '<a href="'+DOCS+'#recommended-server-settings" target="_blank" rel="noopener noreferrer">all values and why</a>.</li>'+
   '<li><b>Enter the server and the page below</b>, then save. <b>Use my Home Assistant</b> fills in the Home Assistant this panel is connected to.</li>'+

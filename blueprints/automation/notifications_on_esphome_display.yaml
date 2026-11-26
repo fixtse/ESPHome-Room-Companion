@@ -6,10 +6,10 @@ blueprint:
     the device. Choose per device and per app what is shared on the
     KDE for Home Assistant page in the sidebar. The display needs the ESPHome
     actions show_message(title, message, image_url, timeout_seconds) and
-    dismiss_message, as on OpenNextion Room Companion. Create a Text helper
+    dismiss_message, as on ESPHome Room Companion. Create a Text helper
     (maximum length 255) to remember which notification is on screen.
   domain: automation
-  source_url: https://github.com/fixtse/OpenNextion-Room-Companion/blob/main/blueprints/automation/notifications_on_esphome_display.yaml
+  source_url: https://github.com/fixtse/ESPHome-Room-Companion/blob/main/blueprints/automation/notifications_on_esphome_display.yaml
   homeassistant:
     min_version: "2025.1.0"
   input:

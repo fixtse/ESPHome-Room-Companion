@@ -25,13 +25,13 @@ Tap the lyrics to show the artwork again. They return on the next track.
        url: "https://lrclib.net/api/{{ path }}"
        method: GET
        headers:
-         User-Agent: "Room Companion lyrics (https://github.com/fixtse/OpenNextion-Room-Companion)"
+         User-Agent: "Room Companion lyrics (https://github.com/fixtse/ESPHome-Room-Companion)"
        timeout: 15
    ```
 
 2. Import the blueprint:
 
-   [![Import the blueprint](https://my.home-assistant.io/badges/blueprint_import.svg)](https://my.home-assistant.io/redirect/blueprint_import/?blueprint_url=https%3A%2F%2Fgithub.com%2Ffixtse%2FOpenNextion-Room-Companion%2Fblob%2Fmain%2Fblueprints%2Fautomation%2Froom_companion_lyrics.yaml)
+   [![Import the blueprint](https://my.home-assistant.io/badges/blueprint_import.svg)](https://my.home-assistant.io/redirect/blueprint_import/?blueprint_url=https%3A%2F%2Fgithub.com%2Ffixtse%2FESPHome-Room-Companion%2Fblob%2Fmain%2Fblueprints%2Fautomation%2Froom_companion_lyrics.yaml)
 
 3. Create an automation from **Room Companion synced lyrics**:
    - **Media player:** your Spotify player, for example `media_player.spotify_you`.

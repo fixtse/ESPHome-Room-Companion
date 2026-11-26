@@ -1,4 +1,4 @@
-# Room Companion
+# ESPHome Room Companion
 
 Read `/home/fixt/CLAUDE.md`. Emulator previews, host tests and services run on
 devserv under a task lease and isolated checkout. Firmware for testing is

@@ -9,7 +9,7 @@ blueprint:
     lyrics. Requires the `rest_command.room_companion_lrclib` snippet from
     docs/lyrics.md.
   domain: automation
-  source_url: https://github.com/fixtse/OpenNextion-Room-Companion/blob/main/blueprints/automation/room_companion_lyrics.yaml
+  source_url: https://github.com/fixtse/ESPHome-Room-Companion/blob/main/blueprints/automation/room_companion_lyrics.yaml
   input:
     media_player:
       name: Media player
