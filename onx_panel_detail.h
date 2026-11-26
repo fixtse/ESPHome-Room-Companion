@@ -3469,7 +3469,12 @@ __attribute__((noinline)) inline void build_media(const Layout &l, const std::st
       lv_obj_set_style_pad_ver(l, P(3), 0);
       return l;
     };
-    lyric_view.prev = make(MUTED()); lyric_view.cur = make(TEXT()); lyric_view.next = make(SOFT_TEXT());
+    // Lines sit on black pills over the artwork: keep them white in both themes.
+    lyric_view.prev = make(0xFFFFFF); lyric_view.cur = make(0xFFFFFF); lyric_view.next = make(0xFFFFFF);
+    for (auto *l : {lyric_view.prev, lyric_view.cur, lyric_view.next}) {
+      lv_obj_add_flag(l, onx_render::FIXED_PALETTE);
+      lv_obj_set_style_text_color(l, lv_color_hex(0xFFFFFF), 0);
+    }
     tick_media_progress();
     return;
   }

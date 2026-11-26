@@ -1500,9 +1500,9 @@ static const char PANEL_JS[] = R"ONXPANEL(
     let cf=[F.title,F.body].find(f=>rows(cur,f,24)<=2&&hgt(f)<=lh-2*(gap+sl))||F.small;if(hgt(cf)>lh-2*(gap+sl)&&hgt(F.body)<=lh)cf=F.body;
     const chip=(s,f,color,y,n)=>{const r=wrap(s,f,tw,n);if(!r.length)return 0;const cw=Math.min(tw,Math.max(...r.map(t=>width(t,f)))+2)+2*px,ch=r.length*f.lh+2*py,cx=rx+lp+(lw-cw)/2;
      box(cx,y,cw,ch,'#000000',P(12),{'fill-opacity':0.5});text(s,f,color,cx+px,y+py,cw-2*px,'center',n);return ch};
-    const ch=Math.min(lh,hgt(cf)),cy=Math.trunc((lh-ch)/2),top=ry+lp,n=Math.trunc(((lh-ch)/2-gap-2*py)/F.small.lh);chip(cur,cf,TEXT,top+cy,24);
-    const ph=rows(ly[0],F.small,n);if(ph)chip(ly[0],F.small,MUTED,top+cy-gap-(ph*F.small.lh+2*py),n);
-    if(rows(ly[2],F.small,n))chip(ly[2],F.small,SOFT,top+cy+ch+gap,n);return}
+    const ch=Math.min(lh,hgt(cf)),cy=Math.trunc((lh-ch)/2),top=ry+lp,n=Math.trunc(((lh-ch)/2-gap-2*py)/F.small.lh);chip(cur,cf,'#ffffff',top+cy,24);
+    const ph=rows(ly[0],F.small,n);if(ph)chip(ly[0],F.small,'#ffffff',top+cy-gap-(ph*F.small.lh+2*py),n);
+    if(rows(ly[2],F.small,n))chip(ly[2],F.small,'#ffffff',top+cy+ch+gap,n);return}
    // As build_media: square covers centred; other shapes across the whole width, below the header buttons.
    const square=wide?sideArt:Math.max(P(48),Math.min(P(220),w-2*reserve,room)),maxH=wide?H-2*pad:Math.max(P(48),room-reserve);
    const b=artBox(v?.artwork,square,wide?sideArt:w,maxH),artTop=wide||!b.shaped?pad:pad+reserve,artRoom=wide||!b.shaped?room:maxH;
