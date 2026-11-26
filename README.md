@@ -223,6 +223,15 @@ the model number on your panel.
 | **ONX2432G028** | 2.8 inches · 240 × 320 | [ONX2432G028.yaml](ONX2432G028.yaml) · [Wake-word variant](ONX2432G028.wake-word.yaml) · [Lite (no mic/speaker)](ONX2432G028.lite.yaml) |
 | **ONX3248G035** | 3.5 inches · 320 × 480 | [ONX3248G035.yaml](ONX3248G035.yaml) · [Wake-word variant](ONX3248G035.wake-word.yaml) · [Lite (no mic/speaker)](ONX3248G035.lite.yaml) |
 
+## 3D-printable desktop enclosures
+
+Print a portrait or landscape case for either OpenNextion panel. Each
+orientation comes as a plain case or an audio version with a front microphone
+landing and a rear speaker mount. The portrait stand leaves room to plug USB-C
+in from underneath. [STLs, CAD previews, and assembly guide](hardware/enclosures/README.md)
+
+[![3.5-inch portrait audio enclosure, front and rear](hardware/enclosures/renders/onx3248g035-portrait-audio.png)](hardware/enclosures/README.md)
+
 ## Get started
 
 1. [Install the firmware and connect to Wi-Fi](docs/setup.md). For a first
@@ -247,6 +256,7 @@ in Home Assistant for available updates. [Setup and update guide](docs/setup.md#
 | Learn the touch controls or set up shortcuts | [Using the panel](docs/controls.md) · [Custom gestures](docs/gesture-controls.md) · [Panel screens](docs/room-companion/panel-ui.md) |
 | Show reminders, photos, or calendar events | [Display notifications](docs/display-notifications.md) |
 | Customize icons, album art, emoji, or synced lyrics | [Icons and media](docs/icons-and-media.md) · [Synced lyrics](docs/lyrics.md) · [Fonts & emoji](docs/display-fonts.md) |
+| Print a desktop case | [Enclosure downloads and assembly](hardware/enclosures/README.md) |
 | Connect the microphone and speaker or set up wake word | [Hardware and Assist](docs/room-companion/hardware-and-assist.md#commissioning) |
 | Show a Home Assistant dashboard | [Dashboard streaming](docs/room-companion/dashboard-stream.md) |
 | Extend the firmware or see what has been verified on hardware | [Architecture](docs/room-companion/architecture.md) · [Extensions](docs/room-companion/extensions.md) · [Validation record](docs/room-companion/validation.md) |
