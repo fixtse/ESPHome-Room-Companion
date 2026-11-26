@@ -55,12 +55,7 @@ void RemoteWebView::process_current_url_packet_(const uint8_t *data, size_t len)
   }
 }
 
-std::string RemoteWebView::get_current_url() const {
-  if (this->url_sensor_ != nullptr && this->url_sensor_->has_state()) {
-    return this->url_sensor_->state;
-  }
-  return "";
-}
+std::string RemoteWebView::get_current_url() const { return this->current_url_; }
 
 void RemoteWebView::setup() {
   self_ = this;
@@ -153,6 +148,9 @@ void RemoteWebView::loop() {
   }
 
   if (!url.empty()) {
+    this->current_url_ = url;  // In full; the sensor may be shortened.
+    // Home Assistant rejects states over 255 characters (camera pages are longer).
+    if (url.size() > 255) url = url.substr(0, 252) + "...";
     this->url_sensor_->publish_state(url);
     ESP_LOGD(TAG, "Current Server URL updated: %s", url.c_str());
   }

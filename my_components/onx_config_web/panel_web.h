@@ -1920,7 +1920,7 @@ static const char PANEL_JS[] = R"ONXPANEL(
   '<p class="hint" data-camera-source="webrtc go2rtc">One per line: <code>camera.entity=</code> a go2rtc stream name, an <code>rtsp://</code> address, or a full page address to show instead.</p>'+
   '<div id="dash-camera-sound" data-camera-source="webrtc go2rtc"><label class="field">Panel speaker in Home Assistant (for camera sound)<input id="dash-speaker-entity" maxlength="128" autocomplete="off" spellcheck="false"></label>'+
   '<p class="hint">The speaker button on a camera screen asks Home Assistant to play the camera’s sound (go2rtc’s RTSP output, port 8554) on this panel. '+
-  'Leave empty for the usual entity name; set it if you renamed the panel’s Speaker entity. The sound runs a second or two behind the picture.</p></div></fieldset>'+
+  'Found automatically when this browser is signed in to Home Assistant (Home Assistant tab); otherwise enter the panel’s Speaker entity. The sound runs a second or two behind the picture.</p></div></fieldset>'+
   '<p class="hint" id="dash-status" role="status"></p>'+
   '<div class="settings-actions"><button class="primary" type="submit">Save streamed page</button></div>';
  anchor.append(form);
@@ -1938,7 +1938,31 @@ static const char PANEL_JS[] = R"ONXPANEL(
   form.querySelectorAll('[data-camera-source]').forEach(n=>{n.hidden=!n.dataset.cameraSource.split(' ').includes(source)||n.dataset.noSpeaker==='1'});
  }
  $('dash-camera-source').onchange=showCameraSource;showCameraSource();
+ // Camera sound: find this panel's own Speaker entity through the browser's
+ // Home Assistant sign-in (its device has the panel's MAC), since Home
+ // Assistant may name it after the area or a rename. Saved when found.
+ let speakerSearched=false;
+ async function findSpeaker(state){
+  if(speakerSearched||!state.mac||!state.default_speaker_entity||state.speaker_entity||!globalThis.OnxHA)return;
+  speakerSearched=true;
+  try{
+   const client=new OnxHA.Client();
+   const [devices,registry]=await Promise.all([client.request('config/device_registry/list'),client.request('config/entity_registry/list_for_display')]);
+   const mac=String(state.mac).toLowerCase();
+   const device=(devices||[]).find(d=>(d.connections||[]).some(c=>String(c[1]||'').toLowerCase()===mac));
+   if(!device)return;
+   const rows=Array.isArray(registry)?registry:registry.entities||[];
+   const row=rows.find(r=>(r.di||r.device_id)===device.id&&String(r.ei||r.entity_id||'').startsWith('media_player.'));
+   const entity=row&&(row.ei||row.entity_id);
+   if(!entity||entity===state.default_speaker_entity)return;
+   const saved=await rpc({op:'panel_save',data:JSON.stringify({speaker_entity:entity})});
+   if(saved.error)return;
+   $('dash-speaker-entity').value=entity;
+   $('dash-status').textContent='Found this panel’s speaker in Home Assistant ('+entity+') and saved it for camera sound.';
+  }catch{}
+ }
  const show=state=>{
+  findSpeaker(state);
   $('dash-server').value=state.server||'';$('dash-url').value=state.url||'';$('dash-scale').value=state.scale||1;
   $('dash-camera-source').value=state.camera_source||(state.camera_server?'go2rtc':'off');showCameraSource();
   $('dash-camera-server').value=state.camera_server||'';

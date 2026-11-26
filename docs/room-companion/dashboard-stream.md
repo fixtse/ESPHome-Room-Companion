@@ -124,7 +124,9 @@ On the **Streamed page** tab, set the **Remote WebView server** (the dashboard
   external). Each camera plays its own stream source; nothing else to set up.
   The panel registers a link with the integration's `webrtc.create_link`
   action each time a camera opens, and the server opens the integration's
-  `/webrtc/embed` page for it, which needs no sign-in. Requirements: the
+  `/webrtc/embed` page for it, which needs no sign-in. Home Assistant pages
+  cannot be framed, so this page is opened directly and the card's `style`
+  option places the player over the camera frame. Requirements: the
   panel's **Allow the device to perform Home Assistant actions** option, and
   the server's browser must reach Home Assistant at the address set on the
   panel's Home Assistant page.
@@ -150,9 +152,12 @@ Home Assistant's ffmpeg converts any audio codec for the panel.
 
 - The sound runs a second or two behind the picture (Home Assistant buffers
   it); it is for listening, not lip sync.
-- The panel addresses its own speaker as `media_player.<panel name>_speaker`
-  (e.g. `media_player.onx3248g035_speaker`). If you renamed the entity, set
-  **Panel speaker in Home Assistant** under Live cameras.
+- The panel needs its own Speaker entity's ID. Open the **Streamed page** tab
+  while this browser is signed in to Home Assistant (Home Assistant tab): the
+  page finds the entity of the device with the panel's MAC address and saves
+  it. Otherwise enter it under **Panel speaker in Home Assistant**; without
+  either, the panel guesses `media_player.<panel name>_speaker`, which misses
+  names that include an area or were renamed.
 - go2rtc's RTSP port (8554) must be reachable from Home Assistant. Leaving the
   camera screen stops the sound, as does Assist.
 - Two-way talk is not supported (the microphone belongs to Assist).

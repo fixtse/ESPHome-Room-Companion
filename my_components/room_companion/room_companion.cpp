@@ -423,9 +423,9 @@ std::string RoomPanel::camera_source_(const std::string &entity) const {
     if (!is_page(origin)) return "";
     // The integration's embed page plays the link registered for this
     // camera: muted, always playing, without its status line or zoom.
+    // camera_page_url() adds the card's placement (its style option).
     return origin + "/webrtc/embed?url=" + webrtc_link_id_(entity) +
-           "&mode=webrtc,mse&media=video&muted=true&intersection=0&background=true&digital_ptz=false&style=" +
-           percent_encode(".header{display:none}");
+           "&mode=webrtc,mse&media=video&muted=true&intersection=0&background=true&digital_ptz=false";
   }
   if (settings_.camera_source != "go2rtc" || settings_.camera_server.empty()) return "";
   const std::string name = target.empty() ? entity.substr(7) : target;
@@ -519,6 +519,19 @@ std::string RoomPanel::camera_page_url(const std::string &entity) const {
   const int fw = stream_ != nullptr ? stream_->frame_width() : 0, fh = stream_ != nullptr ? stream_->frame_height() : 0;
   const std::string source = camera_source_(entity);
   if (source.empty() || fw <= 0 || fh <= 0 || r.x < 0 || r.y < 0 || r.x + r.w > fw || r.y + r.h > fh) return "";
+  char rect[96];
+  if (uses_webrtc_link_(entity)) {
+    // Home Assistant pages refuse to be framed (X-Frame-Options: SAMEORIGIN),
+    // so the server opens the embed page itself and the card's style option
+    // places the player: inside its shadow root, :host with !important wins
+    // over the page's 100% size.
+    char style[200];
+    snprintf(style, sizeof(style),
+             ":host{position:fixed!important;left:%.3f%%!important;top:%.3f%%!important;width:%.3f%%!important;"
+             "height:%.3f%%!important}.header{display:none}",
+             100.0 * r.x / fw, 100.0 * r.y / fh, 100.0 * r.w / fw, 100.0 * r.h / fh);
+    return source + "&style=" + percent_encode(style);
+  }
   if (wifi::global_wifi_component == nullptr) return "";
   char address[network::IP_ADDRESS_BUFFER_SIZE] = {0};
   for (const auto &ip : wifi::global_wifi_component->get_ip_addresses()) {
@@ -531,7 +544,6 @@ std::string RoomPanel::camera_page_url(const std::string &entity) const {
   // The panel serves the page (/panel/camera): the server's browser lets a
   // page on the local network embed go2rtc, but not a data: URL. The frame
   // is placed in percent of the screen, so the stream zoom does not matter.
-  char rect[96];
   snprintf(rect, sizeof(rect), "&x=%.3f&y=%.3f&w=%.3f&h=%.3f", 100.0 * r.x / fw, 100.0 * r.y / fh, 100.0 * r.w / fw,
            100.0 * r.h / fh);
   return std::string("http://") + address + "/panel/camera?u=" + percent_encode(source) + rect;
@@ -647,6 +659,12 @@ std::string RoomPanel::state_json_() const {
     root["camera_streams"] = settings_.camera_streams;
     root["speaker_entity"] = settings_.speaker_entity;
     root["default_speaker_entity"] = audio_play_ ? default_speaker_entity_() : std::string();
+    // Lets the settings page find this panel's speaker in Home Assistant.
+    uint8_t mac[6];
+    get_mac_address_raw(mac);
+    char mac_text[18];
+    snprintf(mac_text, sizeof(mac_text), "%02x:%02x:%02x:%02x:%02x:%02x", mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
+    root["mac"] = mac_text;
     root["status"] = stream_status();
     root["restart_required"] = restart_required_;
   });

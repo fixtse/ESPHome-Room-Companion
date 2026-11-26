@@ -165,6 +165,7 @@ class RemoteWebView : public Component {
   bool capture_snapshot_{false};
   // Camera view (see set_offscreen): frame_seq_ counts swapped frames, and the
   // decode task does not write the next one until the main loop consumed it.
+  std::string current_url_;  // Last page the server reported (main loop).
   std::atomic<bool> offscreen_{false};
   std::atomic<uint32_t> frame_seq_{0};
   std::atomic<uint32_t> consumed_seq_{0};

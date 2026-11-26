@@ -93,11 +93,14 @@ Wi-Fi power saving is off for latency; sleep switches to modem sleep.
 The camera detail reuses the same client and server without handing over the
 display. `RoomPanel::camera_view()` receives the snapshot frame's screen
 rectangle from `build_camera()` and asks the server to open `/panel/camera`,
-a page the panel serves that places a player iframe at that rectangle (in
-percent of the screen, so the zoom does not matter): go2rtc's `stream.html`,
-or the WebRTC Camera integration's `/webrtc/embed` with a link registered by
-`webrtc.create_link`. Chromium's Private Network Access rules block a `data:`
-page from embedding LAN players, hence the panel-served page.
+a page the panel serves that places go2rtc's `stream.html` in an iframe at that
+rectangle (in percent of the screen, so the zoom does not matter). Chromium's
+Private Network Access rules block a `data:` page from embedding LAN players,
+hence the panel-served page. For the WebRTC Camera integration the server opens
+its `/webrtc/embed` page directly, with a link registered by
+`webrtc.create_link`: Home Assistant sends `X-Frame-Options: SAMEORIGIN`, so
+the card's `style` option places it instead (`:host{position:fixed …
+!important}`).
 
 The client runs in **offscreen** mode (`set_offscreen()`): tiles decode only into
 the PSRAM frame copy (the same double buffer as the notification backdrop),

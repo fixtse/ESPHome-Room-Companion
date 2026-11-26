@@ -21,5 +21,7 @@ Room Companion changes, so the stream can share the panel with the native LVGL U
   `take_offscreen_frame()` hands the newest complete frame to the main loop,
   and the decode task waits (bounded) until it is taken before reusing the
   other buffer.
+- `get_current_url()` returns the full page address the server reported; the
+  URL sensor is shortened to Home Assistant's 255-character state limit.
 
 `web_client/`, the examples and the images are not included.
