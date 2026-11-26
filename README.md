@@ -230,7 +230,7 @@ Each enclosure has a narrow rim, an integrated base, printed BOOT and RESET
 buttons, and a printed power slider. Choose a plain case or an audio version with a top-facing mic and
 rear speaker mount. [STLs, CAD previews, and assembly guide](hardware/enclosures/README.md)
 
-[![3.5-inch landscape audio enclosure, front and rear](hardware/enclosures/renders/onx3248g035-landscape-audio.png)](hardware/enclosures/README.md)
+[![3.5-inch portrait audio enclosure, front and rear](hardware/enclosures/renders/onx3248g035-portrait-audio.png)](hardware/enclosures/README.md)
 
 ## Get started
 

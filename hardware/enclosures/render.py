@@ -75,9 +75,8 @@ def render_case(panel, portrait, audio, parts, controls, gauge, path):
     glass = rounded(0, 0, GLASS_Z, width, height, 0.7, 2.5)
     display = rounded(0, 0, GLASS_Z - 0.06, active_w, active_h, 0.08, 0.25)
     solids = (*parts, glass, display, *controls)
-    shell_colors = ((223, 219, 211), (198, 194, 185)) if portrait else ((191, 98, 60), (154, 77, 50))
-    colors = (*shell_colors, (25, 31, 35), (42, 53, 62))
-    colors += ((48, 43, 39),) * len(controls)
+    colors = ((100, 116, 139), (82, 97, 117), (25, 31, 35), (42, 53, 62))
+    colors += ((45, 54, 66),) * len(controls)
     actors = [
         actor(solid.rotate((0, 0, 0), (1, 0, 0), TILT), color)
         for solid, color in zip(solids, colors)
@@ -100,7 +99,7 @@ def render_case(panel, portrait, audio, parts, controls, gauge, path):
         plug = gauge.rotate((0, 0, 0), (1, 0, 0), TILT)
         center = plug.Center().toTuple()
         # With the cover removed, the cable and elbow are visible together.
-        detail = model_view([actors[0], actor(plug, (237, 156, 70))], center, (75, 52, 220), 31)
+        detail = model_view([actors[0], actor(plug, (145, 207, 242))], center, (75, 52, 220), 31)
         detail.save(path.with_name("portrait-usb-detail.png"), optimize=True)
 
 
