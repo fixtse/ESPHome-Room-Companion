@@ -236,3 +236,30 @@ boot/network check, wake-word recognition, Stop/Snooze acoustics, SoundSense
 calibration, speaker/Assist operation, physical touch responsiveness or visual
 appearance was hardware-tested in this build. Earlier runtime measurements in
 this document and `memory-budget.md` belong to their explicitly dated firmware.
+
+### 2026-11-26: live cameras (2026.11.1.20 and .21) — OTA releases
+
+Configuration/build validation only; nothing was flashed or checked on a panel.
+Validated on devserv in isolated checkouts with `ghcr.io/esphome/esphome:2026.11.1`:
+`ONX3248G035.wake-word.yaml` and `ONX2432G028.wake-word.yaml` compiled for both
+releases. `tests/test_config_web.cjs` passed. `tests/test_panel_pages.cjs`
+passed the streamed page and live camera settings steps (updated to the
+separate Streamed page tab) and then failed at an older, unrelated page-editor
+assertion (expects "Fan was removed", the editor now says "Fan is set aside").
+
+Browser checks, in the pinned `strangev/remote-webview-server:1.3.0` image
+(HeadlessChrome 156) against `alexxit/go2rtc:1.9.9` with an H.264 test stream:
+WebRTC and MSE both played at 25 fps; a `data:` page was blocked by Private
+Network Access, a LAN-served page was not; the panel's `/panel/camera` page put
+the player exactly on the 3.5-inch camera frame (16, 68, 288×162) and refused a
+`javascript:` address. The WebRTC Camera integration's real `embed.html` and
+card, behind a stand-in for its `/api/webrtc/ws` view, played over WebRTC at
+25 fps, muted, with its status line hidden.
+
+Published by esp-ota: 2026.11.1.20 (source `77055a3`, run 45883706390) and
+2026.11.1.21 (source `55d54f2`, run 45888783618); all four manifests showed the
+version and the release assets' MD5s matched.
+
+Not verified: the offscreen decode and LVGL image on hardware, frame rate,
+memory while streaming, `webrtc.create_link` and the integration's go2rtc
+stream naming against a real Home Assistant, and camera sound.

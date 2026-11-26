@@ -250,12 +250,31 @@ states** asks for fresh readings without restarting or replaying old commands.
 
 [Connection troubleshooting](setup.md#if-something-does-not-work) · [Icons and album art](icons-and-media.md)
 
+## Live cameras
+
+The **Streamed page** tab's **Live cameras** section plays cameras at full frame
+rate inside the panel's camera screen, through the Remote WebView server set on
+the same tab. Choose a **Camera source**:
+
+- **WebRTC Camera integration in Home Assistant**: nothing else to set up; each
+  camera plays its own stream. It needs the action permission above.
+- **go2rtc server**: its web address (Frigate's go2rtc too, port 1984); cameras
+  play the go2rtc stream named like the entity.
+
+**Other stream names** maps a camera to a different stream name, an `rtsp://`
+address or a page to show instead. On panels with a speaker, the camera screen
+gets a speaker button for the camera's sound; set **Panel speaker in Home
+Assistant** only if you renamed the panel's Speaker entity.
+
+[Live cameras setup and requirements](room-companion/dashboard-stream.md#live-cameras)
+
 ## Backups and diagnostics
 
 In **Backup & diagnostics**, click **Download saved configuration** before making
 large changes. Backups include saved controls, names, tap/swipe actions,
-playlists, sensor display choices, saved presets and device settings. They
-exclude credentials.
+playlists, sensor display choices, saved presets and device settings, and the
+streamed page and live camera settings. They exclude credentials (a camera's
+`rtsp://` address under **Other stream names** is kept as entered).
 
 **Import configuration** opens a backup as an unsaved draft. Review it, then save
 slots and device settings separately to apply it. Importing alone does not change

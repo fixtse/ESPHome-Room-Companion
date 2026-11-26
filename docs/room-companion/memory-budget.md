@@ -49,6 +49,10 @@ one contiguous internal DMA block of the same size.
 3. **Dashboard stream only when used.** Start the stream on the first
    dashboard open instead of at boot; allocate the `JPEGDEC` state and task
    stacks in PSRAM. Expected 18 KB static plus up to 66 KB runtime peak.
+   A live camera view starts the same stream (same internal cost) and adds
+   two screen-sized RGB565 buffers in PSRAM only (2 × 300 KB on the 3.5-inch,
+   2 × 150 KB on the 2.8-inch), freed when the camera closes. Camera sound
+   uses the speaker's existing media pipeline.
 4. **Application tables to PSRAM.** Large entity, configuration, area and
    light-feedback tables are allocated in PSRAM at start-up. Expected ~25 KB.
 5. **Wi-Fi buffers.** Fewer static RX buffers and smaller AMPDU windows, sized

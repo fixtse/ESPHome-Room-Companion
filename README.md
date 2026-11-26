@@ -26,7 +26,7 @@ cards or full-screen detail views:
 | **Switches, helpers & automations** | Toggle switches, input booleans, and automations, or run scenes, scripts (with Stop while running), and buttons. Pair switches with a power/energy sensor (W or kWh) for live readings and a 12-hour graph. |
 | **Numbers, selects & sirens** | Adjust numbers and input numbers with sliders or − / + steps, pick from scrollable select lists, and configure siren tone, volume, and duration. |
 | **Media players** | View album artwork, title, artist, and a live playback progress bar; use play/pause/skip transport and swipe volume; launch up to **8 saved playlists or radio stations** per player. |
-| **Cameras** | View live **MJPEG streams** on the full screen (via Home Assistant’s `/api/camera_proxy_stream/`) or full-frame-rate video from the **WebRTC Camera** integration, **Frigate** or **go2rtc** through the Remote WebView server ([live cameras](docs/room-companion/dashboard-stream.md#live-cameras)) and auto-refreshing snapshots on main cards, toggle power or motion detection where supported, and optionally link an **ONVIF PTZ** camera entity for pan, tilt, and zoom icon controls. |
+| **Cameras** | View live **MJPEG streams** on the full screen (via Home Assistant’s `/api/camera_proxy_stream/`) or full-frame-rate video from the **WebRTC Camera** integration, **Frigate** or **go2rtc** through the Remote WebView server, with the **camera’s sound** on the panel speaker ([live cameras](docs/room-companion/dashboard-stream.md#live-cameras)), and auto-refreshing snapshots on main cards, toggle power or motion detection where supported, and optionally link an **ONVIF PTZ** camera entity for pan, tilt, and zoom icon controls. |
 | **Vacuums** | Monitor cleaning status and battery ring, trigger play/pause, stop, dock, locate, and spot clean with icon buttons, and cycle fan speed presets. |
 | **Locks & alarms** | Lock, unlock, or unlatch doors (`lock.*`), and arm or disarm `alarm_control_panel.*` entities with an on-screen **PIN keypad** when a code is required. |
 | **Weather & sensors** | Check current conditions, feels-like, humidity, wind, pressure, visibility, UV, and a 5-day forecast. View sensor values, percentage bars, secondary readings with custom templates (such as relative reset times), **1 h / 12 h / 24 h / 7 d history graphs** (min / avg / max), and persisted recent history for binary sensors and events. |
@@ -92,6 +92,11 @@ touchscreen using
   **Streamed page** switch, or automatically as your idle screen. Native
   overlays for Assist, timers, and notifications smoothly take over and return
   to the stream when finished.
+- **Live cameras in the native camera screen.** The same server plays cameras
+  at full frame rate inside the panel's own camera screen—no dashboard to build.
+  Pick the **WebRTC Camera** integration (each camera plays its own stream,
+  nothing else to set up) or a **go2rtc / Frigate** server, and tap the speaker
+  button to hear the camera on the panel. [Live cameras](docs/room-companion/dashboard-stream.md#live-cameras)
 - **Easy deployment.** Run RemoteWebViewServer as a Home Assistant OS add-on or
   with the included Docker Compose setup. [Dashboard streaming setup](docs/room-companion/dashboard-stream.md)
 
@@ -259,6 +264,7 @@ in Home Assistant for available updates. [Setup and update guide](docs/setup.md#
 | Print a desktop case | [Enclosure downloads and assembly](hardware/enclosures/README.md) |
 | Connect the microphone and speaker or set up wake word | [Hardware and Assist](docs/room-companion/hardware-and-assist.md#commissioning) |
 | Show a Home Assistant dashboard | [Dashboard streaming](docs/room-companion/dashboard-stream.md) |
+| Watch and listen to cameras live (WebRTC Camera, Frigate, go2rtc) | [Live cameras](docs/room-companion/dashboard-stream.md#live-cameras) |
 | Extend the firmware or see what has been verified on hardware | [Architecture](docs/room-companion/architecture.md) · [Extensions](docs/room-companion/extensions.md) · [Validation record](docs/room-companion/validation.md) |
 
 ## Development

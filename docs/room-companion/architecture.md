@@ -88,6 +88,32 @@ updates are much cheaper. The stream's tasks (32 KB decode stack, 8 KB socket
 task, 30 KB socket buffer) are created only when dashboard mode has a server.
 Wi-Fi power saving is off for latency; sleep switches to modem sleep.
 
+### Live camera view
+
+The camera detail reuses the same client and server without handing over the
+display. `RoomPanel::camera_view()` receives the snapshot frame's screen
+rectangle from `build_camera()` and asks the server to open `/panel/camera`,
+a page the panel serves that places a player iframe at that rectangle (in
+percent of the screen, so the zoom does not matter): go2rtc's `stream.html`,
+or the WebRTC Camera integration's `/webrtc/embed` with a link registered by
+`webrtc.create_link`. Chromium's Private Network Access rules block a `data:`
+page from embedding LAN players, hence the panel-served page.
+
+The client runs in **offscreen** mode (`set_offscreen()`): tiles decode only into
+the PSRAM frame copy (the same double buffer as the notification backdrop),
+never to the display. On each finished frame the main loop takes the front
+buffer (`take_offscreen_frame()`) and LVGL shows the rectangle as an RGB565
+image with the full screen stride, over the snapshot. The decode task does not
+write the next frame until the main loop has taken the last one (bounded wait),
+so LVGL never reads a buffer being written, and the SPI bus has a single owner.
+The image appears after three frames of the camera page (a loading page draws
+one or two). Closing the camera navigates the server back to the dashboard
+address, or `about:blank`.
+
+Camera sound does not use the stream: the panel calls `media_player.play_media`
+(announce) on its own speaker entity with go2rtc's RTSP output; Home
+Assistant's ESPHome ffmpeg proxy converts it to the speaker's FLAC format.
+
 ## Not ported
 
 The base project's step/press gestures, timers, artwork modes, sensor graphs and 20-slot
