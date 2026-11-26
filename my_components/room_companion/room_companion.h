@@ -33,9 +33,14 @@ struct StreamSettings {
   float scale{1.0f};
   std::string dock_pin{"dashboard"};
   std::string toolbar_side{"right"};
-  // Live camera view: a go2rtc web address (Frigate's go2rtc too) and
-  // optional per-camera stream names or page addresses
-  // ("camera.porch=porch_hd, camera.door=http://...").
+  // Live camera view. Source "webrtc": the WebRTC Camera integration in Home
+  // Assistant (its go2rtc plays the camera's own stream); "go2rtc": a go2rtc
+  // web address (Frigate's too); "off". Optional per-camera stream names,
+  // stream URLs or page addresses ("camera.porch=porch_hd, camera.door=http://...").
+  std::string camera_source{"off"};
+  // Camera sound: the panel's speaker entity in Home Assistant ("" = the
+  // default media_player.<panel name>_speaker).
+  std::string speaker_entity;
   std::string camera_server;
   std::string camera_streams;
 };
@@ -92,6 +97,24 @@ class RoomPanel : public Component {
   const lv_image_dsc_t *camera_frame() const { return camera_live() ? &camera_image_ : nullptr; }
   void set_camera_visible(std::function<bool()> check) { camera_visible_ = std::move(check); }
   void set_camera_frame_callback(std::function<void(const lv_image_dsc_t *)> callback) { camera_frame_cb_ = std::move(callback); }
+  // WebRTC Camera source: Home Assistant's address (http://host:8123), and a
+  // webrtc.create_link action (link id, camera entity or stream URL); the
+  // action returns false while it cannot be sent.
+  void set_ha_origin(std::function<std::string()> origin) { ha_origin_ = std::move(origin); }
+  // Camera sound (builds with a speaker): Home Assistant plays the camera's
+  // audio (go2rtc RTSP) on the panel's speaker through its ffmpeg proxy.
+  // play(speaker entity, url) returns false while it cannot be sent.
+  void set_camera_audio_actions(std::function<bool(const std::string &, const std::string &)> play, std::function<void()> stop) {
+    audio_play_ = std::move(play);
+    audio_stop_ = std::move(stop);
+  }
+  // -1: no sound for this camera, 0: off, 1: on.
+  int camera_audio(const std::string &entity) const;
+  void toggle_camera_audio(const std::string &entity);
+  std::string speaker_entity() const;
+  void set_webrtc_link_action(std::function<bool(const std::string &, const std::string &, const std::string &)> action) {
+    webrtc_link_ = std::move(action);
+  }
   std::string camera_page_url(const std::string &entity) const;
 
   // Overlays and input.
@@ -121,6 +144,12 @@ class RoomPanel : public Component {
   void update_camera_(bool wifi_ok);
   void stop_camera_();
   std::string camera_source_(const std::string &entity) const;
+  std::string camera_target_(const std::string &entity) const;
+  bool uses_webrtc_link_(const std::string &entity) const;
+  std::string webrtc_link_id_(const std::string &entity) const;
+  std::string camera_audio_url_(const std::string &entity) const;
+  std::string default_speaker_entity_() const;
+  void stop_camera_audio_();
 
   lvgl::LvglComponent *lvgl_{nullptr};
   remote_webview::RemoteWebView *stream_{nullptr};
@@ -149,6 +178,17 @@ class RoomPanel : public Component {
   static constexpr uint32_t CAMERA_SHOW_AFTER_FRAMES = 3;
   static constexpr uint32_t CAMERA_PAGE_TIMEOUT_MS = 4000;
   uint32_t camera_opened_ms_{0};
+  // WebRTC Camera links: registered before each open (Home Assistant keeps
+  // them in memory only), then the page opens once the action had time.
+  static constexpr uint32_t CAMERA_LINK_DELAY_MS = 1500;
+  std::function<std::string()> ha_origin_;
+  std::function<bool(const std::string &, const std::string &, const std::string &)> webrtc_link_;
+  std::string link_token_;
+  std::function<bool(const std::string &, const std::string &)> audio_play_;
+  std::function<void()> audio_stop_;
+  std::string audio_entity_;
+  std::string link_for_url_;
+  uint32_t link_ms_{0};
   struct CameraRequest {
     std::string entity;
     int x{0}, y{0}, w{0}, h{0};

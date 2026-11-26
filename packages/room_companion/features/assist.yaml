@@ -221,6 +221,45 @@ esphome:
     - priority: -100
       then:
         - lambda: |-
+            // Live camera sound: Home Assistant converts the camera's audio
+            // (go2rtc RTSP) with its ffmpeg proxy and plays it on this
+            // panel's speaker as an announcement (the only pipeline here).
+            id(room_panel)->set_camera_audio_actions(
+                [](const std::string &speaker, const std::string &url) -> bool {
+                  #ifdef USE_API_HOMEASSISTANT_SERVICES
+                  if (!id(normal_ha_api_connected) || speaker.empty() || url.empty()) return false;
+                  esphome::api::HomeassistantActionRequest call;
+                  static constexpr char svc[] = "media_player.play_media";
+                  static constexpr char k_entity[] = "entity_id";
+                  static constexpr char k_id[] = "media_content_id";
+                  static constexpr char k_type[] = "media_content_type";
+                  static constexpr char v_type[] = "music";
+                  static constexpr char k_announce[] = "announce";
+                  static constexpr char v_true[] = "true";
+                  call.service = {svc, sizeof(svc) - 1};
+                  call.data.init(4);
+                  auto add = [&](const char *k, size_t kl, const char *v, size_t vl) {
+                    esphome::api::HomeassistantServiceMap item;
+                    item.key = {k, kl};
+                    item.value = {v, vl};
+                    call.data.push_back(item);
+                  };
+                  add(k_entity, sizeof(k_entity) - 1, speaker.data(), speaker.size());
+                  add(k_id, sizeof(k_id) - 1, url.data(), url.size());
+                  add(k_type, sizeof(k_type) - 1, v_type, sizeof(v_type) - 1);
+                  add(k_announce, sizeof(k_announce) - 1, v_true, sizeof(v_true) - 1);
+                  id(api_server)->send_homeassistant_action(call);
+                  return true;
+                  #else
+                  return false;
+                  #endif
+                },
+                []() {
+                  id(panel_media_player).make_call()
+                      .set_command(esphome::media_player::MEDIA_PLAYER_COMMAND_STOP)
+                      .set_announcement(true)
+                      .perform();
+                });
             // Pause/resume/stop a timer of this panel: only when its state allows it.
             auto local_command = [](const std::string &timer_id, onx_timer::Action action) {
               for (const auto &t : id(assist).get_timers()) {

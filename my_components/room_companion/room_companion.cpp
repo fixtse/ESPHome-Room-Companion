@@ -1,5 +1,6 @@
 #include "room_companion.h"
 
+#include "esphome/core/application.h"
 #include "esphome/core/log.h"
 #include "esphome/components/json/json_util.h"
 #include "esphome/components/network/ip_address.h"
@@ -59,6 +60,39 @@ static bool valid_url(const std::string &value) {
 static bool valid_camera_server(const std::string &value) {
   return value.empty() || ((value.rfind("http://", 0) == 0 || value.rfind("https://", 0) == 0) && valid_url(value));
 }
+static bool valid_camera_source(const std::string &value) {
+  return value == "off" || value == "webrtc" || value == "go2rtc";
+}
+// A camera stream address for go2rtc (rtsp://user:pass@host/...).
+static bool valid_stream_url(const std::string &value) {
+  if (value.size() > 256) return false;
+  if (value.rfind("rtsp://", 0) != 0 && value.rfind("rtsps://", 0) != 0 && value.rfind("rtmp://", 0) != 0) return false;
+  for (char c : value)
+    if (static_cast<unsigned char>(c) <= 0x20 || c == '"' || c == '<' || c == '>' || c == ',') return false;
+  return true;
+}
+static bool is_page(const std::string &target) {
+  return target.rfind("http://", 0) == 0 || target.rfind("https://", 0) == 0;
+}
+// "host" of http://user@host:port/path.
+static std::string url_host(const std::string &url) {
+  const auto scheme = url.find("://");
+  if (scheme == std::string::npos) return "";
+  std::string rest = url.substr(scheme + 3);
+  rest = rest.substr(0, rest.find_first_of("/?#"));
+  const auto at = rest.rfind('@');
+  if (at != std::string::npos) rest = rest.substr(at + 1);
+  if (!rest.empty() && rest[0] == '[') return rest.substr(0, rest.find(']') + 1);
+  return rest.substr(0, rest.find(':'));
+}
+static bool valid_speaker_entity(const std::string &value) {
+  if (value.empty()) return true;
+  if (value.rfind("media_player.", 0) != 0 || value.size() <= 13 || value.size() > 128) return false;
+  for (char c : value)
+    if (!(std::islower(static_cast<unsigned char>(c)) || std::isdigit(static_cast<unsigned char>(c)) || c == '_' || c == '.'))
+      return false;
+  return true;
+}
 static bool stream_name_char(char c) {
   return std::isalnum(static_cast<unsigned char>(c)) || c == '_' || c == '-' || c == '.' || c == ':' || c == '@';
 }
@@ -81,6 +115,8 @@ template<typename F> static bool each_camera_stream(const std::string &list, F f
         return false;
     if (target.rfind("http://", 0) == 0 || target.rfind("https://", 0) == 0) {
       if (!valid_url(target)) return false;
+    } else if (target.find("://") != std::string::npos) {
+      if (!valid_stream_url(target)) return false;
     } else {
       if (target.size() > 64) return false;
       for (char c : target)
@@ -160,6 +196,11 @@ void RoomPanel::on_release_() { corner_since_ms_.store(0); }
 // ---------------------------------------------------------------- lifecycle
 void RoomPanel::setup() {
   global_panel = this;
+  // Unguessable WebRTC Camera link ids (the integration's embed page needs
+  // no sign-in, only a registered link).
+  char token[17];
+  snprintf(token, sizeof(token), "%08x%08x", (unsigned) random_uint32(), (unsigned) random_uint32());
+  link_token_ = token;
   load_();
   apply_(true, settings_);
 }
@@ -195,6 +236,11 @@ void RoomPanel::load_() {
   const std::string camera_server = doc["camera_server"] | std::string();
   const std::string camera_streams = doc["camera_streams"] | std::string();
   if (valid_camera_server(camera_server)) settings_.camera_server = camera_server;
+  // Settings from 2026.11.1.20 had only the go2rtc address.
+  const std::string camera_source = doc["camera_source"] | std::string(settings_.camera_server.empty() ? "off" : "go2rtc");
+  if (valid_camera_source(camera_source)) settings_.camera_source = camera_source;
+  const std::string speaker = doc["speaker_entity"] | std::string();
+  if (valid_speaker_entity(speaker)) settings_.speaker_entity = speaker;
   if (valid_camera_streams(camera_streams)) settings_.camera_streams = camera_streams;
   if (valid_server(server)) settings_.server = server;
   if (valid_url(url)) settings_.url = url;
@@ -210,8 +256,10 @@ std::string RoomPanel::settings_json_() const {
     root["scale"] = settings_.scale;
     root["dock_pin"] = settings_.dock_pin;
     root["toolbar_side"] = settings_.toolbar_side;
+    root["camera_source"] = settings_.camera_source;
     root["camera_server"] = settings_.camera_server;
     root["camera_streams"] = settings_.camera_streams;
+    root["speaker_entity"] = settings_.speaker_entity;
   });
 }
 
@@ -346,21 +394,113 @@ void RoomPanel::give_display_to_(bool stream) {
 }
 
 // ---------------------------------------------------------------- camera view
-std::string RoomPanel::camera_source_(const std::string &entity) const {
-  if (entity.rfind("camera.", 0) != 0) return "";
-  std::string name = entity.substr(7);
+// The camera's line under "Other stream names", or "".
+std::string RoomPanel::camera_target_(const std::string &entity) const {
+  std::string found;
   each_camera_stream(settings_.camera_streams, [&](const std::string &e, const std::string &target) {
     if (e != entity) return false;
-    name = target;
+    found = target;
     return true;
   });
-  if (name.rfind("http://", 0) == 0 || name.rfind("https://", 0) == 0) return name;
-  if (settings_.camera_server.empty()) return "";
+  return found;
+}
+
+bool RoomPanel::uses_webrtc_link_(const std::string &entity) const {
+  return settings_.camera_source == "webrtc" && entity.rfind("camera.", 0) == 0 && !is_page(camera_target_(entity));
+}
+
+std::string RoomPanel::webrtc_link_id_(const std::string &entity) const {
+  return "rc" + link_token_ + "_" + entity.substr(7);
+}
+
+std::string RoomPanel::camera_source_(const std::string &entity) const {
+  if (entity.rfind("camera.", 0) != 0) return "";
+  const std::string target = camera_target_(entity);
+  if (is_page(target)) return target;
+  if (settings_.camera_source == "webrtc") {
+    std::string origin = ha_origin_ ? ha_origin_() : std::string();
+    while (!origin.empty() && origin.back() == '/') origin.pop_back();
+    if (!is_page(origin)) return "";
+    // The integration's embed page plays the link registered for this
+    // camera: muted, always playing, without its status line or zoom.
+    return origin + "/webrtc/embed?url=" + webrtc_link_id_(entity) +
+           "&mode=webrtc,mse&media=video&muted=true&intersection=0&background=true&digital_ptz=false&style=" +
+           percent_encode(".header{display:none}");
+  }
+  if (settings_.camera_source != "go2rtc" || settings_.camera_server.empty()) return "";
+  const std::string name = target.empty() ? entity.substr(7) : target;
   std::string base = settings_.camera_server;
   while (!base.empty() && base.back() == '/') base.pop_back();
   // go2rtc's player page: WebRTC, else MSE; video only (the panel has no
   // audio path from the stream).
   return base + "/stream.html?src=" + percent_encode(name) + "&mode=webrtc,mse&media=video";
+}
+
+// ---------------------------------------------------------------- camera sound
+std::string RoomPanel::speaker_entity() const {
+  return settings_.speaker_entity.empty() ? default_speaker_entity_() : settings_.speaker_entity;
+}
+
+std::string RoomPanel::default_speaker_entity_() const {
+  // Home Assistant names the entity after the device: "<friendly name> Speaker".
+  std::string slug;
+  for (char c : App.get_friendly_name()) {
+    const unsigned char u = static_cast<unsigned char>(c);
+    if (std::isalnum(u)) slug += static_cast<char>(std::tolower(u));
+    else if (!slug.empty() && slug.back() != '_') slug += '_';
+  }
+  while (!slug.empty() && slug.back() == '_') slug.pop_back();
+  return slug.empty() ? std::string() : "media_player." + slug + "_speaker";
+}
+
+// go2rtc's RTSP output (port 8554) of the camera's stream: Home Assistant's
+// ffmpeg reads any audio codec from it, unlike go2rtc's AAC-only HTTP audio.
+std::string RoomPanel::camera_audio_url_(const std::string &entity) const {
+  if (entity.rfind("camera.", 0) != 0) return "";
+  const std::string target = camera_target_(entity);
+  if (is_page(target)) return "";
+  if (target.find("://") != std::string::npos) return target;
+  if (settings_.camera_source == "webrtc") {
+    // The integration's go2rtc names the stream after the entity while the
+    // video plays (built in on the Home Assistant host).
+    const std::string host = url_host(ha_origin_ ? ha_origin_() : std::string());
+    return host.empty() ? std::string() : "rtsp://" + host + ":8554/" + (target.empty() ? entity : target);
+  }
+  if (settings_.camera_source == "go2rtc") {
+    const std::string host = url_host(settings_.camera_server);
+    return host.empty() ? std::string() : "rtsp://" + host + ":8554/" + (target.empty() ? entity.substr(7) : target);
+  }
+  return "";
+}
+
+int RoomPanel::camera_audio(const std::string &entity) const {
+  if (!audio_play_ || entity.empty() || entity != camera_request_.entity || camera_audio_url_(entity).empty() ||
+      speaker_entity().empty())
+    return -1;
+  return audio_entity_ == entity ? 1 : 0;
+}
+
+void RoomPanel::toggle_camera_audio(const std::string &entity) {
+  if (audio_entity_ == entity) {
+    stop_camera_audio_();
+    return;
+  }
+  if (camera_audio(entity) < 0) return;
+  stop_camera_audio_();
+  const std::string url = camera_audio_url_(entity);
+  if (!audio_play_(speaker_entity(), url)) {
+    message_trigger_.trigger("Camera sound needs the Home Assistant connection.", true);
+    return;
+  }
+  audio_entity_ = entity;
+  ESP_LOGI(TAG, "Camera sound on %s: %s", speaker_entity().c_str(), entity.c_str());
+}
+
+void RoomPanel::stop_camera_audio_() {
+  if (audio_entity_.empty()) return;
+  audio_entity_.clear();
+  if (audio_stop_) audio_stop_();
+  ESP_LOGI(TAG, "Camera sound off");
 }
 
 bool RoomPanel::camera_view(const std::string &entity, int x, int y, int w, int h) {
@@ -402,6 +542,8 @@ void RoomPanel::update_camera_(bool wifi_ok) {
   const bool asleep = onx_power::sleeping || onx_power::waking;
   const bool want = !camera_request_.entity.empty() && !dashboard_open_ && !asleep && wifi_ok && stream_->has_server() &&
                     (!camera_visible_ || camera_visible_());
+  // Sound follows the camera screen, even before (or without) live video.
+  if (!audio_entity_.empty() && (!want || audio_entity_ != camera_request_.entity)) stop_camera_audio_();
   if (!want) {
     if (camera_on_) stop_camera_();
     return;
@@ -418,6 +560,19 @@ void RoomPanel::update_camera_(bool wifi_ok) {
     return;
   }
   if (url != camera_url_) {
+    if (uses_webrtc_link_(camera_request_.entity)) {
+      // Register the link first (again after a Home Assistant restart, which
+      // forgets it), then give the action time to arrive.
+      if (link_for_url_ != url) {
+        const std::string target = camera_target_(camera_request_.entity);
+        if (!webrtc_link_ || !webrtc_link_(webrtc_link_id_(camera_request_.entity), target.empty() ? camera_request_.entity : "", target))
+          return;
+        link_for_url_ = url;
+        link_ms_ = millis();
+        return;
+      }
+      if (millis() - link_ms_ < CAMERA_LINK_DELAY_MS) return;
+    }
     if (!stream_->open_url(url)) return;
     ESP_LOGI(TAG, "Live camera: %s", camera_request_.entity.c_str());
     camera_url_ = url;
@@ -451,6 +606,7 @@ void RoomPanel::update_camera_(bool wifi_ok) {
 }
 
 void RoomPanel::stop_camera_() {
+  stop_camera_audio_();
   // Detach the image before its buffer is freed.
   if (camera_frame_cb_) camera_frame_cb_(nullptr);
   lv_image_cache_drop(&camera_image_);
@@ -461,6 +617,7 @@ void RoomPanel::stop_camera_() {
   stream_->release_frame_snapshot();
   camera_on_ = false;
   camera_url_.clear();
+  link_for_url_.clear();
   camera_frames_ = 0;
   ESP_LOGI(TAG, "Live camera stopped");
   // Ends the camera stream in the server's browser; the dashboard (when set)
@@ -485,8 +642,11 @@ std::string RoomPanel::state_json_() const {
     root["scale"] = settings_.scale;
     root["dock_pin"] = settings_.dock_pin;
     root["toolbar_side"] = settings_.toolbar_side;
+    root["camera_source"] = settings_.camera_source;
     root["camera_server"] = settings_.camera_server;
     root["camera_streams"] = settings_.camera_streams;
+    root["speaker_entity"] = settings_.speaker_entity;
+    root["default_speaker_entity"] = audio_play_ ? default_speaker_entity_() : std::string();
     root["status"] = stream_status();
     root["restart_required"] = restart_required_;
   });
@@ -505,12 +665,17 @@ std::string RoomPanel::handle_web(const std::string &op, const std::string &data
   next.toolbar_side = doc["toolbar_side"] | settings_.toolbar_side;
   if (next.toolbar_side != "left" && next.toolbar_side != "right")
     return "{\"error\":\"Toolbar position must be left or right\"}";
+  next.camera_source = doc["camera_source"] | settings_.camera_source;
+  if (!valid_camera_source(next.camera_source)) return "{\"error\":\"Unknown camera source\"}";
+  next.speaker_entity = trim(doc["speaker_entity"] | settings_.speaker_entity);
+  if (!valid_speaker_entity(next.speaker_entity))
+    return "{\"error\":\"Panel speaker must be a media_player entity, for example media_player.onx3248g035_speaker\"}";
   next.camera_server = trim(doc["camera_server"] | settings_.camera_server);
   next.camera_streams = trim(doc["camera_streams"] | settings_.camera_streams);
   if (!valid_camera_server(next.camera_server))
     return "{\"error\":\"go2rtc address must start with http:// or https://, for example http://192.168.1.10:1984\"}";
   if (!valid_camera_streams(next.camera_streams))
-    return "{\"error\":\"Camera streams: one camera.entity=stream name (or page address) per line\"}";
+    return "{\"error\":\"Other stream names: one camera.entity=stream name, rtsp:// address or page address per line\"}";
   const float scale = doc["scale"] | settings_.scale;
   if (!valid_server(next.server)) return "{\"error\":\"Server must be host:port, for example 192.168.1.10:8081\"}";
   if (!valid_url(next.url)) return "{\"error\":\"Page address must start with http:// or https://\"}";

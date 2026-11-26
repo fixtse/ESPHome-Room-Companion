@@ -81,6 +81,9 @@ inline std::function<void()> refresh_camera;
 inline std::function<bool(const std::string &, int, int, int, int)> live_camera;
 inline std::function<const lv_image_dsc_t *()> live_camera_frame;
 inline lv_obj_t *live_image = nullptr;
+// Camera sound for a live camera: -1 none, 0 off, 1 on; toggled by a button.
+inline std::function<int(const std::string &)> live_audio;
+inline std::function<void(const std::string &)> toggle_live_audio;
 // Shows a new live frame over the snapshot (nullptr hides it).
 inline void show_live_frame(const lv_image_dsc_t *dsc) {
   onx_media::live_camera_showing = dsc != nullptr && live_image != nullptr;
@@ -3607,6 +3610,12 @@ __attribute__((noinline)) inline void build_camera(const Layout &base, const std
       toast(is_on ? "Turning camera off" : "Turning camera on");
     }});
   }
+  if (const int sound = live_audio ? live_audio(e) : -1; sound >= 0) {
+    btns.push_back({sound ? LV_SYMBOL_VOLUME_MAX : LV_SYMBOL_MUTE, sound == 1, [e, sound]() {
+      if (toggle_live_audio) toggle_live_audio(e);
+      toast(sound ? "Camera sound off" : "Camera sound on");
+    }});
+  }
   if (has_motion) {
     btns.push_back({motion_on ? LV_SYMBOL_EYE_OPEN : LV_SYMBOL_EYE_CLOSE, motion_on, [e, motion_on]() {
       request(e, motion_on ? "camera.disable_motion_detection" : "camera.enable_motion_detection",
@@ -4838,6 +4847,7 @@ inline std::string signature(const std::string &e, const EntityDetailState *d, c
        '|' + d->battery_level + '|' + d->status + '|' + d->motion_detection + '|' + camera_ptz_entity(e) +
        '|' + d->changed_by + '|' + d->code_format + '|' + d->code_arm_required + '|' + (pin_entity == e ? std::to_string(pin_code.size()) : "");
   if (has_prefix(e, "media_player.")) s += '|' + std::to_string(onx_lyrics::store().version);
+  if (has_prefix(e, "camera.") && live_audio) s += "|sound" + std::to_string(live_audio(e));
   s += '|' + v.value.text + '|' + v.context.text + '|' + v.name.text + '|' + std::to_string(v.value_ring);
   if (has_prefix(e, "light.") && light_state) {
     const auto l = light_state(e);

@@ -1906,13 +1906,21 @@ static const char PANEL_JS[] = R"ONXPANEL(
   'Changing the server or zoom needs a restart.</p>'+
   '<fieldset class="settings-section"><legend>Live cameras</legend>'+
   '<p class="hint">Plays cameras at full frame rate inside the camera screen, through the same Remote WebView server (no dashboard needed). '+
-  'Enter the web address of a <a href="https://github.com/AlexxIT/go2rtc" target="_blank" rel="noopener noreferrer">go2rtc</a> server, such as Frigate&rsquo;s (port 1984). '+
-  'Each camera plays the go2rtc stream named like its entity (<code>camera.front_door</code> plays <code>front_door</code>). '+
   '<a href="'+DOCS+'#live-cameras" target="_blank" rel="noopener noreferrer">How it works</a></p>'+
-  '<label class="field">go2rtc address<input id="dash-camera-server" maxlength="256" placeholder="http://192.168.1.10:1984" autocomplete="off"></label>'+
-  '<label class="field">Other stream names (optional)<textarea id="dash-camera-streams" rows="3" maxlength="1024" spellcheck="false" '+
-  'placeholder="camera.porch=porch_hd&#10;camera.garage=http://192.168.1.20/live.html"></textarea></label>'+
-  '<p class="hint">One <code>camera.entity=stream name</code> per line, or a full page address to show instead.</p></fieldset>'+
+  '<label class="field">Camera source<select id="dash-camera-source">'+
+  '<option value="off">Off (snapshots and Home Assistant’s stream)</option>'+
+  '<option value="webrtc">WebRTC Camera integration in Home Assistant</option>'+
+  '<option value="go2rtc">go2rtc server (Frigate or standalone)</option></select></label>'+
+  '<p class="hint" data-camera-source="webrtc">Uses the go2rtc built into <a href="https://github.com/AlexxIT/WebRTC" target="_blank" rel="noopener noreferrer">WebRTC Camera</a>: each camera plays its own stream, nothing else to set up. '+
+  'The panel registers a link with <code>webrtc.create_link</code>, so “Allow the device to perform Home Assistant actions” must be on, and the server’s browser must reach Home Assistant at the address on the Home Assistant page.</p>'+
+  '<label class="field" data-camera-source="go2rtc">go2rtc address<input id="dash-camera-server" maxlength="256" placeholder="http://192.168.1.10:1984" autocomplete="off"></label>'+
+  '<p class="hint" data-camera-source="go2rtc">Each camera plays the go2rtc stream named like its entity (<code>camera.front_door</code> plays <code>front_door</code>), as Frigate names them. For Frigate, publish its port 1984.</p>'+
+  '<label class="field" data-camera-source="webrtc go2rtc">Other stream names (optional)<textarea id="dash-camera-streams" rows="3" maxlength="1024" spellcheck="false" '+
+  'placeholder="camera.porch=porch_hd&#10;camera.shed=rtsp://192.168.1.30/stream1&#10;camera.garage=http://192.168.1.20/live.html"></textarea></label>'+
+  '<p class="hint" data-camera-source="webrtc go2rtc">One per line: <code>camera.entity=</code> a go2rtc stream name, an <code>rtsp://</code> address, or a full page address to show instead.</p>'+
+  '<div id="dash-camera-sound" data-camera-source="webrtc go2rtc"><label class="field">Panel speaker in Home Assistant (for camera sound)<input id="dash-speaker-entity" maxlength="128" autocomplete="off" spellcheck="false"></label>'+
+  '<p class="hint">The speaker button on a camera screen asks Home Assistant to play the camera’s sound (go2rtc’s RTSP output, port 8554) on this panel. '+
+  'Leave empty for the usual entity name; set it if you renamed the panel’s Speaker entity. The sound runs a second or two behind the picture.</p></div></fieldset>'+
   '<p class="hint" id="dash-status" role="status"></p>'+
   '<div class="settings-actions"><button class="primary" type="submit">Save streamed page</button></div>';
  anchor.append(form);
@@ -1924,9 +1932,18 @@ static const char PANEL_JS[] = R"ONXPANEL(
   try{const current=new URL($('dash-url').value.trim()),origin=new URL(base).origin;$('dash-url').value=current.origin===origin?current.href:origin+'/'}catch{$('dash-url').value=base.replace(/\/*$/,'/')}
   $('dash-url').focus();$('dash-status').textContent='Filled in your Home Assistant. Save to apply.';
  };
+ // Live cameras: only the fields of the chosen source.
+ function showCameraSource(){
+  const source=$('dash-camera-source').value;
+  form.querySelectorAll('[data-camera-source]').forEach(n=>{n.hidden=!n.dataset.cameraSource.split(' ').includes(source)||n.dataset.noSpeaker==='1'});
+ }
+ $('dash-camera-source').onchange=showCameraSource;showCameraSource();
  const show=state=>{
   $('dash-server').value=state.server||'';$('dash-url').value=state.url||'';$('dash-scale').value=state.scale||1;
-  $('dash-camera-server').value=state.camera_server||'';$('dash-camera-streams').value=(state.camera_streams||'').replace(/\s*,\s*/g,'\n');
+  $('dash-camera-source').value=state.camera_source||(state.camera_server?'go2rtc':'off');showCameraSource();
+  $('dash-camera-server').value=state.camera_server||'';
+  $('dash-speaker-entity').value=state.speaker_entity||'';$('dash-speaker-entity').placeholder=state.default_speaker_entity||'media_player.panel_speaker';
+  $('dash-camera-sound').dataset.noSpeaker=state.default_speaker_entity?'':'1';showCameraSource();$('dash-camera-streams').value=(state.camera_streams||'').replace(/\s*,\s*/g,'\n');
 
   $('dash-status').textContent='Stream: '+state.status+(state.restart_required?' · restart the panel to apply the new server or zoom':'');
  };
@@ -1960,7 +1977,7 @@ static const char PANEL_JS[] = R"ONXPANEL(
   const button=form.querySelector('button');button.disabled=true;
   try{
    show(await rpc({op:'panel_save',data:JSON.stringify({server:$('dash-server').value.trim(),url:$('dash-url').value.trim(),scale:parseFloat($('dash-scale').value)||1,
-    camera_server:$('dash-camera-server').value.trim(),camera_streams:$('dash-camera-streams').value.split('\n').map(l=>l.trim()).filter(Boolean).join('\n')})}));
+    camera_source:$('dash-camera-source').value,camera_server:$('dash-camera-server').value.trim(),speaker_entity:$('dash-speaker-entity').value.trim(),camera_streams:$('dash-camera-streams').value.split('\n').map(l=>l.trim()).filter(Boolean).join('\n')})}));
    $('dash-status').textContent='Saved. '+$('dash-status').textContent;
   }catch(e){$('dash-status').textContent=e.message}
   finally{button.disabled=false}

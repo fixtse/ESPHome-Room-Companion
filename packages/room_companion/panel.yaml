@@ -1108,8 +1108,50 @@ script:
             return id(room_panel)->camera_view(entity, x, y, w, h);
           };
           onx_panel_detail::live_camera_frame = []() { return id(room_panel)->camera_frame(); };
+          onx_panel_detail::live_audio = [](const std::string &entity) { return id(room_panel)->camera_audio(entity); };
+          onx_panel_detail::toggle_live_audio = [](const std::string &entity) { id(room_panel)->toggle_camera_audio(entity); };
           id(room_panel)->set_camera_frame_callback([](const lv_image_dsc_t *frame) {
             onx_panel_detail::show_live_frame(frame);
+          });
+          id(room_panel)->set_ha_origin([]() {
+            auto origin = custom_logic::build_ha_http_state_url(id(ha_host).state, "camera.live");
+            const auto path = origin.find("/api/states/");
+            if (path != std::string::npos) origin.resize(path);
+            return origin;
+          });
+          // WebRTC Camera integration: webrtc.create_link registers a link its
+          // embed page plays without sign-in (no open or time limit; the
+          // panel registers it again on every open).
+          id(room_panel)->set_webrtc_link_action([](const std::string &link, const std::string &entity, const std::string &url) {
+            #ifdef USE_API_HOMEASSISTANT_SERVICES
+            if (!id(normal_ha_api_connected) || link.empty() || (entity.empty() && url.empty())) return false;
+            esphome::api::HomeassistantActionRequest call;
+            static constexpr char svc[] = "webrtc.create_link";
+            static constexpr char k_link[] = "link_id";
+            static constexpr char k_entity[] = "entity";
+            static constexpr char k_url[] = "url";
+            static constexpr char k_limit[] = "open_limit";
+            static constexpr char k_ttl[] = "time_to_live";
+            static constexpr char zero[] = "0";
+            call.service = {svc, sizeof(svc) - 1};
+            call.data.init(4);
+            auto add = [&](const char *k, size_t kl, const char *v, size_t vl) {
+              esphome::api::HomeassistantServiceMap item;
+              item.key = {k, kl};
+              item.value = {v, vl};
+              call.data.push_back(item);
+            };
+            add(k_link, sizeof(k_link) - 1, link.data(), link.size());
+            if (!entity.empty()) add(k_entity, sizeof(k_entity) - 1, entity.data(), entity.size());
+            else add(k_url, sizeof(k_url) - 1, url.data(), url.size());
+            add(k_limit, sizeof(k_limit) - 1, zero, 1);
+            add(k_ttl, sizeof(k_ttl) - 1, zero, 1);
+            id(api_server)->send_homeassistant_action(call);
+            ESP_LOGI("camera", "webrtc.create_link for %s", entity.empty() ? "a stream address" : entity.c_str());
+            return true;
+            #else
+            return false;
+            #endif
           });
           id(room_panel)->set_camera_visible([]() {
             auto *image = onx_panel_detail::live_image;

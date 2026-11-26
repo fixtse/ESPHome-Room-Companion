@@ -116,27 +116,57 @@ The same server can play cameras at their full frame rate inside the native
 camera screen, without a dashboard made for it. The camera screen keeps its
 name, buttons and dock; only the picture comes from the stream.
 
-1. Run [go2rtc](https://github.com/AlexxIT/go2rtc) with a stream per camera.
-   Frigate already includes it: publish Frigate's port `1984`.
-2. On the **Streamed page** tab, set the **Remote WebView server** (the
-   dashboard **Page address** is not needed) and the **go2rtc address**, e.g.
-   `http://192.168.1.10:1984`.
-3. Each camera plays the go2rtc stream named like its entity:
-   `camera.front_door` plays `front_door`, which is how Frigate names its
-   cameras. For other names, add lines such as `camera.porch=porch_hd` under
-   **Other stream names**. A line can also give a full page address
-   (`camera.garage=http://…`) to show that page in the camera frame instead.
+On the **Streamed page** tab, set the **Remote WebView server** (the dashboard
+**Page address** is not needed), then choose a **Camera source**:
+
+- **WebRTC Camera integration in Home Assistant**: uses the go2rtc that
+  [WebRTC Camera](https://github.com/AlexxIT/WebRTC) runs (built in or
+  external). Each camera plays its own stream source; nothing else to set up.
+  The panel registers a link with the integration's `webrtc.create_link`
+  action each time a camera opens, and the server opens the integration's
+  `/webrtc/embed` page for it, which needs no sign-in. Requirements: the
+  panel's **Allow the device to perform Home Assistant actions** option, and
+  the server's browser must reach Home Assistant at the address set on the
+  panel's Home Assistant page.
+- **go2rtc server (Frigate or standalone)**: enter its web address, e.g.
+  `http://192.168.1.10:1984` (for Frigate, publish its port `1984`). Each
+  camera plays the go2rtc stream named like its entity: `camera.front_door`
+  plays `front_door`, which is how Frigate names its cameras.
+
+Under **Other stream names**, a line per camera can give a go2rtc stream name
+(`camera.porch=porch_hd`), a stream address (`camera.shed=rtsp://…`), or a
+full page address (`camera.garage=http://…`) to show in the camera frame
+instead.
+
+### Camera sound
+
+Panels with a speaker (not the Lite builds) show a speaker button on a live
+camera's screen. It asks Home Assistant to play the camera's sound on the
+panel: `media_player.play_media` (as an announcement) with go2rtc's RTSP
+output of the camera's stream, `rtsp://<go2rtc host>:8554/<stream>`. For the
+WebRTC Camera source that is the integration's go2rtc on the Home Assistant
+host, where the stream is named after the camera entity while its video plays.
+Home Assistant's ffmpeg converts any audio codec for the panel.
+
+- The sound runs a second or two behind the picture (Home Assistant buffers
+  it); it is for listening, not lip sync.
+- The panel addresses its own speaker as `media_player.<panel name>_speaker`
+  (e.g. `media_player.onx3248g035_speaker`). If you renamed the entity, set
+  **Panel speaker in Home Assistant** under Live cameras.
+- go2rtc's RTSP port (8554) must be reachable from Home Assistant. Leaving the
+  camera screen stops the sound, as does Assist.
+- Two-way talk is not supported (the microphone belongs to Assist).
 
 How it works: when a camera screen opens, the panel asks the server to open a
-small page the panel serves itself (`/panel/camera`), which places go2rtc's
-player (WebRTC, else MSE) exactly over the camera frame. The server's Chromium
+small page the panel serves itself (`/panel/camera`), which places the
+go2rtc player (WebRTC, else MSE) exactly over the camera frame. The server's Chromium
 plays H.264 natively. The panel decodes the stream into a PSRAM buffer and the
 native screen shows it as the camera image, so the stream never draws over the
 native UI. Snapshots fill the frame until the video plays; Home Assistant's
 MJPEG stream is not opened for a live camera.
 
-- The server's browser must reach go2rtc and the panel (port 80) on your
-  network. Chromium only lets a page on the local network embed go2rtc, which
+- The server's browser must reach go2rtc (or Home Assistant) and the panel
+  (port 80) on your network. Chromium only lets a page on the local network embed go2rtc, which
   is why the panel serves the page rather than the server opening go2rtc
   directly.
 - The panel draws at most what it can decode (about 5–10 frames per second for
