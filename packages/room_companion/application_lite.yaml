@@ -4,6 +4,8 @@
 substitutions:
   # OTA manifest suffix: <model>${firmware_variant}_manifest.yml.
   firmware_variant: "_lite"
+  # Shown as the device model in Home Assistant.
+  firmware_variant_label: " Lite"
 
 packages:
   base: !include application_base.yaml
