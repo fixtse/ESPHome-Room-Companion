@@ -54,10 +54,13 @@ shared by the audio and plain cases of the same panel and orientation.
    double-sided tape on the two side ledges under the black glass border.
    Press only around the edge of the glass.
 4. On an audio version, center the [Nextion Dual MIC Board](https://itead.cc/product/nextion-dual-mic-board/)
-   inside the top wall, behind the display. The 48 × 14 mm mounting area is
-   centered on the two grilles. Face both acoustic ports up toward the grilles
-   and fasten the board with thin foam tape clear of the ports and flex
-   connector. Route the flex down to MIC_PDM without a sharp fold. Point the [Nextion BOX Speaker](https://itead.cc/wp-content/uploads/2022/03/Box-Speaker-Dimension.pdf)
+   inside the top wall, behind the display. Slide its PCB into the two printed
+   channels from the rear, with the acoustic ports facing up. The back cover
+   traps the PCB in the guides. Route the flex through the center gap and
+   down to MIC_PDM without a sharp fold. The nominal PCB clearance is
+   47.8 × 9.8 × 1.8 mm. Check your board against the pocket before assembly. [Microphone guide detail](renders/mic-guide-detail.png)
+
+   Point the [Nextion BOX Speaker](https://itead.cc/wp-content/uploads/2022/03/Box-Speaker-Dimension.pdf)
    into the back cover's grille with a thin foam gasket around the opening.
    Use two M2 × 6 mm thread-forming screws in the printed pilot holes.
    Check that the speaker seats against the gasket before tightening. Connect

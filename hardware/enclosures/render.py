@@ -1,6 +1,7 @@
 # SPDX-License-Identifier: AGPL-3.0-only
 """Orthographic assembly renders from the same solids used for the STL export."""
 
+from math import cos, radians, sin
 from pathlib import Path
 
 import cadquery as cq
@@ -101,6 +102,11 @@ def render_case(panel, portrait, audio, parts, controls, gauge, path):
         # With the cover removed, the cable and elbow are visible together.
         detail = model_view([actors[0], actor(plug, (145, 207, 242))], center, (75, 52, 220), 31)
         detail.save(path.with_name("portrait-usb-detail.png"), optimize=True)
+        guides = (0, (height / 2 - 1.0) * cos(radians(TILT)) - 27 * sin(radians(TILT)),
+                  (height / 2 - 1.0) * sin(radians(TILT)) + 27 * cos(radians(TILT)))
+        detail = model_view([actors[0]], guides, (60, -85, 230), 31)
+        detail.save(path.with_name("mic-guide-detail.png"), optimize=True)
+
 
 
 def contact_sheet(folder):

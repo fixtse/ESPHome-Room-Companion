@@ -235,10 +235,33 @@ def make_case(panel, portrait, audio):
             )
             for mic_x in (-20, 20) for x in (-2.8, 0, 2.8) for z in (-2.8, 0, 2.8)
         ]
-        body = body.cut(*mic_ports)
-        mic_space = block(0, top - WALL - 3.25, mic_z - 7, 48, 6, 14)
-        if body.intersect(mic_space).Volume() > 0.05:
-            raise ValueError("Top microphone space intersects the bezel")
+        roof = top - WALL
+        # Open-backed channels support the bare PCB at two stations away
+        # from the microphones and the central ribbon connector.
+        guide_front = mic_z - 4.4
+        guide_end = mic_z + 5.5
+        guides = []
+        for x in (-12, 12):
+            rib = block(x, roof - 2.25, guide_front - 1.4, 3.4, 4.5 + EPS, guide_end - guide_front + 1.4)
+            slot = block(x, roof - 2.35, guide_front, 3.4 + 2 * EPS, 2.05, guide_end - guide_front + EPS)
+            guides.append(rib.cut(slot))
+        # The side fences center the board without bearing on its components.
+        fences = [
+            block(x, roof - 1.75, guide_front, 1.2, 3.5 + EPS, guide_end - guide_front)
+            for x in (-24.6, 24.6)
+        ]
+        body = body.fuse(*guides, *fences).cut(*mic_ports)
+
+        # Two stops on the closed cover keep the board in the channels.
+        stops = [
+            block(x, roof - 2.35, guide_end + 0.3, 3.4, 2.5, 8).intersect(outer)
+            for x in (-12, 12)
+        ]
+        cover = cover.fuse(*stops).cut(*vents)
+        board_space = block(0, roof - 2.35, guide_front + 0.1, 47.8, 1.8, 9.8)
+        for part in (body, cover):
+            if part.intersect(board_space).Volume() > 0.05:
+                raise ValueError("Microphone PCB pocket is obstructed")
         # The Nextion BOX Speaker's tabs are on a 36.6 mm pitch. Its own
         # acoustic enclosure faces the grille with a thin foam gasket.
         speaker_y = bottom + (28 if portrait else 24)
