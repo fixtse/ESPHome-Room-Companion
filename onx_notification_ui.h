@@ -70,6 +70,8 @@ inline uint32_t loading_id = 0;
 inline bool release_pending = false;
 inline lv_obj_t *toast_icon = nullptr, *toast_bar = nullptr;
 inline uint32_t detail_id = 0, built_revision = 0;
+// Set while a list card is removed in place, so refresh() skips the rebuild.
+inline bool keep_list = false;
 inline bool panel_open = false;
 inline bool bell_wanted = false;  // Only the main carousel shows the bell.
 // Status row on the main carousel: running timers (Assist's own and Home
@@ -543,18 +545,23 @@ inline void on_item_dismiss(lv_event_t *event) {
   lv_event_stop_bubbling(event);
   if (controls_blocked && controls_blocked()) return;
   touched();
-  // Dismissing rebuilds the list, which deletes this button: defer it until the
-  // event has finished.
+  // Drop just this card at once instead of rebuilding every card (slow on the
+  // panel). The card owns this button, so delete it after the event finishes.
+  lv_obj_t *card = lv_obj_get_parent(static_cast<lv_obj_t *>(lv_event_get_current_target(event)));
+  hide(card, true);
+  lv_obj_delete_async(card);
   lv_async_call([](void *user) {
+    keep_list = true;
     onx_notification::center.dismiss(static_cast<uint32_t>(reinterpret_cast<uintptr_t>(user)));
+    keep_list = false;
   }, lv_event_get_user_data(event));
 }
 inline void on_back(lv_event_t *) { touched(); close_detail(); }
 inline void on_detail_dismiss(lv_event_t *) {
   touched();
-  const uint32_t id = detail_id;
-  close_detail();
-  onx_notification::center.dismiss(id);
+  // Removing the item closes the detail in refresh(); closing first rebuilt the
+  // list twice (once still holding the item).
+  onx_notification::center.dismiss(detail_id);
 }
 
 // Orientation: the next quarter turn, confirmed in a dialog because the
@@ -1061,6 +1068,7 @@ inline void refresh() {
   // Rebuilt on changes, and once a minute while open so the times stay current.
   static uint32_t built_minute = 0;
   const uint32_t minute = now / 60000;
+  if (keep_list) built_revision = center.revision;
   if (panel_open && (built_revision != center.revision || built_minute != minute)) {
     built_revision = center.revision;
     built_minute = minute;

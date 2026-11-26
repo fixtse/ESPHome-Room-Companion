@@ -1,0 +1,12 @@
+{
+ "_comment": "Camera detail views: no snapshot yet, and a PTZ camera (secondary = PTZ entity).",
+ "entities": [
+  {"entity_id": "camera.bedroom_cam", "name": "Bedroom Camera Cam", "state": "idle", "features": 1},
+  {"entity_id": "camera.front_door", "name": "Front door", "state": "streaming", "motion_detection": "true",
+   "features": 3, "artwork": "wide", "secondary": {"entity": "button.front_door_ptz"}}
+ ],
+ "pages": [
+  {"name": "cam-bedroom", "kind": "single", "entities": ["camera.bedroom_cam"]},
+  {"name": "cam-ptz", "kind": "single", "entities": ["camera.front_door"]}
+ ]
+}

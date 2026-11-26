@@ -3465,8 +3465,22 @@ inline std::string camera_ptz_entity(const std::string &e) {
   return i >= 0 && onx_sensor_view::configs[i].secondary[0] ? std::string(onx_sensor_view::configs[i].secondary) : std::string();
 }
 
-__attribute__((noinline)) inline void build_camera(const Layout &l, const std::string &e, const EntityDetailState &d, const std::string &title) {
+// Landscape camera: the name across the top, a wide snapshot below it and the
+// buttons in a narrow column (two with PTZ) on the right, so the 16:9 frame
+// gets most of the screen rather than the default half-width visual column.
+inline Layout camera_layout(const Layout &base, bool ptz) {
+  if (!wide()) return base;
+  const int pad = P(16), gap = P(12), col = P(52), top = pad + P(56);
+  const int cw = ptz ? 2 * col + P(8) : col;
+  Layout l{};
+  l.head = {pad, pad, W - 2 * pad, P(48)};
+  l.vis = {pad, top, W - 2 * pad - cw - gap, H - pad - top};
+  l.ctl = {l.vis.x + l.vis.w + gap, top, cw, l.vis.h};
+  return l;
+}
+__attribute__((noinline)) inline void build_camera(const Layout &base, const std::string &e, const EntityDetailState &d, const std::string &title) {
   onx_media::main_entity = e;
+  const Layout l = camera_layout(base, !camera_ptz_entity(e).empty());
   const bool is_on = d.state == "streaming" || d.state == "recording";
   const bool has_motion = d.motion_detection == "True" || d.motion_detection == "true" ||
                           d.motion_detection == "False" || d.motion_detection == "false";
@@ -3504,6 +3518,29 @@ __attribute__((noinline)) inline void build_camera(const Layout &l, const std::s
       request(e, motion_on ? "camera.disable_motion_detection" : "camera.enable_motion_detection",
               "", motion_on ? "false" : "true", "motion_detection");
     }});
+  }
+  if (wide()) {
+    // Columns: actions, then (with PTZ) the six moves.
+    const int gap = P(8), col = ptz.empty() ? l.ctl.w : (l.ctl.w - gap) / 2;
+    const int n = btns.size(), bh = std::min(P(52), (l.ctl.h - gap * (n - 1)) / n);
+    for (int i = 0; i < n; ++i)
+      icon_button(root, l.ctl.x, l.ctl.y + i * (bh + gap), col, bh, P(14), btns[i].hot ? strong() : CONTROL(),
+                  btns[i].symbol, TEXT(), btns[i].fn);
+    if (!ptz.empty()) {
+      struct Ptz { const char *symbol; const char *param; const char *dir; };
+      static constexpr Ptz moves[] = {
+          {LV_SYMBOL_UP, "tilt", "UP"},          {LV_SYMBOL_DOWN, "tilt", "DOWN"},
+          {LV_SYMBOL_LEFT, "pan", "LEFT"},       {LV_SYMBOL_RIGHT, "pan", "RIGHT"},
+          {LV_SYMBOL_PLUS, "zoom", "ZOOM_IN"},   {LV_SYMBOL_MINUS, "zoom", "ZOOM_OUT"},
+      };
+      const int pgap = P(6), ph = (l.ctl.h - pgap * 5) / 6, x = l.ctl.x + col + gap;
+      for (int i = 0; i < 6; ++i) {
+        const auto m = moves[i];
+        icon_button(root, x, l.ctl.y + i * (ph + pgap), l.ctl.w - col - gap, ph, P(12), CONTROL(), m.symbol, TEXT(),
+                    [ptz, m]() { if (send_ptz) send_ptz(ptz, m.param, m.dir); });
+      }
+    }
+    return;
   }
   const int gap = P(8), rows = ptz.empty() ? 1 : 2;
   const int rh = std::min(P(48), (l.ctl.h - gap * (rows - 1)) / rows);

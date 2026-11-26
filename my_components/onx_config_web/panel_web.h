@@ -1265,9 +1265,11 @@ static const char PANEL_JS[] = R"ONXPANEL(
    drawRow(primary);drawRow(secondary);
    if(speeds.length&&y+rh<=bottomOf(l.ctl)+P(4))row({x:l.ctl.x,y,w:l.ctl.w,h:rh},'Fan speed',label(!speed||speed==='None'?speeds[0]:speed)+'  ›');
   };
-  const buildCamera=(l,e,d,title,v)=>{
+  const buildCamera=(base,e,d,title,v)=>{
    const on=['streaming','recording'].includes(d.state),hasMotion=['True','true','False','false'].includes(d.motion_detection),motionOn=['True','true'].includes(d.motion_detection);
    const ptz=d.ptz||(slot.entity===e?slot.secondary:'');
+   // Landscape: name on top, wide snapshot, button column(s) on the right (camera_layout).
+   let l=base;if(wide){const pad=P(16),g=P(12),col=P(52),top=pad+P(56),cw=ptz?2*col+P(8):col,vis={x:pad,y:top,w:W-2*pad-cw-g,h:H-pad-top};l={head:{x:pad,y:pad,w:W-2*pad,h:P(48)},vis,ctl:{x:vis.x+vis.w+g,y:top,w:cw,h:vis.h}}}
    let context=label(d.state||'idle');if(hasMotion)context+=motionOn?' · Motion on':' · Motion off';if(ptz)context+=' · PTZ';
    header(l.head,title,context);
    const square=Math.min(l.vis.w,l.vis.h),b=v?.artwork?artBox(v.artwork,square,l.vis.w,l.vis.h):{w:l.vis.w,h:Math.min(l.vis.h,Math.trunc(l.vis.w*9/16)),shaped:true};
@@ -1276,6 +1278,10 @@ static const char PANEL_JS[] = R"ONXPANEL(
    const btns=[['refresh',false]];
    if(d.features&1)btns.push(['power',on]);
    if(hasMotion)btns.push([motionOn?'eye':'eyeOff',motionOn]);
+   if(wide){const gap=P(8),col=ptz?Math.trunc((l.ctl.w-gap)/2):l.ctl.w,n=btns.length,bh=Math.min(P(52),Math.trunc((l.ctl.h-gap*(n-1))/n));
+    btns.forEach((b,i)=>iconButton(l.ctl.x,l.ctl.y+i*(bh+gap),col,bh,P(14),b[1]?STRONG:CONTROL,b[0],TEXT));
+    if(ptz){const pgap=P(6),ph=Math.trunc((l.ctl.h-pgap*5)/6),x=l.ctl.x+col+gap;['up','down','left','right','plus','minus'].forEach((sym,i)=>iconButton(x,l.ctl.y+i*(ph+pgap),l.ctl.w-col-gap,ph,P(12),CONTROL,sym,TEXT))}
+    return}
    const gap=P(8),rows=ptz?2:1,rh=Math.min(P(48),Math.trunc((l.ctl.h-gap*(rows-1))/rows));let y=l.ctl.y;
    {const n=btns.length,bw=Math.trunc((l.ctl.w-gap*(n-1))/n);
     btns.forEach((b,i)=>iconButton(l.ctl.x+i*(bw+gap),y,i===n-1?l.ctl.w-i*(bw+gap):bw,rh,P(14),b[1]?STRONG:CONTROL,b[0],TEXT));y+=rh+gap}
