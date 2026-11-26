@@ -669,6 +669,8 @@ interval:
               if(to!=c){v.color=lv_color_hex(to);lv_obj_set_local_style_prop(obj,prop,v,sel);}
             };
             std::function<void(lv_obj_t *)> walk = [&](lv_obj_t *obj) {
+              // Photo overlays (ImmichFrame) keep their fixed colours.
+              if (lv_obj_has_flag(obj, onx_render::FIXED_PALETTE)) return;
               for (auto part : parts) {
                 for (auto prop : surface_props)
                   remap(obj, prop, part, surfaces, sizeof(surfaces) / sizeof(*surfaces), enabled);
