@@ -207,8 +207,15 @@ otherwise keep the model/example validation policy above.
 
    ```sh
    docker run --rm --name rc-35-TASK -v "$PWD":/config \
+     -v ~/.cache/esphome-docker:/cache \
      ghcr.io/esphome/esphome:2026.11.1 compile ONX3248G035.wake-word.yaml
    ```
+
+   Always mount the shared `~/.cache/esphome-docker` as `/cache` (the
+   PlatformIO toolchain shared by every checkout; see the global policy), for
+   validation compiles too. It saves the toolchain download (a fresh 3.5"
+   compile took ~225 s with it, ~270 s without, 2026-11-26); objects are not
+   shared, so recompile in the same checkout (~2 min incremental).
 
    Use a unique container name. If adding/removing profiling components leaves
    stale component targets, run `esphome clean ONX3248G035.wake-word.yaml` in the
