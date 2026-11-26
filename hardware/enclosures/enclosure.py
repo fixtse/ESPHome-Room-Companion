@@ -3,12 +3,13 @@
 """Generate Room Companion desktop enclosure STLs and optional CAD previews."""
 
 import argparse
-from functools import lru_cache
 from dataclasses import dataclass
-from math import radians, tan
+from functools import lru_cache
+from math import atan, degrees, radians, tan
 from pathlib import Path
 
 import cadquery as cq
+from OCP.BRepExtrema import BRepExtrema_DistShapeShape
 
 # XY lies in the screen plane, +Y is up, +Z is toward the back.
 # The dimensions below are in each vendor STEP's original coordinates.
@@ -21,17 +22,27 @@ class Panel:
     step_center_x: float
     step_glass_z: float
     usb: tuple[float, float, float]  # Receptacle mouth center and outward axis +X
+    buttons: tuple[tuple[float, float, float], ...]  # Button centers at the outward face
+    power: tuple[float, float, float]  # Center of slider travel
+    power_position: float  # Paddle offset from mid-travel in the vendor STEP
 
 
 PANELS = (
-    Panel("ONX2432G028", 56, 78.6, (43.2, 57.6), -2.8, -7.295, (34.625, -0.15, 1.598)),
-    Panel("ONX3248G035", 61, 92.44, (48.96, 73.44), 0.22, -7.213, (39, 0, 1.58)),
+    Panel(
+        "ONX2432G028", 56, 78.6, (43.2, 57.6), -2.8, -7.295, (34.625, -0.15, 1.598),
+        ((9.25, -24.75, 0.968), (15.1, -24.75, 0.968)), (22.65, -24.938, 0.718), 0.75,
+    ),
+    Panel(
+        "ONX3248G035", 61, 92.44, (48.96, 73.44), 0.22, -7.213, (39, 0, 1.58),
+        ((21.15, 27, 0.95), (29.15, 27, 0.95)), (24, -27.3, 0.7), -0.75,
+    ),
 )
 FACE = 1.8
 TAPE = 0.25
 TILT = 16
 WALL = 2.4
-LID = 2.8
+LID = 3.4
+TAPER = 0.34
 EPS = 0.04
 
 
@@ -56,17 +67,98 @@ def section(x, width, points):
     return cq.Workplane("YZ", origin=(x, 0, 0)).polyline(points).close().extrude(width).val()
 
 
+def make_controls(panel, portrait, case_width, top, floor):
+    """Captive plungers and a fork that slides over the original power tab."""
+    apertures, assembled, endpoints = [], [], []
+    printable = {}
+    for index, position in enumerate((*panel.buttons, panel.power)):
+        slider = index == len(panel.buttons)
+        x, y, z = position
+        x -= panel.step_center_x
+        z += FACE + TAPE - panel.step_glass_z
+        direction = 1 if y > 0 else -1
+        underside = not portrait and direction < 0
+        face = direction * case_width / 2 if portrait else (floor(z) if underside else top)
+        reach = direction * (face - y)
+        tip = reach - 1.05 if underside else reach + 0.85
+        shoulder = reach - WALL - (1.1 if underside else 0.35)
+
+        def place(shape, shift=0):
+            placed = shape.rotate((0, 0, 0), (1, 0, 0), -90 * direction).translate(
+                (x + shift, y, z)
+            )
+            if portrait:
+                placed = placed.rotate((0, 0, 0), (0, 0, 1), -90)
+            return placed
+
+        if slider:
+            opening = block(0, 0, -EPS, 8.3, 4.0, reach + 8)
+            if underside:
+                opening = opening.fuse(block(0, 0, reach - 1.7, 9.6, 5.2, 6))
+            stem = block(0, 0, -0.65, 5.8, 3.4, tip + 0.65)
+            flange = block(0, 0, shoulder - 1.1, 6.2, 5.6, 1.1)
+            fork = block(0, 0, -0.7, 1.8, 3.6, 0.98)
+            # Add shallow grip grooves to the exposed end of the slider.
+            grooves = [
+                block(0, offset, tip - 0.23, 3.9, 0.42, 0.4)
+                for offset in (-0.8, 0, 0.8)
+            ]
+            cap = stem.fuse(flange).cut(fork, *grooves).clean()
+            printable["power-slider"] = cap
+            assembled.append(place(cap, panel.power_position))
+            endpoints.extend(place(cap, shift) for shift in (-1.05, 1.05))
+        else:
+            opening = hole(0, 0, -EPS, 4.7, reach + 8)
+            if underside:
+                opening = opening.fuse(hole(0, 0, reach - 1.7, 5.55, 6))
+            cap = hole(0, 0, 0.2, 4.2, tip - 0.2).fuse(
+                hole(0, 0, shoulder - 0.9, 5.4, 0.9)
+            ).clean()
+            printable["button"] = cap
+            assembled.append(place(cap))
+            endpoints.append(place(cap.translate((0, 0, -0.45))))
+        apertures.append(place(opening))
+    return apertures, assembled, endpoints, printable
+
+
 def make_case(panel, portrait, audio):
     width, height = (panel.width, panel.height) if portrait else (panel.height, panel.width)
     case_width = width + 16
     bottom = -height / 2 - 7
     top = height / 2 + 7
-    middle = (top + bottom) / 2
-    case_height = top - bottom
-    rear = 40 if audio else 22
-    rear_outer = rear + LID
+    floor_at_face = bottom - 39 if portrait else bottom + 0.8
+    slope = tan(radians(TILT))
+    top_depth = 35 if audio else 25
+    low = floor_at_face - 2
+    max_depth = 105
+    span = case_width + 2
+
+    def floor(z):
+        return floor_at_face + z * slope
+
+    def rear(y):
+        return top_depth + (top - y) * TAPER
+
+    def behind_floor(lift):
+        return section(-span / 2, span, [
+            (floor(0) + lift, 0), (top + 1, 0),
+            (top + 1, max_depth), (floor(max_depth) + lift, max_depth),
+        ])
+
+    def rear_limit(offset):
+        return section(-span / 2, span, [
+            (low, -1), (top + 1, -1),
+            (top + 1, rear(top + 1) + offset), (low, rear(low) + offset),
+        ])
+
+    def on_cover(shape, y):
+        return shape.rotate((0, 0, 0), (1, 0, 0), -degrees(atan(TAPER))).translate(
+            (0, y, rear(y))
+        )
+
     screw_x = case_width / 2 - 4.3
-    screws = [(x, y) for x in (-screw_x, screw_x) for y in (bottom + 6, top - 6)]
+    lower_screws = bottom - 7 if portrait else bottom + 24
+    screws = [(x, y) for x in (-screw_x, screw_x) for y in (lower_screws, top - 6)]
     usb_x, usb_y, usb_z = panel.usb
     usb_x -= panel.step_center_x
     usb_z += FACE + TAPE - panel.step_glass_z
@@ -79,44 +171,63 @@ def make_case(panel, portrait, audio):
     else:
         gauge = block(usb_x + 17, usb_y, usb_z - 5, 31, 18, 10)
     if portrait:
-        port_x = usb_y
-        usb_relief = block(port_x, bottom - 0.5, usb_z - 6, 21, 8, 12)
         gauge = gauge.rotate((0, 0, 0), (0, 0, 1), -90)
+        exit_z = (rear(floor_at_face) + LID) / (1 + TAPER * slope)
+        # Open the rear at the desk edge so the cover can close over an
+        # already-routed cable. The front edge remains continuous.
+        exit_y = floor(exit_z)
+        usb_relief = block(usb_y, exit_y + 5, exit_z - 12, 28, 24, 27)
     else:
-        port_y = usb_y
-        usb_relief = block(case_width / 2 + 0.5, port_y, usb_z - 6, 8, 21, 12)
+        start, end = usb_x + 1, case_width / 2 + 2
+        usb_relief = block((start + end) / 2, usb_y, usb_z - 6, end - start, 21, 12)
 
-    outer = rounded(0, middle, 0, case_width, case_height, rear, 5)
+    if min(vertex.Y - floor(vertex.Z) for vertex in gauge.Vertices()) < 3:
+        raise ValueError("USB-C overmold is too close to the desktop")
+
+    outline = rounded(0, (top + low) / 2, 0, case_width, top - low, max_depth, 5)
+    outer = outline.intersect(behind_floor(0)).intersect(rear_limit(LID))
     interior = rounded(
-        0, middle, FACE + 2.2, case_width - 2 * WALL, case_height - 2 * WALL, rear, 3
-    )
-    # Pocket and lip capture the glass from the rear with removable thin tape.
+        0, (top + low) / 2, FACE + 2.2,
+        case_width - 2 * WALL, top - low - 2 * WALL, max_depth, 3,
+    ).intersect(behind_floor(WALL))
+    if portrait:
+        # Recess the cable bay behind the display's lower bezel. A diagonal
+        # transition joins the bezel to the full-width front of the base.
+        def front_relief(offset):
+            return section(-span / 2, span, [
+                (low, -1), (bottom + offset + 3, -1),
+                (bottom + offset - 4, 2.5 + offset), (low, 2.5 + offset),
+            ])
+
+        outer = outer.cut(front_relief(0))
+        interior = interior.cut(front_relief(WALL))
+
+    split = rear_limit(0)
+    body = outer.intersect(split)
+    cover = outer.cut(split)
     seat = rounded(0, 0, FACE, width + 0.8, height + 0.8, 3, 2.9)
     window = rounded(0, 0, -EPS, width - 2.6, height - 2.6, FACE + 2 * EPS, 1.5)
-    body = outer.cut(interior, seat, window)
-    # Grow the bosses from the front pocket so they print with support from below.
-    bosses = [hole(x, y, FACE, 6.8, rear - FACE) for x, y in screws]
-    body = body.fuse(*bosses).cut(
-        seat, usb_relief,
-        *(hole(x, y, rear - 9, 2.6, 9 + EPS) for x, y in screws),
+    apertures, controls, endpoints, controls_for_print = make_controls(
+        panel, portrait, case_width, top, floor
+    )
+    bosses = [hole(x, y, FACE, 6.8, max_depth) for x, y in screws]
+    # Clip the bosses to the outside, including the desk and rear planes.
+    body = body.cut(interior, seat, window).fuse(
+        *(boss.intersect(body) for boss in bosses)
+    ).cut(
+        seat, window, usb_relief, *apertures,
+        *(hole(x, y, rear(y) - 9, 2.6, 12) for x, y in screws),
+    )
+    cover = cover.cut(
+        usb_relief,
+        *(hole(x, y, rear(y) - 2, 3.4, 8) for x, y in screws),
+        *(hole(x, y, rear(y) + 1.65, 6.4, 8) for x, y in screws),
     )
 
-    cover = rounded(0, middle, rear, case_width, case_height, LID, 5)
-    # A shallow locating rim aligns the cover while leaving the screw bosses clear.
-    rim_outer = rounded(
-        0, middle, rear - 1.2, case_width - 2 * WALL - 0.65,
-        case_height - 2 * WALL - 0.65, 1.2 + EPS, 2.8,
-    )
-    rim_inner = rounded(
-        0, middle, rear - 1.2 - EPS, case_width - 2 * WALL - 3.15,
-        case_height - 2 * WALL - 3.15, 1.2 + 3 * EPS, 1.6,
-    )
-    rim = rim_outer.cut(rim_inner, *(hole(x, y, rear - 2, 7.6, 3) for x, y in screws))
-    cover = cover.fuse(rim).cut(*(hole(x, y, rear - EPS, 3.4, LID + 2 * EPS) for x, y in screws))
     vent_rows = [top - 8 - i * 3.6 for i in range(3)]
     if not audio:
-        vent_rows += [bottom + 8 + i * 3.6 for i in range(3)]
-    vents = [rounded(0, y, rear - EPS, 31, 1.9, LID + 2 * EPS, 0.9) for y in vent_rows]
+        vent_rows += [lower_screws + i * 3.6 for i in range(3)]
+    vents = [on_cover(rounded(0, 0, -EPS, 31, 1.9, LID + 1, 0.9), y) for y in vent_rows]
     cover = cover.cut(*vents)
 
     if audio:
@@ -136,71 +247,45 @@ def make_case(panel, portrait, audio):
             raise ValueError("Top microphone space intersects the bezel")
         # The Nextion BOX Speaker's tabs are on a 36.6 mm pitch. Its own
         # acoustic enclosure faces the grille with a thin foam gasket.
-        speaker_y = bottom + 25
+        speaker_y = bottom + (20 if portrait else 31)
         grill = [
-            hole(x, speaker_y + y, rear - EPS, 2.2, LID + 2 * EPS)
+            on_cover(hole(x, y, -EPS, 2.2, LID + 1), speaker_y)
             for x in range(-10, 11, 4) for y in range(-10, 11, 4)
             if x * x + y * y < 135
         ]
-        speaker_tabs = [(-18.3, speaker_y), (18.3, speaker_y)]
-        cover = cover.fuse(*(hole(x, y, rear - 6.5, 5.4, 6.5 + EPS) for x, y in speaker_tabs))
-        cover = cover.cut(
-            *grill, *(hole(x, y, rear - 6.5 - EPS, 1.7, 5.9) for x, y in speaker_tabs),
+        speaker_tabs = [-18.3, 18.3]
+        cover = cover.fuse(*(
+            on_cover(hole(x, 0, -6.5, 6.0, 6.5 + EPS), speaker_y) for x in speaker_tabs
+        )).cut(
+            *grill, *(on_cover(hole(x, 0, -6.5 - EPS, 1.7, 5.9), speaker_y) for x in speaker_tabs),
         )
-
-    # The stand screws share the lower cover bosses. The front of each foot
-    # reaches below the screen footprint and the rear crossbar leaves the
-    # USB-C approach open between the feet.
-    slope = tan(radians(TILT))
-    clearance = 33 if portrait else 3
-    tail_z = rear_outer + (40 if portrait else 30)
-    toe_z = 0.6
-    def floor(z):
-        return bottom - clearance + (z - rear_outer) * slope
-
-    if min(vertex.Y - floor(vertex.Z) for vertex in gauge.Vertices()) < 3:
-        raise ValueError("USB-C overmold is too close to the desktop")
-
-    corners = [
-        (floor(toe_z), toe_z), (floor(tail_z), tail_z), (floor(tail_z) + 5, tail_z),
-        (bottom + 14, rear_outer + 5.5), (bottom + 14, rear_outer),
-        (bottom - 0.8, rear_outer), (bottom - 0.8, rear_outer - 2),
-        (floor(toe_z) + 3.5, toe_z),
-    ]
-    foot_width = 10.8
-    cross_z = tail_z - 5
-    brace = section(-screw_x, 2 * screw_x, [
-        (floor(cross_z), cross_z), (floor(tail_z), tail_z),
-        (floor(tail_z) + 4, tail_z), (floor(cross_z) + 4, cross_z),
-    ])
-    stand = brace.fuse(*(section(x - foot_width / 2, foot_width, corners) for x in (-screw_x, screw_x)))
-    for x in (-screw_x, screw_x):
-        stand = stand.cut(
-            hole(x, bottom + 6, rear_outer - EPS, 3.5, 5.5 + 2 * EPS),
-            hole(x, bottom + 6, rear_outer + 5.5 - EPS, 6.5, tail_z - rear_outer),
-        )
-    return (body.clean(), cover.clean(), stand.clean()), gauge
+    parts = (body.clean(), cover.clean())
+    for index, control in enumerate((*controls, *endpoints)):
+        if any(part.intersect(control).Volume() > 0.05 for part in parts):
+            raise ValueError(f"Printed control position {index + 1} intersects the enclosure")
+    return parts, gauge, controls, controls_for_print
 
 
-def export(parts, gauge, panel, portrait, audio, output, previews):
+def export(parts, gauge, controls, controls_for_print, panel, portrait, audio, output, previews):
     orientation = "portrait" if portrait else "landscape"
     trim = "audio" if audio else "plain"
     stem = f"{panel.name.lower()}-{orientation}-{trim}"
-    body, cover, stand = parts
-    # Bezel front, cover exterior, and stand's desk face go on the bed.
+    body, cover = parts
+    # Print the canted rear face flat on the build plate.
     printable = {
         "bezel": body,
-        "back": cover.rotate((0, 0, 0), (1, 0, 0), 180),
-        "stand": stand.rotate((0, 0, 0), (1, 0, 0), 90 + TILT),
+        "back": cover.rotate((0, 0, 0), (1, 0, 0), 180 + degrees(atan(TAPER))),
     }
+    printable.update(controls_for_print)
     for name, part in printable.items():
         if len(part.Solids()) != 1 or not part.isValid():
             raise ValueError(f"{stem}-{name} must be one valid solid")
         part = part.translate((0, 0, -part.BoundingBox().zmin))
-        cq.exporters.export(part, str(output / "stl" / f"{stem}-{name}.stl"), tolerance=0.06)
+        prefix = f"{panel.name.lower()}-{orientation}" if name in controls_for_print else stem
+        cq.exporters.export(part, str(output / "stl" / f"{prefix}-{name}.stl"), tolerance=0.06)
     if previews:
         from render import render_case
-        render_case(panel, portrait, audio, parts, gauge, output / "renders" / f"{stem}.png")
+        render_case(panel, portrait, audio, parts, controls, gauge, output / "renders" / f"{stem}.png")
 
 
 @lru_cache(maxsize=2)
@@ -208,18 +293,30 @@ def read_board(path):
     return cq.importers.importStep(str(path)).val()
 
 
-def verify_fit(panel, portrait, parts, gauge, step_directory):
+def clearance(shape, board):
+    distance = BRepExtrema_DistShapeShape()
+    distance.LoadS1(shape.wrapped)
+    distance.LoadS2(board.wrapped)
+    distance.SetMultiThread(True)
+    distance.Perform()
+    return distance.Value()
+
+
+def verify_fit(panel, portrait, parts, controls, gauge, step_directory):
     board = read_board(step_directory / f"{panel.name}.stp")
     board = board.translate((-panel.step_center_x, 0, FACE + TAPE - panel.step_glass_z))
     if portrait:
         board = board.rotate((0, 0, 0), (0, 0, 1), -90)
     for part in parts:
-        if part.distance(board) < 0.02:
+        if clearance(part, board) < 0.02:
             raise ValueError(f"{type(part).__name__} touches the reference board")
         if part.intersect(gauge).Volume() > 0.05:
             raise ValueError("Case obstructs the nominal USB-C plug")
-    if gauge.distance(board) < 0.02:
+    if clearance(gauge, board) < 0.02:
         raise ValueError("The nominal USB-C overmold crosses the reference board")
+    for control in controls:
+        if clearance(control, board) < 0.015:
+            raise ValueError("Printed control touches the board at rest")
     for i, part in enumerate(parts):
         for other in parts[i + 1:]:
             if part.intersect(other).Volume() > 0.05:
@@ -251,10 +348,10 @@ def main():
                 print(panel.name, orientation, trim, flush=True)
                 portrait = orientation == "portrait"
                 audio = trim == "audio"
-                parts, gauge = make_case(panel, portrait, audio)
+                parts, gauge, controls, controls_for_print = make_case(panel, portrait, audio)
                 if args.check_step:
-                    verify_fit(panel, portrait, parts, gauge, args.check_step)
-                export(parts, gauge, panel, portrait, audio, args.output, args.previews)
+                    verify_fit(panel, portrait, parts, controls, gauge, args.check_step)
+                export(parts, gauge, controls, controls_for_print, panel, portrait, audio, args.output, args.previews)
 
 
 if __name__ == "__main__":

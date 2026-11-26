@@ -225,12 +225,12 @@ the model number on your panel.
 
 ## 3D-printable desktop enclosures
 
-Print a portrait or landscape case for either OpenNextion panel. Each
-orientation comes as a plain case or an audio version with a top-facing microphone
-mount and a rear speaker mount. The portrait stand leaves room to plug USB-C
-in from underneath. [STLs, CAD previews, and assembly guide](hardware/enclosures/README.md)
+Print a portrait or landscape desktop case for either OpenNextion panel.
+Each enclosure has an integrated wedge base, printed BOOT and RESET buttons,
+and a printed power slider. Choose a plain case or an audio version with a top-facing mic and
+rear speaker mount. [STLs, CAD previews, and assembly guide](hardware/enclosures/README.md)
 
-[![3.5-inch portrait audio enclosure, front and rear](hardware/enclosures/renders/onx3248g035-portrait-audio.png)](hardware/enclosures/README.md)
+[![3.5-inch landscape audio enclosure, front and rear](hardware/enclosures/renders/onx3248g035-landscape-audio.png)](hardware/enclosures/README.md)
 
 ## Get started
 
