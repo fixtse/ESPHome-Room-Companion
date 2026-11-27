@@ -470,47 +470,8 @@ struct StoredPressBindingSlot {
 static onx_memory::PagedArray<PressBinding, onx_memory::ENTRY_COUNT> bindings{};
 static onx_memory::PagedArray<esphome::ESPPreferenceObject, onx_memory::ENTRY_COUNT> binding_preferences{};
 static size_t bindings_loaded_limit = 0;
-static bool legacy_bindings_checked = false;
 inline void load() {
   if (esphome::global_preferences == nullptr) return;
-  if (!legacy_bindings_checked) {
-    legacy_bindings_checked = true;
-    // Migrate legacy monolithic press binding tables (v3: 40, v2: 20, v1: 10) into RAM;
-    // per-slot v4 keys below override any slot that was saved after upgrade.
-    struct V3Bindings { uint32_t magic; PressBinding slots[40]; };
-    auto v3_pref = esphome::global_preferences->make_preference<V3Bindings>(esphome::fnv1_hash("onx.press_bindings.v3"));
-    auto v3_buf = custom_logic::make_ram_allocated<V3Bindings>();
-    size_t legacy_count = 0;
-    if (v3_buf && v3_pref.load(v3_buf.get()) && v3_buf->magic == 0x4F4E5850) {
-      legacy_count = 40;
-    } else {
-      struct V2Bindings { uint32_t magic; PressBinding slots[20]; };
-      auto v2_pref = esphome::global_preferences->make_preference<V2Bindings>(esphome::fnv1_hash("onx.press_bindings.v2"));
-      auto v2_buf = custom_logic::make_ram_allocated<V2Bindings>();
-      if (v3_buf && v2_buf && v2_pref.load(v2_buf.get()) && v2_buf->magic == 0x4F4E5850) {
-        std::copy(std::begin(v2_buf->slots), std::end(v2_buf->slots), std::begin(v3_buf->slots));
-        legacy_count = 20;
-      } else {
-        struct LegacyBindings { uint32_t magic; PressBinding slots[10]; };
-        auto v1_pref = esphome::global_preferences->make_preference<LegacyBindings>(esphome::fnv1_hash("onx.press_bindings.v1"));
-        auto v1_buf = custom_logic::make_ram_allocated<LegacyBindings>();
-        if (v3_buf && v1_buf && v1_pref.load(v1_buf.get()) && v1_buf->magic == 0x4F4E5850) {
-          std::copy(std::begin(v1_buf->slots), std::end(v1_buf->slots), std::begin(v3_buf->slots));
-          legacy_count = 10;
-        }
-      }
-    }
-    if (v3_buf && legacy_count > 0) {
-      for (size_t i = 0; i < legacy_count; ++i) {
-        auto &s = v3_buf->slots[i];
-        s.source[MAX_HA_ENTITY_ID_LENGTH] = '\0'; s.action[MAX_HA_ENTITY_ID_LENGTH] = '\0';
-        if (s.action[0] && (onx_config::valid_entity(s.source) || custom_logic::is_local_hmi_gpio_switch_preset_option(s.source)) &&
-            onx_config::valid_press_action(s.source, s.action)) {
-          bindings[i] = s;
-        }
-      }
-    }
-  }
   const size_t limit = custom_logic::active_slot_limit();
   for (size_t i = bindings_loaded_limit; i < limit; ++i) {
     binding_preferences[i] = esphome::global_preferences->make_preference<StoredPressBindingSlot>(

@@ -24,20 +24,6 @@ namespace esphome::onx_storage {
 static const char *const TAG = "onx_storage";
 
 namespace {
-// Large configuration records use ESPHome's RAM allocator rather than the loop stack.
-template<typename T> struct RecordDeleter {
-  void operator()(T *ptr) const {
-    if(!ptr)return;
-    ptr->~T();
-    RAMAllocator<T> allocator;allocator.deallocate(ptr,1);
-  }
-};
-template<typename T> auto allocate_record() {
-  RAMAllocator<T> allocator;
-  T *ptr=allocator.allocate(1);
-  if(ptr)new(ptr) T{};
-  return std::unique_ptr<T,RecordDeleter<T>>(ptr);
-}
 
 
 #if defined(ENABLE_AUTHCODE_EFUSE) && defined(USE_ESP32)
@@ -157,9 +143,6 @@ static constexpr size_t STORED_AUTH_SHA256_MAX_LENGTH = 64;
 
 static const uint32_t FACTORY_WIFI_PREF_KEY = fnv1_hash("onx-storage-factory-wifi");
 static const uint32_t AUTH_RECORD_PREF_KEY = fnv1_hash("onx-storage-auth-record");
-static const uint32_t NORMAL_UI_PREF_KEY = fnv1_hash("onx-storage-normal-ui-config-v3");
-static const uint32_t NORMAL_UI_STATE_PREF_KEY = fnv1_hash("onx-storage-normal-ui-state-v4");
-static const uint32_t NORMAL_UI_STATE_LEGACY_PREF_KEY = fnv1_hash("onx-storage-normal-ui-state");
 static const uint32_t POWER_POLICY_PREF_KEY = fnv1_hash("onx-storage-power-policy-v1");
 static const char *const NORMAL_UI_CFG_V4_KEY = "onx_ui_cfg_v4";
 static const char *const NORMAL_UI_ST_V5_KEY = "onx_ui_st_v5";
@@ -167,7 +150,6 @@ static constexpr uint32_t NORMAL_UI_CFG_V4_MAGIC = 0x4F4E5844;  // ONXD
 static constexpr uint32_t NORMAL_UI_ST_V5_MAGIC = 0x4F4E5853;   // ONXS
 static constexpr uint32_t POWER_POLICY_MAGIC = 0x4F4E5850;  // ONXP
 static constexpr size_t NORMAL_UI_DEVICE_MAX_COUNT = 250;
-static constexpr size_t LEGACY_V3_DEVICE_COUNT = 40;
 static constexpr size_t NORMAL_UI_TITLE_MAX_LENGTH = 128;
 static constexpr size_t NORMAL_UI_ICON_MAX_LENGTH = 16;
 static constexpr size_t NORMAL_UI_ENTITY_ID_MAX_LENGTH = 128;
@@ -180,20 +162,6 @@ struct StoredFactoryWifi {
 struct StoredAuthRecord {
   char auth_code[STORED_AUTH_CODE_MAX_LENGTH + 1];
   char auth_sha256[STORED_AUTH_SHA256_MAX_LENGTH + 1];
-};
-
-struct StoredNormalUiConfig {
-  char titles[LEGACY_V3_DEVICE_COUNT][NORMAL_UI_TITLE_MAX_LENGTH + 1];
-  char types[LEGACY_V3_DEVICE_COUNT][NORMAL_UI_ICON_MAX_LENGTH + 1];
-  char entity_ids[LEGACY_V3_DEVICE_COUNT][NORMAL_UI_ENTITY_ID_MAX_LENGTH + 1];
-};
-
-struct StoredNormalUiStateV2 {
-  NormalUiDeviceState states[LEGACY_V3_DEVICE_COUNT];
-};
-
-struct StoredNormalUiStateLegacy {
-  uint8_t states[10];
 };
 
 struct StoredPowerPolicy {
@@ -457,10 +425,6 @@ void OnxStorage::setup() {
 
   this->factory_wifi_pref_ = global_preferences->make_preference<StoredFactoryWifi>(FACTORY_WIFI_PREF_KEY, true);
   this->auth_record_pref_ = global_preferences->make_preference<StoredAuthRecord>(AUTH_RECORD_PREF_KEY, true);
-  this->normal_ui_pref_ = global_preferences->make_preference<StoredNormalUiConfig>(NORMAL_UI_PREF_KEY, true);
-  this->normal_ui_state_pref_ = global_preferences->make_preference<StoredNormalUiStateV2>(NORMAL_UI_STATE_PREF_KEY, true);
-  this->normal_ui_state_legacy_pref_ =
-      global_preferences->make_preference<StoredNormalUiStateLegacy>(NORMAL_UI_STATE_LEGACY_PREF_KEY, true);
   this->power_policy_pref_ = global_preferences->make_preference<StoredPowerPolicy>(POWER_POLICY_PREF_KEY, true);
 
   StoredFactoryWifi stored_wifi{};
@@ -491,7 +455,6 @@ void OnxStorage::setup() {
 
   this->auth_provisioned_ = !this->auth_code_.empty();
 
-  bool restored_ui = false;
 #ifdef USE_ESP32
   {
     PsramVector<uint8_t> blob;
@@ -521,59 +484,13 @@ void OnxStorage::setup() {
         }
         if (valid && pos == blob.size()) {
           this->normal_ui_devices_ = std::move(loaded);
-          restored_ui = true;
         }
       }
     }
   }
 #endif
-  if (!restored_ui) {
-    auto ui_buffer = allocate_record<StoredNormalUiConfig>();
-    if (!ui_buffer) { ESP_LOGE(TAG, "Not enough memory for UI configuration"); return; }
-    auto &stored_normal_ui = *ui_buffer;
-    bool restored_legacy = this->normal_ui_pref_.load(&stored_normal_ui);
-    if (!restored_legacy) {
-      struct Config20 { char titles[20][NORMAL_UI_TITLE_MAX_LENGTH + 1]; char types[20][NORMAL_UI_ICON_MAX_LENGTH + 1]; char entity_ids[20][NORMAL_UI_ENTITY_ID_MAX_LENGTH + 1]; };
-      auto pref = global_preferences->make_preference<Config20>(fnv1_hash("onx-storage-normal-ui-config-v2"), true);
-      auto old = allocate_record<Config20>();
-      if (old && pref.load(old.get())) {
-        for (size_t i = 0; i < 20; ++i) {
-          memcpy(stored_normal_ui.titles[i], old->titles[i], sizeof(old->titles[i]));
-          memcpy(stored_normal_ui.types[i], old->types[i], sizeof(old->types[i]));
-          memcpy(stored_normal_ui.entity_ids[i], old->entity_ids[i], sizeof(old->entity_ids[i]));
-        }
-        restored_legacy = true;
-      }
-    }
-    if (!restored_legacy) {
-      struct LegacyConfig { char titles[10][NORMAL_UI_TITLE_MAX_LENGTH + 1]; char types[10][NORMAL_UI_ICON_MAX_LENGTH + 1]; char entity_ids[10][NORMAL_UI_ENTITY_ID_MAX_LENGTH + 1]; };
-      auto pref = global_preferences->make_preference<LegacyConfig>(fnv1_hash("onx-storage-normal-ui-config"), true);
-      auto legacy_buffer = allocate_record<LegacyConfig>();
-      if (legacy_buffer && pref.load(legacy_buffer.get())) {
-        for (size_t i = 0; i < 10; ++i) {
-          memcpy(stored_normal_ui.titles[i], legacy_buffer->titles[i], sizeof(legacy_buffer->titles[i]));
-          memcpy(stored_normal_ui.types[i], legacy_buffer->types[i], sizeof(legacy_buffer->types[i]));
-          memcpy(stored_normal_ui.entity_ids[i], legacy_buffer->entity_ids[i], sizeof(legacy_buffer->entity_ids[i]));
-        }
-        restored_legacy = true;
-      }
-    }
-    if (restored_legacy) {
-      size_t count = 0;
-      for (size_t i = 0; i < LEGACY_V3_DEVICE_COUNT; ++i) {
-        if (stored_normal_ui.entity_ids[i][0] || stored_normal_ui.titles[i][0]) count = i + 1;
-      }
-      this->normal_ui_devices_.resize(count);
-      for (size_t i = 0; i < count; ++i) {
-        this->normal_ui_devices_[i].title = load_string_from_buffer(stored_normal_ui.titles[i]);
-        this->normal_ui_devices_[i].type = normalize_device_type(load_string_from_buffer(stored_normal_ui.types[i]));
-        this->normal_ui_devices_[i].entity_id = load_string_from_buffer(stored_normal_ui.entity_ids[i]);
-      }
-    }
-  }
 
   this->normal_ui_device_states_.clear();
-  bool restored_state = false;
 #ifdef USE_ESP32
   {
     PsramVector<uint8_t> blob;
@@ -586,45 +503,10 @@ void OnxStorage::setup() {
           blob.size() == 6 + size_t(count) * sizeof(NormalUiDeviceState)) {
         this->normal_ui_device_states_.resize(count);
         if (count > 0) memcpy(this->normal_ui_device_states_.data(), blob.data() + 6, size_t(count) * sizeof(NormalUiDeviceState));
-        restored_state = true;
       }
     }
   }
 #endif
-  if (!restored_state) {
-    auto stored_state = allocate_record<StoredNormalUiStateV2>();
-    bool restored_legacy = stored_state && this->normal_ui_state_pref_.load(stored_state.get());
-    if (!restored_legacy && stored_state) {
-      struct State20 { NormalUiDeviceState states[20]; };
-      auto pref = global_preferences->make_preference<State20>(fnv1_hash("onx-storage-normal-ui-state-v3"), true);
-      State20 old{};
-      if (pref.load(&old)) {
-        std::copy(std::begin(old.states), std::end(old.states), std::begin(stored_state->states));
-        restored_legacy = true;
-      }
-    }
-    if (!restored_legacy && stored_state) {
-      struct LegacyStateV2 { NormalUiDeviceState states[10]; };
-      auto pref = global_preferences->make_preference<LegacyStateV2>(fnv1_hash("onx-storage-normal-ui-state-v2"), true);
-      LegacyStateV2 legacy{};
-      if (pref.load(&legacy)) {
-        std::copy(std::begin(legacy.states), std::end(legacy.states), std::begin(stored_state->states));
-        restored_legacy = true;
-      }
-    }
-    if (restored_legacy && stored_state) {
-      this->normal_ui_device_states_.assign(std::begin(stored_state->states), std::end(stored_state->states));
-    } else {
-      StoredNormalUiStateLegacy legacy_state{};
-      if (this->normal_ui_state_legacy_pref_.load(&legacy_state)) {
-        this->normal_ui_device_states_.resize(10);
-        for (size_t i = 0; i < 10; i++) {
-          clear_device_state(this->normal_ui_device_states_[i]);
-          set_device_power(this->normal_ui_device_states_[i], legacy_state.states[i] != 0);
-        }
-      }
-    }
-  }
 
   StoredPowerPolicy stored_power_policy{};
   if (this->power_policy_pref_.load(&stored_power_policy) && stored_power_policy.magic == POWER_POLICY_MAGIC) {
@@ -746,9 +628,9 @@ bool OnxStorage::reset_normal_mode_config() {
   ok = erase_preference_key(fnv1_hash("onx-storage-normal-ui-state-v2"), "old normal UI state") && ok;
   ok = erase_preference_key(fnv1_hash("onx-storage-normal-ui-config-v2"), "20-entry normal UI config") && ok;
   ok = erase_preference_key(fnv1_hash("onx-storage-normal-ui-state-v3"), "20-entry normal UI state") && ok;
-  ok = erase_preference_key(NORMAL_UI_PREF_KEY, "normal UI config") && ok;
-  ok = erase_preference_key(NORMAL_UI_STATE_PREF_KEY, "normal UI state") && ok;
-  ok = erase_preference_key(NORMAL_UI_STATE_LEGACY_PREF_KEY, "legacy normal UI state") && ok;
+  ok = erase_preference_key(fnv1_hash("onx-storage-normal-ui-config-v3"), "40-entry normal UI config") && ok;
+  ok = erase_preference_key(fnv1_hash("onx-storage-normal-ui-state-v4"), "40-entry normal UI state") && ok;
+  ok = erase_preference_key(fnv1_hash("onx-storage-normal-ui-state"), "legacy normal UI state") && ok;
   ok = erase_preference_key(POWER_POLICY_PREF_KEY, "power policy") && ok;
 #else
   ok = this->save_normal_ui_config_() && ok;

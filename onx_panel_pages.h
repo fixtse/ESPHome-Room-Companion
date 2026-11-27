@@ -19,15 +19,6 @@ using onx_panel_layout::Kind;
 constexpr size_t MAX_PAGES=onx_memory::ENTRY_COUNT;
 constexpr uint8_t NO_ENTRY=0xFF;
 using onx_panel_layout::MAX_CELLS;
-struct LegacyPage {
-  char name[49]{}, icon[65]{};
-  uint8_t kind{0}, entries[4]{};
-};
-struct LegacyPages {
-  uint32_t magic;
-  uint8_t count;
-  LegacyPage pages[40];
-};
 // The artwork index uses seven bits. Keep the presentation flag in its
 // unused high bit so existing page preferences retain their exact format.
 constexpr uint8_t ICON_ONLY=0x80;
@@ -38,12 +29,6 @@ struct StoredPage {
   uint8_t kind{0}, rows{2}, cols{2}, carousel_artwork{0};
   std::array<uint8_t,MAX_CELLS> entries{}, artwork{};
   StoredPage() { entries.fill(NO_ENTRY); }
-};
-struct LegacyPagesV3 {
-  uint32_t magic{0x52435033};
-  uint8_t count{0};
-  StoredPage pages[40]{};
-  std::array<uint64_t,40> images{};
 };
 struct StoredPages {
   static constexpr uint32_t MAGIC=0x52435034;
@@ -58,10 +43,6 @@ inline StoredPages &stored=onx_memory::psram_object<StoredPages>();
 enum Effect : uint8_t {EFFECT_NONE=0,EFFECT_PULSE=1,EFFECT_BLINK=2,EFFECT_SPIN=3};
 inline const char *effect_name(uint8_t e){return e==EFFECT_PULSE?"pulse":e==EFFECT_BLINK?"blink":e==EFFECT_SPIN?"spin":"none";}
 inline int effect_parse(const std::string &s){return s=="none"?EFFECT_NONE:s=="pulse"?EFFECT_PULSE:s=="blink"?EFFECT_BLINK:s=="spin"?EFFECT_SPIN:-1;}
-struct LegacyEffectsV1 {
-  uint32_t magic{0x52434658};
-  std::array<uint8_t,40> fx{};
-};
 struct StoredEffects {
   static constexpr uint32_t MAGIC=0x52434659;
   uint32_t magic{MAGIC};
@@ -279,8 +260,8 @@ inline void reconcile(StoredPages &list) {
   for(size_t e=0;e<limit && list.count<MAX_PAGES;++e)
     if(!entry_entity(uint8_t(e)).empty() && !placed(list,int(e)) && !onx_entity_config::timer_hidden(e,entry_entity(uint8_t(e)))){StoredPage single{};single.entries[0]=uint8_t(e);list.pages[list.count++]=single;}
 }
-// One-time migration from per-entity layouts (rc.page.v1.<entity>).
-inline void migrate() {
+// No saved layout: one page per configured entity.
+inline void default_pages() {
   stored.magic=StoredPages::MAGIC;
   stored.count=0;
   stored.images.fill(0);
@@ -288,13 +269,6 @@ inline void migrate() {
   for(size_t e=0;e<limit;++e) {
     const auto entity=entry_entity(uint8_t(e));if(entity.empty() || placed(stored,int(e)) || onx_entity_config::timer_hidden(e,entity))continue;
     StoredPage page{};page.entries[0]=uint8_t(e);
-    auto old_pref=esphome::global_preferences->make_preference<Page>(esphome::fnv1_hash("rc.page.v1."+entity));
-    Page old{};
-    if(old_pref.load(&old) && entity==old.primary && onx_panel_layout::valid(old)) {
-      bool ok=true;uint8_t members[3]{NO_ENTRY,NO_ENTRY,NO_ENTRY};
-      for(int i=0;i<size_of(old.kind)-1;++i){const int m=configured(old.members[i]);ok&=m>=0 && !placed(stored,m);members[i]=m<0?NO_ENTRY:m;}
-      if(ok){page.kind=uint8_t(old.kind);for(int i=0;i<3;++i)page.entries[i+1]=members[i];}
-    }
     stored.pages[stored.count++]=page;
   }
 }
@@ -302,42 +276,7 @@ inline bool load() {
   if(loaded)return true;
   if(!esphome::global_preferences)return false;
   effects = StoredEffects{};
-  if(!load_pages_compact(stored, effects)) {
-    auto old_fx_pref = esphome::global_preferences->make_preference<LegacyEffectsV1>(esphome::fnv1_hash("rc.pages.fx.v1"));
-    LegacyEffectsV1 old_fx{};
-    if (old_fx_pref.load(&old_fx) && old_fx.magic == 0x52434658) {
-      for (size_t i = 0; i < old_fx.fx.size(); ++i)
-        effects.fx[i] = old_fx.fx[i] <= EFFECT_SPIN ? old_fx.fx[i] : EFFECT_NONE;
-    }
-    auto v3_buf = custom_logic::make_ram_allocated<LegacyPagesV3>();
-    auto v3_pref = esphome::global_preferences->make_preference<LegacyPagesV3>(esphome::fnv1_hash("rc.pages.v3"));
-    if (v3_buf && v3_pref.load(v3_buf.get()) && v3_buf->magic == 0x52435033 && v3_buf->count <= 40) {
-      stored.magic = StoredPages::MAGIC;
-      stored.count = v3_buf->count;
-      stored.images.fill(0);
-      std::copy(v3_buf->images.begin(), v3_buf->images.end(), stored.images.begin());
-      for (int i = 0; i < stored.count; ++i) stored.pages[i] = v3_buf->pages[i];
-    } else {
-      auto legacy = custom_logic::make_ram_allocated<LegacyPages>();
-      auto old_pref = esphome::global_preferences->make_preference<LegacyPages>(esphome::fnv1_hash("rc.pages.v2"));
-      if (!legacy || !old_pref.load(legacy.get()) || legacy->magic != 0x52435032 || legacy->count > 40) {
-        migrate();
-      } else {
-        stored.magic = StoredPages::MAGIC;
-        stored.count = legacy->count;
-        stored.images.fill(0);
-        for (int i = 0; i < stored.count; ++i) {
-          const auto &old = legacy->pages[i];
-          auto &page = stored.pages[i];
-          page = StoredPage{};
-          std::memcpy(page.name, old.name, sizeof(page.name));
-          std::memcpy(page.icon, old.icon, sizeof(page.icon));
-          page.kind = old.kind <= 2 ? old.kind : 0;
-          std::copy_n(old.entries, 4, page.entries.begin());
-        }
-      }
-    }
-  }
+  if(!load_pages_compact(stored, effects)) default_pages();
   for(int i=0;i<stored.count;++i) {
     auto &p=stored.pages[i];
     p.name[48]=0;p.icon[64]=0;

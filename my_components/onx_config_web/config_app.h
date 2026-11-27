@@ -135,6 +135,8 @@ function message(text,error=false){$('status').textContent=text;$('status').clas
 let work=0;
 function progress(done=0,total=0){const s=$('status');s.classList.toggle('working',total>0);s.style.setProperty('--p',total?Math.max(4,Math.round(100*done/total))+'%':'0%')}
 async function hold(fn){work++;try{return await fn()}finally{if(!--work)progress()}}
+// A toast with a progress bar for slow downloads; toast() hides it.
+function toast(text,done=0,total=0){let t=$('toast');if(!text){if(t)t.hidden=true;return}if(!t){t=element('div','','toast');t.id='toast';t.setAttribute('role','status');t.setAttribute('aria-live','polite');t.append(element('span',''),element('i',''));document.body.append(t)}t.hidden=false;t.firstChild.textContent=text;t.style.setProperty('--p',total?Math.max(4,Math.round(100*done/total))+'%':'4%')}
 function safeRead(key){try{return JSON.parse(sessionStorage.getItem(key)||'null')}catch{return null}}
 function dirtySlot(i){return JSON.stringify(slots[i])!==JSON.stringify(saved[i])}
 function dirtySettings(){return JSON.stringify(settings)!==JSON.stringify(savedSettings)}
@@ -551,26 +553,35 @@ $('check-status').onclick=refreshStatus;
 $('retry-states').onclick=async()=>{if(busy)return;$('retry-states').disabled=true;try{await rpc({op:'retry'});message('Entity state refresh queued. Waiting for Home Assistant…');await refreshStatus()}catch(error){message(error.message,true)}finally{$('retry-states').disabled=false}};
 function download(name,value){const url=URL.createObjectURL(new Blob([JSON.stringify(value,null,2)],{type:'application/json'})),a=element('a','');a.href=url;a.download=name;document.body.append(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),1000)}
 async function getPreset(name){let text='',offset=0,total=1;while(offset<total){const part=await rpc({op:'preset_get',name,offset});total=part.total;if(!part.data||!(part.next>offset))break;text+=part.data;offset=part.next}const preset=JSON.parse(text);return {name:preset.name||name,slots:preset.slots,pages:preset.pages}}
-async function exportPresets(){const list=await rpc({op:'presets'}),out=[];for(const item of list.presets||[])out.push(await getPreset(item.name));return out}
+async function exportPresets(step=()=>{}){const list=await rpc({op:'presets'}),items=list.presets||[],out=[];for(const [i,item] of items.entries()){step('Reading preset “'+item.name+'” ('+(i+1)+' of '+items.length+')…',i,items.length);out.push(await getPreset(item.name))}return out}
 $('export').onclick=async()=>{
+ const btn=$('export');if(btn.disabled)return;btn.disabled=true;
+ // Presets take most of the time: steps 0–6 of 10, then settings and artwork.
+ const step=(text,done)=>toast(text,done,10);
+ try{await hold(async()=>{
+ step('Preparing the download…',0);
  let presetList=[],deviceSlots=saved;
  try{
   if(editTarget)deviceSlots=validateSlots((await rpc({op:'state'})).slots);
-  presetList=await exportPresets();
+  presetList=await exportPresets((text,i,n)=>step(text,n?6*i/n:0));
  }catch(error){if(!await ask({title:'Presets could not be read',text:error.message+' Download the configuration without presets?',ok:'Download without presets'}))return}
  // Settings saved outside the slot/device-settings forms: the idle screen,
  // the dashboard stream and dock, and the Home Assistant address.
+ step('Reading device settings…',6);
  const extra={},missing=[];
  try{const s=await rpc({op:'immich_state'});if(s.error)throw Error(s.error);extra.idle_screen={url:s.url||'',idle:s.idle||'0',fit:s.fit||'0',split:s.split||'0',details:s.details||'',fade:s.fade||'0',interval:s.interval||'20',overlay:s.overlay||'0'}}catch{missing.push('idle screen')}
  try{const s=await rpc({op:'panel_state'});if(s.error)throw Error(s.error);extra.dashboard={server:s.server||'',url:s.url||'',scale:s.scale||1,dock_pin:s.dock_pin||'dashboard',toolbar_side:s.toolbar_side||'right',camera_source:s.camera_source||'off',camera_server:s.camera_server||'',camera_streams:s.camera_streams||'',speaker_entity:s.speaker_entity||'',camera_rotation:s.camera_rotation||'90'}}catch{missing.push('dashboard')}
  const haUrl=device.ha_url||$('ha-url').value.trim();if(haUrl)extra.ha_url=haUrl;
  if(missing.length&&!await ask({title:'Some settings could not be read',text:'The '+missing.join(' and ')+' settings could not be read from the panel. Download the configuration without them?',ok:'Download anyway'}))return;
  try{
+  step('Packing pages and artwork…',8);
   const pages=globalThis.ONX_PAGES?.saved()||singlePages(deviceSlots);
   const artwork=await globalThis.ONX_PAGE_ART?.export([...pages,...presetList.flatMap(p=>p.pages||[])]);
+  step('Saving the file…',10);
   download('room-companion-config.json',{schema:2,model:'Room Companion',exported_at:new Date().toISOString(),slots:trimSlots(deviceSlots),pages,settings:savedSettings,presets:presetList,...extra,...(artwork&&Object.keys(artwork).length?{artwork}:{})});
   message('Configuration downloaded'+(presetList.length?' with '+presetList.length+' preset'+(presetList.length===1?'':'s'):'')+'.');
  }catch(error){message('Export failed: '+error.message,true)}
+ })}finally{toast();btn.disabled=false}
 };
 function validatePresets(input){if(input===undefined)return [];if(!Array.isArray(input)||input.length>8)throw Error('A backup can contain up to 8 presets.');const names=new Set();return input.map(p=>{const name=typeof p?.name==='string'?p.name.trim():'';if(!name||name.length>32||/[\u0000-\u001f\u007f]/.test(name)||name.toLowerCase()==='custom'||names.has(name.toLowerCase()))throw Error('Invalid or duplicate preset name in backup.');names.add(name.toLowerCase());const slots=validateSlots(p.slots);return {name,slots,pages:validatePages(p.pages,slots)}})}
 // Upload in chunks the panel accepts: offsets and totals count UTF-8 bytes, chunks

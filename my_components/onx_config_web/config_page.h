@@ -72,6 +72,9 @@ main{width:100%;max-width:1320px;margin:0 auto;padding:26px 32px 40px;flex:1}
 .status.error{border-color:color-mix(in oklab,var(--error) 45%,var(--line));color:var(--error)}
 .status.error:before{background:var(--error);box-shadow:0 0 0 4px color-mix(in oklab,var(--error) 18%,transparent)}
 .status:empty{display:none}
+.toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%);z-index:60;width:min(420px,calc(100vw - 32px));box-sizing:border-box;padding:12px 16px 15px;border:1px solid var(--line);border-radius:12px;background:var(--paper);box-shadow:var(--shadow);font-size:13.5px;overflow:hidden}
+.toast[hidden]{display:none}.toast i{position:absolute;left:0;bottom:0;height:4px;width:var(--p,4%);background:var(--accent);transition:width .25s ease}
+@media (prefers-reduced-motion:reduce){.toast i{transition:none}}
 .import-pick{width:min(560px,calc(100vw - 32px))}.import-groups{display:grid;gap:12px;max-height:min(56vh,480px);overflow:auto;margin:8px 0}.import-groups fieldset{border:1px solid var(--line);border-radius:12px;padding:8px 12px 10px;margin:0}.import-groups legend{font-weight:600;padding:0 4px;display:flex;gap:8px;align-items:center}.import-groups label{display:flex;gap:8px;align-items:center;padding:4px 0;font-size:13.5px}.import-groups .muted{color:var(--muted);font-size:12.5px;margin-left:auto}.import-pages{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));column-gap:12px}
 .status.working{overflow:hidden}
 .status.working:after{content:"";position:absolute;left:0;bottom:0;height:3px;width:var(--p,0%);background:var(--accent);transition:width .25s ease}

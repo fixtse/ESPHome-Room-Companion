@@ -237,9 +237,6 @@ class OnxStorage : public Component {
   bool sleep_mode_enabled_{false};
   ESPPreferenceObject factory_wifi_pref_;
   ESPPreferenceObject auth_record_pref_;
-  ESPPreferenceObject normal_ui_pref_;
-  ESPPreferenceObject normal_ui_state_pref_;
-  ESPPreferenceObject normal_ui_state_legacy_pref_;
   ESPPreferenceObject power_policy_pref_;
 };
 
