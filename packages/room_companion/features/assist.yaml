@@ -244,6 +244,26 @@ esphome:
                     item.value = {v, vl};
                     call.data.push_back(item);
                   };
+                  const std::string prefix = esphome::room_companion::CAMERA_AUDIO_PREFIX;
+                  if (url.rfind(prefix, 0) == 0) {
+                    // Room Companion finds the camera's stream (room_companion.play_camera_audio).
+                    static constexpr char rc_svc[] = "room_companion.play_camera_audio";
+                    static constexpr char k_camera[] = "camera";
+                    static constexpr char k_player[] = "media_player";
+                    static constexpr char k_device[] = "device";
+                    static constexpr char k_stream[] = "stream";
+                    const std::string rest = url.substr(prefix.size());
+                    const size_t eq = rest.find('=');
+                    const std::string camera = rest.substr(0, eq), stream = eq == std::string::npos ? "" : rest.substr(eq + 1);
+                    const std::string device = App.get_name();
+                    call.service = {rc_svc, sizeof(rc_svc) - 1};  // call.data is still empty.
+                    add(k_camera, sizeof(k_camera) - 1, camera.data(), camera.size());
+                    add(k_player, sizeof(k_player) - 1, speaker.data(), speaker.size());
+                    add(k_device, sizeof(k_device) - 1, device.data(), device.size());
+                    if (!stream.empty()) add(k_stream, sizeof(k_stream) - 1, stream.data(), stream.size());
+                    id(api_server)->send_homeassistant_action(call);
+                    return true;
+                  }
                   add(k_entity, sizeof(k_entity) - 1, speaker.data(), speaker.size());
                   add(k_id, sizeof(k_id) - 1, url.data(), url.size());
                   add(k_type, sizeof(k_type) - 1, v_type, sizeof(v_type) - 1);

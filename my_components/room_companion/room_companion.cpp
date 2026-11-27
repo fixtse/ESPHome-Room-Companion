@@ -10,6 +10,7 @@
 
 // Power state (copied into the build by `esphome: includes:`).
 #include "onx_power_state.h"
+#include "onx_companion.h"
 
 #include <cctype>
 #include <cmath>
@@ -61,7 +62,7 @@ static bool valid_camera_server(const std::string &value) {
   return value.empty() || ((value.rfind("http://", 0) == 0 || value.rfind("https://", 0) == 0) && valid_url(value));
 }
 static bool valid_camera_source(const std::string &value) {
-  return value == "off" || value == "webrtc" || value == "go2rtc";
+  return value == "off" || value == "companion" || value == "webrtc" || value == "go2rtc";
 }
 // A camera stream address for go2rtc (rtsp://user:pass@host/...).
 static bool valid_stream_url(const std::string &value) {
@@ -416,10 +417,21 @@ std::string RoomPanel::webrtc_link_id_(const std::string &entity) const {
   return "rc" + link_token_ + "_" + entity.substr(7);
 }
 
+// The Room Companion integration serves the camera's page from Home Assistant:
+// it finds the WebRTC Camera integration or the go2rtc stream itself.
+std::string RoomPanel::companion_camera_(const std::string &entity) const {
+  if (settings_.camera_source != "companion") return "";
+  // configured(), not base(): the server's browser opens the page, so the panel's
+  // own failed downloads (which pause base()) say nothing about it.
+  const std::string base = onx_companion::configured();
+  return base.empty() ? base : base + "/camera/" + entity;
+}
+
 std::string RoomPanel::camera_source_(const std::string &entity) const {
   if (entity.rfind("camera.", 0) != 0) return "";
   const std::string target = camera_target_(entity);
   if (is_page(target)) return target;
+  if (settings_.camera_source == "companion") return companion_camera_(entity);
   if (settings_.camera_source == "webrtc") {
     std::string origin = ha_origin_ ? ha_origin_() : std::string();
     while (!origin.empty() && origin.back() == '/') origin.pop_back();
@@ -462,6 +474,11 @@ std::string RoomPanel::camera_audio_url_(const std::string &entity) const {
   if (entity.rfind("camera.", 0) != 0) return "";
   const std::string target = camera_target_(entity);
   if (is_page(target)) return "";
+  if (settings_.camera_source == "companion") {
+    // Resolved by the integration's play_camera_audio action (see the audio action).
+    if (companion_camera_(entity).empty()) return "";
+    return std::string(CAMERA_AUDIO_PREFIX) + entity + (target.empty() ? "" : "=" + target);
+  }
   if (target.find("://") != std::string::npos) return target;
   if (settings_.camera_source == "webrtc") {
     // The integration's go2rtc names the stream after the entity while the
@@ -571,6 +588,13 @@ std::string RoomPanel::camera_page_url(const std::string &entity) const {
                "height:%.3f%%!important}.header{display:none}video::-webkit-media-controls{display:none!important}",
                100.0 * r.x / fw, 100.0 * r.y / fh, 100.0 * r.w / fw, 100.0 * r.h / fh);
     return source + "&style=" + percent_encode(style);
+  }
+  if (settings_.camera_source == "companion" && !is_page(camera_target_(entity))) {
+    // The integration's page places the player itself (same parameters as /panel/camera).
+    snprintf(rect, sizeof(rect), "?x=%.3f&y=%.3f&w=%.3f&h=%.3f&r=%d", 100.0 * r.x / fw, 100.0 * r.y / fh,
+             100.0 * r.w / fw, 100.0 * r.h / fh, turn);
+    const std::string target = camera_target_(entity);
+    return source + rect + (target.empty() ? "" : "&stream=" + percent_encode(target));
   }
   if (wifi::global_wifi_component == nullptr) return "";
   char address[network::IP_ADDRESS_BUFFER_SIZE] = {0};

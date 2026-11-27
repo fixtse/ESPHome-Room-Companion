@@ -196,8 +196,33 @@ void set_field(custom_logic_entity_sub::EntityDetailState &d, const std::string 
       f.high = day["high"].is<const char *>() ? day["high"].as<std::string>() : onx_detail_view::compact(std::to_string(day["high"] | 0.0));
       f.low = day["low"].is<const char *>() ? day["low"].as<std::string>() : onx_detail_view::compact(std::to_string(day["low"] | 0.0));
       f.rain = day["rain"].is<const char *>() ? day["rain"].as<std::string>() : onx_detail_view::compact(std::to_string(day["rain"] | 0.0));
+      // Optional day-screen fields, as text.
+      auto opt = [&](const char *k) {
+        JsonVariantConst x = day[k];
+        if (x.isNull()) return std::string();
+        return x.is<const char *>() ? x.as<std::string>() : onx_detail_view::compact(std::to_string(x.as<float>()));
+      };
+      f.precipitation = opt("precipitation"); f.wind = opt("wind"); f.bearing = opt("bearing");
+      f.humidity = opt("humidity"); f.uv = opt("uv"); f.feels = opt("feels");
     }
     d.forecast_count = n;
+  } else if (k == "precipitation_unit") {
+    d.precipitation_unit = v.as<std::string>();
+  } else if (k == "weather_day") {
+    // Open that forecast day; "hourly" holds its hours as [hour, temperature, rain %].
+    onx_panel_detail::weather_day = v.as<int>();
+    onx_panel_detail::weather_day_entity = d.entity_id;
+  } else if (k == "hourly") {
+    d.hourly.clear();
+    struct tm t{};
+    const time_t now = std::time(nullptr);
+    localtime_r(&now, &t);
+    t.tm_min = t.tm_sec = 0;
+    for (JsonArrayConst h : v.as<JsonArrayConst>()) {
+      t.tm_hour = h[0].as<int>();
+      const float rain = h[2].isNull() ? NAN : h[2].as<float>();
+      d.hourly.push_back({uint32_t(mktime(&t)), h[1].as<float>(), rain});
+    }
   } else std::fprintf(stderr, "scenario: unknown entity field %s\n", k.c_str());
 }
 
@@ -345,6 +370,9 @@ std::vector<Shot> load_scenario(const std::string &path) {
         }
     }
     if (e["lyrics"].is<const char *>()) onx_lyrics::set(id, d.media_title, e["lyrics"].as<std::string>());
+    if (onx_panel_detail::weather_day_entity == id && onx_panel_detail::weather_day >= 0 &&
+        onx_panel_detail::weather_day < d.forecast_count && !d.hourly.empty())
+      d.hourly_date = d.forecast[onx_panel_detail::weather_day].date;
     if (registry.count < custom_logic::MAX_HA_ENTITY_COUNT) {
       auto &r = registry.entities[registry.count++];
       std::snprintf(r.entity_id, sizeof(r.entity_id), "%s", id.c_str());

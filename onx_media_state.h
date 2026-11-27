@@ -278,13 +278,27 @@ inline std::string media_art_url(const std::string &origin, const std::string &e
   const std::string local = onx_companion::cover_url(entity, picture, size, size, "&mode=fit");
   return local.empty() ? artwork_url(origin, picture) : local;
 }
-inline std::string camera_snapshot_url(const std::string &origin, const std::string &picture, uint32_t seq) {
-  std::string url = artwork_url(origin, picture);
+// Camera previews from Room Companion: sized to the camera frame (fit inside
+// camera_box x camera_box), from the latest frame Home Assistant keeps ready.
+// camera_live: the panel's live view goes through Room Companion.
+inline int camera_box = 320;
+inline std::function<bool()> camera_live;
+inline std::string camera_picture_url(const std::string &origin, const std::string &entity, const std::string &picture) {
+  if (artwork_url(origin, picture).empty()) return "";
+  const std::string local = onx_companion::camera_url(entity, camera_box, camera_box, false, camera_live && camera_live());
+  return local.empty() ? artwork_url(origin, picture) : local;
+}
+inline std::string camera_snapshot_url(const std::string &origin, const std::string &entity, const std::string &picture,
+                                       uint32_t seq) {
+  std::string url = camera_picture_url(origin, entity, picture);
   if (url.empty() || seq == 0) return url;
   url += (url.find('?') == std::string::npos ? "?_onx=" : "&_onx=") + std::to_string(seq);
   return url;
 }
-inline std::string camera_stream_url(const std::string &origin, const std::string &picture) {
+inline std::string camera_stream_url(const std::string &origin, const std::string &entity, const std::string &picture) {
+  if (artwork_url(origin, picture).empty()) return "";
+  const std::string local = onx_companion::camera_url(entity, camera_box, camera_box, true, false);
+  if (!local.empty()) return local;
   std::string url = artwork_url(origin, picture);
   const size_t pos = url.find("/api/camera_proxy/");
   if (pos == std::string::npos) return "";
@@ -296,6 +310,11 @@ inline std::string camera_of_url(const std::string &url) {
   size_t pos = url.find("/api/camera_proxy/");
   size_t len = 18;
   if (pos == std::string::npos) { pos = url.find("/api/camera_proxy_stream/"); len = 25; }
+  // Room Companion: <base>/snapshot/camera.x or <base>/stream/camera.x.
+  if (pos == std::string::npos && url.find("/api/room_companion/") != std::string::npos) {
+    if ((pos = url.find("/snapshot/camera.")) != std::string::npos) len = 10;
+    else if ((pos = url.find("/stream/camera.")) != std::string::npos) len = 8;
+  }
   if (pos == std::string::npos) return "";
   const size_t start = pos + len, end = url.find_first_of("?&#/", start);
   return url.substr(start, end == std::string::npos ? std::string::npos : end - start);

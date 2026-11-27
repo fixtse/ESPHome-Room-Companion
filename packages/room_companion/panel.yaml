@@ -1141,6 +1141,9 @@ script:
           onx_media::detach_main_artwork = []() { onx_panel_detail::detach_artwork(); };
           // Read the integration's asset URL here: the icon and glyph workers cannot read NVS.
           onx_companion::ensure_loaded();
+          // Camera previews from Room Companion, sized to the camera frame.
+          onx_media::camera_box = static_cast<int>(320 * ${ui_scale} + 0.5f);
+          onx_media::camera_live = []() { return id(room_panel)->stream_settings().camera_source == "companion"; };
           onx_lyrics::request_hook = [](const std::string &entity) {
             if (!id(normal_ha_api_connected)) return false;
             id(request_lyrics)->execute(entity);
@@ -1158,9 +1161,9 @@ script:
             auto origin = custom_logic::build_ha_http_state_url(id(ha_host).state, "media_player.cover");
             const auto path = origin.find("/api/states/");
             if (path != std::string::npos) origin.resize(path);
-            const auto base = cam ? onx_media::artwork_url(origin, d->picture)
+            const auto base = cam ? onx_media::camera_picture_url(origin, entity, d->picture)
                                   : onx_media::media_art_url(origin, entity, d->picture, static_cast<int>(240 * ${ui_scale} + 0.5f));
-            const auto stream = cam ? onx_media::camera_stream_url(origin, d->picture) : std::string();
+            const auto stream = cam ? onx_media::camera_stream_url(origin, entity, d->picture) : std::string();
             if (cam && base.empty()) {
               static std::string logged_picture = "\x01";
               if (d->picture != logged_picture) {
@@ -1285,6 +1288,7 @@ script:
           };
           onx_panel_detail::run_quick_action = [](const std::string &action) { id(emit_normal_playlist_action).execute(action); };
           onx_panel_detail::request_history = [](const std::string &entity) { id(request_normal_sensor_history).execute(entity); };
+          onx_panel_detail::request_hourly = [](const std::string &entity) { id(request_normal_weather_hourly).execute(entity); };
           onx_subs::shown = [](const std::string &entity) {
             // Entities on the current page, the second entity a card shows
             // (sensor text, a switch's power reading) and the main player.

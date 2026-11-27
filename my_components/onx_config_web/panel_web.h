@@ -1053,6 +1053,8 @@ static const char PANEL_JS[] = R"ONXPANEL(
   const circle=(cx,cy,size,bg,sym,fg,attrs={})=>{add(node('circle',{cx,cy,r:size/2,fill:bg,...attrs}));if(bg===ACCENT||bg===STRONG)fg=ink(bg);symbol(sym,cx,cy,fg)};
   const chips=(r,labels,sel)=>{if(!labels.length)return;const gap=P(8),n=labels.length,w=Math.trunc((r.w-gap*(n-1))/n);labels.forEach((l,i)=>{const on=i===sel;button(r.x+i*(w+gap),r.y,w,r.h,r.h/2,on?TINT:CONTROL,l,F.small,on?ACCENT:SOFT,on?{stroke:ACCENT,'stroke-width':P(2)}:{})})};
   const row=(r,name,value,bg=CARD)=>{box(r.x,r.y,r.w,r.h,bg,P(10));const pad=P(12),lh=F.small.lh;text(name,F.small,MUTED,r.x+pad,r.y+(r.h-lh)/2,r.w/2-pad);text(value,F.small,TEXT,r.x+r.w/2,r.y+(r.h-lh)/2,r.w/2-pad,'right')};
+  const tileRow=(r,items)=>{if(!items.length)return;box(r.x,r.y,r.w,r.h,CARD,P(12));const pad=P(6),cw=Math.trunc((r.w-2*pad)/items.length),gap=Math.max(0,Math.trunc((r.h-F.label.lh-F.body.lh)/3));
+   items.forEach(([name,value],k)=>{const x=r.x+pad+k*cw;text(name,F.label,MUTED,x,r.y+gap,cw,'center');text(value,fit(value,cw,[F.body,F.small]),TEXT,x,r.y+r.h-gap-F.body.lh,cw,'center')})};
   const tile=(r,name,value,bg=CARD)=>{box(r.x,r.y,r.w,r.h,bg,P(12));const pad=P(10),iw=r.w-2*pad,gap=Math.max(0,Math.trunc((r.h-F.label.lh-F.body.lh)/3));text(name,F.label,MUTED,r.x+pad,r.y+gap,iw);text(value,fit(value,iw,[F.body,F.small]),TEXT,r.x+pad,r.y+r.h-gap-F.body.lh,iw)};
   const header=(r,name,context,reserve=0)=>{const w=r.w-reserve,f=fit(name,w,[F.title,F.body]);text(name,f,TEXT,r.x,r.y,w);if(context)text(context,F.small,MUTED,r.x,r.y+f.lh+P(2),w)};
   const level=(x,y,w,h,fr)=>{box(x,y,w,h,CONTROL,h/2);if(!isFinite(fr))return;fr=Math.max(0,Math.min(1,fr));if(fr>0)box(x,y,Math.max(h,w*fr),h,ACCENT,h/2)};
@@ -1413,8 +1415,24 @@ static const char PANEL_JS[] = R"ONXPANEL(
    if(!c.length){text('Changes appear here while the panel is running',F.small,MUTED,l.ctl.x,l.ctl.y,l.ctl.w);return}
    const rh=P(36),gap=P(6);let y=l.ctl.y;for(const item of c){if(y+rh>bottomOf(l.ctl)+P(4))break;row({x:l.ctl.x,y,w:l.ctl.w,h:rh},binaryText(kind,item.state),clock(item.at),'transparent');y+=rh+gap}
   };
+  // As build_sensor_wide: landscape with a graph.
+  const buildSensorWide=(e,d,title,context,v)=>{
+   const pad=P(16),gap=P(16),cw=Math.trunc((W-2*pad-gap)/2),rx=pad+cw+gap,hst=history(v);
+   const nl=linesFor(title,F.title,cw,2);text(title,F.title,TEXT,pad,pad,cw,'left',nl);let ly=pad+nl*F.title.lh+P(2);
+   text(context,F.small,MUTED,pad,ly,cw);ly+=F.small.lh+P(8);const ch=P(32),r=hst.range;
+   chips({x:pad,y:ly,w:cw,h:ch},['1 h','12 h','24 h','7 d'],r===3600?0:r===86400?2:r===604800?3:1);ly+=ch;
+   let ry=pad;const numeric=isFinite(num(d.state)),value=numeric?compact(d.state):(v?.lines?.[1]?.text||d.state),u=!numeric||!d.unit?'':(d.unit==='%'||d.unit==='°'?d.unit:' '+d.unit),uw=u?width(u,F.title):0;
+   const vf=width(value,F.big)+uw<=cw?F.big:F.title,vw=Math.min(width(value,vf),cw-uw),vx=rx+Math.trunc((cw-vw-uw-(u?P(2):0))/2);
+   text(value,vf,TEXT,vx,ry,vw+1);if(u)text(u,F.title,SOFT,vx+vw+P(2),ry+vf.base-F.title.base,cw-vw-P(2));ry+=vf.lh+P(4);
+   const th=P(44);if(hst.points.length>=2){const vals=hst.points.map(p=>p.value);const f1=x=>fmt(x,Math.abs(x)>=100?0:1);tileRow({x:rx,y:ry,w:cw,h:th},[['Min',f1(Math.min(...vals))],['Avg',f1(vals.reduce((a,b)=>a+b,0)/vals.length)],['Max',f1(Math.max(...vals))]]);ry+=th}
+   const gy=Math.max(ly,ry)+P(10),g={x:pad,y:gy,w:W-2*pad,h:H-pad-gy};
+   if(hst.points.length<2){text('Collecting history…',F.small,MUTED,g.x,g.y+Math.trunc((g.h-F.small.lh)/2),g.w,'center');return}
+   if(g.h<P(60))return;box(g.x,g.y,g.w,g.h,CARD,P(12),{'data-sensor-graph':''});sensorGraph(hst.points,hst.now,hst.range,g.x+P(12),g.y+P(12),g.w-P(24),g.h-P(40));
+   text(rangeLabel(hst.range),F.small,MUTED,g.x+P(10),g.y+g.h-F.small.lh-P(6));text('now',F.small,MUTED,g.x+P(10),g.y+g.h-F.small.lh-P(6),g.w-P(20),'right');
+  };
   const buildSensor=(l,e,d,title,v)=>{
    const kind=d.sensor_class||'';let context=kind?label(kind):'Sensor';if(d.power!==undefined||v?.lines?.[4]?.text&&v.lines[4].text!==title&&v.layout!=='graph')context=context;
+   if(wide&&v?.layout==='graph'){buildSensorWide(e,d,title,context,v);return}  // As build_sensor_wide.
    const nl=linesFor(title,F.title,l.head.w,2);text(title,F.title,TEXT,l.head.x,l.head.y,l.head.w,'left',nl);let y=l.head.y+nl*F.title.lh+P(2);
    text(context,F.small,MUTED,l.head.x,y,l.head.w);y+=F.small.lh+P(10);
    const value=num(d.state),numeric=isFinite(value),area={x:l.vis.x,y:wide?l.vis.y:y,w:l.vis.w,h:wide?l.vis.h:bottomOf(l.ctl)-y};y=area.y;
@@ -1582,7 +1600,9 @@ static const char PANEL_JS[] = R"ONXPANEL(
    const head={...t,context:hvacLabel(mode)+(isFinite(num(d.current))?' · now '+fmt(num(d.current))+'°':'')},pad=P(14),cs=P(44),tx=pad+cs+P(12);
    chipIcon(t.entity,r.x+pad,r.y+pad,cs,!off);titled(head,r.x+tx,r.y+pad+P(2),r.w-tx-pad,off?MUTED:ACCENT);
    const value=range?fmt(num(d.target_low))+'–'+fmt(num(d.target_high))+'°':isFinite(tgt)?fmt(tgt)+'°':'—',bs=P(52),by=r.h-pad-bs;if(by<pad+cs)return;
-   const big=r.h>=P(260)&&heroText(value),vf=big?F.hero:F.big,cy=big?Math.trunc((pad+cs+by+bs)/2):by+bs/2;
+   const big=r.h>=P(260)&&heroText(value);let vf=big?F.hero:F.big,cy=big?Math.trunc((pad+cs+by+bs)/2):by+bs/2;
+   const between=r.w-2*(pad+bs+P(4));  // As card_climate: a value too wide for the gap goes above the buttons.
+   if(!big&&width(value,vf)>between){const top=pad+cs+P(4),room=by-P(4)-top,block=F.small.lh-P(6)+vf.lh;if(room>=vf.lh)cy=top+Math.trunc(Math.max(0,room-block)/2)+F.small.lh-P(6)+Math.trunc(vf.lh/2);else vf=fit(value,between,[F.big,F.title,F.body])}
    const labelY=cy-vf.lh/2-F.small.lh+P(6);if(labelY>=pad+cs)text('Target',F.small,MUTED,r.x,r.y+labelY,r.w,'center');  // As card_climate: no overlap with the header.
    text(value,vf,TEXT,r.x,r.y+cy-vf.lh/2+P(4),r.w,'center');
    if(d.available===false||!(d.features&3))return;circle(r.x+pad+bs/2,r.y+by+bs/2,bs,INSET,'minus',TEXT);circle(r.x+r.w-pad-bs/2,r.y+by+bs/2,bs,INSET,'plus',TEXT);
@@ -1909,21 +1929,24 @@ static const char PANEL_JS[] = R"ONXPANEL(
   '<a href="'+DOCS+'#live-cameras" target="_blank" rel="noopener noreferrer">How it works</a></p>'+
   '<label class="field">Camera source<select id="dash-camera-source">'+
   '<option value="off">Off (snapshots and Home Assistant’s stream)</option>'+
+  '<option value="companion">Room Companion integration (finds WebRTC Camera or go2rtc)</option>'+
   '<option value="webrtc">WebRTC Camera integration in Home Assistant</option>'+
   '<option value="go2rtc">go2rtc server (Frigate or standalone)</option></select></label>'+
+  '<p class="hint" data-camera-source="companion">Home Assistant finds each camera’s live stream: the <a href="https://github.com/AlexxIT/WebRTC" target="_blank" rel="noopener noreferrer">WebRTC Camera</a> integration when it is installed, else go2rtc (Frigate’s, Home Assistant’s, or the address in Room Companion’s options), adding cameras go2rtc does not know. '+
+  'Needs <a href="https://github.com/fixtse/ha-room-companion" target="_blank" rel="noopener noreferrer">Room Companion</a> set up for this panel; the server’s browser must reach Home Assistant at the address Room Companion gives the panel.</p>'+
   '<p class="hint" data-camera-source="webrtc">Uses the go2rtc built into <a href="https://github.com/AlexxIT/WebRTC" target="_blank" rel="noopener noreferrer">WebRTC Camera</a>: each camera plays its own stream, nothing else to set up. '+
   'The panel registers a link with <code>webrtc.create_link</code>, so “Allow the device to perform Home Assistant actions” must be on, and the server’s browser must reach Home Assistant at the address on the Home Assistant page.</p>'+
   '<label class="field" data-camera-source="go2rtc">go2rtc address<input id="dash-camera-server" maxlength="256" placeholder="http://192.168.1.10:1984" autocomplete="off"></label>'+
   '<p class="hint" data-camera-source="go2rtc">Each camera plays the go2rtc stream named like its entity (<code>camera.front_door</code> plays <code>front_door</code>), as Frigate names them. For Frigate, publish its port 1984.</p>'+
-  '<label class="field" data-camera-source="webrtc go2rtc">Other stream names (optional)<textarea id="dash-camera-streams" rows="3" maxlength="1024" spellcheck="false" '+
+  '<label class="field" data-camera-source="companion webrtc go2rtc">Other stream names (optional)<textarea id="dash-camera-streams" rows="3" maxlength="1024" spellcheck="false" '+
   'placeholder="camera.porch=porch_hd&#10;camera.shed=rtsp://192.168.1.30/stream1&#10;camera.garage=http://192.168.1.20/live.html"></textarea></label>'+
-  '<p class="hint" data-camera-source="webrtc go2rtc">One per line: <code>camera.entity=</code> a go2rtc stream name, an <code>rtsp://</code> address, or a full page address to show instead.</p>'+
-  '<label class="field" data-camera-source="webrtc go2rtc">Full screen (tap the live picture)<select id="dash-camera-rotation">'+
+  '<p class="hint" data-camera-source="companion webrtc go2rtc">One per line: <code>camera.entity=</code> a go2rtc stream name, an <code>rtsp://</code> address, or a full page address to show instead.</p>'+
+  '<label class="field" data-camera-source="companion webrtc go2rtc">Full screen (tap the live picture)<select id="dash-camera-rotation">'+
   '<option value="90">Turn the video clockwise (portrait screens)</option>'+
   '<option value="270">Turn the video counter-clockwise (portrait screens)</option>'+
   '<option value="0">Don’t turn the video</option></select></label>'+
-  '<p class="hint" data-camera-source="webrtc go2rtc">Only the video turns, to fill a portrait screen with a landscape camera; the panel keeps its orientation. Tap again or swipe back to close.</p>'+
-  '<div id="dash-camera-sound" data-camera-source="webrtc go2rtc"><label class="field">Panel speaker in Home Assistant (for camera sound)<input id="dash-speaker-entity" maxlength="128" autocomplete="off" spellcheck="false"></label>'+
+  '<p class="hint" data-camera-source="companion webrtc go2rtc">Only the video turns, to fill a portrait screen with a landscape camera; the panel keeps its orientation. Tap again or swipe back to close.</p>'+
+  '<div id="dash-camera-sound" data-camera-source="companion webrtc go2rtc"><label class="field">Panel speaker in Home Assistant (for camera sound)<input id="dash-speaker-entity" maxlength="128" autocomplete="off" spellcheck="false"></label>'+
   '<p class="hint">The speaker button on a camera screen asks Home Assistant to play the camera’s sound (go2rtc’s RTSP output, port 8554) on this panel. '+
   'Found automatically when this browser is signed in to Home Assistant (Home Assistant tab); otherwise enter the panel’s Speaker entity. The sound runs a second or two behind the picture.</p></div></fieldset>'+
   '<p class="hint" id="dash-status" role="status"></p>'+

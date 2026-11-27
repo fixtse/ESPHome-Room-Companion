@@ -153,8 +153,8 @@ inline const std::array<const char *, 1> &automation_attributes() {
   return attrs;
 }
 
-inline const std::array<const char *, 12> &weather_attributes() {
-  static const std::array<const char *, 12> attrs{{"temperature", "temperature_unit", "humidity", "apparent_temperature", "wind_speed", "wind_speed_unit", "wind_bearing", "pressure", "pressure_unit", "visibility", "visibility_unit", "uv_index"}};
+inline const std::array<const char *, 13> &weather_attributes() {
+  static const std::array<const char *, 13> attrs{{"temperature", "temperature_unit", "humidity", "apparent_temperature", "wind_speed", "wind_speed_unit", "wind_bearing", "pressure", "pressure_unit", "visibility", "visibility_unit", "uv_index", "precipitation_unit"}};
   return attrs;
 }
 
@@ -356,8 +356,16 @@ struct EntityDetailState {
   float light_hue{NAN},light_saturation{NAN};
   bool light_temperature{false};
   std::string volume, media_title, media_artist, picture, media_content_id, brightness, position;
-  std::string apparent_temperature, wind_speed, wind_unit, wind_bearing, pressure, pressure_unit, visibility, visibility_unit, uv_index;
-  struct ForecastDay { std::string date, condition, high, low, rain; };
+  std::string apparent_temperature, wind_speed, wind_unit, wind_bearing, pressure, pressure_unit, visibility, visibility_unit, uv_index,
+      precipitation_unit;
+  // A day of the daily forecast; the fields after rain are empty when the provider has none.
+  struct ForecastDay { std::string date, condition, high, low, rain, precipitation, wind, bearing, humidity, uv, feels; };
+  // The hourly forecast of one day (hourly_date: that day's forecast date), for its day screen.
+  struct ForecastHour { uint32_t epoch; float temperature, rain; };
+  std::vector<ForecastHour> hourly;
+  std::string hourly_date;
+  uint32_t hourly_requested_ms{0};
+  bool hourly_pending{false}, hourly_failed{false};
   std::array<ForecastDay, 5> forecast{};
   int forecast_count{0}, weather_page{0};
   uint32_t forecast_requested_ms{0};
@@ -648,6 +656,7 @@ class DeviceSlotStateUpdater {
       else if (field == "visibility") detail.visibility = value;
       else if (field == "visibility_unit") detail.visibility_unit = value;
       else if (field == "uv_index") detail.uv_index = value;
+      else if (field == "precipitation_unit") detail.precipitation_unit = value;
       else if (field == "humidity") detail.humidity = value;
       else if (field == "target_temp_low") detail.low = value;
       else if (field == "target_temp_high") detail.high = value;

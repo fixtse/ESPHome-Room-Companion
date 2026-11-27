@@ -56,12 +56,27 @@ int main() {
     assert(url.rfind("http://ha.local:8123/api/room_companion/tok/cover/media_player.tv?w=320&h=320&fmt=jpeg&mode=fit&v=",0)==0); }
   assert(media_art_url(origin,"media_player.tv","None",320).empty());
   assert(onx_companion::set(""));
-  assert(camera_snapshot_url(origin, "/api/camera_proxy/camera.front?token=abc", 0) == origin + "/api/camera_proxy/camera.front?token=abc");
-  assert(camera_snapshot_url(origin, "/api/camera_proxy/camera.front?token=abc", 3) == origin + "/api/camera_proxy/camera.front?token=abc&_onx=3");
-  assert(camera_snapshot_url(origin, "/api/camera_proxy/camera.front", 2) == origin + "/api/camera_proxy/camera.front?_onx=2");
-  assert(camera_snapshot_url(origin, "", 2).empty());
-  assert(camera_stream_url(origin, "/api/camera_proxy/camera.front?token=abc") == origin + "/api/camera_proxy_stream/camera.front?token=abc");
-  assert(camera_stream_url(origin, "https://example.com/snap.jpg").empty());
+  assert(camera_snapshot_url(origin, "camera.front", "/api/camera_proxy/camera.front?token=abc", 0) == origin + "/api/camera_proxy/camera.front?token=abc");
+  assert(camera_snapshot_url(origin, "camera.front", "/api/camera_proxy/camera.front?token=abc", 3) == origin + "/api/camera_proxy/camera.front?token=abc&_onx=3");
+  assert(camera_snapshot_url(origin, "camera.front", "/api/camera_proxy/camera.front", 2) == origin + "/api/camera_proxy/camera.front?_onx=2");
+  assert(camera_snapshot_url(origin, "camera.front", "", 2).empty());
+  assert(camera_stream_url(origin, "camera.front", "/api/camera_proxy/camera.front?token=abc") == origin + "/api/camera_proxy_stream/camera.front?token=abc");
+  assert(camera_stream_url(origin, "camera.front", "https://example.com/snap.jpg").empty());
+  // Room Companion: previews sized to the camera frame, and the same camera across both.
+  assert(onx_companion::set("http://ha.local:8123/api/room_companion/tok"));
+  camera_box = 427;
+  const std::string snap = camera_snapshot_url(origin, "camera.front", "/api/camera_proxy/camera.front?token=abc", 3);
+  assert(snap == "http://ha.local:8123/api/room_companion/tok/snapshot/camera.front?w=427&h=427&_onx=3");
+  camera_live = []() { return true; };
+  assert(camera_picture_url(origin, "camera.front", "/api/camera_proxy/camera.front?token=abc") ==
+         "http://ha.local:8123/api/room_companion/tok/snapshot/camera.front?w=427&h=427&live=1");
+  const std::string mjpeg = camera_stream_url(origin, "camera.front", "/api/camera_proxy/camera.front?token=abc");
+  assert(mjpeg == "http://ha.local:8123/api/room_companion/tok/stream/camera.front?w=427&h=427");
+  assert(camera_of_url(snap) == "camera.front" && camera_of_url(mjpeg) == "camera.front");
+  assert(same_camera(snap, origin + "/api/camera_proxy/camera.front?token=abc"));
+  assert(camera_snapshot_url(origin, "camera.front", "None", 1).empty());  // No picture: nothing to show.
+  camera_live = nullptr;
+  assert(onx_companion::set(""));
   Progress p;
   p.set_state("playing", 1000); p.set_duration(200); p.set_position(20, 1000); p.set_updated_at(1000);
   auto view = p.view(2000, 1005.5, true);

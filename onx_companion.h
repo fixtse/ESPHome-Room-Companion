@@ -150,6 +150,16 @@ inline bool entity_ok(const std::string &entity) {
     if (!((c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') || c == '_' || c == '.')) return false;
   return true;
 }
+// A camera's latest frame scaled to fit w x h (JPEG), or its MJPEG stream
+// (stream = true). live: the panel plays the camera live through Room
+// Companion next, so Home Assistant prepares that too.
+inline std::string camera_url(const std::string &entity, int w, int h, bool stream, bool live) {
+  if (entity.rfind("camera.", 0) != 0 || !entity_ok(entity)) return {};
+  const auto b = base();
+  if (b.empty()) return b;
+  return b + (stream ? "/stream/" : "/snapshot/") + entity + "?w=" + std::to_string(w) + "&h=" + std::to_string(h) +
+         (live ? "&live=1" : "");
+}
 // A media player's art cropped to w x h (JPEG). picture (entity_picture) only
 // versions the URL, so a new track is a new URL. extra: e.g. "&mode=blur".
 inline std::string cover_url(const std::string &entity, const std::string &picture, int w, int h,

@@ -117,6 +117,17 @@ name, buttons and dock; only the picture comes from the stream.
 On the **Streamed page** tab, set the **Remote WebView server** (the dashboard
 **Page address** is not needed), then choose a **Camera source**:
 
+- **Room Companion integration** (recommended with
+  [Room Companion](https://github.com/fixtse/ha-room-companion) 0.4.0 or
+  later): Home Assistant finds each camera's stream itself. It uses the WebRTC
+  Camera integration when installed (registering the link, so the panel needs
+  no action for it), else go2rtc: the address in Room Companion's options,
+  Frigate's, or Home Assistant's own when it listens on the network. Streams
+  are matched by name or source address, and cameras go2rtc lacks are added
+  from Home Assistant's stream source. The server opens
+  `<Room Companion address>/camera/<camera>` with the frame's position;
+  camera sound uses `room_companion.play_camera_audio`. The server's browser
+  must reach Home Assistant at the address Room Companion gives the panel.
 - **WebRTC Camera integration in Home Assistant**: uses the go2rtc that
   [WebRTC Camera](https://github.com/AlexxIT/WebRTC) runs (built in or
   external). Each camera plays its own stream source; nothing else to set up.

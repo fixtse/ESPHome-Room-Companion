@@ -1,0 +1,19 @@
+{
+ "_comment": "The weather screen's forecast day (a tap on the second day): figures and the hourly chart.",
+ "entities": [
+  {"entity_id": "weather.home", "name": "Home", "state": "partlycloudy", "unit": "°C", "humidity": "62",
+   "apparent_temperature": "12", "wind_speed": "18", "wind_unit": "km/h", "precipitation_unit": "mm",
+   "forecast": [
+    {"date": "2026-11-21", "condition": "rainy", "high": 15, "low": 9, "rain": 70},
+    {"date": "2026-11-22", "condition": "cloudy", "high": 13, "low": 8, "rain": 40, "precipitation": 2.4,
+     "wind": 22, "bearing": 225, "humidity": 78, "uv": 2, "feels": 11},
+    {"date": "2026-11-23", "condition": "sunny", "high": 16, "low": 7, "rain": 0}
+   ],
+   "weather_day": 1,
+   "hourly": [[0, 9, 10], [1, 8.6, 10], [2, 8.3, 15], [3, 8, 20], [4, 8, 25], [5, 8.2, 30], [6, 8.5, 40], [7, 9, 55],
+              [8, 9.8, 60], [9, 10.6, 50], [10, 11.4, 40], [11, 12.2, 30], [12, 12.8, 20], [13, 13, 15], [14, 12.9, 10],
+              [15, 12.5, 10], [16, 11.8, 15], [17, 11, 20], [18, 10.4, 25], [19, 9.9, 30], [20, 9.5, 35], [21, 9.2, 30],
+              [22, 8.9, 20], [23, 8.6, 15]]}
+ ],
+ "pages": [{"name": "weather-day", "kind": "single", "entities": ["weather.home"]}]
+}

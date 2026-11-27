@@ -176,7 +176,12 @@ script:
                 response_template: !lambda |-
                   // Keep a native mapping: JSON null/true/false prevent HA's native
                   // template parser from recognizing an object and produce a string.
-                  return "{% set ns = namespace(days=[]) %}{% for f in response.get('" + entity + "', {}).get('forecast', [])[:5] %}{% set ns.days = ns.days + [dict(date=f.get('datetime',''), condition=f.get('condition',''), high=f.get('temperature'), low=f.get('templow'), rain=f.get('precipitation_probability'))] %}{% endfor %}{{ dict(days=ns.days) }}";
+                  // Optional fields the provider lacks become "" (the day screen hides them).
+                  return "{% macro v(f, k) %}{{ f.get(k) if f.get(k) is not none else '' }}{% endmacro %}"
+                         "{% set ns = namespace(days=[]) %}{% for f in response.get('" + entity + "', {}).get('forecast', [])[:5] %}"
+                         "{% set ns.days = ns.days + [dict(date=f.get('datetime',''), condition=f.get('condition',''), high=f.get('temperature'), low=f.get('templow'), rain=f.get('precipitation_probability'), "
+                         "precipitation=v(f,'precipitation'), wind=v(f,'wind_speed'), bearing=v(f,'wind_bearing'), humidity=v(f,'humidity'), uv=v(f,'uv_index'), feels=v(f,'apparent_temperature'))] %}"
+                         "{% endfor %}{{ dict(days=ns.days) }}";
                 on_success:
                   - lambda: |-
                       onx_panel_ui::request_render();  // Async data: redraw now, not on the 1 s tick.
@@ -194,6 +199,13 @@ script:
                           return onx_detail_view::compact(std::to_string(v.as<float>()));
                         };
                         f.high = number(day["high"]); f.low = number(day["low"]); f.rain = number(day["rain"]);
+                        // The macro returns text: numbers as strings, "" when missing.
+                        auto text = [](JsonVariantConst v) {
+                          if (v.is<float>() || v.is<int>()) return onx_detail_view::compact(std::to_string(v.as<float>()));
+                          return onx_detail_view::compact(std::string(v | "").substr(0, 12));
+                        };
+                        f.precipitation = text(day["precipitation"]); f.wind = text(day["wind"]); f.bearing = text(day["bearing"]);
+                        f.humidity = text(day["humidity"]); f.uv = text(day["uv"]); f.feels = text(day["feels"]);
                       }
                       d->forecast_failed = d->forecast_count == 0;
                       d->weather_page = std::min(d->weather_page, 2 + d->forecast_count);
@@ -204,6 +216,66 @@ script:
                       auto *d = custom_logic_entity_sub::entity_detail(entity);
                       if (d) { d->forecast_pending = false; d->forecast_failed = true; }
                       ESP_LOGW("weather", "%s: forecast request failed: %s", entity.c_str(), error.c_str());
+                      id(refresh_normal_automation_detail_page).execute();
+
+  # The hourly forecast of one day (onx_panel_detail::weather_day_date, its daily
+  # forecast date) for the day screen. One string parameter, like the scripts above.
+  - id: request_normal_weather_hourly
+    mode: parallel
+    max_runs: 2
+    parameters:
+      entity: string
+    then:
+      - if:
+          condition:
+            lambda: |-
+              const std::string day = onx_panel_detail::weather_day_date;
+              auto *d = custom_logic_entity_sub::entity_detail(entity);
+              if (!d || entity.rfind("weather.", 0) != 0 || !d->available || !id(normal_ha_api_connected) || day.empty()) return false;
+              // Again after 15 minutes, or a minute after a failure.
+              if (d->hourly_date == day && millis() - d->hourly_requested_ms < (d->hourly_failed ? 60000U : 900000U)) return false;
+              if (d->hourly_date != day) d->hourly.clear();
+              d->hourly_date = day;
+              d->hourly_pending = true; d->hourly_failed = false;
+              d->hourly_requested_ms = millis();
+              return true;
+          then:
+            - homeassistant.action:
+                action: weather.get_forecasts
+                data:
+                  entity_id: !lambda return entity;
+                  type: hourly
+                capture_response: true
+                response_template: !lambda |-
+                  // Hours on that day's local date: [epoch, temperature, rain %], -999 when missing.
+                  std::string safe;
+                  for (char c : onx_panel_detail::weather_day_date) if (c != '\'' && c != '\\') safe += c;
+                  return "{% set d = as_local(as_datetime('" + safe + "')).date() %}{% set ns = namespace(h=[]) %}"
+                         "{% for f in response.get('" + entity + "', {}).get('forecast', []) %}{% set t = as_datetime(f.get('datetime','')) %}"
+                         "{% if t and as_local(t).date() == d and ns.h | length < 24 %}"
+                         "{% set ns.h = ns.h + [[as_timestamp(t) | int, f.get('temperature') if f.get('temperature') is not none else -999, "
+                         "f.get('precipitation_probability') if f.get('precipitation_probability') is not none else -999]] %}"
+                         "{% endif %}{% endfor %}{{ dict(day='" + safe + "', hours=ns.h) }}";
+                on_success:
+                  - lambda: |-
+                      onx_panel_ui::request_render();
+                      auto *d = custom_logic_entity_sub::entity_detail(entity);
+                      if (!d || d->hourly_date != std::string(response["response"]["day"] | "")) return;  // Another day since.
+                      d->hourly_pending = false;
+                      d->hourly.clear();
+                      for (JsonArrayConst h : response["response"]["hours"].as<JsonArrayConst>()) {
+                        if (d->hourly.size() >= 24 || h.size() < 3) break;
+                        const float t = h[1].as<float>(), r = h[2].as<float>();
+                        d->hourly.push_back({h[0].as<uint32_t>(), t <= -998 ? NAN : t, r <= -998 ? NAN : r});
+                      }
+                      d->hourly_failed = d->hourly.empty();
+                      id(refresh_normal_automation_detail_page).execute();
+                on_error:
+                  - lambda: |-
+                      onx_panel_ui::request_render();
+                      auto *d = custom_logic_entity_sub::entity_detail(entity);
+                      if (d) { d->hourly_pending = false; d->hourly_failed = true; }
+                      ESP_LOGW("weather", "%s: hourly forecast request failed: %s", entity.c_str(), error.c_str());
                       id(refresh_normal_automation_detail_page).execute();
 
   - id: enter_sleep_mode
@@ -2379,14 +2451,14 @@ script:
           // A live view (go2rtc, Room Companion) replaces Home Assistant's MJPEG stream.
           const bool want_stream = playable && cam && id(normal_device_detail_active) && onx_panel_detail::active &&
                                    onx_media::live_camera_entity != entity;
-          std::string stream_url = want_stream ? onx_media::camera_stream_url(origin, detail->picture) : "";
+          std::string stream_url = want_stream ? onx_media::camera_stream_url(origin, entity, detail->picture) : "";
           if (!stream_url.empty() && onx_media::stream_failed_ms != 0 && millis() - onx_media::stream_failed_ms < 60000 &&
               onx_media::same_camera(stream_url, onx_media::stream_failed_url))
             stream_url.clear();  // Snapshots until the stream is worth retrying.
           const bool use_stream = !stream_url.empty();
           const std::string desired = !playable ? ""
               : use_stream ? stream_url
-              : cam ? onx_media::camera_snapshot_url(origin, detail->picture, onx_media::camera_refresh_seq)
+              : cam ? onx_media::camera_snapshot_url(origin, entity, detail->picture, onx_media::camera_refresh_seq)
               : onx_media::media_art_url(origin, entity, detail->picture, static_cast<int>(240 * ${ui_scale} + 0.5f));
           const uint32_t now = millis();
           if (desired != onx_media::candidate_url) {

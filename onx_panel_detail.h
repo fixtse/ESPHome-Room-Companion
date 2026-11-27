@@ -572,6 +572,19 @@ inline void tile(lv_obj_t *parent, const Rect &r, const std::string &name, const
   text(b, name, fonts.label, MUTED(), pad, gap, iw);
   text(b, value, fit(value, iw, {fonts.body, fonts.small}), TEXT(), pad, r.h - gap - line(fonts.body), iw);
 }
+// Several name/value pairs side by side in one card (landscape sensor stats).
+inline void tile_row(lv_obj_t *parent, const Rect &r, const std::vector<std::pair<std::string, std::string>> &items) {
+  if (items.empty()) return;
+  lv_obj_t *b = box(parent, r.x, r.y, r.w, r.h, CARD(), P(12));
+  const int pad = P(6), n = int(items.size()), cw = (r.w - 2 * pad) / n;
+  const int gap = std::max(0, (r.h - line(fonts.label) - line(fonts.body)) / 3);
+  for (int k = 0; k < n; ++k) {
+    const int x = pad + k * cw;
+    text(b, items[k].first, fonts.label, MUTED(), x, gap, cw, LV_TEXT_ALIGN_CENTER);
+    text(b, items[k].second, fit(items[k].second, cw, {fonts.body, fonts.small}), TEXT(), x, r.h - gap - line(fonts.body), cw,
+         LV_TEXT_ALIGN_CENTER);
+  }
+}
 inline lv_obj_t *circle(lv_obj_t *parent, int cx, int cy, int size, uint32_t bg, const char *symbol, uint32_t fg,
                        std::function<void()> fn) {
   lv_obj_t *b = button(parent, cx - size / 2, cy - size / 2, size, size, LV_RADIUS_CIRCLE, bg, "", fonts.symbol, fg, std::move(fn));
@@ -2312,12 +2325,78 @@ inline const Chart *chart(lv_obj_t *parent, int x, int y, int w, int h, const st
   return charts.back().get();
 }
 
+// Landscape sensor with a graph: name, context and ranges top left; the
+// reading and a min / avg / max card top right; the graph the full width below.
+__attribute__((noinline)) inline void build_sensor_wide(const std::string &e, const EntityDetailState &d, const std::string &title,
+                                                         const std::string &context, const onx_detail_view::View &v, int i) {
+  const int pad = P(16), gap = P(16), cw = (W - 2 * pad - gap) / 2, rx = pad + cw + gap;
+  auto &state = onx_sensor_view::states[i];
+  // Left: name (up to two lines), context, ranges.
+  const int name_lines = lines_for(title, fonts.title, cw, 2);
+  text(root, title, fonts.title, TEXT(), pad, pad, cw, LV_TEXT_ALIGN_LEFT, name_lines);
+  int ly = pad + name_lines * line(fonts.title) + P(2);
+  text(root, context, fonts.small, MUTED(), pad, ly, cw);
+  ly += line(fonts.small) + P(8);
+  const int ch = P(32);
+  const auto range = state.range_seconds;
+  chips(root, {pad, ly, cw, ch}, {"1 h", "12 h", "24 h", "7 d"}, range == 3600 ? 0 : range == 86400 ? 2 : range == 604800 ? 3 : 1,
+        [e, i](int selected) {
+          auto &st = onx_sensor_view::states[i];
+          if (st.pending) return;
+          st.range_seconds = selected == 0 ? 3600 : selected == 1 ? 43200 : selected == 2 ? 86400 : 604800;
+          st.points = {}; st.requested = false;
+          built_signature.clear();
+          if (request_history) request_history(e);
+        });
+  ly += ch;
+  // Right: the reading centred over the stats card.
+  int ry = pad;
+  const std::string value = std::isfinite(num(d.state)) ? onx_detail_view::compact(d.state) : v.value.text;
+  const std::string u = !std::isfinite(num(d.state)) || d.unit.empty() ? "" : (d.unit == "%" || d.unit == "°" ? d.unit : " " + d.unit);
+  const int uw = u.empty() ? 0 : text_width(u, fonts.title);
+  const lv_font_t *vf = text_width(value, fonts.big) + uw <= cw ? fonts.big : fonts.title;
+  const int vw = std::min(text_width(value, vf), cw - uw), vx = rx + (cw - vw - uw - (u.empty() ? 0 : P(2))) / 2;
+  text(root, value, vf, TEXT(), vx, ry, vw + 1);
+  if (!u.empty())
+    text(root, u, fonts.title, SOFT_TEXT(), vx + vw + P(2), ry + (vf->line_height - vf->base_line) - (fonts.title->line_height - fonts.title->base_line),
+         cw - vw - P(2));
+  ry += line(vf) + P(4);
+  std::vector<onx_sensor_view::Point> history = state.history(std::time(nullptr));
+  if (!state.requested && !state.pending && request_history) request_history(e);
+  const int th = P(44);
+  if (history.size() >= 2) {
+    float lo = history.front().value, hi = lo, sum = 0;
+    for (const auto &p : history) { lo = std::min(lo, p.value); hi = std::max(hi, p.value); sum += p.value; }
+    // No decimals for values of 100 and more: three to a half-width card.
+    auto f1 = [](float x) { return fmt(x, std::fabs(x) >= 100 ? 0 : 1); };
+    tile_row(root, {rx, ry, cw, th}, {{"Min", f1(lo)}, {"Avg", f1(sum / history.size())}, {"Max", f1(hi)}});
+    ry += th;
+  }
+  // The graph across the whole width.
+  const int gy = std::max(ly, ry) + P(10);
+  const Rect g{pad, gy, W - 2 * pad, H - pad - gy};
+  if (history.size() < 2) {
+    text(root, state.waiting(esphome::millis()) ? "Loading history…" : state.pending || state.failed ? "History unavailable" : state.requested ? "No recorded statistics" : "Collecting history…",
+         fonts.small, MUTED(), g.x, g.y + (g.h - line(fonts.small)) / 2, g.w, LV_TEXT_ALIGN_CENTER);
+    return;
+  }
+  if (!draw_graph || g.h < P(60)) return;
+  lv_obj_t *frame = box(root, g.x, g.y, g.w, g.h, CARD(), P(12));
+  draw_graph(frame, e, P(12));
+  text(frame, state.range_label(), fonts.small, MUTED(), P(10), g.h - line(fonts.small) - P(6));
+  text(frame, "now", fonts.small, MUTED(), P(10), g.h - line(fonts.small) - P(6), g.w - P(20), LV_TEXT_ALIGN_RIGHT);
+}
 __attribute__((noinline)) inline void build_sensor(const Layout &l, const std::string &e, const EntityDetailState &d, const std::string &title,
                          const onx_detail_view::View &v) {
   const auto kind = onx_detail_view::sensor_class(e);
   std::string context = kind.empty() ? "Sensor" : label(kind);
   const int i = onx_sensor_view::index(e);
   if (i >= 0 && onx_sensor_view::configs[i].secondary[0]) context = v.name.text;
+  // Landscape with a graph: its own layout (build_sensor_wide).
+  if (wide() && i >= 0 && onx_sensor_view::configs[i].graph) {
+    build_sensor_wide(e, d, title, context, v, i);
+    return;
+  }
   // Long names get two lines instead of overlapping the context line.
   const Rect head = l.head;
   const int name_lines = lines_for(title, fonts.title, head.w, 2);
@@ -2582,10 +2661,159 @@ inline std::string condition(const std::string &s) {
   return label(s);
 }
 inline void icon(lv_obj_t *parent, const std::string &e, int cx, int cy, int size, uint32_t color);
-__attribute__((noinline)) inline void build_weather(const std::string &e, const EntityDetailState &d, const std::string &title) {
-  auto reading_of = [](const std::string &v, const std::string &unit) {
-    return v.empty() || v == "None" || v == "unknown" || v == "unavailable" ? std::string("—") : onx_detail_view::compact(v) + unit;
+// The forecast day open on the weather screen (a tap on a forecast row), or -1.
+inline int weather_day = -1;
+inline std::string weather_day_entity, weather_day_date;
+inline std::function<void(const std::string &)> request_hourly;  // Hourly forecast of weather_day_date.
+inline std::string weather_reading(const std::string &v, const std::string &unit) {
+  return v.empty() || v == "None" || v == "unknown" || v == "unavailable" ? std::string("—") : onx_detail_view::compact(v) + unit;
+}
+inline std::string compass(const std::string &bearing) {
+  const float b = num(bearing);
+  if (!std::isfinite(b)) return bearing.empty() || bearing.size() > 3 ? "" : bearing;  // Some providers send "NE".
+  static const char *const names[] = {"N", "NE", "E", "SE", "S", "SW", "W", "NW"};
+  return names[int(std::lround(std::fmod(std::fmod(b, 360.0f) + 360.0f, 360.0f) / 45.0f)) % 8];
+}
+// "Thursday", "27 Nov" for a forecast date (local).
+inline std::string forecast_date(const std::string &iso, const char *format) {
+  if (iso.size() < 10) return iso;
+  struct tm t{};
+  t.tm_year = atoi(iso.substr(0, 4).c_str()) - 1900;
+  t.tm_mon = atoi(iso.substr(5, 2).c_str()) - 1;
+  t.tm_mday = atoi(iso.substr(8, 2).c_str());
+  t.tm_hour = 12;
+  mktime(&t);
+  char out[24];
+  strftime(out, sizeof(out), format, &t);
+  return out;
+}
+// A chart without a sensor behind it (the hourly forecast): points over [start, end] scaled to [lo, hi].
+inline const Chart *plot(lv_obj_t *parent, const Rect &r, std::vector<onx_sensor_view::Point> points, uint32_t color,
+                         bool fill, bool bars, float lo, float hi, uint32_t start, uint32_t end) {
+  if (points.size() < 2 || r.w < P(24) || r.h < P(12)) return nullptr;
+  auto c = std::make_unique<Chart>();
+  c->lo = lo; c->hi = hi; c->start = start; c->end = end; c->gap = 3 * 3600;
+  c->color = color; c->fill = fill; c->bars = bars;
+  c->points = std::move(points);
+  lv_obj_t *o = box(parent, r.x, r.y, r.w, r.h, CARD(), 0, LV_OPA_TRANSP);
+  lv_obj_add_event_cb(o, draw_chart, LV_EVENT_DRAW_MAIN, c.get());
+  charts.push_back(std::move(c));
+  return charts.back().get();
+}
+// One forecast day: its conditions and figures, and the hourly temperature and
+// chance of rain when the provider has an hourly forecast for that day.
+__attribute__((noinline)) inline void build_weather_day(const std::string &e, const EntityDetailState &d, const std::string &title,
+                                                         int index) {
+  const auto &f = d.forecast[index];
+  if (request_hourly && d.hourly_date != f.date && !d.hourly_pending) request_hourly(e);
+  // Landscape: day and conditions top left, the figures top right, the hourly
+  // chart across the whole width below. Portrait: one column.
+  const int pad = P(16), cw = (W - 2 * pad - P(16)) / 2;
+  const Rect left = wide() ? Rect{pad, pad, cw, H - 2 * pad} : Rect{pad, pad, W - 2 * pad, H - 2 * pad};
+  const Rect figures = wide() ? Rect{W - pad - cw, pad, cw, H - 2 * pad} : left;
+  const int bs = P(40);
+  circle(root, left.x + bs / 2, left.y + bs / 2, bs, CONTROL(), LV_SYMBOL_LEFT, TEXT(), []() {
+    weather_day = -1;
+    built_signature.clear();
+  });
+  const int tx = left.x + bs + P(10), tw = left.right() - tx;
+  char today[11] = "";
+  const time_t now = std::time(nullptr);
+  struct tm local{};
+  localtime_r(&now, &local);
+  strftime(today, sizeof(today), "%Y-%m-%d", &local);
+  const std::string name = f.date.compare(0, 10, today) == 0 ? "Today" : forecast_date(f.date, "%A");
+  const int hy = left.y + (bs - line(fonts.title) - line(fonts.small)) / 2;
+  text(root, name, fonts.title, TEXT(), tx, hy, tw);
+  std::string date = forecast_date(f.date, "%e %b");
+  if (!date.empty() && date[0] == ' ') date.erase(0, 1);
+  text(root, date + " · " + title, fonts.small, MUTED(), tx, hy + line(fonts.title), tw);
+  int y = left.y + std::max(bs, line(fonts.title) + line(fonts.small)) + P(12);
+  text(root, condition(f.condition) + "  " + weather_reading(f.high, "°") + " / " + weather_reading(f.low, "°"), fonts.body,
+       TEXT(), left.x, y, left.w);
+  y += line(fonts.body) + P(10);
+  const int left_bottom = y;
+  if (wide()) y = figures.y;
+  // The figures the provider sends, three to a card.
+  std::vector<std::pair<std::string, std::string>> items;
+  // Short names when a third of the column is too narrow for the long ones.
+  const bool narrow = (figures.w - P(12)) / 3 < text_width("Humidity", fonts.label) + P(4);
+  auto add = [&](const char *label_text, const std::string &value, const std::string &unit) {
+    if (!value.empty() && value != "None") items.push_back({label_text, weather_reading(value, unit)});
   };
+  add("Rain", f.rain, "%");
+  add(narrow ? "Total" : "Amount", f.precipitation, d.precipitation_unit.empty() ? "" : " " + d.precipitation_unit);
+  if (!f.wind.empty()) {
+    const std::string dir = compass(f.bearing);
+    items.push_back({"Wind", weather_reading(f.wind, "") + (dir.empty() ? "" : " " + dir)});
+  }
+  add(narrow ? "Humid" : "Humidity", f.humidity, "%");
+  add("UV", f.uv, "");
+  add("Feels", f.feels, "°");
+  const int th = wide() ? P(42) : P(48);
+  for (size_t k = 0; k < items.size(); k += 3) {
+    if (y + th > figures.bottom()) break;
+    tile_row(root, {figures.x, y, figures.w, th},
+             std::vector<std::pair<std::string, std::string>>(items.begin() + k, items.begin() + std::min(items.size(), k + 3)));
+    y += th + (wide() ? P(6) : P(8));
+  }
+  // Hourly chart: the rest of the screen below.
+  if (wide()) y = std::max(y, left_bottom);
+  const Rect g{pad, y + P(2), W - 2 * pad, H - pad - y - P(2)};
+  if (g.h < P(80)) return;
+  lv_obj_t *card = box(root, g.x, g.y, g.w, g.h, CARD(), P(14));
+  const int ip = P(12);
+  text(card, "Hourly", fonts.small, MUTED(), ip, P(8), g.w / 2);
+  const bool ours = d.hourly_date == f.date;
+  if (!ours || d.hourly.size() < 2) {
+    const char *msg = !ours || d.hourly_pending ? "Loading hourly forecast…" : "No hourly forecast for this day";
+    text(card, msg, fonts.small, MUTED(), ip, (g.h - line(fonts.small)) / 2, g.w - 2 * ip, LV_TEXT_ALIGN_CENTER);
+    return;
+  }
+  std::vector<onx_sensor_view::Point> temps, rain;
+  float lo = NAN, hi = NAN;
+  for (const auto &h : d.hourly) {
+    if (std::isfinite(h.temperature)) {
+      temps.push_back({h.epoch, h.temperature});
+      lo = std::isfinite(lo) ? std::min(lo, h.temperature) : h.temperature;
+      hi = std::isfinite(hi) ? std::max(hi, h.temperature) : h.temperature;
+    }
+    if (std::isfinite(h.rain)) rain.push_back({h.epoch, std::clamp(h.rain, 0.0f, 100.0f)});
+  }
+  const uint32_t start = d.hourly.front().epoch, end = d.hourly.back().epoch + 3600;
+  const int lw = std::max(text_width(weather_reading(fmt(hi, 0), "°"), fonts.small), text_width(weather_reading(fmt(lo, 0), "°"), fonts.small));
+  const Rect area{ip + lw + P(6), P(8) + line(fonts.small) + P(6), g.w - 2 * ip - lw - P(6), 0};
+  const int bottom = g.h - line(fonts.small) - P(10);
+  const Rect pr{area.x, area.y, area.w, bottom - area.y};
+  if (!rain.empty()) {
+    text(card, "Rain %", fonts.small, 0x5B9BD5, g.w / 2, P(8), g.w / 2 - ip, LV_TEXT_ALIGN_RIGHT);
+    plot(card, pr, rain, 0x2D5B85, false, true, 0, 100, start, end);
+  }
+  if (temps.size() >= 2) {
+    // Keep a flat day from looking jagged: at least a 4° span.
+    const float mid = (lo + hi) / 2, span = std::max(hi - lo, 4.0f) / 2;
+    plot(card, pr, temps, accent(), true, false, mid - span, mid + span, start, end);
+    text(card, weather_reading(fmt(hi, 0), "°"), fonts.small, MUTED(), ip, pr.y, lw, LV_TEXT_ALIGN_RIGHT);
+    text(card, weather_reading(fmt(lo, 0), "°"), fonts.small, MUTED(), ip, pr.bottom() - line(fonts.small), lw, LV_TEXT_ALIGN_RIGHT);
+  }
+  auto hour = [](uint32_t epoch) {
+    const time_t t = epoch;
+    struct tm tm{};
+    localtime_r(&t, &tm);
+    char out[8];
+    strftime(out, sizeof(out), "%H:%M", &tm);
+    return std::string(out);
+  };
+  const int ly = g.h - line(fonts.small) - P(6);
+  text(card, hour(start), fonts.small, MUTED(), pr.x, ly, pr.w / 2);
+  text(card, hour(d.hourly.back().epoch), fonts.small, MUTED(), pr.x + pr.w / 2, ly, pr.w / 2, LV_TEXT_ALIGN_RIGHT);
+}
+__attribute__((noinline)) inline void build_weather(const std::string &e, const EntityDetailState &d, const std::string &title) {
+  if (weather_day >= 0 && weather_day_entity == e && weather_day < d.forecast_count) {
+    build_weather_day(e, d, title, weather_day);
+    return;
+  }
+  auto reading_of = weather_reading;
   const int pad = P(16);
   const Rect left = wide() ? Rect{pad, pad, W * 46 / 100 - pad, H - 2 * pad} : Rect{pad, pad, W - 2 * pad, H - 2 * pad};
   // Place name, then the temperature with the conditions beside it; the
@@ -2682,6 +2910,15 @@ __attribute__((noinline)) inline void build_weather(const std::string &e, const 
     text(panel, reading_of(f.high, "°"), fonts.small, TEXT(), list.w - ip - nw, ry, nw, LV_TEXT_ALIGN_RIGHT);
     const int by = top + rh / 2 - bar / 2;
     box(panel, bx, by, bw, bar, CONTROL(), bar / 2);
+    // A tap on the row opens the day.
+    lv_obj_t *hit = box(panel, 0, top, list.w, rh, CARD(), 0, LV_OPA_TRANSP);
+    interactive(hit);
+    on(hit, LV_EVENT_CLICKED, [e, i, date = f.date](lv_event_t *) {
+      if (!allowed()) return;
+      weather_day = i; weather_day_entity = e; weather_day_date = date;
+      if (request_hourly) request_hourly(e);
+      built_signature.clear();
+    });
     const float a = num(f.low), b = num(f.high);
     if (std::isfinite(a) && std::isfinite(b) && hi > lo) {
       const int x0 = int(bw * (a - lo) / (hi - lo)), x1 = int(bw * (b - lo) / (hi - lo));
@@ -2932,12 +3169,6 @@ inline lv_obj_t *toggle(lv_obj_t *parent, int x, int y, bool on, std::function<v
   box(b, on ? w - k - P(4) : P(4), P(4), k, k, on ? 0x101418 : SOFT_TEXT(), k / 2);
   return b;
 }
-inline std::string compass(const std::string &bearing) {
-  const float b = num(bearing);
-  if (!std::isfinite(b)) return "";
-  static const char *names[] = {"N", "NE", "E", "SE", "S", "SW", "W", "NW"};
-  return names[int(std::lround(std::fmod(std::fmod(b, 360.0f) + 360.0f, 360.0f) / 45.0f)) % 8];
-}
 inline std::string present(const std::string &v, const std::string &unit) {
   if (v.empty() || v == "None" || v == "unknown" || v == "unavailable") return "";
   return onx_detail_view::compact(v) + (unit.empty() ? "" : (unit == "%" || unit == "°" ? unit : " " + unit));
@@ -3141,7 +3372,15 @@ inline void card_climate(lv_obj_t *c, const Tile &t, const EntityDetailState &d)
   if (by < pad + cs) return;
   const bool big = r.h >= P(260) && hero_text(value);
   const lv_font_t *vf = big ? fonts.hero : fonts.big;
-  const int cy = big ? (pad + cs + by + bs) / 2 : by + bs / 2;
+  int cy = big ? (pad + cs + by + bs) / 2 : by + bs / 2;
+  // Narrow cards (landscape): a value wider than the gap between the buttons
+  // goes above them when there is room, else in a smaller font.
+  const int between = r.w - 2 * (pad + bs + P(4));
+  if (!big && text_width(value, vf) > between) {
+    const int top = pad + cs + P(4), room = by - P(4) - top, block = line(fonts.small) - P(6) + line(vf);
+    if (room >= line(vf)) cy = top + std::max(0, room - block) / 2 + line(fonts.small) - P(6) + line(vf) / 2;
+    else vf = fit(value, between, {fonts.big, fonts.title, fonts.body});
+  }
   // Short cards (two controls on the 2.8-inch panel) leave no room for the
   // label between the header and the value; skip it rather than overlap.
   const int label_y = cy - line(vf) / 2 - line(fonts.small) + P(6);
@@ -4988,6 +5227,8 @@ inline std::string signature(const std::string &e, const EntityDetailState *d, c
        std::to_string(d->features) + '|' + std::to_string(d->available) + '|' + std::to_string(d->received) + '|' +
        std::to_string(d->forecast_count) + '|' + std::to_string(d->forecast_waiting(esphome::millis())) + '|' + d->timer_duration;
   for (int i = 0; i < d->forecast_count; ++i) s += '|' + d->forecast[i].date + d->forecast[i].high + d->forecast[i].low;
+  if (weather_day >= 0 && weather_day_entity == e)
+    s += "|day" + std::to_string(weather_day) + d->hourly_date + std::to_string(d->hourly.size()) + std::to_string(d->hourly_pending);
   s += '|' + d->media_title + '|' + d->media_artist + '|' + d->picture + '|' + onx_media::ready_url +
        '|' + d->battery_level + '|' + d->status + '|' + d->motion_detection + '|' + camera_ptz_entity(e) +
        '|' + d->changed_by + '|' + d->code_format + '|' + d->code_arm_required + '|' + (pin_entity == e ? std::to_string(pin_code.size()) : "");
@@ -5081,6 +5322,7 @@ inline void clear(bool invalidate_root) {
 }
 inline void hide() {
   timers.focus.clear();
+  weather_day = -1;
   if (!active) return;
   active = false;
   clear();

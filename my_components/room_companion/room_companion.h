@@ -19,6 +19,10 @@
 #include <string>
 
 namespace esphome::room_companion {
+// Camera sound "address" for the Room Companion integration:
+// "room_companion:<camera entity>[=<stream name or address>]"; the audio action
+// calls room_companion.play_camera_audio for it instead of playing a URL.
+inline constexpr char CAMERA_AUDIO_PREFIX[] = "room_companion:";
 
 // Reasons the native UI must own the display even while the dashboard is open.
 enum Overlay : uint8_t {
@@ -159,6 +163,7 @@ class RoomPanel : public Component {
   void update_camera_(bool wifi_ok);
   void stop_camera_();
   std::string camera_source_(const std::string &entity) const;
+  std::string companion_camera_(const std::string &entity) const;
   std::string camera_target_(const std::string &entity) const;
   bool uses_webrtc_link_(const std::string &entity) const;
   std::string webrtc_link_id_(const std::string &entity) const;
