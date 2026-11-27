@@ -1657,7 +1657,7 @@ static const char PANEL_JS[] = R"ONXPANEL(
   };
   const cardAlarm=(t,d)=>{
    const r=t.r,pad=P(14),cs=P(44),tx=pad+cs+P(12),state=d.state||'disarmed',disarmed=state==='disarmed';
-   const needsCode=d.code_format==='number'||(!!d.code_format&&d.code_format!=='None'),armCode=needsCode&&(!d.code_arm_required||d.code_arm_required==='True'||d.code_arm_required==='true');
+   const needsCode=d.code_format==='number'||(!!d.code_format&&d.code_format!=='None'),armCode=needsCode&&!['False','false','off','0'].includes(d.code_arm_required);
    const st=state==='armed_custom_bypass'?'Armed bypass':label(state);
    chipIcon(t.entity,r.x+pad,r.y+pad,cs,t.on);
    let bottom=r.h-pad;const bh=P(44),gap=P(8),canAct=disarmed?!armCode:!needsCode,showBtns=canAct&&bottom-bh>=pad+cs+P(8),availBottom=showBtns?bottom-bh-P(10):bottom,top=pad+cs+P(10),showBig=availBottom-top>=F.title.lh;

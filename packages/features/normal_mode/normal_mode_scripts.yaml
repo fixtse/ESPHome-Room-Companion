@@ -1069,8 +1069,8 @@ script:
           if (detail_index < 0) {
             detail_index = 0;
           }
-          if (detail_index > 19) {
-            detail_index = 19;
+          if (detail_index > (int(custom_logic::CONFIGURABLE_DEVICE_SLOT_COUNT) - 1)) {
+            detail_index = (int(custom_logic::CONFIGURABLE_DEVICE_SLOT_COUNT) - 1);
           }
 
           std::string device_title = id(ui_presenter)->get_normal_device_title(detail_index);
@@ -1138,7 +1138,7 @@ script:
       - if:
           condition:
             lambda: |-
-              const int index = std::clamp(detail_index, 0, 19);
+              const int index = std::clamp(detail_index, 0, (int(custom_logic::CONFIGURABLE_DEVICE_SLOT_COUNT) - 1));
               const std::string entity_id = id(ui_presenter)->get_normal_device_entity_id(index);
               return id(normal_device_detail_active) &&
                      id(normal_device_detail_kind) == NORMAL_DEVICE_DETAIL_KIND_AUTOMATION &&
@@ -1148,7 +1148,7 @@ script:
                      id(normal_ha_api_connected) && entity_id.rfind("automation.", 0) == 0;
           then:
             - lambda: |-
-                const int index = std::clamp(detail_index, 0, 19);
+                const int index = std::clamp(detail_index, 0, (int(custom_logic::CONFIGURABLE_DEVICE_SLOT_COUNT) - 1));
                 id(normal_automation_press_feedback_active) = true;
                 ESP_LOGI("normal_mode",
                          "automation trigger requested: index=%d entity_id=%s",
@@ -1160,12 +1160,12 @@ script:
                   entity_id: "{{ target_entity_id }}"
                 variables:
                   target_entity_id: !lambda |-
-                    const int index = std::clamp(detail_index, 0, 19);
+                    const int index = std::clamp(detail_index, 0, (int(custom_logic::CONFIGURABLE_DEVICE_SLOT_COUNT) - 1));
                     return id(ui_presenter)->get_normal_device_entity_id(index);
             - script.execute: show_normal_action_sent
             - delay: 180ms
             - lambda: |-
-                const int index = std::clamp(detail_index, 0, 19);
+                const int index = std::clamp(detail_index, 0, (int(custom_logic::CONFIGURABLE_DEVICE_SLOT_COUNT) - 1));
                 id(normal_automation_press_feedback_active) = false;
 
   - id: emit_normal_switch_or_light_control_event
@@ -1176,7 +1176,7 @@ script:
             lambda: |-
               int detail_index = id(normal_device_detail_index);
               if (detail_index < 0) detail_index = 0;
-              if (detail_index > 19) detail_index = 19;
+              if (detail_index > (int(custom_logic::CONFIGURABLE_DEVICE_SLOT_COUNT) - 1)) detail_index = (int(custom_logic::CONFIGURABLE_DEVICE_SLOT_COUNT) - 1);
               const std::string entity_id = id(ui_presenter)->get_normal_device_entity_id(detail_index);
               return !entity_id.empty() && entity_id.rfind("light.", 0) == 0;
           then:
@@ -1188,7 +1188,7 @@ script:
                   target_entity_id: !lambda |-
                     int detail_index = id(normal_device_detail_index);
                     if (detail_index < 0) detail_index = 0;
-                    if (detail_index > 19) detail_index = 19;
+                    if (detail_index > (int(custom_logic::CONFIGURABLE_DEVICE_SLOT_COUNT) - 1)) detail_index = (int(custom_logic::CONFIGURABLE_DEVICE_SLOT_COUNT) - 1);
                     return id(ui_presenter)->get_normal_device_entity_id(detail_index);
             - script.execute: show_normal_action_sent
           else:
@@ -1197,7 +1197,7 @@ script:
                   lambda: |-
                     int detail_index = id(normal_device_detail_index);
                     if (detail_index < 0) detail_index = 0;
-                    if (detail_index > 19) detail_index = 19;
+                    if (detail_index > (int(custom_logic::CONFIGURABLE_DEVICE_SLOT_COUNT) - 1)) detail_index = (int(custom_logic::CONFIGURABLE_DEVICE_SLOT_COUNT) - 1);
                     const std::string entity_id = id(ui_presenter)->get_normal_device_entity_id(detail_index);
                     return !entity_id.empty() && !is_local_hmi_gpio_switch_entity_id(entity_id);
                 then:
@@ -1209,7 +1209,7 @@ script:
                         target_entity_id: !lambda |-
                           int detail_index = id(normal_device_detail_index);
                           if (detail_index < 0) detail_index = 0;
-                          if (detail_index > 19) detail_index = 19;
+                          if (detail_index > (int(custom_logic::CONFIGURABLE_DEVICE_SLOT_COUNT) - 1)) detail_index = (int(custom_logic::CONFIGURABLE_DEVICE_SLOT_COUNT) - 1);
                           return id(ui_presenter)->get_normal_device_entity_id(detail_index);
 
                   - script.execute: show_normal_action_sent
@@ -1394,13 +1394,13 @@ script:
             lambda: |-
               int index = detail_index;
               if (index < 0) index = 0;
-              if (index > 19) index = 19;
+              if (index > (int(custom_logic::CONFIGURABLE_DEVICE_SLOT_COUNT) - 1)) index = (int(custom_logic::CONFIGURABLE_DEVICE_SLOT_COUNT) - 1);
               return !id(ui_presenter)->get_normal_device_entity_id(index).empty();
           then:
             - lambda: |-
                 int index = detail_index;
                 if (index < 0) index = 0;
-                if (index > 19) index = 19;
+                if (index > (int(custom_logic::CONFIGURABLE_DEVICE_SLOT_COUNT) - 1)) index = (int(custom_logic::CONFIGURABLE_DEVICE_SLOT_COUNT) - 1);
                 int target_position = position;
                 if (target_position < 0) target_position = 0;
                 if (target_position > 100) target_position = 100;
@@ -1418,7 +1418,7 @@ script:
               }
               int detail_index = id(normal_device_detail_index);
               if (detail_index < 0) detail_index = 0;
-              if (detail_index > 19) detail_index = 19;
+              if (detail_index > (int(custom_logic::CONFIGURABLE_DEVICE_SLOT_COUNT) - 1)) detail_index = (int(custom_logic::CONFIGURABLE_DEVICE_SLOT_COUNT) - 1);
               return !id(ui_presenter)->get_normal_device_entity_id(detail_index).empty();
           then:
             - homeassistant.service:
@@ -1430,7 +1430,7 @@ script:
                   target_entity_id: !lambda |-
                     int detail_index = id(normal_device_detail_index);
                     if (detail_index < 0) detail_index = 0;
-                    if (detail_index > 19) detail_index = 19;
+                    if (detail_index > (int(custom_logic::CONFIGURABLE_DEVICE_SLOT_COUNT) - 1)) detail_index = (int(custom_logic::CONFIGURABLE_DEVICE_SLOT_COUNT) - 1);
                     return id(ui_presenter)->get_normal_device_entity_id(detail_index);
                   target_position: !lambda |-
                     return std::clamp(id(normal_device_detail_curtain_target_position), 0, 100);
@@ -1451,8 +1451,8 @@ script:
           if (detail_index < 0) {
             detail_index = 0;
           }
-          if (detail_index > 19) {
-            detail_index = 19;
+          if (detail_index > (int(custom_logic::CONFIGURABLE_DEVICE_SLOT_COUNT) - 1)) {
+            detail_index = (int(custom_logic::CONFIGURABLE_DEVICE_SLOT_COUNT) - 1);
           }
           const int target_position = std::clamp(id(normal_device_detail_curtain_target_position), 0, 100);
           ESP_LOGI("normal_mode", "curtain motion complete: index=%d target_position=%d", detail_index, target_position);
@@ -1522,8 +1522,8 @@ script:
             return;
           }
 
-          if (detail_index > 19) {
-            detail_index = 19;
+          if (detail_index > (int(custom_logic::CONFIGURABLE_DEVICE_SLOT_COUNT) - 1)) {
+            detail_index = (int(custom_logic::CONFIGURABLE_DEVICE_SLOT_COUNT) - 1);
           }
 
           id(normal_device_detail_index) = (detail_kind == NORMAL_DEVICE_DETAIL_KIND_SETTINGS) ? -1 : detail_index;
@@ -1659,14 +1659,14 @@ script:
       is_on: bool
     then:
       - lambda: |-
-          int index = std::clamp(detail_index, 0, 19);
+          int index = std::clamp(detail_index, 0, (int(custom_logic::CONFIGURABLE_DEVICE_SLOT_COUNT) - 1));
           custom_logic_entity_sub::begin_normal_light_feedback_window(
               index, custom_logic::NORMAL_LIGHT_FEEDBACK_BRIGHTNESS, is_on, brightness_pct);
       - delay: 178ms
       - lambda: |-
           int index = detail_index;
           if (index < 0) index = 0;
-          if (index > 19) index = 19;
+          if (index > (int(custom_logic::CONFIGURABLE_DEVICE_SLOT_COUNT) - 1)) index = (int(custom_logic::CONFIGURABLE_DEVICE_SLOT_COUNT) - 1);
           int brightness = std::clamp(brightness_pct, 0, 100);
           ESP_LOGI("normal_mode", "dimming light direct control: index=%d brightness=%d state=%s",
                    index, brightness, is_on ? "ON" : "OFF");
@@ -1675,7 +1675,7 @@ script:
             lambda: |-
               int index = detail_index;
               if (index < 0) index = 0;
-              if (index > 19) index = 19;
+              if (index > (int(custom_logic::CONFIGURABLE_DEVICE_SLOT_COUNT) - 1)) index = (int(custom_logic::CONFIGURABLE_DEVICE_SLOT_COUNT) - 1);
               return !id(ui_presenter)->get_normal_device_entity_id(index).empty();
           then:
             - if:
@@ -1691,7 +1691,7 @@ script:
                         target_entity_id: !lambda |-
                           int index = detail_index;
                           if (index < 0) index = 0;
-                          if (index > 19) index = 19;
+                          if (index > (int(custom_logic::CONFIGURABLE_DEVICE_SLOT_COUNT) - 1)) index = (int(custom_logic::CONFIGURABLE_DEVICE_SLOT_COUNT) - 1);
                           return id(ui_presenter)->get_normal_device_entity_id(index);
                 else:
                   - homeassistant.service:
@@ -1703,14 +1703,14 @@ script:
                         target_entity_id: !lambda |-
                           int index = detail_index;
                           if (index < 0) index = 0;
-                          if (index > 19) index = 19;
+                          if (index > (int(custom_logic::CONFIGURABLE_DEVICE_SLOT_COUNT) - 1)) index = (int(custom_logic::CONFIGURABLE_DEVICE_SLOT_COUNT) - 1);
                           return id(ui_presenter)->get_normal_device_entity_id(index);
                         target_brightness: !lambda |-
                           int brightness = std::clamp(brightness_pct, 0, 100);
                           return brightness;
       - delay: 935ms
       - lambda: |-
-          const int index = std::clamp(detail_index, 0, 19);
+          const int index = std::clamp(detail_index, 0, (int(custom_logic::CONFIGURABLE_DEVICE_SLOT_COUNT) - 1));
           custom_logic_entity_sub::flush_normal_light_feedback_window(
               index, id(ui_presenter)->get_normal_device_entity_id(index));
       - script.execute: refresh_normal_light_detail_page
@@ -1722,14 +1722,14 @@ script:
       color_temperature: int
     then:
       - lambda: |-
-          int index = std::clamp(detail_index, 0, 19);
+          int index = std::clamp(detail_index, 0, (int(custom_logic::CONFIGURABLE_DEVICE_SLOT_COUNT) - 1));
           custom_logic_entity_sub::begin_normal_light_feedback_window(
               index, custom_logic::NORMAL_LIGHT_FEEDBACK_COLOR_TEMPERATURE, true, color_temperature);
       - delay: 178ms
       - lambda: |-
           int index = detail_index;
           if (index < 0) index = 0;
-          if (index > 19) index = 19;
+          if (index > (int(custom_logic::CONFIGURABLE_DEVICE_SLOT_COUNT) - 1)) index = (int(custom_logic::CONFIGURABLE_DEVICE_SLOT_COUNT) - 1);
           auto light_state = id(app_storage)->normal_device_slot(index).light();
           int cct_min_kelvin = (int) light_state.min_color_temperature_kelvin;
           int cct_max_kelvin = (int) light_state.max_color_temperature_kelvin;
@@ -1749,7 +1749,7 @@ script:
             lambda: |-
               int index = detail_index;
               if (index < 0) index = 0;
-              if (index > 19) index = 19;
+              if (index > (int(custom_logic::CONFIGURABLE_DEVICE_SLOT_COUNT) - 1)) index = (int(custom_logic::CONFIGURABLE_DEVICE_SLOT_COUNT) - 1);
               return !id(ui_presenter)->get_normal_device_entity_id(index).empty();
           then:
             - homeassistant.service:
@@ -1761,12 +1761,12 @@ script:
                   target_entity_id: !lambda |-
                     int index = detail_index;
                     if (index < 0) index = 0;
-                    if (index > 19) index = 19;
+                    if (index > (int(custom_logic::CONFIGURABLE_DEVICE_SLOT_COUNT) - 1)) index = (int(custom_logic::CONFIGURABLE_DEVICE_SLOT_COUNT) - 1);
                     return id(ui_presenter)->get_normal_device_entity_id(index);
                   target_color_temperature_kelvin: !lambda |-
                     int index = detail_index;
                     if (index < 0) index = 0;
-                    if (index > 19) index = 19;
+                    if (index > (int(custom_logic::CONFIGURABLE_DEVICE_SLOT_COUNT) - 1)) index = (int(custom_logic::CONFIGURABLE_DEVICE_SLOT_COUNT) - 1);
                     auto light_state = id(app_storage)->normal_device_slot(index).light();
                     int cct_min_kelvin = (int) light_state.min_color_temperature_kelvin;
                     int cct_max_kelvin = (int) light_state.max_color_temperature_kelvin;
@@ -1782,7 +1782,7 @@ script:
                     return cct_kelvin;
       - delay: 935ms
       - lambda: |-
-          const int index = std::clamp(detail_index, 0, 19);
+          const int index = std::clamp(detail_index, 0, (int(custom_logic::CONFIGURABLE_DEVICE_SLOT_COUNT) - 1));
           custom_logic_entity_sub::flush_normal_light_feedback_window(
               index, id(ui_presenter)->get_normal_device_entity_id(index));
       - script.execute: refresh_normal_light_detail_page
@@ -1794,14 +1794,14 @@ script:
       rgb_value_pct: int
     then:
       - lambda: |-
-          int index = std::clamp(detail_index, 0, 19);
+          int index = std::clamp(detail_index, 0, (int(custom_logic::CONFIGURABLE_DEVICE_SLOT_COUNT) - 1));
           custom_logic_entity_sub::begin_normal_light_feedback_window(
               index, custom_logic::NORMAL_LIGHT_FEEDBACK_RGB, true, rgb_value_pct);
       - delay: 178ms
       - lambda: |-
           int index = detail_index;
           if (index < 0) index = 0;
-          if (index > 19) index = 19;
+          if (index > (int(custom_logic::CONFIGURABLE_DEVICE_SLOT_COUNT) - 1)) index = (int(custom_logic::CONFIGURABLE_DEVICE_SLOT_COUNT) - 1);
           int rgb_tick = std::clamp(rgb_value_pct, 0, esphome::onx_storage::RGB_TICKS - 1);
           int hue = (rgb_tick * esphome::onx_storage::RGB_TICK_DEGREES) % 360;
           int saturation = 100;
@@ -1812,7 +1812,7 @@ script:
             lambda: |-
               int index = detail_index;
               if (index < 0) index = 0;
-              if (index > 19) index = 19;
+              if (index > (int(custom_logic::CONFIGURABLE_DEVICE_SLOT_COUNT) - 1)) index = (int(custom_logic::CONFIGURABLE_DEVICE_SLOT_COUNT) - 1);
               return !id(ui_presenter)->get_normal_device_entity_id(index).empty();
           then:
             - homeassistant.service:
@@ -1830,11 +1830,11 @@ script:
                   target_entity_id: !lambda |-
                     int index = detail_index;
                     if (index < 0) index = 0;
-                    if (index > 19) index = 19;
+                    if (index > (int(custom_logic::CONFIGURABLE_DEVICE_SLOT_COUNT) - 1)) index = (int(custom_logic::CONFIGURABLE_DEVICE_SLOT_COUNT) - 1);
                     return id(ui_presenter)->get_normal_device_entity_id(index);
       - delay: 935ms
       - lambda: |-
-          const int index = std::clamp(detail_index, 0, 19);
+          const int index = std::clamp(detail_index, 0, (int(custom_logic::CONFIGURABLE_DEVICE_SLOT_COUNT) - 1));
           custom_logic_entity_sub::flush_normal_light_feedback_window(
               index, id(ui_presenter)->get_normal_device_entity_id(index));
       - script.execute: refresh_normal_light_detail_page

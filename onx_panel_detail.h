@@ -1503,11 +1503,17 @@ __attribute__((noinline)) inline void build_lock(const Layout &l, const std::str
   }
 }
 
+// Home Assistant's code_arm_required arrives as "True"/"False" or, through the
+// ESPHome attribute subscription, "on"/"off". Unknown or missing counts as
+// required, matching Home Assistant's default.
+inline bool arm_code_required(const std::string &v) {
+  return !(v == "False" || v == "false" || v == "off" || v == "0");
+}
 __attribute__((noinline)) inline void build_alarm(const Layout &l, const std::string &e, const EntityDetailState &d, const std::string &title) {
   const auto state = d.state.empty() ? "disarmed" : d.state;
   const bool disarmed = state == "disarmed";
   const bool needs_code = d.code_format == "number" || (!d.code_format.empty() && d.code_format != "None");
-  const bool arm_code = needs_code && (d.code_arm_required.empty() || d.code_arm_required == "True" || d.code_arm_required == "true");
+  const bool arm_code = needs_code && arm_code_required(d.code_arm_required);
   const std::string st = state == "armed_custom_bypass" ? "Armed bypass" : label(state);
   std::string context = st;
   if (!d.changed_by.empty() && d.changed_by != "None") context += " · " + d.changed_by;
@@ -4899,7 +4905,7 @@ inline void card_alarm(lv_obj_t *c, const Tile &t, const EntityDetailState &d) {
   const auto state = d.state.empty() ? "disarmed" : d.state;
   const bool disarmed = state == "disarmed";
   const bool needs_code = d.code_format == "number" || (!d.code_format.empty() && d.code_format != "None");
-  const bool arm_code = needs_code && (d.code_arm_required.empty() || d.code_arm_required == "True" || d.code_arm_required == "true");
+  const bool arm_code = needs_code && arm_code_required(d.code_arm_required);
   const std::string st = state == "armed_custom_bypass" ? "Armed bypass" : label(state);
   chip_icon(c, t.entity, pad, pad, cs, t.on);
   int bottom = r.h - pad;
