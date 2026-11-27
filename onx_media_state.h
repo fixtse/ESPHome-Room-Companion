@@ -271,10 +271,11 @@ inline std::string artwork_url(const std::string &origin, const std::string &pic
   return "";
 }
 // The art to download for an entity: the Room Companion integration's cover,
-// cropped to size x size on Home Assistant, else Home Assistant's own picture.
+// scaled on Home Assistant to fit size x size keeping its shape (a 16:9 video
+// thumbnail stays 16:9), else Home Assistant's own picture.
 inline std::string media_art_url(const std::string &origin, const std::string &entity, const std::string &picture, int size) {
   if (artwork_url(origin, picture).empty()) return "";
-  const std::string local = onx_companion::cover_url(entity, picture, size, size);
+  const std::string local = onx_companion::cover_url(entity, picture, size, size, "&mode=fit");
   return local.empty() ? artwork_url(origin, picture) : local;
 }
 inline std::string camera_snapshot_url(const std::string &origin, const std::string &picture, uint32_t seq) {

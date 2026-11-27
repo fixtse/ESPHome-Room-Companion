@@ -1134,6 +1134,8 @@ script:
             return onx_media::display_text(custom_logic::ha_entity_title_from_registry_cache(action));
           };
           onx_media::detach_main_artwork = []() { onx_panel_detail::detach_artwork(); };
+          // Read the integration's asset URL here: the icon and glyph workers cannot read NVS.
+          onx_companion::ensure_loaded();
           onx_lyrics::request_hook = [](const std::string &entity) {
             if (!id(normal_ha_api_connected)) return false;
             id(request_lyrics)->execute(entity);

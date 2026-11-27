@@ -48,6 +48,14 @@ int main() {
   assert(artwork_url(origin,"https://art.example/album.png")=="https://art.example/album.png");
   for (const auto &missing : {"", "None", "unknown", "unavailable", "//other.example/cover", "file:///etc/passwd"})
     assert(artwork_url(origin,missing).empty());
+  // Panels: the integration's cover keeps its shape (mode=fit), else Home Assistant's picture.
+  const std::string pic="/api/media_player_proxy/media_player.tv?token=1";
+  assert(media_art_url(origin,"media_player.tv",pic,320)==origin+pic);
+  assert(onx_companion::set("http://ha.local:8123/api/room_companion/tok"));
+  { const auto url=media_art_url(origin,"media_player.tv",pic,320);
+    assert(url.rfind("http://ha.local:8123/api/room_companion/tok/cover/media_player.tv?w=320&h=320&fmt=jpeg&mode=fit&v=",0)==0); }
+  assert(media_art_url(origin,"media_player.tv","None",320).empty());
+  assert(onx_companion::set(""));
   assert(camera_snapshot_url(origin, "/api/camera_proxy/camera.front?token=abc", 0) == origin + "/api/camera_proxy/camera.front?token=abc");
   assert(camera_snapshot_url(origin, "/api/camera_proxy/camera.front?token=abc", 3) == origin + "/api/camera_proxy/camera.front?token=abc&_onx=3");
   assert(camera_snapshot_url(origin, "/api/camera_proxy/camera.front", 2) == origin + "/api/camera_proxy/camera.front?_onx=2");
