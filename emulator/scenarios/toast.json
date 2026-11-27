@@ -1,0 +1,15 @@
+{
+ "_comment": "Notification banners: a conversation that gathers messages shows its latest lines; a short one is unchanged.",
+ "entities": [
+  {"entity_id": "sensor.living_room_temperature", "name": "Living room", "state": "21.5", "unit_of_measurement": "°C", "device_class": "temperature"}
+ ],
+ "pages": [
+  {"name": "toast", "kind": "single", "entities": ["sensor.living_room_temperature"]}
+ ],
+ "screens": [
+  {"name": "toast-grouped", "entity": "sensor.living_room_temperature",
+   "toast": {"title": "Family chat", "body": "Ana: Are we still on for dinner?\nLuis: Yes, 8 pm\nAna: Great, I'll book the table\nLuis: Bring the charger please\nAna: NEWEST: on my way now"}},
+  {"name": "toast-short", "entity": "sensor.living_room_temperature",
+   "toast": {"title": "Door", "body": "Front door opened"}}
+ ]
+}

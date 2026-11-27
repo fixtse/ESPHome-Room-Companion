@@ -97,7 +97,7 @@ media_player:
     # Downloaded at build time (Home Assistant Voice PE, Apache-2.0).
     files:
       - id: timer_finished_sound
-        file: https://github.com/esphome/home-assistant-voice-pe/raw/d4e6fa43d6a1a7d342b7d4d403567e06516719de/sounds/timer_finished.flac
+        file: "../../../assets/sounds/timer_finished.flac"  # From esphome/home-assistant-voice-pe (THIRD_PARTY_NOTICES.md).
     announcement_pipeline:
       speaker: panel_speaker
       format: FLAC

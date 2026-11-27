@@ -266,7 +266,9 @@ esphome::onx_storage::NormalLightState light_of(const std::string &entity) {
 }
 // status: the main page with the timer/music status row ("timer" text, "media");
 // centre: the notification centre opened over the main page.
-struct Shot { std::string name, entity; bool detail{false}; std::string timer; bool media{false}, centre{false}; };
+// toast: a notification banner {"title", "body"}, as show_message adds one.
+struct Shot { std::string name, entity; bool detail{false}; std::string timer; bool media{false}, centre{false};
+              std::string toast_title, toast_body; };
 std::vector<Shot> load_scenario(const std::string &path) {
   JsonDocument &doc = scenario_doc;
   if (deserializeJson(doc, read_file(path))) { std::fprintf(stderr, "cannot parse %s\n", path.c_str()); std::exit(2); }
@@ -428,6 +430,7 @@ std::vector<Shot> load_scenario(const std::string &path) {
   for (JsonObjectConst x : doc["screens"].as<JsonArrayConst>()) {
     Shot shot{x["name"] | "screen", x["entity"] | (pages.empty() ? "" : pages.front().entity.c_str()), false};
     shot.timer = x["timer"] | ""; shot.media = x["media"] | false; shot.centre = x["centre"] | false;
+    shot.toast_title = x["toast"]["title"] | ""; shot.toast_body = x["toast"]["body"] | "";
     pages.push_back(shot);
   }
   return pages;
@@ -521,6 +524,9 @@ void show(const Shot &shot) {
     onx_notification_ui::set_bell_visible(true);
   }
   if (shot.centre && !onx_notification_ui::panel_open) onx_notification_ui::open_panel();
+  auto &center = onx_notification::center;
+  if (!shot.toast_body.empty()) center.add(shot.toast_title, shot.toast_body, 30, "", esphome::millis());
+  else center.hide_toast();
   onx_notification_ui::refresh();
   write_preview(shot);
 }

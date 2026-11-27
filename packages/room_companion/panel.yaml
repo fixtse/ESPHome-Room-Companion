@@ -1144,6 +1144,24 @@ script:
           // Camera previews from Room Companion, sized to the camera frame.
           onx_media::camera_box = static_cast<int>(320 * ${ui_scale} + 0.5f);
           onx_media::camera_live = []() { return id(room_panel)->stream_settings().camera_source == "companion"; };
+          onx_media::refresh_diagnostics = []() {
+            std::string g;
+            auto flag = [&g](const char *name, bool on) { if (on) { if (!g.empty()) g += ','; g += name; } };
+            flag("downloading", onx_media::downloading);
+            flag("streaming", id(media_cover_image)->is_streaming());
+            flag("busy", id(media_cover_image)->is_busy());
+            flag("api_down", !id(normal_ha_api_connected));
+            flag("screen_off", id(screen_off_state));
+            flag("sleep", id(sleep_mode_state));
+            flag("standby", id(ui_presenter)->is_standby_active());
+            flag("detail", id(normal_device_detail_active));
+            flag("detail_ui", onx_panel_detail::active);
+            flag("main_mode", onx_panel_detail::main_mode);
+            flag("icons_busy", id(entity_icon_downloader)->busy());
+            flag("backdrop_busy", onx_media::backdrop_busy());
+            flag("memory_wait", !id(media_cover_image)->memory_ready());
+            return g;
+          };
           onx_lyrics::request_hook = [](const std::string &entity) {
             if (!id(normal_ha_api_connected)) return false;
             id(request_lyrics)->execute(entity);

@@ -35,19 +35,16 @@ hardware-tested status separate from configuration/build validation.
   default. Preserve this variant when updating this board unless told otherwise.
   Enabled/configured does not mean microphone, wake-word and speaker operation
   have all been hardware-tested.
-- Latest successful build/flash: ESPHome **2026.11.0**, config hash
-  `0x0d365dc1`, build timestamp `2026-11-19 21:23:26 UTC`, factory image
-  SHA-256 `943144a86f6603014d3268df29963c1a158e3379d0d12ed244a651bd4f826308`.
-  Source: `90e6bc1` plus uncommitted timer, wake-word, SoundSense and web fixes;
-  source-manifest SHA-256
-  `7302d3dd486a38305acebe4b419cb40762f498b0f8084084aeebaae66be4c54e`
-  (341 files, before this deployment-record update). Version text is
-  `2026.11.0.99`; neither that text nor the YAML config hash alone distinguishes
-  builds after C++ header changes. Both 3.5-inch roots compiled on devserv;
-  only the wake-word factory image was USB-flashed at offset zero, without
-  erase. Chip MAC and esptool `Hash of data verified.` confirmed. No post-flash
-  boot/network, acoustic, wake-word, SoundSense or visual/gesture verification
-  was performed for this build. See `docs/room-companion/validation.md`.
+- Latest successful build/flash (2026-11-27): ESPHome **2026.11.1**,
+  `ONX3248G035.wake-word.yaml` built on devserv at `2026-11-27 18:43:57 UTC`,
+  factory image SHA-256
+  `2133c574dae2faa1d7c1ffdb59d4ae4fca12ba34a84ddb9236168cb0760b31db`, USB-flashed
+  at offset zero without erase (MAC and `Hash of data verified.` confirmed).
+  Source: the 2026.11.1.31 commit before its version bump (reports
+  `2026.11.1.30`). After boot: web/API reachable, and the main-page camera card
+  downloaded a new Room Companion snapshot every ~2.3 s (10 of 10 succeeded,
+  ~180 ms each). No acoustic, wake-word or other visual verification.
+  `/panel/api` `op=state` includes `artwork_debug` (camera refresh gates).
 - Historical runtime baseline, **2026-11-17 firmware**: USB flash hash
   verification, boot without panic and Wi-Fi/web/API checks
   passed, plus a preset save/delete NVS round trip. Internal RAM settled at

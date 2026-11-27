@@ -63,10 +63,12 @@ The optional server image `strangev/remote-webview-server` referenced in
 - MiSans: Xiaomi's font license applies, not AGPLv3 or the OpenNextion MIT grant.
   See [Xiaomi's terms](https://hyperos.mi.com/font/en/download/).
   The inherited font files still require separate redistribution review.
-- `timer_finished.flac` (finished-timer sound): downloaded at build time from
-  [Home Assistant Voice PE](https://github.com/esphome/home-assistant-voice-pe),
-  Apache License 2.0, and embedded in compiled firmware; not stored in this
-  repository.
+- `assets/sounds/timer_finished.flac` (finished-timer sound): an unmodified
+  copy of `sounds/timer_finished.flac` from
+  [Home Assistant Voice PE](https://github.com/esphome/home-assistant-voice-pe)
+  at revision `d4e6fa43d6a1a7d342b7d4d403567e06516719de`, under that
+  repository's ESPHome License (MIT for non-C/C++ files); embedded in compiled
+  firmware.
 - Other inherited artwork remains subject to any original third-party terms;
   OpenNextion's MIT notice does not establish ownership of external artwork.
 
@@ -80,11 +82,25 @@ The emoji sequence table in `onx_emoji_table.h` is derived from Noto Color Emoji
 
 ## Wake-word models and SoundSense compatibility
 
-The optional wake-word configuration downloads the OHF-Voice Stop model (Kevin
-Ahrendt) from its `stop` release and the Snooze model (darren / dlarkinsPonderosa)
-from the pinned Respeaker-Lite integration revision used for Kenobi. Model
-manifests identify their authors and upstream locations; these model assets are
-embedded at build time and are not relicensed by this project's AGPL notice.
+The optional wake-word configuration uses unmodified model files kept in
+`assets/wake_word/` (manifest `.json` and `.tflite`), so builds do not download
+them:
+
+- `okay_nabu`, `hey_jarvis`, `hey_mycroft` (Kevin Ahrendt):
+  [esphome/micro-wake-word-models](https://github.com/esphome/micro-wake-word-models)
+  `models/v2/`, Apache License 2.0.
+- `stop` (Kevin Ahrendt): the `stop` release of
+  [OHF-Voice/micro-wake-word](https://github.com/OHF-Voice/micro-wake-word),
+  Apache License 2.0.
+- `kenobi` (Helvio Pedreschi) and `snooze` (darren / dlarkinsPonderosa):
+  `microwakeword/models/v2/` of
+  [formatBCE/Respeaker-Lite-ESPHome-integration](https://github.com/formatBCE/Respeaker-Lite-ESPHome-integration)
+  at revision `6d68e61f1d615c59bd7d47e8f4e8c09e53583892`, under that
+  repository's ESPHome License (MIT for non-C/C++ files).
+
+Model manifests identify their authors and upstream locations; these model
+assets are embedded at build time and are not relicensed by this project's AGPL
+notice.
 The contextual Stop/Snooze behavior and sensitivity values follow the
 [voice satellite configuration](https://github.com/fixtse/esp-ota/blob/main/configs/common/respeaker-lite/packages/core/voice-assistant.yaml).
 

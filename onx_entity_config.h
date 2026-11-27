@@ -763,6 +763,14 @@ inline std::string state(const std::string &host = "", bool wifi_connected = fal
     fetch["host"]=f.host;fetch["https"]=f.https;fetch["stack_psram"]=f.stack_psram;fetch["cached"]=f.cached;fetch["connect_attempts"]=f.attempts;fetch["open_ms"]=f.open_ms;
     fetch["read_ms"]=f.read_ms;fetch["bytes"]=f.bytes;fetch["heap_free_start"]=f.heap_free_start;
     fetch["heap_largest_start"]=f.heap_largest_start;fetch["heap_free_after_open"]=f.heap_free_after_open;
+    if (onx_media::refresh_diagnostics) {
+      auto cam=root["artwork_debug"].to<JsonObject>();
+      cam["main_entity"]=onx_media::main_entity;cam["wait"]=onx_media::artwork_wait_reason;
+      cam["seq"]=onx_media::camera_refresh_seq;cam["live_showing"]=onx_media::live_camera_showing;
+      cam["live_entity"]=onx_media::live_camera_entity;cam["since_end_ms"]=esphome::millis()-onx_media::last_artwork_end_ms;
+      cam["ready"]=onx_media::report_url(onx_media::ready_url);cam["candidate"]=onx_media::report_url(onx_media::candidate_url);
+      cam["requested"]=onx_media::report_url(onx_media::requested_url);cam["gates"]=onx_media::refresh_diagnostics();
+    }
     root["artwork_status"]=onx_media::downloading?"downloading":!onx_media::ready_url.empty()?"ready":onx_media::artwork_wait_reason.empty()?"not_loaded":onx_media::artwork_wait_reason.c_str();
 #ifdef USE_ESP32
     root["internal_heap_free"]=heap_caps_get_free_size(MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);

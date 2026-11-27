@@ -11,18 +11,20 @@ micro_wake_word:
     microphone: panel_microphone
     channels: 0
   models:
-    - model: okay_nabu
+    # Kept in the repository (assets/wake_word, sources in
+    # THIRD_PARTY_NOTICES.md) so builds do not download them.
+    - model: "../../assets/wake_word/okay_nabu.json"
       id: wake_okay_nabu
-    - model: hey_jarvis
+    - model: "../../assets/wake_word/hey_jarvis.json"
       id: wake_hey_jarvis
-    - model: hey_mycroft
+    - model: "../../assets/wake_word/hey_mycroft.json"
       id: wake_hey_mycroft
-    - model: https://raw.githubusercontent.com/formatBCE/Respeaker-Lite-ESPHome-integration/6d68e61f1d615c59bd7d47e8f4e8c09e53583892/microwakeword/models/v2/kenobi.json
+    - model: "../../assets/wake_word/kenobi.json"
       id: wake_kenobi
-    - model: https://github.com/OHF-Voice/micro-wake-word/releases/download/stop/stop.json
+    - model: "../../assets/wake_word/stop.json"
       id: wake_stop
       internal: true
-    - model: https://raw.githubusercontent.com/formatBCE/Respeaker-Lite-ESPHome-integration/6d68e61f1d615c59bd7d47e8f4e8c09e53583892/microwakeword/models/v2/snooze.json
+    - model: "../../assets/wake_word/snooze.json"
       id: wake_snooze
       internal: true
   on_wake_word_detected:

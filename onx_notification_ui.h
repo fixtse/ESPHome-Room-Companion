@@ -44,6 +44,10 @@ inline Hooks hooks;
 inline int width = 240, height = 240;
 inline lv_obj_t *bell = nullptr, *badge = nullptr, *badge_label = nullptr;
 inline lv_obj_t *toast = nullptr, *toast_title = nullptr, *toast_body = nullptr;
+// The banner's body clip: two lines, scrolled to the end so a conversation
+// that gathers messages shows its latest ones.
+inline lv_obj_t *toast_clip = nullptr;
+inline bool scroll_toast = false;
 inline lv_obj_t *panel = nullptr, *list = nullptr, *empty_label = nullptr, *header_label = nullptr,
                 *count_label = nullptr, *clear_button = nullptr,
                 *handle = nullptr, *standby_button = nullptr, *preset_button = nullptr, *preset_list = nullptr,
@@ -722,12 +726,19 @@ inline void init(int screen_width, int screen_height, Fonts f, Hooks h) {
   lv_obj_add_flag(toast, LV_OBJ_FLAG_CLICKABLE);
   lv_obj_remove_flag(toast, LV_OBJ_FLAG_GESTURE_BUBBLE);
   toast_title = text(toast_column, fonts.title, TEXT, "");
-  toast_body = text(toast_column, fonts.body, MUTED, "");
-  for (auto *label : {toast_title, toast_body}) {
-    lv_obj_set_width(label, lv_pct(100));
-    lv_label_set_long_mode(label, LV_LABEL_LONG_DOT);
-    lv_obj_set_style_max_height(label, 2 * lv_font_get_line_height(label == toast_title ? fonts.title : fonts.body), 0);
-  }
+  lv_obj_set_width(toast_title, lv_pct(100));
+  lv_label_set_long_mode(toast_title, LV_LABEL_LONG_DOT);
+  lv_obj_set_style_max_height(toast_title, 2 * lv_font_get_line_height(fonts.title), 0);
+  toast_clip = box(toast_column, CARD, 0);
+  lv_obj_set_style_bg_opa(toast_clip, LV_OPA_TRANSP, 0);
+  lv_obj_set_size(toast_clip, lv_pct(100), LV_SIZE_CONTENT);
+  lv_obj_set_style_max_height(toast_clip, 2 * lv_font_get_line_height(fonts.body), 0);
+  lv_obj_set_scrollbar_mode(toast_clip, LV_SCROLLBAR_MODE_OFF);
+  // Scrolled only here (taps and swipes belong to the banner).
+  lv_obj_remove_flag(toast_clip, static_cast<lv_obj_flag_t>(LV_OBJ_FLAG_CLICKABLE | LV_OBJ_FLAG_SCROLLABLE));
+  toast_body = text(toast_clip, fonts.body, MUTED, "");
+  lv_obj_set_width(toast_body, lv_pct(100));
+  lv_label_set_long_mode(toast_body, LV_LABEL_LONG_WRAP);
   lv_obj_add_event_cb(toast, on_toast, LV_EVENT_CLICKED, nullptr);
   lv_obj_add_event_cb(toast, [](lv_event_t *) {
     auto *indev=lv_indev_active();
@@ -1059,10 +1070,26 @@ inline void refresh() {
         lv_anim_start(&a);
       }
       lv_obj_set_style_bg_color(toast_bar, lv_color_hex(accent()), 0);
-      onx_emoji::set_label(toast_body, item->body.c_str());
+      static uint32_t scrolled_id = 0;
+      static std::string scrolled_body;
+      if (scrolled_id != item->id || scrolled_body != item->body) {
+        scrolled_id = item->id;
+        scrolled_body = item->body;
+        lv_obj_scroll_to_y(toast_clip, 0, LV_ANIM_OFF);  // A shorter text starts at the top.
+        onx_emoji::set_label(toast_body, item->body.c_str());
+        scroll_toast = true;
+      }
     }
   }
   hide(toast, !show_toast);
+  // The end of the text (the latest messages of a gathered conversation),
+  // once the banner is shown and laid out.
+  if (show_toast && scroll_toast) {
+    scroll_toast = false;
+    lv_obj_update_layout(toast);
+    const int32_t below = lv_obj_get_scroll_bottom(toast_clip);
+    if (below > 0) lv_obj_scroll_to_y(toast_clip, lv_obj_get_scroll_y(toast_clip) + below, LV_ANIM_OFF);
+  }
 
   if (sheet_mode != SheetMode::CLOSING) hide(panel, !panel_open);
   // Rebuilt on changes, and once a minute while open so the times stay current.

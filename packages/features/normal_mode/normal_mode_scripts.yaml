@@ -2462,7 +2462,11 @@ script:
               : onx_media::media_art_url(origin, entity, detail->picture, static_cast<int>(240 * ${ui_scale} + 0.5f));
           const uint32_t now = millis();
           if (desired != onx_media::candidate_url) {
-            onx_media::candidate_url = desired; onx_media::candidate_ms = now;
+            // The next frame of the same camera need not settle first.
+            const bool next_frame = cam && !onx_media::candidate_url.empty() &&
+                                    onx_media::same_camera(desired, onx_media::candidate_url);
+            onx_media::candidate_url = desired;
+            if (!next_frame) onx_media::candidate_ms = now;
           }
           // A camera snapshot in flight finishes (it keeps the frame on screen)
           // instead of being cancelled, which would free the shown pixels.

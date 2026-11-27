@@ -259,6 +259,15 @@ inline bool backdrop_busy() { return backdrop_busy_hook && backdrop_busy_hook();
 inline std::string candidate_url, artwork_wait_reason;
 inline uint32_t candidate_ms{0}, last_artwork_end_ms{0};
 inline uint32_t camera_refresh_seq{0};
+// Set by the firmware: the camera refresh gates, for the diagnostics report.
+inline std::function<std::string()> refresh_diagnostics;
+// A URL for reports: the Room Companion token left out.
+inline std::string report_url(const std::string &url) {
+  const size_t at = url.find("/api/room_companion/");
+  if (at == std::string::npos) return url.substr(0, 120);
+  const size_t next = url.find('/', at + 20);
+  return next == std::string::npos ? url.substr(0, at + 20) : url.substr(0, at + 20) + "<token>" + url.substr(next, 120);
+}
 // Room Companion live camera view (go2rtc through the dashboard stream): the
 // camera detail with a live stream configured, and whether its frames show.
 // Snapshots stand in until then; no MJPEG stream is opened for it.
