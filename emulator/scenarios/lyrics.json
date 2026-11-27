@@ -1,0 +1,12 @@
+{
+ "_comment": "Lyrics on a player with quick actions: the list button stays in landscape, where the lyrics sit in the left column.",
+ "entities": [
+  {"entity_id": "media_player.kitchen_speaker", "name": "Kitchen speaker", "state": "playing",
+   "media_title": "Night Drive", "media_artist": "Demo", "volume": "0.4", "artwork": "demo",
+   "media_duration": 200, "media_position": 13, "features": 16829, "quick_actions": 3,
+   "lyrics": "[00:00.00]The panel follows the song\n[00:08.00]This line is long enough to wrap across two rows\n[00:16.00]And the next one waits below\n[00:24.00]Then the chorus comes"}
+ ],
+ "pages": [
+  {"name": "lyrics-quick", "kind": "single", "entities": ["media_player.kitchen_speaker"]}
+ ]
+}

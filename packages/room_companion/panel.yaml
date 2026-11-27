@@ -1019,6 +1019,11 @@ script:
               id(fonts_MiSans_Bold_18)->get_lv_font(), id(fonts_MiSans_Medium_32)->get_lv_font(), &lv_font_${symbol_font},
               id(fonts_MiSans_Medium_64)->get_lv_font(), id(fonts_MiSans_Medium_12)->get_lv_font(),
               id(fonts_MiSans_Bold_14)->get_lv_font()};
+          // Characters these fonts lack come from Room Companion (onx_glyphs.h). Detail
+          // labels set their font directly, so attach the fallback to every one here.
+          for (const lv_font_t *f : {onx_panel_detail::fonts.small, onx_panel_detail::fonts.body, onx_panel_detail::fonts.title,
+                                     onx_panel_detail::fonts.big, onx_panel_detail::fonts.hero, onx_panel_detail::fonts.header_clock})
+            onx_glyphs::attach(f);
           onx_controls::main_control_visible = [](const std::string &entity) {
             if (!onx_panel_pages::showing || onx_panel_pages::detail_view ||
                 onx_notification::current.visible || onx_notification_ui::owns_screen() ||

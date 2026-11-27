@@ -203,6 +203,8 @@ void set_field(custom_logic_entity_sub::EntityDetailState &d, const std::string 
 
 // A generated 96x96 RGB565 cover: warm and cool blobs on a dark field.
 std::set<std::string> demo_artwork, wide_artwork;
+// "quick_actions": N gives the entity N quick actions (the list button on its detail).
+std::map<std::string, onx_playlist::Config> quick_lists;
 // A generated cover: 96x96, or a 160x90 video thumbnail when wide.
 const lv_image_dsc_t &demo_cover(bool wide = false) {
   static std::vector<uint16_t> pixels[2];
@@ -286,7 +288,7 @@ std::vector<Shot> load_scenario(const std::string &path) {
         st.rgb_tick = uint8_t((int(l["hue"] | 0) / esphome::onx_storage::RGB_TICK_DEGREES) % esphome::onx_storage::RGB_TICKS);
         st.capability_mask = 1 | (l["brightness"].is<int>() ? 2 : 0) | (l["kelvin"].is<int>() ? 4 : 0) | ((l["color"] | false) ? 8 : 0);
         lights[id] = st;
-      } else if (k == "media_position" || k == "media_duration" || k == "lyrics" || k == "artwork") {
+      } else if (k == "media_position" || k == "media_duration" || k == "lyrics" || k == "artwork" || k == "quick_actions") {
         // Handled below, once the state is known.
       } else if (k != "entity_id" && k != "name" && k != "unavailable" && k != "detail" && k != "history" && k != "secondary" && k != "cover_presets" && k != "cover_presets_enabled") set_field(d, k, kv.value());
     }
@@ -298,6 +300,14 @@ std::vector<Shot> load_scenario(const std::string &path) {
     }
     if (e["artwork"] == "demo" || e["artwork"] == "wide") demo_artwork.insert(id);
     if (e["artwork"] == "wide") wide_artwork.insert(id);
+    if (e["quick_actions"].is<int>()) {
+      auto &q = quick_lists[id];
+      q.count = uint8_t(std::clamp(e["quick_actions"].as<int>(), 0, int(onx_playlist::MAX_ENTRIES)));
+      for (int n = 0; n < q.count; ++n) {
+        std::snprintf(q.entries[n].name, sizeof(q.entries[n].name), "Action %d", n + 1);
+        std::snprintf(q.entries[n].action, sizeof(q.entries[n].action), "script.action_%d", n + 1);
+      }
+    }
     // "secondary": {"entity", "text", "value", "unit", "in": seconds} models the
     // entry's secondary sensor (e.g. a reset time shown as "{relative}").
     if (e["secondary"].is<JsonObjectConst>()) {
@@ -515,6 +525,10 @@ void setup() {
   };
   onx_panel_detail::draw_graph = onx_panel_pages::draw_graph;
   // "artwork": "demo" (square) or "wide" (16:9) gives a player a generated cover (no downloads here).
+  onx_panel_detail::quick_actions = [](const std::string &entity) -> const onx_playlist::Config * {
+    auto it = quick_lists.find(entity);
+    return it == quick_lists.end() ? nullptr : &it->second;
+  };
   onx_panel_detail::artwork_source = [](const std::string &entity) -> const void * {
     return demo_artwork.count(entity) ? &demo_cover(wide_artwork.count(entity) > 0) : nullptr;
   };

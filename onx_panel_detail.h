@@ -3308,7 +3308,10 @@ inline bool adopt_backdrop(const std::string &url, const lv_image_dsc_t *src) {
 // Synced lyrics in the media detail's artwork space: the current line in full
 // (wrapped, centred), with the previous and next lines above and below when
 // they fit whole. Re-laid out only when the line changes.
-struct LyricView { std::string entity; lv_obj_t *prev{nullptr}, *cur{nullptr}, *next{nullptr}; int w{0}, h{0}, shown{-2}; };
+struct LyricView {
+  std::string entity; lv_obj_t *prev{nullptr}, *cur{nullptr}, *next{nullptr}; int w{0}, h{0}, shown{-2};
+  uint32_t glyphs{0};  // onx_glyphs::generation() of the layout.
+};
 inline LyricView lyric_view;
 // Sets a lyric line: text, font, and a size that hugs the wrapped text plus a
 // translucent black chip behind it (readable over light covers). At most `rows`
@@ -3334,10 +3337,19 @@ inline void tick_lyrics(float seconds, bool visible) {
   auto &v = lyric_view;
   if (v.cur == nullptr) return;
   const int i = visible ? onx_lyrics::index_at(seconds) : -1;
-  if (i == v.shown) return;
+  // Characters downloaded from Home Assistant change the text's size: lay out again, in place.
+  const bool glyphs = v.glyphs != onx_glyphs::generation();
+  if (i == v.shown && !glyphs) return;
   // The first layout of a screen is drawn in place; later line changes slide up and fade in.
   const bool animate = v.shown != -2 && i == v.shown + 1;
   v.shown = i;
+  v.glyphs = onx_glyphs::generation();
+  // Fetch the characters of the coming lines in every font they may be drawn in,
+  // so a line that moves up to the current position does not lose them.
+  for (int ahead = 0; ahead <= 4 && i + ahead < onx_lyrics::count(); ++ahead) {
+    const std::string s = onx_lyrics::line(std::max(0, i + ahead));
+    for (const lv_font_t *f : {fonts.title, fonts.body, fonts.small}) onx_glyphs::prefetch(s, f);
+  }
   std::string cur = onx_lyrics::line(i);
   if (cur.empty()) cur = i < 0 ? "" : "\xC2\xB7 \xC2\xB7 \xC2\xB7";  // Instrumental gap.
   const int gap = P(6), sl = line(fonts.small) + 2 * P(3);
@@ -5340,9 +5352,11 @@ inline void render(lv_obj_t *parent, const std::string &e, const std::string &ti
     auto &browser = onx_playlist::browser;
     if (browser.open && browser.entity == e) { build_quick_actions(e, *list); return; }
   }
-  // Lyrics hide the quick actions button; tapping them shows the artwork and the button again.
-  const bool lyrics_up = d != nullptr && has_prefix(e, "media_player.") && onx_media::has_playback(d->state) &&
-                         onx_lyrics::shown(e, d->media_title);
+  // In portrait the lyrics fill the space under the quick actions button, so
+  // they hide it (tapping them shows the artwork and the button again). In
+  // landscape the lyrics sit in the left column, clear of the button.
+  const bool lyrics_up = !wide() && d != nullptr && has_prefix(e, "media_player.") &&
+                         onx_media::has_playback(d->state) && onx_lyrics::shown(e, d->media_title);
   if (list && list->count && !lyrics_up) {
     // A list button at the top right opens the quick actions full screen.
     const int bs = P(44);

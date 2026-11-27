@@ -6,7 +6,7 @@
 // and media covers are then fetched from Home Assistant over the LAN, already
 // sized (no TLS, cached there); the internet sources stay as the fallback.
 // The URL is kept in NVS so it works before Home Assistant connects.
-#if __has_include("nvs.h")
+#if __has_include("nvs.h") && __has_include("esp_timer.h")  // Not the emulator's nvs.h stub.
 #include "esp_memory_utils.h"
 #include "esp_timer.h"
 #include "nvs.h"
