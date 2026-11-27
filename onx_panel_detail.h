@@ -5474,7 +5474,10 @@ inline bool prewarm_main_page(lv_obj_t *parent, const std::string &key, const st
   if (!parent || key.empty() || key == main_page_key || tiles.empty() || dragging) return false;
   if (tiles[0].key) return prewarm_grid(key, tiles, width, height);
   for (const auto &slot : retained_pages) if (slot.key == key && slot.root) return false;
-  for (const auto &t : tiles) if (has_prefix(t.entity, "media_player.")) return false;
+  // Media and camera cards download their picture while shown; a pre-built
+  // copy would skip choosing the page's main card, so nothing would load.
+  for (const auto &t : tiles)
+    if (has_prefix(t.entity, "media_player.") || has_prefix(t.entity, "camera.")) return false;
   // Save active page state cleanly, build the neighbor into a hidden root, stash it, restore.
   const int saved_w = W, saved_h = H;
   const bool saved_main = main_mode, saved_grid = grid_cached_mode, saved_active = active;
