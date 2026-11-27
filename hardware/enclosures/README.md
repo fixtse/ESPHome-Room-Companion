@@ -82,7 +82,7 @@ dimensional compensation. ABS shrinkage depends on the print setup.
    Check that the speaker seats against the gasket before tightening. Connect
    it to SPK and tuck the wires away from the cover rim and USB socket.
 5. In portrait, connect a low-profile 90° USB-C plug with the back cover open
-   and fit the cable into the left-side notch from below. Seat the cover and
+   and fit the cable into either side notch from below. Seat the cover and
    hand-tighten four M2 × 6 mm thread-forming screws through the sides into
    the cover tabs. In landscape the USB-C plug inserts from the left side
    when facing the display.
@@ -104,7 +104,8 @@ Tilt the case back to reach underside controls in landscape. [2.8″ board contr
 ## USB-C clearance
 
 The **portrait** case takes a low-profile right-angle plug with its cable
-leaving to the left, parallel to the bottom edge of the display. The tested
+leaving to either side, parallel to the bottom edge of the display. Flip the
+USB-C plug to point the lead at the side you want to use. The tested
 CAD envelope has a neck up to 12.5 × 5.5 mm between 1.5 and 5.5 mm from the
 socket face, an elbow up to 18 × 9 mm through 11.8 mm from the socket face,
 and a cable up to 4.4 mm in diameter. Check the molded shoulder and strain
@@ -141,6 +142,7 @@ python hardware/enclosures/render.py
 ```
 
 All eight variants were checked against the manufacturer STEP files and the
-nominal USB-C overmold. The STLs were checked for closed, single-part meshes.
+nominal USB-C overmold, including both portrait cable routes. The STLs were
+checked for closed, single-part meshes.
 Physical fit, switch actuation, cable flexibility, print settings, and audio
 performance still need to be verified on a print.

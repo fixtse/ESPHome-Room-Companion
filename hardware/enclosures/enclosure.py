@@ -161,29 +161,31 @@ def make_case(panel, portrait, audio):
     usb_x, usb_y, usb_z = panel.usb
     usb_x -= panel.step_center_x
     usb_z += GLASS_Z - panel.step_glass_z
-    # The 3.5-inch assembly narrows the first few millimetres behind the
-    # receptacle. The broad overmold can start just past this neck.
-    if panel.name == "ONX3248G035":
-        gauge = block(usb_x + 3.5, usb_y, usb_z - 2.75, 4, 12.5, 5.5).fuse(
-            block(usb_x + 19, usb_y, usb_z - 5, 27, 18, 10)
-        )
-    else:
-        gauge = block(usb_x + 17, usb_y, usb_z - 5, 31, 18, 10)
     if portrait:
-        # A side-exit 90-degree plug folds along the screen plane. The
-        # undercut admits the cable from beneath without threading a plug.
+        # The reversible plug can point toward either side, with the lead
+        # dropping into the corresponding notch from beneath.
         neck = block(usb_x + 3.5, usb_y, usb_z - 2.75, 4, 12.5, 5.5)
-        elbow = block(usb_x + 8.65, usb_y + 2, usb_z - 4.5, 6.3, 18, 9)
         cable_y = -usb_x - 9.15
-        lead = cq.Solid.makeCylinder(
-            2.2, case_width / 2 + 2 - usb_y - 10,
-            cq.Vector(usb_y + 10, cable_y, usb_z), cq.Vector(1, 0, 0),
-        )
-        gauge = neck.fuse(elbow).rotate((0, 0, 0), (0, 0, 1), -90).fuse(lead)
-        usb_relief = block(case_width / 2, cable_y - 5, usb_z - 3.4, 9, 16, 6.8)
+        gauges, usb_reliefs = [], []
+        for side in (1, -1):
+            elbow = block(usb_x + 8.65, usb_y + 2 * side, usb_z - 4.5, 6.3, 18, 9)
+            lead = cq.Solid.makeCylinder(
+                2.2, case_width / 2 + 2 - side * usb_y - 10,
+                cq.Vector(usb_y + 10 * side, cable_y, usb_z), cq.Vector(side, 0, 0),
+            )
+            gauges.append(neck.fuse(elbow).rotate((0, 0, 0), (0, 0, 1), -90).fuse(lead))
+            usb_reliefs.append(block(side * case_width / 2, cable_y - 5, usb_z - 3.4, 9, 16, 6.8))
     else:
+        # On the 3.5-inch panel the glass limits the width of the plug neck.
+        if panel.name == "ONX3248G035":
+            gauge = block(usb_x + 3.5, usb_y, usb_z - 2.75, 4, 12.5, 5.5).fuse(
+                block(usb_x + 19, usb_y, usb_z - 5, 27, 18, 10)
+            )
+        else:
+            gauge = block(usb_x + 17, usb_y, usb_z - 5, 31, 18, 10)
+        gauges = [gauge]
         start, end = usb_x + 1, case_width / 2 + 2
-        usb_relief = block((start + end) / 2, usb_y, usb_z - 6, end - start, 21, 12)
+        usb_reliefs = [block((start + end) / 2, usb_y, usb_z - 6, end - start, 21, 12)]
 
     outline = rounded(0, (top + low) / 2, 0, case_width, top - low, max_depth, 3.6)
     outer = outline.intersect(above_floor(0)).intersect(rear_limit(LID))
@@ -215,8 +217,8 @@ def make_case(panel, portrait, audio):
             direction = cq.Vector(-side, 0, 0)
             through.append(cq.Solid.makeCylinder(1.15, WALL + 0.24, start, direction))
             pilot.append(cq.Solid.makeCylinder(0.85, 5.7, start, direction))
-    body = body.cut(interior, seat, window, usb_relief, *apertures, *through)
-    cover = cover.fuse(*tabs).cut(usb_relief, *pilot)
+    body = body.cut(interior, seat, window, *usb_reliefs, *apertures, *through)
+    cover = cover.fuse(*tabs).cut(*usb_reliefs, *pilot)
 
     vent_rows = [top - 8 - i * 3.6 for i in range(3)]
     if not audio:
@@ -281,10 +283,10 @@ def make_case(panel, portrait, audio):
     for index, control in enumerate((*controls, *endpoints)):
         if any(part.intersect(control).Volume() > 0.05 for part in parts):
             raise ValueError(f"Printed control position {index + 1} intersects the enclosure")
-    return parts, gauge, controls, controls_for_print
+    return parts, gauges, controls, controls_for_print
 
 
-def export(parts, gauge, controls, controls_for_print, panel, portrait, audio, output, previews):
+def export(parts, gauges, controls, controls_for_print, panel, portrait, audio, output, previews):
     orientation = "portrait" if portrait else "landscape"
     trim = "audio" if audio else "plain"
     stem = f"{panel.name.lower()}-{orientation}-{trim}"
@@ -310,7 +312,7 @@ def export(parts, gauge, controls, controls_for_print, panel, portrait, audio, o
         cq.exporters.export(coupon, str(output / "stl" / "mic-guide-fit-coupon.stl"), tolerance=0.06)
     if previews:
         from render import render_case
-        render_case(panel, portrait, audio, parts, controls, gauge, output / "renders" / f"{stem}.png")
+        render_case(panel, portrait, audio, parts, controls, gauges, output / "renders" / f"{stem}.png")
 
 
 @lru_cache(maxsize=2)
@@ -327,7 +329,7 @@ def clearance(shape, board):
     return distance.Value()
 
 
-def verify_fit(panel, portrait, parts, controls, gauge, step_directory):
+def verify_fit(panel, portrait, parts, controls, gauges, step_directory):
     board = read_board(step_directory / f"{panel.name}.stp")
     board = board.translate((-panel.step_center_x, 0, GLASS_Z - panel.step_glass_z))
     if portrait:
@@ -335,10 +337,11 @@ def verify_fit(panel, portrait, parts, controls, gauge, step_directory):
     for part in parts:
         if clearance(part, board) < 0.02:
             raise ValueError(f"{type(part).__name__} touches the reference board")
-        if part.intersect(gauge).Volume() > 0.05:
+    for gauge in gauges:
+        if any(part.intersect(gauge).Volume() > 0.05 for part in (*parts, *controls)):
             raise ValueError("Case obstructs the nominal USB-C plug")
-    if clearance(gauge, board) < 0.02:
-        raise ValueError("The nominal USB-C overmold crosses the reference board")
+        if clearance(gauge, board) < 0.02:
+            raise ValueError("The nominal USB-C overmold crosses the reference board")
     for control in controls:
         if clearance(control, board) < 0.015:
             raise ValueError("Printed control touches the board at rest")
@@ -373,10 +376,10 @@ def main():
                 print(panel.name, orientation, trim, flush=True)
                 portrait = orientation == "portrait"
                 audio = trim == "audio"
-                parts, gauge, controls, controls_for_print = make_case(panel, portrait, audio)
+                parts, gauges, controls, controls_for_print = make_case(panel, portrait, audio)
                 if args.check_step:
-                    verify_fit(panel, portrait, parts, controls, gauge, args.check_step)
-                export(parts, gauge, controls, controls_for_print, panel, portrait, audio, args.output, args.previews)
+                    verify_fit(panel, portrait, parts, controls, gauges, args.check_step)
+                export(parts, gauges, controls, controls_for_print, panel, portrait, audio, args.output, args.previews)
 
 
 if __name__ == "__main__":

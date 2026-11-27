@@ -70,7 +70,7 @@ def model_view(actors, target, look, scale):
     return frame
 
 
-def render_case(panel, portrait, audio, parts, controls, gauge, path):
+def render_case(panel, portrait, audio, parts, controls, gauges, path):
     width, height = (panel.width, panel.height) if portrait else (panel.height, panel.width)
     active_w, active_h = panel.active if portrait else panel.active[::-1]
     glass = rounded(0, 0, GLASS_Z, width, height, 0.7, 2.5)
@@ -97,11 +97,19 @@ def render_case(panel, portrait, audio, parts, controls, gauge, path):
     draw.text((1050, 607), "REAR", anchor="mm", fill=TEXT, font=font)
     combined.save(path, optimize=True)
     if portrait and audio and panel.name == "ONX3248G035":
-        plug = gauge.rotate((0, 0, 0), (1, 0, 0), TILT)
-        center = plug.Center().toTuple()
-        # With the cover removed, the cable and elbow are visible together.
-        detail = model_view([actors[0], actor(plug, (145, 207, 242))], center, (75, 52, 220), 31)
-        detail.save(path.with_name("portrait-usb-detail.png"), optimize=True)
+        # Show each cable route with the rear cover removed.
+        routes = Image.new("RGB", (1400, 645), BACKGROUND)
+        labels = ImageDraw.Draw(routes)
+        for index, (gauge, label) in enumerate(zip(gauges, ("LEFT EXIT", "RIGHT EXIT"))):
+            plug = gauge.rotate((0, 0, 0), (1, 0, 0), TILT)
+            side = 1 if index == 0 else -1
+            detail = model_view(
+                [actors[0], actor(plug, (145, 207, 242))],
+                plug.Center().toTuple(), (side * 75, 52, 220), 31,
+            )
+            routes.paste(detail, (700 * index, 0))
+            labels.text((350 + 700 * index, 607), label, anchor="mm", fill=TEXT, font=font)
+        routes.save(path.with_name("portrait-usb-detail.png"), optimize=True)
         guides = (0, (height / 2 - 1.0) * cos(radians(TILT)) - 27 * sin(radians(TILT)),
                   (height / 2 - 1.0) * sin(radians(TILT)) + 27 * cos(radians(TILT)))
         detail = model_view([actors[0]], guides, (60, -85, 230), 31)
