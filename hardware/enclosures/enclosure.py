@@ -108,7 +108,7 @@ def make_controls(panel, portrait, case_width, top, floor):
             assembled.append(place(cap, panel.power_position))
             endpoints.extend(place(cap, shift) for shift in (-1.05, 1.05))
         else:
-            opening = hole(0, 0, -EPS, 4.7, reach + 8)
+            opening = hole(0, 0, -EPS, 4.8, reach + 8)
             if underside:
                 opening = opening.fuse(hole(0, 0, reach - 1.7, 5.55, 6))
             cap = hole(0, 0, 0.2, 4.2, tip - 0.2).fuse(
@@ -243,12 +243,13 @@ def make_case(panel, portrait, audio):
         guides = []
         for x in (-12, 12):
             rib = block(x, roof - 2.25, guide_front - 1.4, 3.4, 4.5 + EPS, guide_end - guide_front + 1.4)
-            slot = block(x, roof - 2.35, guide_front, 3.4 + 2 * EPS, 2.05, guide_end - guide_front + EPS)
-            guides.append(rib.cut(slot))
+            slot = block(x, roof - 2.35, guide_front, 3.4 + 2 * EPS, 2.3, guide_end - guide_front + EPS)
+            mouth = block(x, roof - 2.35, guide_end - 0.8, 3.4 + 2 * EPS, 2.7, 0.8 + EPS)
+            guides.append(rib.cut(slot, mouth))
         # The side fences center the board without bearing on its components.
         fences = [
             block(x, roof - 1.75, guide_front, 1.2, 3.5 + EPS, guide_end - guide_front)
-            for x in (-24.6, 24.6)
+            for x in (-24.8, 24.8)
         ]
         body = body.fuse(*guides, *fences).cut(*mic_ports)
 
@@ -300,6 +301,13 @@ def export(parts, gauge, controls, controls_for_print, panel, portrait, audio, o
         part = part.translate((0, 0, -part.BoundingBox().zmin))
         prefix = f"{panel.name.lower()}-{orientation}" if name in controls_for_print else stem
         cq.exporters.export(part, str(output / "stl" / f"{prefix}-{name}.stl"), tolerance=0.06)
+    if panel.name == "ONX3248G035" and portrait and audio:
+        # Retain the orientation and detail of the production guide so the
+        # coupon tests the same printed channels and end fences.
+        top = panel.height / 2 + 2.7
+        coupon = body.intersect(block(0, top - 2.9, 19, 53, 6, 12.5))
+        coupon = coupon.translate((0, 0, -19))
+        cq.exporters.export(coupon, str(output / "stl" / "mic-guide-fit-coupon.stl"), tolerance=0.06)
     if previews:
         from render import render_case
         render_case(panel, portrait, audio, parts, controls, gauge, output / "renders" / f"{stem}.png")

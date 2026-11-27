@@ -38,11 +38,27 @@ shared by the audio and plain cases of the same panel and orientation.
 | ONX3248G035 (3.5″) | Portrait | [Button STL](stl/onx3248g035-portrait-button.stl) | [Slider STL](stl/onx3248g035-portrait-power-slider.stl) |
 | ONX3248G035 (3.5″) | Landscape | [Button STL](stl/onx3248g035-landscape-button.stl) | [Slider STL](stl/onx3248g035-landscape-power-slider.stl) |
 
+## Fit in PLA and ABS
+
+Use the same STLs for both materials. Print the [mic guide fit coupon](stl/mic-guide-fit-coupon.stl)
+in each material with the same slicer profile and orientation as the enclosure.
+The PCB should slide in with light finger pressure. The enclosure's rear
+cover secures it once installed.
+
+The button has 0.30 mm radial clearance, the glass pocket allows 0.40 mm per
+edge, and the cover tabs allow 0.30 mm at the side walls. The mic channel is
+2.3 mm high for a PCB up to 1.8 mm thick, with a wider entry. Check the
+glass, buttons and cover after the parts cool completely. If the fit is
+tight, check first-layer bulge before changing the filament profile's
+dimensional compensation. ABS shrinkage depends on the print setup.
+[ABS printing and shrinkage](https://help.prusa3d.com/article/abs_2058) ·
+[First-layer compensation](https://help.prusa3d.com/article/elephant-foot-compensation_114487)
+
 ## Print and assemble
 
 1. Import the two matching shell STLs and the control STLs in **millimetres**. The bezel prints face down,
    and the back cover prints exterior side down. A 0.4 mm nozzle, 0.2 mm
-   layers, and three walls in PETG are a starting point. Preview the base,
+   layers, and three walls in PLA or ABS are a starting point. Preview the base,
    USB-C and control openings in your slicer and add local supports where
    needed. Keep the glass pocket clear of brim and elephant's foot.
 2. Test-fit the printed controls before mounting the board. Insert the two
