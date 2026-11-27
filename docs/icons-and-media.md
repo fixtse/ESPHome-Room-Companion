@@ -24,7 +24,14 @@ registry icon overrides. Native API `icon` attribute changes are also followed
 when there is no saved registry override. Icon metadata is included in configuration
 exports; older backups without icon fields still import.
 
-Icons download over verified HTTPS from `api.iconify.design` and are rasterized on
+With the [Room Companion integration](https://github.com/fixtse/ha-room-companion)
+installed, the panel fetches icons, color emoji and media covers from Home
+Assistant over the local network instead: Home Assistant downloads each one
+once, keeps it in a cache and serves covers already cropped to the panel's
+size. This is faster and needs no HTTPS on the panel. When Home Assistant does
+not answer, the panel uses the internet sources below for five minutes.
+
+Without the integration, icons download over verified HTTPS from `api.iconify.design` and are rasterized on
 the panel in a background task. This needs internet access for an uncached icon.
 No Home Assistant token or entity ID is sent to the icon service. Only the MDI name
 is requested. Downloads have byte and time limits, with no arbitrary URL support.

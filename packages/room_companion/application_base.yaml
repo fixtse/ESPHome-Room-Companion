@@ -48,6 +48,7 @@ esphome:
     - ../../onx_sound_sense.h
     - ../../onx_control_state.h
     - ../../onx_icon_state.h
+    - ../../onx_companion.h
     - ../../onx_recovery_state.h
     - ../../onx_playlist.h
     - ../../onx_media_state.h

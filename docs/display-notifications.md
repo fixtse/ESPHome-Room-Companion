@@ -193,6 +193,12 @@ plugin to forward desktop notifications with chat avatars, website icons, and
 screenshot previews on Linux, or notification text and application logos via its
 experimental Windows port.
 
+With the [Room Companion integration](https://github.com/fixtse/ha-room-companion)
+installed, turn on **Show KDE Connect notifications** in the panel's
+**Configure** dialog instead of steps 2 to 4; no Text helper or blueprint is
+needed. It also serves the notification icons from Home Assistant, sized for
+the panel.
+
 1. Install and pair your devices with
    [KDE for Home Assistant](https://github.com/Radeaus/kdeforhomeassistant), and
    choose which devices and apps share notifications on its sidebar page.

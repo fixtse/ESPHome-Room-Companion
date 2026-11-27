@@ -10,8 +10,7 @@
 # page. See docs/room-companion/dashboard-stream.md.
 services:
   remote-webview:
-    build: .
-    image: room-companion/remote-webview-server:1.3.0-ack1
+    image: strangev/remote-webview-server:1.3.0
     container_name: remote-webview
     restart: unless-stopped
     environment:

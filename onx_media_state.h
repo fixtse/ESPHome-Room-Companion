@@ -1,6 +1,7 @@
 #pragma once
 #include <cstdint>
 #include "onx_playlist.h"
+#include "onx_companion.h"
 #include <string>
 #include <vector>
 #include <functional>
@@ -249,6 +250,12 @@ inline void stat_end(bool ok, uint32_t now) {
   if (ok) ++stat_ok; else ++stat_failed;
 }
 inline bool downloading{false}, artwork_refresh_pending{false};
+// The integration's lyrics backdrop download (packages/room_companion/panel.yaml).
+inline std::string backdrop_requested;
+inline bool backdrop_release{false};
+// Set by the firmware: whether that download is running (cover downloads wait).
+inline std::function<bool()> backdrop_busy_hook;
+inline bool backdrop_busy() { return backdrop_busy_hook && backdrop_busy_hook(); }
 inline std::string candidate_url, artwork_wait_reason;
 inline uint32_t candidate_ms{0}, last_artwork_end_ms{0};
 inline uint32_t camera_refresh_seq{0};
@@ -262,6 +269,13 @@ inline std::string artwork_url(const std::string &origin, const std::string &pic
   if (picture.rfind("http://", 0) == 0 || picture.rfind("https://", 0) == 0) return picture;
   if (picture[0] == '/' && picture.rfind("//", 0) != 0 && !origin.empty()) return origin + picture;
   return "";
+}
+// The art to download for an entity: the Room Companion integration's cover,
+// cropped to size x size on Home Assistant, else Home Assistant's own picture.
+inline std::string media_art_url(const std::string &origin, const std::string &entity, const std::string &picture, int size) {
+  if (artwork_url(origin, picture).empty()) return "";
+  const std::string local = onx_companion::cover_url(entity, picture, size, size);
+  return local.empty() ? artwork_url(origin, picture) : local;
 }
 inline std::string camera_snapshot_url(const std::string &origin, const std::string &picture, uint32_t seq) {
   std::string url = artwork_url(origin, picture);

@@ -15,7 +15,24 @@ show the artwork as usual.
 
 Tap the lyrics to show the artwork again. They return on the next track.
 
-## Setup
+**Easier:** the [Room Companion integration](https://github.com/fixtse/ha-room-companion)
+(HACS) does the same without the blueprint or `rest_command`: add the panel,
+choose its media players under **Configure**, and leave **Send synced lyrics**
+on. Use either the integration or the blueprint below, not both.
+
+The integration also:
+
+- **Fills in lyrics mid-song.** When you open a player on the panel that has
+  no lyrics yet (it started before Home Assistant did, or it is not one of the
+  chosen players), the panel asks for them and they appear within a second or
+  two.
+- **Adds a Lyrics offset** setting to the panel's device page (seconds, -10 to
+  10). Positive values show each line earlier, negative later. The change
+  applies on the panel at once, without reloading the lyrics.
+- **Makes the blurred background in Home Assistant**, so the panel only
+  downloads it. Without the integration the panel blurs the cover itself.
+
+## Setup with the blueprint
 
 1. Add this once to `configuration.yaml`, then restart Home Assistant:
 

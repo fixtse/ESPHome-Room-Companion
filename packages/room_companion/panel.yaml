@@ -34,6 +34,25 @@ api:
             if (lrc.empty()) onx_lyrics::clear();
             else if (!onx_lyrics::set(entity_id, title, lrc)) ESP_LOGW("lyrics", "No timed lines for %s", title.c_str());
             else ESP_LOGI("lyrics", "%d lines for %s", onx_lyrics::count(), title.c_str());
+    - action: set_lyrics_offset
+      description: Lyrics sync correction in milliseconds; positive shows each line earlier.
+      variables:
+        offset_ms: int
+      then:
+        - lambda: |-
+            onx_lyrics::set_offset(offset_ms);
+    # Sent by the Room Companion integration (github.com/fixtse/ha-room-companion):
+    # icons, emoji, covers and the lyrics backdrop then come from Home Assistant.
+    - action: set_companion
+      description: Base URL of this panel's assets in the Room Companion integration; empty turns it off.
+      variables:
+        url: string
+      then:
+        - lambda: |-
+            if (!onx_companion::set(url)) { ESP_LOGW("companion", "Ignored invalid URL"); return; }
+            ESP_LOGI("companion", "%s", url.empty() ? "Off" : "Assets from Home Assistant");
+            id(entity_icon_downloader)->retry();
+            onx_media::artwork_refresh_pending = true;
 
 lvgl:
   id: lvgl_ui
@@ -230,6 +249,20 @@ esp32_ble:
   enable_on_boot: false
 
 interval:
+  # Downloads the integration's lyrics backdrop while no artwork downloads.
+  - interval: 250ms
+    then:
+      - lambda: |-
+          auto *img = id(lyrics_backdrop_image);
+          if (img->is_busy()) return;
+          if (onx_media::backdrop_release) { onx_media::backdrop_release = false; img->release(); }
+          const auto &want = onx_panel_detail::backdrop_wanted;
+          if (want.empty() || want == onx_media::backdrop_requested) return;
+          if (onx_media::downloading || id(media_cover_image)->is_busy() || id(entity_icon_downloader)->busy() ||
+              !img->memory_ready() || id(screen_off_state) || id(sleep_mode_state)) return;
+          onx_media::backdrop_requested = want;
+          img->set_url(want);
+          img->update();
   - interval: 5s
     then:
       - if:
@@ -800,6 +833,24 @@ esphome:
 
 # Icons for the panel-local controls (Material Design Icons, as the panel's fallbacks).
 image:
+  # The lyrics backdrop made by the Room Companion integration (onx_panel_detail::adopt_backdrop).
+  - platform: online_image
+    id: lyrics_backdrop_image
+    url: http://homeassistant.local:8123/
+    format: JPEG
+    type: RGB565
+    update_interval: never
+    on_download_finished:
+      then:
+        - lambda: |-
+            onx_panel_detail::adopt_backdrop(onx_media::backdrop_requested, id(lyrics_backdrop_image)->get_lv_image_dsc());
+            // Copied; freed on the next interval, after OnlineImage's cleanup.
+            onx_media::backdrop_release = true;
+    on_error:
+      then:
+        - lambda: |-
+            if (onx_companion::owns(onx_media::backdrop_requested)) onx_companion::fail();
+            onx_media::backdrop_release = true;
   - platform: online_image
     id: immichframe_image
     url: http://homeassistant.local:8123/
@@ -890,6 +941,18 @@ image:
     transparency: alpha_channel
 
 script:
+  # A player's screen opened mid-song without lyrics: the Room Companion
+  # integration answers with set_lyrics (onx_lyrics::request).
+  - id: request_lyrics
+    mode: queued
+    max_runs: 2
+    parameters:
+      entity: string
+    then:
+      - homeassistant.event:
+          event: esphome.room_companion_lyrics
+          data:
+            entity_id: !lambda return entity;
   # Daily forecast for the idle clock (onx_idle_clock.h), separate from the
   # weather page's own request so the idle weather entity needs no page.
   - id: request_idle_forecast
@@ -1072,6 +1135,16 @@ script:
             return onx_media::display_text(custom_logic::ha_entity_title_from_registry_cache(action));
           };
           onx_media::detach_main_artwork = []() { onx_panel_detail::detach_artwork(); };
+          onx_lyrics::request_hook = [](const std::string &entity) {
+            if (!id(normal_ha_api_connected)) return false;
+            id(request_lyrics)->execute(entity);
+            return true;
+          };
+          onx_media::backdrop_busy_hook = []() { return id(lyrics_backdrop_image)->is_busy(); };
+          onx_panel_detail::backdrop_url = [](const std::string &entity, int w, int h) -> std::string {
+            const auto *d = custom_logic_entity_sub::entity_detail(entity);
+            return d == nullptr ? std::string() : onx_companion::cover_url(entity, d->picture, w, h, "&mode=blur&q=80");
+          };
           onx_panel_detail::artwork_source = [](const std::string &entity) -> const void * {
             const auto *d = custom_logic_entity_sub::entity_detail(entity);
             const bool cam = entity.rfind("camera.", 0) == 0;
@@ -1079,7 +1152,8 @@ script:
             auto origin = custom_logic::build_ha_http_state_url(id(ha_host).state, "media_player.cover");
             const auto path = origin.find("/api/states/");
             if (path != std::string::npos) origin.resize(path);
-            const auto base = onx_media::artwork_url(origin, d->picture);
+            const auto base = cam ? onx_media::artwork_url(origin, d->picture)
+                                  : onx_media::media_art_url(origin, entity, d->picture, static_cast<int>(240 * ${ui_scale} + 0.5f));
             const auto stream = cam ? onx_media::camera_stream_url(origin, d->picture) : std::string();
             if (cam && base.empty()) {
               static std::string logged_picture = "\x01";

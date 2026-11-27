@@ -1,6 +1,7 @@
 #include "onx_geom.h"
 #include "onx_icons.h"
 #include "onx_icon_state.h"
+#include "onx_companion.h"
 #include "esphome/components/wifi/wifi_component.h"
 #include "esphome/core/hal.h"
 #include "esphome/core/log.h"
@@ -385,7 +386,11 @@ static uint8_t *fetch_emoji(KeepAliveClient &ka, const std::string &stem, const 
   // Google's Noto emoji CDN covers every sequence, including flags and keycaps.
   // jsDelivr only mirrors the flag folder (the repository exceeds its size limit).
   const bool flag = stem.size() == 11 && stem.rfind("1f1", 0) == 0 && stem.compare(5, 4, "_1f1") == 0;
-  std::vector<std::string> urls{"https://fonts.gstatic.com/s/e/notoemoji/latest/" + stem + "/emoji.svg"};
+  // Home Assistant (Room Companion integration) first, when configured.
+  const std::string local = ::onx_companion::emoji_url(stem);
+  std::vector<std::string> urls;
+  if (!local.empty()) urls.push_back(local);
+  urls.push_back("https://fonts.gstatic.com/s/e/notoemoji/latest/" + stem + "/emoji.svg");
   if (flag) urls.push_back("https://cdn.jsdelivr.net/gh/googlefonts/noto-emoji@main/third_party/region-flags/waved-svg/emoji_u" + stem + ".svg");
   const uint32_t total_started = millis();
   for (size_t i = 0; i < urls.size(); ++i) {
@@ -419,6 +424,7 @@ static uint8_t *fetch_emoji(KeepAliveClient &ka, const std::string &stem, const 
       stats.host = out.host;
       error = out.error;
       if (out.cancelled) { was_cancelled = true; return nullptr; }
+      if (i == 0 && !local.empty() && out.host_error) ::onx_companion::fail();
     }
     ESP_LOGW(TAG, "emoji %s source failed (%s)", stem.c_str(), error.c_str());
   }
@@ -437,6 +443,27 @@ static uint8_t *fetch_bitmap(KeepAliveClient &ka, const std::string &icon, bool 
   const Source order[2] = {first, second};
 
   const uint32_t total_started = millis();
+  // Home Assistant (Room Companion integration) first, when configured.
+  const std::string local = ::onx_companion::icon_url(icon, static_cast<int>(icon_px()));
+  if (!local.empty()) {
+    PsramText svg;
+    FetchOutcome out;
+    if (fetch_svg(ka, local, svg, MAX_SVG_BYTES, 3000, cancelled, out)) {
+      const uint32_t r0 = millis();
+      auto *pixels = raster_bitmap(svg, error);
+      stats.attempts += out.attempts;
+      stats.open_ms = out.open_ms;
+      stats.read_ms = out.read_ms;
+      stats.raster_ms = millis() - r0;
+      stats.bytes = out.bytes;
+      stats.host = out.host;
+      if (pixels) return pixels;
+    } else {
+      if (out.cancelled) { was_cancelled = true; error = "cancelled"; return nullptr; }
+      if (out.host_error) ::onx_companion::fail();
+      ESP_LOGD(TAG, "%s not from Home Assistant (%s)", icon.c_str(), out.error.c_str());
+    }
+  }
   unsigned not_found_count = 0;
   for (const auto &src : order) {
     if (cancelled()) { was_cancelled = true; error = "cancelled"; return nullptr; }

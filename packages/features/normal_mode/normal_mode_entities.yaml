@@ -1205,5 +1205,7 @@ image:
             onx_media::artwork_retry.on_failure(onx_media::requested_url, now);
             onx_media::artwork_wait_reason = "retry_wait";
             onx_media::retry_at_ms = onx_media::artwork_retry.wakeup_ms(onx_media::requested_url, now);
+            // Home Assistant's cover failed: use the direct picture for a while.
+            if (onx_companion::owns(onx_media::requested_url)) { onx_companion::fail(); onx_media::retry_at_ms = (now + 100) | 1; }
             onx_media::artwork_refresh_pending = true;
             onx_runtime::record("artwork_error");

@@ -10,5 +10,15 @@ int main() {
   assert(shown("media_player.a", "T")); toggle(); assert(!shown("media_player.a", "T"));
   const auto v = store().version;
   assert(set("media_player.a", "T2", "[01:00.0]x") && store().version != v && shown("media_player.a", "T2") && index_at(59.9f) == -1);
+  // Live offset: positive shows lines earlier; the lyrics stay.
+  set_offset(500); assert(index_at(59.6f) == 0 && count() == 1);
+  set_offset(-1000); assert(index_at(60.5f) == -1 && index_at(61.0f) == 0);
+  set_offset(0);
+  // Mid-song requests: once per track, retried while the request cannot be sent.
+  int sent = 0; bool online = false;
+  request_hook = [&](const std::string &) { if (!online) return false; ++sent; return true; };
+  request("media_player.b", "S"); assert(sent == 0);
+  online = true; request("media_player.b", "S"); request("media_player.b", "S"); assert(sent == 1);
+  request("media_player.b", "S2"); assert(sent == 2);
   clear(); assert(count() == 0 && !available("media_player.a", "T2"));
 }

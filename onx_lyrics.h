@@ -8,6 +8,7 @@
 #include <algorithm>
 #include <cstdint>
 #include <cstdlib>
+#include <functional>
 #include <string>
 #include <vector>
 
@@ -23,6 +24,23 @@ struct Store {
   uint32_t version{0};     // Bumped on every change so the screen rebuilds.
 };
 inline Store &store() { static Store s; return s; }
+// Live sync correction from Home Assistant (Room Companion integration):
+// positive shows each line earlier. Applied at once; the lyrics stay.
+inline int32_t offset_ms{0};
+inline void set_offset(int32_t ms) {
+  ms = std::clamp<int32_t>(ms, -30000, 30000);
+  if (ms != offset_ms) { offset_ms = ms; ++store().version; }
+}
+// Asks Home Assistant for a player's lyrics when its screen opens mid-song
+// without them (set by the firmware; the integration answers with set_lyrics).
+inline std::function<bool(const std::string &entity)> request_hook;  // false: not sent
+inline std::string requested;  // entity|title last asked for, once per track.
+inline void request(const std::string &entity, const std::string &title) {
+  if (!request_hook || entity.empty() || title.empty()) return;
+  const std::string key = entity + '|' + title;
+  if (key == requested) return;
+  if (request_hook(entity)) requested = key;
+}
 
 // "[mm:ss.xx]" / "[mm:ss]" / "[mm:ss.xxx]"; returns characters consumed or 0.
 inline std::size_t parse_tag(const std::string &s, std::size_t i, uint32_t &ms) {
@@ -91,7 +109,8 @@ inline void toggle() { store().hidden = !store().hidden; ++store().version; }
 // Index of the line sung at `seconds`, or -1 before the first one.
 inline int index_at(float seconds) {
   const auto &l = store().lines;
-  const uint32_t ms = seconds <= 0 ? 0 : uint32_t(seconds * 1000.0f);
+  const float at = seconds * 1000.0f + float(offset_ms);
+  const uint32_t ms = at <= 0 ? 0 : uint32_t(at);
   auto it = std::upper_bound(l.begin(), l.end(), ms, [](uint32_t v, const Line &x) { return v < x.ms; });
   return int(it - l.begin()) - 1;
 }

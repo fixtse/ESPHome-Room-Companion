@@ -2387,7 +2387,7 @@ script:
           const std::string desired = !playable ? ""
               : use_stream ? stream_url
               : cam ? onx_media::camera_snapshot_url(origin, detail->picture, onx_media::camera_refresh_seq)
-              : onx_media::artwork_url(origin, detail->picture);
+              : onx_media::media_art_url(origin, entity, detail->picture, static_cast<int>(240 * ${ui_scale} + 0.5f));
           const uint32_t now = millis();
           if (desired != onx_media::candidate_url) {
             onx_media::candidate_url = desired; onx_media::candidate_ms = now;
@@ -2418,7 +2418,7 @@ script:
               id(screen_off_state) || id(ui_presenter)->is_standby_active()) return;
           // Wait briefly for a stable URL and keep concurrent TLS clients off the small
           // internal heap. Cosmetic artwork must not crowd out API/Wi-Fi buffers.
-          if (id(media_cover_image)->is_busy()) {
+          if (id(media_cover_image)->is_busy() || onx_media::backdrop_busy()) {
             onx_media::artwork_wait_reason = "cancelling";
             onx_media::retry_at_ms = now + 250; if (onx_media::retry_at_ms == 0) onx_media::retry_at_ms = 1;
             return;

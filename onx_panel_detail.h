@@ -3168,6 +3168,7 @@ struct LyricBackdrop {
   uint16_t *px{nullptr};
   int w{0}, h{0};
   uint32_t key{0};  // Content fingerprint: the artwork buffer is reused for every cover.
+  std::string server;  // URL of a backdrop made by Home Assistant, when it holds one.
 };
 inline LyricBackdrop &lyric_backdrop() { static LyricBackdrop b; return b; }
 inline bool pixel_rgb(const lv_image_dsc_t *d, int x, int y, int &r, int &g, int &b) {
@@ -3232,7 +3233,7 @@ inline const lv_image_dsc_t *make_backdrop(const void *source, int out_w, int ou
     bd.px = static_cast<uint16_t *>(heap_caps_malloc(size_t(out_w) * out_h * 2, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT));
     if (bd.px == nullptr) { bd.w = bd.h = 0; return nullptr; }
   }
-  bd.w = out_w; bd.h = out_h; bd.key = key;
+  bd.w = out_w; bd.h = out_h; bd.key = key; bd.server.clear();
   static const uint8_t bayer[16] = {0, 8, 2, 10, 12, 4, 14, 6, 3, 11, 1, 9, 15, 7, 13, 5};
   constexpr float DIM = 0.62f;
   for (int y = 0; y < out_h; ++y) {
@@ -3260,6 +3261,48 @@ inline const lv_image_dsc_t *make_backdrop(const void *source, int out_w, int ou
   bd.dsc.data = reinterpret_cast<const uint8_t *>(bd.px);
   lv_image_cache_drop(&bd.dsc);
   return &bd.dsc;
+}
+
+// The backdrop made by Home Assistant (Room Companion integration): the same
+// look, blurred there at full resolution. backdrop_url (set by the firmware,
+// empty without the integration) names it; the firmware downloads
+// backdrop_wanted when idle and hands it to adopt_backdrop. Until then the
+// panel's own backdrop is shown.
+inline std::function<std::string(const std::string &entity, int w, int h)> backdrop_url;
+inline std::string backdrop_wanted;
+inline const lv_image_dsc_t *server_backdrop(const std::string &entity, int w, int h) {
+  if (!backdrop_url) return nullptr;
+  const std::string url = backdrop_url(entity, w, h);
+  if (url.empty()) return nullptr;
+  auto &bd = lyric_backdrop();
+  if (bd.px && bd.server == url && bd.w == w && bd.h == h) return &bd.dsc;
+  backdrop_wanted = url;
+  return nullptr;
+}
+// Copies a downloaded RGB565 backdrop into the panel's backdrop buffer.
+inline bool adopt_backdrop(const std::string &url, const lv_image_dsc_t *src) {
+  if (url.empty() || url != backdrop_wanted || src == nullptr || src->data == nullptr ||
+      src->header.cf != LV_COLOR_FORMAT_RGB565 || src->header.w < 8 || src->header.h < 8)
+    return false;
+  const int w = src->header.w, h = src->header.h;
+  const int stride = src->header.stride ? src->header.stride : w * 2;
+  auto &bd = lyric_backdrop();
+  if (bd.px == nullptr || bd.w * bd.h < w * h) {
+    if (bd.px) heap_caps_free(bd.px);
+    bd.px = static_cast<uint16_t *>(heap_caps_malloc(size_t(w) * h * 2, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT));
+    if (bd.px == nullptr) { bd.w = bd.h = 0; return false; }
+  }
+  for (int y = 0; y < h; ++y) std::memcpy(bd.px + size_t(y) * w, src->data + size_t(y) * stride, size_t(w) * 2);
+  bd.w = w; bd.h = h; bd.key = 0; bd.server = url;
+  bd.dsc.header.magic = LV_IMAGE_HEADER_MAGIC;
+  bd.dsc.header.cf = LV_COLOR_FORMAT_RGB565;
+  bd.dsc.header.w = w; bd.dsc.header.h = h;
+  bd.dsc.header.stride = w * 2;
+  bd.dsc.data_size = uint32_t(w) * h * 2;
+  bd.dsc.data = reinterpret_cast<const uint8_t *>(bd.px);
+  lv_image_cache_drop(&bd.dsc);
+  built_signature.clear();  // Rebuild so the lyrics show it.
+  return true;
 }
 
 // Synced lyrics in the media detail's artwork space: the current line in full
@@ -3532,6 +3575,7 @@ __attribute__((noinline)) inline void build_media(const Layout &l, const std::st
   const int top = pad, room = title_y - (tight ? P(8) : P(12)) - top;
   onx_media::main_entity = e;
   const bool lyrics = playback && onx_lyrics::available(e, d.media_title);
+  if (playback && !lyrics) onx_lyrics::request(e, d.media_title);
   auto toggle = [](lv_event_t *) { if (allowed()) { onx_lyrics::toggle(); built_signature.clear(); } };
   // Synced lyrics (optional blueprint) take the artwork's whole column; a tap
   // shows the artwork again.
@@ -3542,7 +3586,9 @@ __attribute__((noinline)) inline void build_media(const Layout &l, const std::st
     auto *panel = box(root, rx, ry, rw, rh, CARD(), P(14));
     lv_obj_add_flag(panel, LV_OBJ_FLAG_CLICKABLE);
     on(panel, LV_EVENT_CLICKED, toggle);
-    if (const auto *glow = make_backdrop(artwork_source ? artwork_source(e) : nullptr, rw, rh)) {
+    const lv_image_dsc_t *glow = server_backdrop(e, rw, rh);
+    if (glow == nullptr) glow = make_backdrop(artwork_source ? artwork_source(e) : nullptr, rw, rh);
+    if (glow != nullptr) {
       lv_obj_set_style_clip_corner(panel, true, 0);
       auto *img = lv_image_create(panel);
       lv_obj_remove_flag(img, LV_OBJ_FLAG_CLICKABLE);
