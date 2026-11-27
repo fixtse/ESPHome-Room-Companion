@@ -3577,7 +3577,7 @@ __attribute__((noinline)) inline void build_media(const Layout &l, const std::st
   const bool lyrics = playback && onx_lyrics::available(e, d.media_title);
   if (playback && !lyrics) onx_lyrics::request(e, d.media_title);
   auto toggle = [](lv_event_t *) { if (allowed()) { onx_lyrics::toggle(); built_signature.clear(); } };
-  // Synced lyrics (optional blueprint) take the artwork's whole column; a tap
+  // Synced lyrics take the artwork's whole column; a tap
   // shows the artwork again.
   if (lyrics && onx_lyrics::shown(e, d.media_title)) {
     detach_artwork();

@@ -9,7 +9,7 @@ Choose the controls you want on screen and arrange them around your routine.
 
 Made by [fixtSE](https://fixtse.com/).
 
-[Key features](#key-features) · [Get started](#get-started) · [User guide](docs/web-configuration.md) · [Firmware releases](https://github.com/fixtse/esp-ota/releases) · [All guides](#find-your-guide)
+[Key features](#key-features) · [Get started](#get-started) · [User guide](docs/web-configuration.md) · [Firmware releases](https://github.com/fixtse/esp-ota/releases) · [All guides](#find-your-guide) · [Home Assistant integration](https://github.com/fixtse/ha-room-companion)
 
 ## Key features
 
@@ -69,10 +69,9 @@ the album art—showing the previous, current, and next lines in time with the
 music. Works with Spotify and any other Home Assistant media player that reports
 title, artist, duration, and position:
 
-- **Synced locally on the panel.** An optional Home Assistant blueprint fetches
-  timed lyrics once per track from [LRCLIB](https://lrclib.net) (free, no
-  account required) and sends them to the panel; the panel tracks the active
-  line locally without extra network traffic.
+- **Synced locally on the panel.** The Room Companion integration fetches
+  timed lyrics from [LRCLIB](https://lrclib.net) and sends them to the panel.
+  The panel tracks the active line locally.
 - **Instant toggle & custom sources.** Tap the lyrics at any time to switch back
   to the album art and quick actions (lyrics return on the next track), or send
   LRC text from your own automation with the panel’s `set_lyrics` action.
@@ -138,14 +137,13 @@ the [fixtSE ImmichFrame fork](https://github.com/fixtse/ImmichFrame):
 - **Phone & desktop notifications via KDE Connect.** Mirror notifications (with
   app icons and automatic dismissal when cleared on your phone or PC) using
   [KDE for Home Assistant](https://github.com/Radeaus/kdeforhomeassistant) and
-  the included [notifications blueprint](blueprints/automation/notifications_on_esphome_display.yaml)
+  the [Room Companion integration](https://github.com/fixtse/ha-room-companion)
   ([setup guide](docs/display-notifications.md#phone-and-desktop-notifications-kde-connect)).
   On **Linux** and **Windows**, pair it with the
   [KDE Connect Rich Notifications](https://github.com/fixtse/kdeconnect-rich-notifications)
   plugin to send desktop notifications with chat avatars, website icons, and
   screenshot previews (Linux) or app logos (experimental Windows port).
 
-  [![Import the KDE for Home Assistant notifications blueprint](https://my.home-assistant.io/badges/blueprint_import.svg)](https://my.home-assistant.io/redirect/blueprint_import/?blueprint_url=https%3A%2F%2Fgithub.com%2Ffixtse%2FESPHome-Room-Companion%2Fblob%2Fmain%2Fblueprints%2Fautomation%2Fnotifications_on_esphome_display.yaml)
 - **Pull-down quick toggles & status chips.** The notification shade includes
   quick tiles to toggle the standby clock timer, **switch presets on the
   panel**, and rotate screen orientation. Live status chips in the top bar let
@@ -252,6 +250,9 @@ rear speaker mount. [STLs, CAD previews, and assembly guide](hardware/enclosures
 3. Open **Visit** on the device page, or use the address shown on the panel.
    Sign in to browse your Home Assistant entities, add your first page and
    controls, and select **Save changes**.
+
+For synced lyrics, notification forwarding, and images served over your local
+network, [set up the Room Companion integration](docs/setup.md#set-up-the-room-companion-integration).
 
 Already running Room Companion? Check the panel’s **Firmware Update** entity
 in Home Assistant for available updates. [Setup and update guide](docs/setup.md#keep-it-updated)

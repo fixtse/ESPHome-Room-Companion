@@ -1,9 +1,8 @@
 #pragma once
-// Synced lyrics pushed by Home Assistant (blueprints/room_companion_lyrics.yaml).
-// Home Assistant fetches an LRC text from LRCLIB once per track and calls the
-// panel's `set_lyrics` action; the panel follows the media position it already
-// projects, so no per-line traffic is needed. Nothing is stored unless the
-// optional blueprint is installed. The text is kept in one buffer (PSRAM on
+// Synced lyrics pushed by the Room Companion Home Assistant integration.
+// The integration fetches LRC text from LRCLIB and calls the panel's
+// `set_lyrics` action. The panel follows its projected media position locally.
+// The text is kept in one buffer (PSRAM on
 // the board: CONFIG_SPIRAM_MALLOC_ALWAYSINTERNAL is 0).
 #include <algorithm>
 #include <cstdint>

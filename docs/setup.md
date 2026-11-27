@@ -41,6 +41,26 @@ Browser sign-in helps you choose items; adding the ESPHome integration connects
 the panel. Both steps matter. No long-lived access token needs to be
 copied into the device.
 
+## Set up the Room Companion integration
+
+1. Install **Room Companion** through HACS and restart Home Assistant. See the
+   [integration installation guide](https://github.com/fixtse/ha-room-companion#installation)
+   for HACS and manual installation.
+2. In Home Assistant, go to **Settings → Devices & services → Add integration →
+   Room Companion** and select your ESPHome panel. Repeat for each panel.
+3. Open **Configure** on the Room Companion entry to choose media players and
+   enable the features you want. See [Synced lyrics](lyrics.md),
+   [Display notifications](display-notifications.md), and
+   [Icons and media](icons-and-media.md).
+
+Firmware **2026.11.1.25** or later supports local image delivery, mid-song
+lyrics requests, and the **Lyrics offset** setting.
+
+If you previously used the lyrics or KDE Connect blueprints, disable or remove
+the automations created from them to avoid sending duplicate updates. If
+nothing else uses them, you can also remove the `room_companion_lrclib`
+`rest_command` and the Text helper used by the old notification automation.
+
 ## Keep it updated
 
 Use the panel's **Firmware Update** entity in Home Assistant to install available

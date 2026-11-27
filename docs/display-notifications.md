@@ -9,15 +9,16 @@ The underlying control is not changed by those movements.
 
 ## Send your first reminder without writing YAML
 
-1. In Home Assistant, open **Settings → Automations & scenes** and create an automation.
-2. Choose when it should run, such as a time of day or a sensor changing state.
-3. Add an action and search for **show_message** under your panel's ESPHome device name.
-4. Fill in **title** (for example, “Reminder”) and **message** (“Take the washing out”). Set **image_url** to a reachable image URL, or an empty string for text only.
-5. Set **timeout_seconds** to 60, save the automation, and try its message action.
+1. [Set up the Room Companion integration](setup.md#set-up-the-room-companion-integration).
+2. In Home Assistant, open **Settings → Automations & scenes** and create an automation.
+3. Choose a trigger, such as a time of day or a sensor changing state.
+4. Add the `room_companion.show_message` action and select your panel. Enter
+   a title and message, and optionally provide an image URL.
+5. Set **Timeout** to 60 seconds, save the automation, and run its action to
+   try it. Set the timeout to 0 to keep the message visible until dismissed.
 
-For a different duration, change **timeout_seconds**. Use 120 for two minutes, or 0 to keep it until you dismiss it.
-Use **dismiss_message** in an automation to clear it remotely. If the actions
-are missing, update the panel and let its ESPHome integration reconnect.
+Use `room_companion.dismiss_message` to clear the message remotely.
+[Room Companion actions](https://github.com/fixtse/ha-room-companion#actions)
 
 Notifications cover timer popups by default; timers keep counting underneath and
 reappear when the message closes. In website **Device settings → Notifications**,
@@ -193,22 +194,12 @@ plugin to forward desktop notifications with chat avatars, website icons, and
 screenshot previews on Linux, or notification text and application logos via its
 experimental Windows port.
 
-With the [Room Companion integration](https://github.com/fixtse/ha-room-companion)
-installed, turn on **Show KDE Connect notifications** in the panel's
-**Configure** dialog instead of steps 2 to 4; no Text helper or blueprint is
-needed. It also serves the notification icons from Home Assistant, sized for
+1. Pair your devices with **KDE for Home Assistant** and choose which devices
+   and apps share notifications on its sidebar page.
+2. [Set up the Room Companion integration](setup.md#set-up-the-room-companion-integration).
+3. Open **Configure** on the Room Companion entry for your panel and enable
+   **Show KDE Connect notifications**. You can limit forwarding to selected
+   devices.
+
+The integration also serves notification icons from Home Assistant, sized for
 the panel.
-
-1. Install and pair your devices with
-   [KDE for Home Assistant](https://github.com/Radeaus/kdeforhomeassistant), and
-   choose which devices and apps share notifications on its sidebar page.
-2. Create a **Text** helper (`input_text`, max length 255) in Home Assistant to
-   track the active notification on the display.
-3. Import the included blueprint:
-
-   [![Import the blueprint](https://my.home-assistant.io/badges/blueprint_import.svg)](https://my.home-assistant.io/redirect/blueprint_import/?blueprint_url=https%3A%2F%2Fgithub.com%2Ffixtse%2FESPHome-Room-Companion%2Fblob%2Fmain%2Fblueprints%2Fautomation%2Fnotifications_on_esphome_display.yaml)
-
-4. Create an automation from **KDE for Home Assistant · notifications on an
-   ESPHome display**, selecting your KDE Connect device(s), the Text helper, and
-   your Room Companion panel. Set **Icon server URL** if Home Assistant’s
-   default URL is not directly reachable from the panel’s LAN.

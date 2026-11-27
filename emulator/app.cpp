@@ -290,7 +290,7 @@ std::vector<Shot> load_scenario(const std::string &path) {
         // Handled below, once the state is known.
       } else if (k != "entity_id" && k != "name" && k != "unavailable" && k != "detail" && k != "history" && k != "secondary" && k != "cover_presets" && k != "cover_presets_enabled") set_field(d, k, kv.value());
     }
-    // Media position (seconds) and synced lyrics (LRC text, as the lyrics blueprint sends).
+    // Media position (seconds) and synced lyrics (LRC text, as the integration sends).
     if (e["media_duration"].is<float>()) d.progress.set_duration(e["media_duration"].as<float>());
     if (e["media_position"].is<float>()) {
       d.progress.set_state(d.state, lvgl_emu::now_ms());

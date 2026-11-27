@@ -24,11 +24,10 @@ registry icon overrides. Native API `icon` attribute changes are also followed
 when there is no saved registry override. Icon metadata is included in configuration
 exports; older backups without icon fields still import.
 
-With the [Room Companion integration](https://github.com/fixtse/ha-room-companion)
-installed, the panel fetches icons, color emoji and media covers from Home
-Assistant over the local network instead: Home Assistant downloads each one
-once, keeps it in a cache and serves covers already cropped to the panel's
-size. This is faster and needs no HTTPS on the panel. When Home Assistant does
+After [setting up the Room Companion integration](setup.md#set-up-the-room-companion-integration)
+and updating to firmware **2026.11.1.25** or later, the panel fetches icons,
+color emoji, and media covers from Home Assistant over the local network.
+Home Assistant caches the downloads and crops covers to the panel's size. This is faster and needs no HTTPS on the panel. When Home Assistant does
 not answer, the panel uses the internet sources below for five minutes.
 
 Without the integration, icons download over verified HTTPS from `api.iconify.design` and are rasterized on

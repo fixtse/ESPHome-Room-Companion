@@ -20,8 +20,7 @@ uart: !remove
 # Public firmware uses an unencrypted API; provisioning stays in device NVS.
 api:
   encryption: !remove
-  # Optional synced lyrics, sent once per track by the Room Companion lyrics
-  # blueprint (blueprints/automation/room_companion_lyrics.yaml).
+  # Optional synced lyrics from the Room Companion Home Assistant integration.
   actions:
     - action: set_lyrics
       description: Synced LRC lyrics for a media player's current track; an empty lrc clears them.
