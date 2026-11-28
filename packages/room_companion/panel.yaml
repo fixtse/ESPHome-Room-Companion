@@ -40,6 +40,24 @@ api:
       then:
         - lambda: |-
             onx_lyrics::set_offset(offset_ms);
+    # For Assist or automations: wake the panel and show a configured entity's
+    # page, or its detail screen when detail is true.
+    - action: show_entity
+      description: Show the page of a configured entity (detail=true opens its detail screen).
+      variables:
+        entity_id: string
+        detail: bool
+      then:
+        - lambda: |-
+            const int config = onx_panel_pages::configured(entity_id);
+            if (config < 0) { ESP_LOGW("panel", "show_entity: %s is not on this panel", entity_id.c_str()); return; }
+            if (onx_power::sleeping && id(low_power_sleep).state) id(low_power_sleep).turn_off();
+            if (id(ui_presenter)->is_standby_active()) id(exit_standby_mode).execute();
+            id(ui_presenter)->notify_user_activity();
+            if (id(normal_device_detail_active)) id(exit_normal_switch_detail).execute();
+            id(normal_device_selected_index) = custom_logic::normal_ui_slot_for_device_config_slot(config);
+            if (detail) id(enter_normal_switch_detail).execute();
+            else id(show_normal_device_entry_page).execute(0);
     # Sent by the Room Companion integration (github.com/fixtse/ha-room-companion):
     # icons, emoji, covers and the lyrics backdrop then come from Home Assistant.
     - action: set_companion

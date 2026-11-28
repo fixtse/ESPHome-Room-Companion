@@ -203,6 +203,9 @@ the [fixtSE ImmichFrame fork](https://github.com/fixtse/ImmichFrame):
   **Screen Off**, **Low Power Sleep**, **Idle screen**, **Streamed page**,
   **Preset**, **Talk**, **Microphone muted**, **Speaker**, and **Firmware
   Update**.
+- **Show an entity from Assist.** The `show_entity` action (`entity_id`,
+  `detail`) wakes the panel and shows a configured entity's page, or its detail
+  screen. See [Show an entity with Assist](docs/room-companion/assist-show-entity.md).
 
 ### Browser setup, backups & maintenance
 
