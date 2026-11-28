@@ -2,7 +2,7 @@
 namespace esphome::onx_config_web {
 static const char HA_BROWSER_JS[] = R"ONXJS(
 (()=>{
- const supported=/^(sensor|binary_sensor|light|switch|climate|media_player|timer|weather|cover|automation|script|fan|number|input_number|select|input_select|scene|button|input_button|siren|event|camera|vacuum|lock|alarm_control_panel)\./;
+ const supported=/^(sensor|binary_sensor|light|switch|climate|media_player|timer|weather|cover|automation|script|fan|number|input_number|select|input_select|scene|button|input_button|siren|event|camera|image|vacuum|lock|alarm_control_panel)\./;
  const local=()=>globalThis.ONX_PANEL?[{entity:'[Local] Dashboard',name:'Dashboard',area:'On this panel',icon:'mdi:monitor-dashboard'},{entity:'[Local] Assist',name:'Assist',area:'On this panel',icon:'mdi:microphone'}]:[];
  const validIcon=value=>typeof value==='string'&&/^mdi:[a-z0-9-]{1,76}$/.test(value);
  function translatedIcon(definition,state){

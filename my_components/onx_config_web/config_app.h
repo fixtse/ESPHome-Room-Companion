@@ -313,6 +313,16 @@ function renderPlaylists(){
  $('add-playlist').disabled=busy||!initialized||s.playlists.length>=8;
 }
 $('add-playlist').onclick=()=>selectMode('playlist',slots[active].playlists.length);
+// What the open picker may choose from and its filter buttons: a map offers
+// cameras and images, a PTZ entity cameras, a switch's reading power/energy
+// sensors, actions scripts and automations; slots only entities a slot supports.
+function pickerScope(){const e=slots[active]?.entity||'',all={domains,initial:''};
+ if(mode==='page')return {...all,items:ha.items.filter(i=>(!pagePick||pagePick.accept(i.entity))&&isSupported(i.entity))};
+ if(isActionPicker())return {items:ha.items.filter(i=>/^(automation|script)\./.test(i.entity)),domains:[['actions','All actions'],['automation','Automations'],['script','Scripts']],initial:'actions'};
+ if(mode==='secondary'&&e.startsWith('switch.'))return {items:ha.items.filter(i=>i.entity.startsWith('sensor.')&&(i.unit===undefined||['W','kWh'].includes(i.unit))),domains:[['sensor','Power & energy']],initial:'sensor'};
+ if(mode==='secondary'&&e.startsWith('camera.'))return {items:ha.items.filter(i=>i.entity.startsWith('camera.')),domains:[['camera','Cameras']],initial:'camera'};
+ if(mode==='secondary'&&e.startsWith('vacuum.'))return {items:ha.items.filter(i=>/^(camera|image)\./.test(i.entity)),domains:[['','All'],['camera','Cameras'],['image','Images']],initial:''};
+ return {...all,items:ha.items.filter(i=>isSupported(i.entity))};}
 function isActionPicker(){return mode==='action'||mode==='playlist'||mode==='gesture'}
 function selectedPickerEntity(){const s=slots[active];return mode==='gesture'?s.gestures[gestureTarget]:mode==='gestureFeedback'?s.gestures.feedback:mode==='playlist'?s.playlists[playlistTarget]?.action:mode==='secondary'?s.secondary:mode==='action'?s.action:s.entity}
 function closePicker(){if($('entity-picker').open)$('entity-picker').close()}
@@ -372,11 +382,11 @@ function render(){trackUndo();
  for(const id of ['choose-secondary','secondary-entity','secondary-text','sensor-graph','sensor-graph-source','sensor-graph-range','choose-entity','clear','display-name','import','export','ha-connect','ha-disconnect','discard-settings'])$(id).disabled=busy||!initialized;
  $('save-settings').disabled=busy||!initialized||!dirtySettings();
  $('display-binding').classList.toggle('active',slotTab==='display');$('action-binding').classList.toggle('active',slotTab==='action');$('action-hint').hidden=!isActionPicker();$('search-title').textContent=isActionPicker()?'Automations & scripts':mode==='secondary'?'Secondary entities':'Available entities';$('picker-title').textContent=mode==='gesture'?'Choose a gesture action':mode==='gestureFeedback'?'Choose a feedback entity':mode==='playlist'?'Choose a quick action':mode==='action'?'Choose a press action':mode==='secondary'?'Choose a secondary entity':mode==='page'?'Place an entity on this page':'Choose a display entity';$('picker-context').textContent=mode==='playlist'?(slots[active].playlists[playlistTarget]?.name||'Playlist '+(playlistTarget+1)):mode==='page'?'':slots[active].name||slots[active].entity;
- $('filters').replaceChildren(...(isActionPicker()?[['actions','All actions'],['automation','Automations'],['script','Scripts']]:domains).map(([value,title])=>{const b=element('button',title);b.setAttribute('aria-pressed',String(value===domain));b.onclick=()=>{domain=value;render();search()};return b}));if(globalThis.ONX_PANEL_EDITOR){globalThis.ONX_PANEL_EDITOR(slots,active,busy,()=>drawPreview(slots[active]),editTarget);renderPresetCard();saveStates()}preview();
+ const scope=pickerScope();if(!scope.domains.some(([value])=>value===domain))domain=scope.initial;$('filters').replaceChildren(...scope.domains.map(([value,title])=>{const b=element('button',title);b.setAttribute('aria-pressed',String(value===domain));b.onclick=()=>{domain=value;render();search()};return b}));if(globalThis.ONX_PANEL_EDITOR){globalThis.ONX_PANEL_EDITOR(slots,active,busy,()=>drawPreview(slots[active]),editTarget);renderPresetCard();saveStates()}preview();
 }
 function changed(){if(recovery){recovery=null;$('draft-notice').hidden=true}persistDraft();render();message('Changes not saved. Review and save when ready.')}
 function selectMode(value,index=-1){
- if(busy||!initialized)return;mode=value;playlistTarget=value==='playlist'?index:-1;domain=isActionPicker()?'actions':'';
+ if(busy||!initialized)return;mode=value;playlistTarget=value==='playlist'?index:-1;domain=pickerScope().initial;
  $('search').value='';$('room').value='';render();search();
  if(!$('entity-picker').open)$('entity-picker').showModal();$('search').focus();
 }
@@ -405,7 +415,7 @@ function choose(item){
 }
 function isManualEntity(value){return /^[a-z0-9_]+\.[a-z0-9_]+$/.test(value)&&value.length<=128&&/^(sensor|binary_sensor|light|switch|climate|media_player|timer|weather|cover|automation|script|fan|number|input_number|select|input_select|scene|button|input_button|siren|event|camera|vacuum|lock|alarm_control_panel)\./.test(value)&&mode!=='playlist'&&(!isActionPicker()||/^(automation|script)\./.test(value))}
 function search(append=false){const mine=++revision,offset=append?next:0,query=$('search').value.trim();if(!append)$('results').replaceChildren();$('manual').replaceChildren();$('more').hidden=true;
- const available=mode==='page'?ha.items.filter(i=>!pagePick||pagePick.accept(i.entity)):isActionPicker()?ha.items.filter(i=>/^(automation|script)\./.test(i.entity)):mode==='secondary'&&slots[active].entity.startsWith('switch.')?ha.items.filter(i=>i.entity.startsWith('sensor.')&&(i.unit===undefined||['W','kWh'].includes(i.unit))):mode==='secondary'&&slots[active].entity.startsWith('camera.')?ha.items.filter(i=>i.entity.startsWith('camera.')):mode==='secondary'&&slots[active].entity.startsWith('vacuum.')?ha.items.filter(i=>/^(camera|image)\./.test(i.entity)):ha.items;const items=$('room').value?available.filter(i=>i.area===$('room').value):available,data=OnxHA.search(items,query,domain,offset);if(mine!==revision)return;$('count').textContent=data.total+' matches';
+ const available=pickerScope().items;const items=$('room').value?available.filter(i=>i.area===$('room').value):available,data=OnxHA.search(items,query,domain,offset);if(mine!==revision)return;$('count').textContent=data.total+' matches';
  if(!data.items.length&&!append){$('results').append(element('p',ha.ready?'No matches. Try another name, room, or entity type.':mode==='playlist'?'Sign in on the Home Assistant page to choose a script or automation.':'Sign in on the Home Assistant page to browse entities, or enter a full entity ID.','empty'));if(!ha.ready){const b=element('button','Open Home Assistant setup');b.onclick=()=>{closePicker();page('connection')};$('results').append(b)}}
  for(const item of data.items){const row=element('button','','result'),text=element('span','');text.append(element('strong',item.name||item.entity),element('small',item.entity));row.append(text,element('em',item.area||item.entity.split('.')[0]));row.classList.toggle('selected',selectedPickerEntity()===item.entity);row.disabled=busy||(mode==='action'&&(!slots[active].entity||nativePress(slots[active].entity)));row.onclick=()=>choose(item);row.draggable=true;row.ondragstart=e=>{e.dataTransfer.setData('application/x-onx-entity',JSON.stringify(item));e.dataTransfer.effectAllowed='copy';document.body.classList.add('dragging-entity')};$('results').append(row)}
  next=data.next;$('more').hidden=next<0;if(isManualEntity(query)&&!ha.items.some(i=>i.entity===query)){const b=element('button','Use entity ID: '+query);b.disabled=busy;b.onclick=()=>choose({entity:query,name:query});$('manual').append(b)}
