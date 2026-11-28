@@ -31,7 +31,7 @@ sets how many steps one swipe position moves.
 | Scenes and buttons | — | Activate | — |
 | Media players | Up / down: volume | Play/pause (or the transport buttons) | Next / previous track |
 | Cameras | — | Tap snapshot to refresh; use icon buttons for refresh, power, motion detection, camera sound and full screen (tap the live picture) for live cameras, and optional ONVIF PTZ | — |
-| Vacuums | Preview fan speed (when supported) | Start / pause cleaning, or use icon buttons for stop, dock, locate, spot clean, and fan speed | — |
+| Vacuums | Preview fan speed (when supported) | Start / pause cleaning, or use icon buttons for stop, dock, locate, spot clean, fan speed, the map and room cleaning ([setup](room-companion/vacuum-rooms.md)) | — |
 | Locks | — | Lock / unlock (or enter PIN on the detail screen when a code is required) | — |
 | Alarms | — | Enter PIN (when required) and tap Disarm or an arm mode (Home / Away / Night) | — |
 | Weather | Browse readings and daily forecasts | Retry unavailable forecasts | — |

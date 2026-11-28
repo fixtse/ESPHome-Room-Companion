@@ -294,21 +294,27 @@ inline int camera_box = 320;
 inline std::function<bool()> camera_live;
 inline std::string camera_picture_url(const std::string &origin, const std::string &entity, const std::string &picture) {
   if (artwork_url(origin, picture).empty()) return "";
-  const std::string local = onx_companion::camera_url(entity, camera_box, camera_box, false, camera_live && camera_live());
+  const std::string local = onx_companion::camera_url(entity, camera_box, camera_box, false,
+                                                        entity.rfind("camera.", 0) == 0 && camera_live && camera_live());
   return local.empty() ? artwork_url(origin, picture) : local;
 }
 // A vacuum's map (Xiaomi Cloud Map Extractor camera, saved as its secondary
 // entity) is shown through the camera path: art_entity() names the camera
 // whose picture stands for an entity, art_picture() its picture path.
+// Cameras and image entities both download as snapshots.
+inline bool snapshot_entity(const std::string &entity) {
+  return entity.rfind("camera.", 0) == 0 || entity.rfind("image.", 0) == 0;
+}
 inline std::function<std::string(const std::string &)> map_camera;
 inline std::string art_entity(const std::string &entity) {
   if (entity.rfind("vacuum.", 0) != 0 || !map_camera) return entity;
   const auto map = map_camera(entity);
-  return map.rfind("camera.", 0) == 0 ? map : entity;
+  return snapshot_entity(map) ? map : entity;
 }
 inline bool has_map(const std::string &entity) { return art_entity(entity) != entity; }
 inline std::string art_picture(const std::string &entity, const std::string &art, const std::string &picture) {
-  return art == entity ? picture : "/api/camera_proxy/" + art;
+  if (art == entity) return picture;
+  return (art.rfind("image.", 0) == 0 ? "/api/image_proxy/" : "/api/camera_proxy/") + art;
 }
 inline std::string camera_snapshot_url(const std::string &origin, const std::string &entity, const std::string &picture,
                                        uint32_t seq) {
@@ -334,7 +340,7 @@ inline std::string camera_of_url(const std::string &url) {
   if (pos == std::string::npos) { pos = url.find("/api/camera_proxy_stream/"); len = 25; }
   // Room Companion: <base>/snapshot/camera.x or <base>/stream/camera.x.
   if (pos == std::string::npos && url.find("/api/room_companion/") != std::string::npos) {
-    if ((pos = url.find("/snapshot/camera.")) != std::string::npos) len = 10;
+    if ((pos = url.find("/snapshot/camera.")) != std::string::npos || (pos = url.find("/snapshot/image.")) != std::string::npos) len = 10;
     else if ((pos = url.find("/stream/camera.")) != std::string::npos) len = 8;
   }
   if (pos == std::string::npos) return "";

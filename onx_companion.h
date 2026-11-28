@@ -154,7 +154,9 @@ inline bool entity_ok(const std::string &entity) {
 // (stream = true). live: the panel plays the camera live through Room
 // Companion next, so Home Assistant prepares that too.
 inline std::string camera_url(const std::string &entity, int w, int h, bool stream, bool live) {
-  if (entity.rfind("camera.", 0) != 0 || !entity_ok(entity)) return {};
+  // Image entities (a vacuum map) have snapshots only.
+  const bool image = entity.rfind("image.", 0) == 0;
+  if ((entity.rfind("camera.", 0) != 0 && !image) || (image && stream) || !entity_ok(entity)) return {};
   const auto b = base();
   if (b.empty()) return b;
   return b + (stream ? "/stream/" : "/snapshot/") + entity + "?w=" + std::to_string(w) + "&h=" + std::to_string(h) +

@@ -365,7 +365,8 @@ onx_config_web:
       if (!(sensor_graph & onx_sensor_view::GRAPH_ON)) sensor_graph = 0;
     }
     if ((!query.secondary.empty() && (!onx_config::valid_entity(query.secondary) || (domain!="sensor" && domain!="switch" && domain!="camera" && domain!="vacuum") ||
-          (domain=="switch" && query.secondary.rfind("sensor.",0)!=0) || ((domain=="camera" || domain=="vacuum") && query.secondary.rfind("camera.",0)!=0))) ||
+          (domain=="switch" && query.secondary.rfind("sensor.",0)!=0) || (domain=="camera" && query.secondary.rfind("camera.",0)!=0) ||
+          (domain=="vacuum" && query.secondary.rfind("camera.",0)!=0 && query.secondary.rfind("image.",0)!=0))) ||
         (sensor_graph && domain!="sensor" && domain!="switch") ||
         (domain=="switch" && sensor_graph && query.secondary.empty()))
       return onx_entity_config::error("Secondary entities: a sensor, a switch's power/energy sensor, or a camera's ONVIF camera");
@@ -391,6 +392,12 @@ onx_config_web:
     onx_playlist::Config playlist_config{};
     if (!onx_entity_config::parse_playlists(query.entity,query.playlists,playlist_config))
       return onx_entity_config::error("Add up to eight playlist names (48 UTF-8 bytes) and valid script or automation entity IDs");
+    onx_vacuum_rooms::Config room_config{};
+    {
+      std::string room_error;
+      if (!onx_entity_config::parse_vacuum_rooms(query.entity,query.rooms,room_config,room_error))
+        return onx_entity_config::error(room_error.c_str());
+    }
     if (!custom_logic::save_device_config_entity_id(query.slot, query.entity))
       return onx_entity_config::error("Could not save the displayed entity; retry");
     if (!onx_entity_config::save_action(query.slot, query.entity, query.action))
@@ -405,6 +412,8 @@ onx_config_web:
       return onx_entity_config::error("Could not save cover positions; retry");
     if (!onx_entity_config::save_playlists(query.slot,playlist_config))
       return onx_entity_config::error("Could not save playlist actions; retry");
+    if (!onx_entity_config::save_vacuum_rooms(query.slot,room_config))
+      return onx_entity_config::error("Could not save the vacuum rooms; retry");
     if (!onx_entity_config::save_selected_metadata(query)) return onx_entity_config::error("Could not save selected entity details");
     if (!onx_entity_config::save_icon(query.slot, query.entity, query.icon, query.icon_override == "1"))
       return onx_entity_config::error("Could not save selected entity icon");

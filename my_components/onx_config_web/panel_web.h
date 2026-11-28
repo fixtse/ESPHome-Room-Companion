@@ -743,14 +743,22 @@ static const char PANEL_JS[] = R"ONXPANEL(
    if(!artPending.has(id))continue;
    const data=artData.get(id);
    const payload=data.replace(/\+/g,'-').replace(/\//g,'_'),length=artChunk*4/3;
-   let result;
-   if(data.length===4268)result=await rpc({op:'panel_art_put',data:payload});
-   else for(let i=0;i<payload.length;i+=length){
-    const offset=i*3/4;
-    result=await rpc({op:'panel_art_put',q:id,offset,data:payload.slice(i,i+length)});
-    if(i+length<payload.length&&result.next!==offset+artChunk)throw Error('The panel could not receive the image.');
+   // A large import sends many chunks; a dropped one restarts that image
+   // from offset 0 (the panel only accepts chunks in order).
+   for(let attempt=0;;attempt++){
+    try{
+     let result;
+     if(data.length===4268)result=await rpc({op:'panel_art_put',data:payload});
+     else for(let i=0;i<payload.length;i+=length){
+      const offset=i*3/4;
+      result=await rpc({op:'panel_art_put',q:id,offset,data:payload.slice(i,i+length)});
+      if(result?.error)throw Error(result.error);
+      if(i+length<payload.length&&result.next!==offset+artChunk)throw Error('The panel could not receive the image.');
+     }
+     if(result?.id!==id)throw Error(result?.error||'The panel could not verify the image.');
+     break;
+    }catch(error){if(attempt>=2)throw error;await new Promise(r=>setTimeout(r,500+500*attempt))}
    }
-   if(result?.id!==id)throw Error('The panel could not verify the image.');
   }
  }
  globalThis.ONX_PAGE_ART={
@@ -1260,12 +1268,16 @@ static const char PANEL_JS[] = R"ONXPANEL(
    if(!d.features||(d.features&16))primary.push(['home',state==='returning']);
    if(d.features&512)secondary.push(['gps',false]);
    if(d.features&1024)secondary.push(['loop',false]);
-   const rows=(primary.length?1:0)+(secondary.length?1:0)+(speeds.length?1:0);if(!rows)return;
+   // Rooms: the slot being edited, else what the panel reports.
+   const edited=slot.entity===e&&slot.rooms,roomCount=edited?(slot.rooms.method&&slot.rooms.method!=='off'?(slot.rooms.rooms||[]).length:0):(d.rooms||0);
+   const rows=(primary.length?1:0)+(secondary.length?1:0)+(speeds.length||roomCount?1:0);if(!rows)return;
    const gap=P(8),rh=Math.min(P(48),Math.trunc((l.ctl.h-gap*(rows-1))/rows));let y=l.ctl.y;
    const drawRow=list=>{if(!list.length||y+rh>bottomOf(l.ctl)+P(4))return;const n=list.length,bw=Math.trunc((l.ctl.w-gap*(n-1))/n);
     list.forEach((a,i)=>iconButton(l.ctl.x+i*(bw+gap),y,i===n-1?l.ctl.w-i*(bw+gap):bw,rh,P(14),a[1]?STRONG:CONTROL,a[0],TEXT));y+=rh+gap};
    drawRow(primary);drawRow(secondary);
-   if(speeds.length&&y+rh<=bottomOf(l.ctl)+P(4))row({x:l.ctl.x,y,w:l.ctl.w,h:rh},'Fan speed',label(!speed||speed==='None'?speeds[0]:speed)+'  ›');
+   if((speeds.length||roomCount)&&y+rh<=bottomOf(l.ctl)+P(4)){const half=Math.trunc((l.ctl.w-gap)/2),both=speeds.length&&roomCount;
+    if(speeds.length)row({x:l.ctl.x,y,w:both?half:l.ctl.w,h:rh},both?'Speed':'Fan speed',label(!speed||speed==='None'?speeds[0]:speed)+'  ›');
+    if(roomCount)row({x:both?l.ctl.x+half+gap:l.ctl.x,y,w:both?l.ctl.w-half-gap:l.ctl.w,h:rh},'Rooms',roomCount+'  ›')}
   };
   const buildCamera=(base,e,d,title,v)=>{
    const on=['streaming','recording','on'].includes(d.state),hasMotion=['True','true','False','false'].includes(d.motion_detection),motionOn=['True','true'].includes(d.motion_detection);

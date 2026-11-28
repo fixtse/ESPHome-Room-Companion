@@ -1179,7 +1179,7 @@ script:
           onx_panel_detail::artwork_source = [](const std::string &entity) -> const void * {
             const auto *d = custom_logic_entity_sub::entity_detail(entity);
             const auto art = onx_media::art_entity(entity);
-            const bool cam = art.rfind("camera.", 0) == 0;
+            const bool cam = onx_media::snapshot_entity(art);
             if (!d || !d->available || (!cam && !onx_media::has_playback(d->state))) return nullptr;
             const std::string pic = onx_media::art_picture(entity, art, d->picture);
             auto origin = custom_logic::build_ha_http_state_url(id(ha_host).state, "media_player.cover");
@@ -1304,6 +1304,56 @@ script:
             add(k_mode, sizeof(k_mode) - 1, v_mode, sizeof(v_mode) - 1);
             add(k_dist, sizeof(k_dist) - 1, v_dist, sizeof(v_dist) - 1);
             id(api_server)->send_homeassistant_action(call);
+            #endif
+          };
+          // Vacuum room cleaning: Home Assistant's vacuum.clean_area with area ids,
+          // or the user's script with the room names (docs/room-companion/vacuum-rooms.md).
+          onx_panel_detail::vacuum_rooms = [](const std::string &entity) { return onx_entity_config::vacuum_rooms_for(entity); };
+          onx_panel_detail::clean_rooms = [](const std::string &entity, const onx_vacuum_rooms::Config &cfg, const std::vector<int> &order) {
+            #ifdef USE_API_HOMEASSISTANT_SERVICES
+            if (!id(normal_ha_api_connected) || order.empty()) return false;
+            std::string ids, names, list;
+            for (int i : order) {
+              if (i < 0 || i >= cfg.count) return false;
+              const auto &room = cfg.rooms[i];
+              if (!names.empty()) { names += cfg.separator; ids += cfg.separator; list += ", "; }
+              names += room.name; ids += room.id; list += std::string("'") + room.id + "'";
+            }
+            list = "[" + list + "]";
+            const bool areas = cfg.method == onx_vacuum_rooms::AREAS;
+            const std::string service = areas ? "vacuum.clean_area" : std::string(cfg.script);
+            if (service.empty()) return false;
+            esphome::api::HomeassistantActionRequest call;
+            call.service = {service.data(), service.size()};
+            static constexpr char k_entity[] = "entity_id", k_area[] = "cleaning_area_id", k_vacuum[] = "vacuum_entity", k_ids[] = "room_ids";
+            auto item = [](const char *k, size_t kl, const std::string &v) {
+              esphome::api::HomeassistantServiceMap m;
+              m.key = {k, kl};
+              m.value = {v.data(), v.size()};
+              return m;
+            };
+            const bool any_id = std::any_of(order.begin(), order.end(), [&](int i) { return cfg.rooms[i].id[0] != 0; });
+            if (areas) {
+              call.data.init(1);
+              call.data.push_back(item(k_entity, sizeof(k_entity) - 1, entity));
+              // A list renders from a template (plain data would arrive as a string).
+              call.data_template.init(1);
+              call.data_template.push_back(item(k_area, sizeof(k_area) - 1, list));
+            } else {
+              const std::string field = cfg.field;
+              call.data.init(any_id ? 3 : 2);
+              call.data.push_back(item(field.data(), field.size(), names));
+              call.data.push_back(item(k_vacuum, sizeof(k_vacuum) - 1, entity));
+              if (any_id) call.data.push_back(item(k_ids, sizeof(k_ids) - 1, ids));
+              id(api_server)->send_homeassistant_action(call);
+              ESP_LOGI("vacuum", "Rooms sent to %s: %s", service.c_str(), names.c_str());
+              return true;
+            }
+            id(api_server)->send_homeassistant_action(call);
+            ESP_LOGI("vacuum", "vacuum.clean_area %s: %s", entity.c_str(), list.c_str());
+            return true;
+            #else
+            return false;
             #endif
           };
           onx_panel_detail::quick_actions = [](const std::string &entity) {

@@ -442,7 +442,28 @@
     "Max"
    ],
    "fan_speed": "Turbo",
-   "features": 14204
+   "features": 14204,
+   "rooms": {
+    "method": "areas",
+    "rooms": [
+     {
+      "id": "kitchen",
+      "name": "Kitchen"
+     },
+     {
+      "id": "hallway",
+      "name": "Hallway"
+     },
+     {
+      "id": "bedroom",
+      "name": "Bedroom"
+     },
+     {
+      "id": "bathroom",
+      "name": "Bathroom"
+     }
+    ]
+   }
   },
   {
    "entity_id": "lock.front_door",

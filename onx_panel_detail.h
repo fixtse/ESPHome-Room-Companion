@@ -1,6 +1,7 @@
 #pragma once
 #include "onx_panel_artwork.h"
 #include "onx_grid_cache.h"
+#include "onx_vacuum_rooms.h"
 // Redesigned rectangular detail screens (touch panels only).
 //
 // Every entity detail fills the whole screen: there is no header bar, the
@@ -1357,6 +1358,7 @@ inline void build_speed_picker(const std::string &e, const EntityDetailState &d)
   text(root, "Fan speed", fonts.title, TEXT(), pad, pad + (bs - line(fonts.title)) / 2, W - 2 * pad - bs - P(8));
   circle(root, W - pad - bs / 2, pad + bs / 2, bs, CONTROL(), LV_SYMBOL_CLOSE, TEXT(), []() {
     speed_picker.clear();
+  onx_vacuum_rooms::picker.clear();
     built_signature.clear();
   });
   const Rect r{pad, pad + bs + P(14), W - 2 * pad, H - 2 * pad - bs - P(14)};
@@ -1391,6 +1393,55 @@ inline void build_speed_picker(const std::string &e, const EntityDetailState &d)
     if (top + bh > r.h) lv_obj_scroll_to_y(list, top + bh - r.h, LV_ANIM_OFF);
   }
 }
+// Room cleaning (onx_vacuum_rooms.h): the vacuum's rooms, and the call that
+// cleans the picked ones in order (panel.yaml sends the Home Assistant action).
+inline std::function<const onx_vacuum_rooms::Config *(const std::string &)> vacuum_rooms;
+inline std::function<bool(const std::string &, const onx_vacuum_rooms::Config &, const std::vector<int> &)> clean_rooms;
+// Full screen: tap rooms in the order to clean them (each shows its place),
+// then Clean. A tap on a picked room removes it.
+inline void build_room_picker(const std::string &e, const onx_vacuum_rooms::Config &cfg) {
+  auto &pk = onx_vacuum_rooms::picker;
+  const int pad = P(16), bs = P(44), bh = P(52), gap = P(8), foot = P(52);
+  text(root, "Rooms", fonts.title, TEXT(), pad, pad + (bs - line(fonts.title)) / 2, W - 2 * pad - bs - P(8));
+  circle(root, W - pad - bs / 2, pad + bs / 2, bs, CONTROL(), LV_SYMBOL_CLOSE, TEXT(), []() {
+    onx_vacuum_rooms::picker.clear();
+    built_signature.clear();
+  });
+  const int top = pad + bs + P(14);
+  const Rect r{pad, top, W - 2 * pad, H - pad - foot - P(10) - top};
+  lv_obj_t *list = box(root, r.x, r.y, r.w, r.h, BG(), 0, LV_OPA_TRANSP);
+  lv_obj_add_flag(list, LV_OBJ_FLAG_SCROLLABLE);
+  lv_obj_set_scroll_dir(list, LV_DIR_VER);
+  lv_obj_set_scrollbar_mode(list, LV_SCROLLBAR_MODE_OFF);
+  interactive(list, false);  // Scroll gestures go to LVGL.
+  const int ns = P(30);
+  for (int i = 0; i < cfg.count; ++i) {
+    const int place = pk.position(i);
+    lv_obj_t *b = button(list, 0, i * (bh + gap), r.w, bh, P(12), place ? soft() : CARD(), "", fonts.body, TEXT(), [i]() {
+      onx_vacuum_rooms::picker.toggle(i);
+      built_signature.clear();
+    });
+    lv_obj_add_flag(b, LV_OBJ_FLAG_EVENT_BUBBLE);
+    if (place) {
+      lv_obj_set_style_border_width(b, P(2), 0);
+      lv_obj_set_style_border_color(b, lv_color_hex(accent()), 0);
+      lv_obj_t *badge = box(b, r.w - P(14) - ns, (bh - ns) / 2, ns, ns, accent(), LV_RADIUS_CIRCLE);
+      lv_obj_t *n = text(badge, std::to_string(place), fonts.body, onx_display_settings::light_color(accent()) ? 0x161B22 : 0xFFFFFF, 0, 0, ns,
+                         LV_TEXT_ALIGN_CENTER);
+      lv_obj_center(n);
+    }
+    text(b, cfg.rooms[i].name, fonts.body, place ? accent() : TEXT(), P(16), (bh - line(fonts.body)) / 2, r.w - P(32) - ns);
+  }
+  const int n = int(pk.order.size());
+  const std::string caption = n == 0 ? "Pick rooms in order" : n == 1 ? "Clean 1 room" : "Clean " + std::to_string(n) + " rooms";
+  button(root, pad, H - pad - foot, W - 2 * pad, foot, foot / 2, n ? strong() : CONTROL(), caption, fonts.body, n ? TEXT() : MUTED(), [e]() {
+    auto &picker = onx_vacuum_rooms::picker;
+    const auto *c = vacuum_rooms ? vacuum_rooms(e) : nullptr;
+    if (picker.order.empty() || c == nullptr || !clean_rooms) return;
+    if (clean_rooms(e, *c, picker.order)) picker.clear();
+    built_signature.clear();
+  });
+}
 __attribute__((noinline)) inline void build_vacuum(const Layout &l, const std::string &e, const EntityDetailState &d, const std::string &title) {
   using onx_controls::effective;
   const auto state = effective(d, "state");
@@ -1401,6 +1452,12 @@ __attribute__((noinline)) inline void build_vacuum(const Layout &l, const std::s
   const auto speeds = (d.features & 32) ? onx_control::options(d.fan_modes) : std::vector<std::string>{};
   const auto speed = effective(d, "fan_speed");
   if (speed_picker == e && !speeds.empty()) { build_speed_picker(e, d); return; }
+  const auto *rooms = vacuum_rooms ? vacuum_rooms(e) : nullptr;
+  const bool has_rooms = onx_vacuum_rooms::usable(rooms);
+  if (onx_vacuum_rooms::picker.open && onx_vacuum_rooms::picker.entity == e) {
+    if (has_rooms) { build_room_picker(e, *rooms); return; }
+    onx_vacuum_rooms::picker.clear();
+  }
   if (speed_picker == e) speed_picker.clear();
   std::string context = !d.status.empty() && d.status != "None" ? d.status : label(state.empty() ? "idle" : state);
   if (has_bat) context += " · " + pct(bat);
@@ -1455,7 +1512,7 @@ __attribute__((noinline)) inline void build_vacuum(const Layout &l, const std::s
   if (d.features & 512) secondary.push_back({LV_SYMBOL_GPS, "vacuum.locate", "", false});
   if (d.features & 1024) secondary.push_back({LV_SYMBOL_LOOP, "vacuum.clean_spot", "cleaning", false});
 
-  const int rows = (!primary.empty() ? 1 : 0) + (!secondary.empty() ? 1 : 0) + (!speeds.empty() ? 1 : 0);
+  const int rows = (!primary.empty() ? 1 : 0) + (!secondary.empty() ? 1 : 0) + (!speeds.empty() || has_rooms ? 1 : 0);
   if (!rows) return;
   const int gap = P(8), rh = std::min(P(48), (l.ctl.h - gap * (rows - 1)) / rows);
   int y = l.ctl.y;
@@ -1472,12 +1529,24 @@ __attribute__((noinline)) inline void build_vacuum(const Layout &l, const std::s
   };
   draw_row(primary);
   draw_row(secondary);
-  if (!speeds.empty() && y + rh <= l.ctl.bottom() + P(4)) {
-    const auto cur = speed.empty() || speed == "None" ? speeds.front() : speed;
-    row(root, {l.ctl.x, y, l.ctl.w, rh}, "Fan speed", label(cur) + "  ›", [e]() {
-      speed_picker = e;
-      built_signature.clear();
-    });
+  // The last row: Fan speed and Rooms, side by side when both apply.
+  if ((!speeds.empty() || has_rooms) && y + rh <= l.ctl.bottom() + P(4)) {
+    const int half = (l.ctl.w - gap) / 2;
+    const bool both = !speeds.empty() && has_rooms;
+    if (!speeds.empty()) {
+      const auto cur = speed.empty() || speed == "None" ? speeds.front() : speed;
+      row(root, {l.ctl.x, y, both ? half : l.ctl.w, rh}, both ? "Speed" : "Fan speed", label(cur) + "  ›", [e]() {
+        speed_picker = e;
+        built_signature.clear();
+      });
+    }
+    if (has_rooms) {
+      const int x = both ? l.ctl.x + half + gap : l.ctl.x, w = both ? l.ctl.w - half - gap : l.ctl.w;
+      row(root, {x, y, w, rh}, "Rooms", std::to_string(rooms->count) + "  ›", [e]() {
+        onx_vacuum_rooms::picker.show(e);
+        built_signature.clear();
+      });
+    }
   }
 }
 
@@ -5414,7 +5483,8 @@ inline std::string signature(const std::string &e, const EntityDetailState *d, c
     s += "|day" + std::to_string(weather_day) + d->hourly_date + std::to_string(d->hourly.size()) + std::to_string(d->hourly_pending);
   s += '|' + d->media_title + '|' + d->media_artist + '|' + d->picture + '|' + onx_media::ready_url +
        '|' + d->battery_level + '|' + d->status + '|' + d->motion_detection + '|' + camera_ptz_entity(e) +
-       '|' + d->changed_by + '|' + d->code_format + '|' + d->code_arm_required + '|' + (pin_entity == e ? std::to_string(pin_code.size()) : "") + '|' + alarm_fb::token(e) + (speed_picker == e ? "|sp" : "");
+       '|' + d->changed_by + '|' + d->code_format + '|' + d->code_arm_required + '|' + (pin_entity == e ? std::to_string(pin_code.size()) : "") + '|' + alarm_fb::token(e) + (speed_picker == e ? "|sp" : "") + '|' + onx_vacuum_rooms::picker.signature() +
+       (vacuum_rooms && has_prefix(e, "vacuum.") && vacuum_rooms(e) ? "|r" + std::to_string(vacuum_rooms(e)->count) : "");
   if (has_prefix(e, "media_player.")) s += '|' + std::to_string(onx_lyrics::store().version);
   if (has_prefix(e, "camera.") && live_audio) s += "|sound" + std::to_string(live_audio(e));
   s += '|' + v.value.text + '|' + v.context.text + '|' + v.name.text + '|' + std::to_string(v.value_ring);

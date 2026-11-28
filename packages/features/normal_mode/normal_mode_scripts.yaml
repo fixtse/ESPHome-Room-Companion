@@ -2441,7 +2441,7 @@ script:
           // A vacuum with a map downloads its map camera like a camera card.
           const auto art = onx_media::art_entity(entity);
           const std::string pic = detail ? onx_media::art_picture(entity, art, detail->picture) : std::string();
-          const bool cam = art.rfind("camera.", 0) == 0;
+          const bool cam = onx_media::snapshot_entity(art);
           const bool media = !main_art && id(normal_device_detail_active) &&
                              id(normal_device_detail_kind) == NORMAL_DEVICE_DETAIL_KIND_AUTOMATION &&
                              (entity.rfind("media_player.", 0) == 0 || cam) && detail != nullptr;

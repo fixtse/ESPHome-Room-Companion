@@ -10,6 +10,7 @@
 #include "onx_icon_state.h"
 #include "onx_display_settings.h"
 #include "onx_sensor_view.h"
+#include "onx_vacuum_rooms.h"
 #include "esphome/components/onx_config_web/onx_config_web.h"
 #include "esphome/components/onx_config_web/request_diagnostics.h"
 
@@ -366,6 +367,85 @@ inline bool save_playlists(size_t slot,const onx_playlist::Config &next) {
   onx_playlist::browser.clear();
   return true;
 }
+// ---- vacuum room cleaning (onx_vacuum_rooms.h) ----
+inline size_t vacuum_rooms_loaded_limit=0;
+inline onx_memory::PagedArray<esphome::ESPPreferenceObject,onx_memory::ENTRY_COUNT> vacuum_room_preferences{};
+inline esphome::ESPPreferenceObject vacuum_room_preference(size_t i) {
+  return esphome::global_preferences->make_preference<onx_vacuum_rooms::Config>(esphome::fnv1_hash("onx.vacuum_rooms.v1."+std::to_string(i)));
+}
+inline void load_vacuum_rooms() {
+  if(esphome::global_preferences==nullptr) return;
+  const size_t limit=custom_logic::active_slot_limit();
+  for(size_t i=vacuum_rooms_loaded_limit;i<limit;++i) {
+    // Only vacuum entries keep room settings; others are not read at all.
+    if(custom_logic::cached_device_entity_id(i).rfind("vacuum.",0)!=0) continue;
+    vacuum_room_preferences[i]=vacuum_room_preference(i);
+    onx_vacuum_rooms::Config saved{};
+    if(!vacuum_room_preferences[i].load(&saved) || saved.magic!=onx_vacuum_rooms::MAGIC ||
+       saved.count>onx_vacuum_rooms::MAX_ROOMS || saved.method>onx_vacuum_rooms::SCRIPT) continue;
+    saved.entity[128]=saved.script[128]=saved.field[32]=saved.separator[3]=0;
+    for(auto &room:saved.rooms) room.id[48]=room.name[48]=0;
+    if(onx_config::valid_entity(saved.entity)) onx_vacuum_rooms::configs[i]=saved;
+  }
+  if(limit>vacuum_rooms_loaded_limit)vacuum_rooms_loaded_limit=limit;
+}
+// {"method":"off|areas|script","script":"script.x","field":"rooms","separator":"|",
+//  "rooms":[{"id":"kitchen","name":"Kitchen"}, ...]}; empty clears.
+inline bool parse_vacuum_rooms(const std::string &entity,const std::string &raw,onx_vacuum_rooms::Config &next,std::string &error) {
+  using namespace onx_vacuum_rooms;
+  if(raw.empty()) return true;
+  if(entity.rfind("vacuum.",0)!=0) { error="Room cleaning is only for vacuums"; return false; }
+  auto doc=custom_logic::make_psram_json_document();
+  if(deserializeJson(doc,raw) || !doc.is<JsonObject>()) { error="Invalid room settings"; return false; }
+  const int method=method_parse(doc["method"] | std::string());
+  if(method<0) { error="Choose how rooms are cleaned"; return false; }
+  next.method=uint8_t(method);
+  custom_logic::copy_string_to_fixed_buffer(entity,next.entity);
+  const std::string script=doc["script"] | std::string(), field=doc["field"] | std::string("rooms"),
+                    separator=doc["separator"] | std::string("|");
+  if(method==SCRIPT && (script.rfind("script.",0)!=0 || !onx_config::valid_entity(script))) { error="Choose the script that cleans the rooms"; return false; }
+  if(!valid_field(field)) { error="The room field name uses a-z, 0-9 and _ (up to 32)"; return false; }
+  if(separator.empty() || separator.size()>3) { error="Use a separator of 1-3 characters"; return false; }
+  custom_logic::copy_string_to_fixed_buffer(method==SCRIPT ? script : std::string(),next.script);
+  custom_logic::copy_string_to_fixed_buffer(field,next.field);
+  custom_logic::copy_string_to_fixed_buffer(separator,next.separator);
+  JsonArrayConst rooms=doc["rooms"].as<JsonArrayConst>();
+  if(rooms.size()>MAX_ROOMS) { error="Add up to 16 rooms"; return false; }
+  for(JsonObjectConst room:rooms) {
+    const std::string id=room["id"] | std::string(), name=room["name"] | std::string();
+    if(name.empty() || name.size()>48 || id.size()>48 || name.find_first_of("\r\n")!=std::string::npos ||
+       name.find(separator)!=std::string::npos || id.find(separator)!=std::string::npos) {
+      error="Room names need 1-48 characters (UTF-8 bytes) without the separator"; return false;
+    }
+    if(method==AREAS && (id.empty() || !std::all_of(id.begin(),id.end(),[](char c){return (c>='a'&&c<='z')||(c>='0'&&c<='9')||c=='_';}))) { error="Every room needs its Home Assistant area id (a-z, 0-9, _)"; return false; }
+    auto &target=next.rooms[next.count++];
+    custom_logic::copy_string_to_fixed_buffer(id,target.id);
+    custom_logic::copy_string_to_fixed_buffer(name,target.name);
+  }
+  return true;
+}
+inline bool save_vacuum_rooms(size_t slot,const onx_vacuum_rooms::Config &next) {
+  load_vacuum_rooms();
+  if(esphome::global_preferences==nullptr || slot>=onx_memory::ENTRY_COUNT) return false;
+  const auto *existing=onx_vacuum_rooms::configs.find(slot);
+  if(next.method==onx_vacuum_rooms::OFF && next.count==0 && (existing==nullptr || (existing->method==onx_vacuum_rooms::OFF && existing->count==0))) return true;
+  vacuum_room_preferences[slot]=vacuum_room_preference(slot);
+  if(!vacuum_room_preferences[slot].save(&next) || !esphome::global_preferences->sync()) return false;
+  onx_vacuum_rooms::configs[slot]=next;
+  onx_vacuum_rooms::picker.clear();
+  return true;
+}
+// The room settings of a configured vacuum, or nullptr.
+inline const onx_vacuum_rooms::Config *vacuum_rooms_for(const std::string &entity) {
+  if(entity.rfind("vacuum.",0)!=0) return nullptr;
+  load_vacuum_rooms();
+  const size_t limit=std::min(custom_logic::active_slot_limit(),onx_vacuum_rooms::configs.allocated_limit());
+  for(size_t i=0;i<limit;++i) {
+    const auto *c=onx_vacuum_rooms::configs.find(i);
+    if(c && entity==c->entity && custom_logic::cached_device_entity_id(i)==entity) return c;
+  }
+  return nullptr;
+}
 inline const onx_playlist::Config *playlists_for_ui(int ui_slot,const std::string &entity) {
   load_playlists();
   const size_t limit=std::min(custom_logic::active_slot_limit(),onx_playlist::configs.allocated_limit());
@@ -635,6 +715,20 @@ inline void encode_slot(size_t i, JsonObject slot) {
       entry["action"] = playlist->entries[j].action;
     }
   }
+  if (const auto *rooms = onx_vacuum_rooms::configs.find(i); rooms != nullptr && entity == rooms->entity &&
+      (rooms->method != onx_vacuum_rooms::OFF || rooms->count)) {
+    JsonObject r = slot["rooms"].to<JsonObject>();
+    r["method"] = onx_vacuum_rooms::method_name(rooms->method);
+    if (rooms->script[0]) r["script"] = rooms->script;
+    r["field"] = rooms->field;
+    r["separator"] = rooms->separator;
+    JsonArray list = r["rooms"].to<JsonArray>();
+    for (size_t j = 0; j < rooms->count; ++j) {
+      auto room = list.add<JsonObject>();
+      room["id"] = rooms->rooms[j].id;
+      room["name"] = rooms->rooms[j].name;
+    }
+  }
   if (const auto *sensor = onx_sensor_view::configs.find(i); sensor != nullptr && entity == sensor->primary) {
     if (sensor->secondary[0]) {
       slot["secondary"] = sensor->secondary;
@@ -675,6 +769,7 @@ inline std::string state(const std::string &host = "", bool wifi_connected = fal
   custom_logic::load_ha_entities_if_needed();
   load_icons();
   load_playlists();
+  load_vacuum_rooms();
   load_gestures();
   return build_json([&](JsonObject root) {
     root["wifi_connected"] = wifi_connected;

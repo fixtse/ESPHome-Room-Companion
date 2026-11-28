@@ -329,13 +329,31 @@ std::vector<Shot> load_scenario(const std::string &path) {
         lights[id] = st;
       } else if (k == "media_position" || k == "media_duration" || k == "lyrics" || k == "artwork" || k == "quick_actions") {
         // Handled below, once the state is known.
-      } else if (k != "entity_id" && k != "name" && k != "unavailable" && k != "detail" && k != "history" && k != "secondary" && k != "cover_presets" && k != "cover_presets_enabled") set_field(d, k, kv.value());
+      } else if (k != "entity_id" && k != "name" && k != "unavailable" && k != "detail" && k != "history" && k != "secondary" && k != "rooms" && k != "room_picker" && k != "cover_presets" && k != "cover_presets_enabled") set_field(d, k, kv.value());
     }
     // Media position (seconds) and synced lyrics (LRC text, as the integration sends).
     if (e["media_duration"].is<float>()) d.progress.set_duration(e["media_duration"].as<float>());
     if (e["media_position"].is<float>()) {
       d.progress.set_state(d.state, lvgl_emu::now_ms());
       d.progress.set_position(e["media_position"].as<float>(), lvgl_emu::now_ms());
+    }
+    // "rooms": {"method": "areas|script", "rooms": [{"id", "name"}]} as saved by the
+    // configuration page; "room_picker": [picked room indexes] opens the room list.
+    if (e["rooms"].is<JsonObjectConst>()) {
+      auto &rc = onx_vacuum_rooms::configs[slot];
+      rc = onx_vacuum_rooms::Config{};
+      std::snprintf(rc.entity, sizeof(rc.entity), "%s", id.c_str());
+      rc.method = uint8_t(std::max(0, onx_vacuum_rooms::method_parse(e["rooms"]["method"] | "script")));
+      for (JsonObjectConst room : e["rooms"]["rooms"].as<JsonArrayConst>()) {
+        if (rc.count >= onx_vacuum_rooms::MAX_ROOMS) break;
+        auto &r = rc.rooms[rc.count++];
+        std::snprintf(r.id, sizeof(r.id), "%s", room["id"] | "");
+        std::snprintf(r.name, sizeof(r.name), "%s", room["name"] | "");
+      }
+    }
+    if (e["room_picker"].is<JsonArrayConst>()) {
+      onx_vacuum_rooms::picker.show(id);
+      for (int i : e["room_picker"].as<JsonArrayConst>()) onx_vacuum_rooms::picker.order.push_back(i);
     }
     if (e["artwork"] == "demo" || e["artwork"] == "wide") demo_artwork.insert(id);
     if (e["artwork"] == "wide") wide_artwork.insert(id);
@@ -580,6 +598,13 @@ void setup() {
   };
   // As panel.yaml: a vacuum's map camera is its secondary entity
   // ("secondary": {"entity": "camera.map"} plus "artwork": "demo" in a scenario).
+  onx_panel_detail::vacuum_rooms = [](const std::string &entity) -> const onx_vacuum_rooms::Config * {
+    for (size_t i = 0; i < onx_vacuum_rooms::configs.allocated_limit(); ++i) {
+      const auto *c = onx_vacuum_rooms::configs.find(i);
+      if (c && entity == c->entity) return c;
+    }
+    return nullptr;
+  };
   onx_media::map_camera = [](const std::string &entity) {
     const int i = onx_sensor_view::index(entity);
     return i >= 0 ? std::string(onx_sensor_view::configs[i].secondary) : std::string();

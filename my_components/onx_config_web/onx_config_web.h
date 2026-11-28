@@ -25,7 +25,7 @@ struct Query {
   std::string background_color;
   std::string brightness, standby, sensitivity, sleep_enabled, sleep_start, sleep_end, sleep_timeout;
   std::string data, total;  // Chunked preset restore.
-  std::string clock_seconds_ring, hold_cue, assist_mute_media, clock_temperature, clock_humidity, clock_layout, notifications_cover_timers, gestures, orientation, idle_view, timer_hidden, media_color, standby_scope, date_format, hour_format, show_ampm, secondary, secondary_text, sensor_graph;
+  std::string clock_seconds_ring, hold_cue, assist_mute_media, clock_temperature, clock_humidity, clock_layout, notifications_cover_timers, gestures, orientation, idle_view, timer_hidden, media_color, standby_scope, date_format, hour_format, show_ampm, secondary, secondary_text, sensor_graph, rooms;
   int slot{-1};
   unsigned offset{0};
   uint32_t ticket{0};

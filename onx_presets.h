@@ -223,6 +223,7 @@ inline std::string pending_pages;
 inline void encode_current(JsonArray slots) {
   onx_entity_config::load_icons();
   onx_entity_config::load_playlists();
+  onx_entity_config::load_vacuum_rooms();
   onx_entity_config::load_gestures();
   custom_logic::load_ha_entities_if_needed();
   const size_t n = onx_entity_config::serialized_slot_count();
@@ -273,12 +274,14 @@ inline bool slot_query(size_t index, JsonObjectConst slot, esphome::onx_config_w
     }
     serializeJson(canonical, query.playlists);
   }
+  // Vacuum room settings as the configuration page sends them.
+  if (!slot["rooms"].isNull()) serializeJson(slot["rooms"], query.rooms);
   // The same bounds the HTTP endpoint enforces before reaching the handler.
   return query.entity.size() <= 128 && query.action.size() <= 128 && query.name.size() <= 192 &&
          query.area.size() <= 192 && query.action_name.size() <= 192 && query.type.size() <= 32 &&
          query.icon.size() <= 80 && query.icon_override.size() <= 1 && query.secondary.size() <= 128 &&
          query.secondary_text.size() <= 160 && query.sensor_graph.size() <= 2 && query.timer_hidden.size() <= 1 &&
-         query.cover_presets_enabled.size() <= 1 && query.cover_presets.size() <= 31 && query.gestures.size() <= 1600 && query.playlists.size() <= 2048;
+         query.cover_presets_enabled.size() <= 1 && query.cover_presets.size() <= 31 && query.gestures.size() <= 1600 && query.playlists.size() <= 2048 && query.rooms.size() <= 4096;
 }
 
 // Two slots are the same when the save requests they produce are the same, so
@@ -287,7 +290,7 @@ inline bool same_query(const esphome::onx_config_web::Query &a, const esphome::o
   return a.entity == b.entity && a.action == b.action && a.name == b.name && a.area == b.area &&
          a.action_name == b.action_name && a.type == b.type && a.icon == b.icon && a.icon_override == b.icon_override &&
          a.secondary == b.secondary && a.secondary_text == b.secondary_text && a.sensor_graph == b.sensor_graph &&
-         a.cover_presets_enabled == b.cover_presets_enabled && a.cover_presets == b.cover_presets && a.timer_hidden == b.timer_hidden && a.gestures == b.gestures && a.playlists == b.playlists;
+         a.cover_presets_enabled == b.cover_presets_enabled && a.cover_presets == b.cover_presets && a.timer_hidden == b.timer_hidden && a.gestures == b.gestures && a.playlists == b.playlists && a.rooms == b.rooms;
 }
 
 // ---- operations ----------------------------------------------------------
