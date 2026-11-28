@@ -1346,6 +1346,51 @@ __attribute__((noinline)) inline void build_siren(const Layout &l, const std::st
     });
 }
 
+inline bool draw_vacuum_map(const Rect &vis, const std::string &e);  // Below the artwork helpers.
+// The vacuum's fan speed list: open while `speed_picker` names the vacuum.
+// A tap sets that speed and returns to the vacuum screen.
+inline std::string speed_picker;
+inline void build_speed_picker(const std::string &e, const EntityDetailState &d) {
+  const auto speeds = onx_control::options(d.fan_modes);
+  const auto current = onx_controls::effective(d, "fan_speed");
+  const int pad = P(16), bs = P(44), bh = P(52), gap = P(8);
+  text(root, "Fan speed", fonts.title, TEXT(), pad, pad + (bs - line(fonts.title)) / 2, W - 2 * pad - bs - P(8));
+  circle(root, W - pad - bs / 2, pad + bs / 2, bs, CONTROL(), LV_SYMBOL_CLOSE, TEXT(), []() {
+    speed_picker.clear();
+    built_signature.clear();
+  });
+  const Rect r{pad, pad + bs + P(14), W - 2 * pad, H - 2 * pad - bs - P(14)};
+  lv_obj_t *list = box(root, r.x, r.y, r.w, r.h, BG(), 0, LV_OPA_TRANSP);
+  lv_obj_add_flag(list, LV_OBJ_FLAG_SCROLLABLE);
+  lv_obj_set_scroll_dir(list, LV_DIR_VER);
+  lv_obj_set_scrollbar_mode(list, LV_SCROLLBAR_MODE_OFF);
+  interactive(list, false);  // Scroll gestures go to LVGL.
+  for (size_t i = 0; i < speeds.size(); ++i) {
+    const auto option = speeds[i];
+    const bool selected = option == current;
+    lv_obj_t *b = button(list, 0, i * (bh + gap), r.w, bh, P(12), selected ? soft() : CARD(), "", fonts.body, TEXT(), [e, option]() {
+      const auto *dd = custom_logic_entity_sub::entity_detail(e);
+      speed_picker.clear();
+      built_signature.clear();
+      if (!dd) return;
+      custom_logic_entity_sub::select_control_entity(e);
+      onx_controls::request(*dd, "vacuum.set_fan_speed", "fan_speed", "fan_speed", option);
+    });
+    lv_obj_add_flag(b, LV_OBJ_FLAG_EVENT_BUBBLE);
+    if (selected) {
+      lv_obj_set_style_border_width(b, P(2), 0);
+      lv_obj_set_style_border_color(b, lv_color_hex(accent()), 0);
+      lv_obj_t *check = text(b, LV_SYMBOL_OK, fonts.symbol, accent(), 0, 0);
+      lv_obj_align(check, LV_ALIGN_RIGHT_MID, -P(14), 0);
+    }
+    text(b, label(option), fonts.body, selected ? accent() : TEXT(), P(16), (bh - line(fonts.body)) / 2, r.w - P(64));
+  }
+  auto it = std::find(speeds.begin(), speeds.end(), current);
+  if (it != speeds.end()) {
+    const int top = (it - speeds.begin()) * (bh + gap);
+    if (top + bh > r.h) lv_obj_scroll_to_y(list, top + bh - r.h, LV_ANIM_OFF);
+  }
+}
 __attribute__((noinline)) inline void build_vacuum(const Layout &l, const std::string &e, const EntityDetailState &d, const std::string &title) {
   using onx_controls::effective;
   const auto state = effective(d, "state");
@@ -1355,13 +1400,21 @@ __attribute__((noinline)) inline void build_vacuum(const Layout &l, const std::s
   const bool has_bat = std::isfinite(bat);
   const auto speeds = (d.features & 32) ? onx_control::options(d.fan_modes) : std::vector<std::string>{};
   const auto speed = effective(d, "fan_speed");
+  if (speed_picker == e && !speeds.empty()) { build_speed_picker(e, d); return; }
+  if (speed_picker == e) speed_picker.clear();
   std::string context = !d.status.empty() && d.status != "None" ? d.status : label(state.empty() ? "idle" : state);
   if (has_bat) context += " · " + pct(bat);
   if (!speed.empty() && speed != "None") context += " · " + label(speed);
   header(l.head, title, context);
+  // A configured map (camera path) fills the visual area once downloaded; a
+  // tap refreshes it, as on a camera screen.
+  if (onx_media::has_map(e)) onx_media::main_entity = e;
+  const bool map = draw_vacuum_map(l.vis, e);
   const int size = std::min({P(176), l.vis.w, l.vis.h - P(8)});
   const int cx = l.vis.x + l.vis.w / 2, cy = l.vis.y + l.vis.h / 2;
-  if (has_bat) {
+  if (map) {
+    // The map fills the visual area; the battery stays in the header.
+  } else if (has_bat) {
     lv_obj_t *arc = lv_arc_create(root);
     lv_obj_set_size(arc, size, size);
     lv_obj_set_pos(arc, cx - size / 2, cy - size / 2);
@@ -1390,8 +1443,8 @@ __attribute__((noinline)) inline void build_vacuum(const Layout &l, const std::s
   const std::string st_label = label(state.empty() ? "idle" : state);
   const lv_font_t *sf = fit(st_label, iw, {fonts.title, fonts.body, fonts.small});
   const int bh_txt = line(sf) + (has_bat ? P(2) + line(fonts.small) : 0);
-  text(root, st_label, sf, active ? accent() : TEXT(), cx - iw / 2, cy - bh_txt / 2, iw, LV_TEXT_ALIGN_CENTER);
-  if (has_bat) text(root, pct(bat), fonts.small, MUTED(), cx - iw / 2, cy - bh_txt / 2 + line(sf) + P(2), iw, LV_TEXT_ALIGN_CENTER);
+  if (!map) text(root, st_label, sf, active ? accent() : TEXT(), cx - iw / 2, cy - bh_txt / 2, iw, LV_TEXT_ALIGN_CENTER);
+  if (has_bat && !map) text(root, pct(bat), fonts.small, MUTED(), cx - iw / 2, cy - bh_txt / 2 + line(sf) + P(2), iw, LV_TEXT_ALIGN_CENTER);
 
   struct Act { const char *symbol; const char *service; const char *target; bool hot; };
   std::vector<Act> primary, secondary;
@@ -1421,30 +1474,33 @@ __attribute__((noinline)) inline void build_vacuum(const Layout &l, const std::s
   draw_row(secondary);
   if (!speeds.empty() && y + rh <= l.ctl.bottom() + P(4)) {
     const auto cur = speed.empty() || speed == "None" ? speeds.front() : speed;
-    row(root, {l.ctl.x, y, l.ctl.w, rh}, "Fan speed", label(cur) + "  ›", [e, cur]() {
-      const auto *dd = custom_logic_entity_sub::entity_detail(e);
-      if (!dd) return;
-      custom_logic_entity_sub::select_control_entity(e);
-      onx_controls::request(*dd, "vacuum.set_fan_speed", "fan_speed", "fan_speed",
-                            custom_logic_entity_sub::next_option(dd->fan_modes, cur));
+    row(root, {l.ctl.x, y, l.ctl.w, rh}, "Fan speed", label(cur) + "  ›", [e]() {
+      speed_picker = e;
+      built_signature.clear();
     });
   }
 }
 
 inline std::string pin_entity, pin_code;
-inline void draw_keypad(const Rect &area, const std::string &e) {
+// The code display; `note` (with a fill colour, 0 for none) replaces it with a
+// result such as "Code failed". Returns the display box.
+inline lv_obj_t *draw_keypad(const Rect &area, const std::string &e, const std::string &note = "", uint32_t tone = 0) {
   if (pin_entity != e) { pin_entity = e; pin_code.clear(); }
   const int gap = P(6), disp_h = P(32);
   std::string dots;
   for (size_t i = 0; i < pin_code.size(); ++i) dots += "•";
-  box(root, area.x, area.y, area.w, disp_h, CARD(), P(10));
-  text(root, dots.empty() ? "Enter code" : dots, dots.empty() ? fonts.small : fonts.title,
-       dots.empty() ? MUTED() : TEXT(), area.x + P(8),
-       area.y + (disp_h - line(dots.empty() ? fonts.small : fonts.title)) / 2, area.w - P(16), LV_TEXT_ALIGN_CENTER);
+  lv_obj_t *display = box(root, area.x, area.y, area.w, disp_h, tone ? tone : CARD(), P(10));
+  if (!note.empty()) {
+    text(display, note, fonts.body, tone ? 0xFFFFFF : TEXT(), P(8), (disp_h - line(fonts.body)) / 2, area.w - P(16), LV_TEXT_ALIGN_CENTER);
+  } else {
+    text(display, dots.empty() ? "Enter code" : dots, dots.empty() ? fonts.small : fonts.title,
+         dots.empty() ? MUTED() : TEXT(), P(8), (disp_h - line(dots.empty() ? fonts.small : fonts.title)) / 2, area.w - P(16),
+         LV_TEXT_ALIGN_CENTER);
+  }
   const int top = area.y + disp_h + gap, kh = area.h - disp_h - gap;
   const int rows = 4, cols = 3;
   const int bw = (area.w - gap * (cols - 1)) / cols, bh = (kh - gap * (rows - 1)) / rows;
-  if (bh < P(18)) return;
+  if (bh < P(18)) return display;
   static constexpr const char *keys[12] = {"1", "2", "3", "4", "5", "6", "7", "8", "9", "C", "0", "<"};
   for (int i = 0; i < 12; ++i) {
     const int r = i / cols, c = i % cols;
@@ -1460,6 +1516,7 @@ inline void draw_keypad(const Rect &area, const std::string &e) {
       built_signature.clear();
     });
   }
+  return display;
 }
 
 __attribute__((noinline)) inline void build_lock(const Layout &l, const std::string &e, const EntityDetailState &d, const std::string &title) {
@@ -1503,6 +1560,76 @@ __attribute__((noinline)) inline void build_lock(const Layout &l, const std::str
   }
 }
 
+// Alarm action feedback on the detail screen: a red shake when an action needs
+// the code first or Home Assistant did not change the state (wrong code), a
+// green flash when the new state (or arming/pending) arrives.
+namespace alarm_fb {
+enum Kind : uint8_t { NONE, NEED, WAIT, OK, FAIL };
+inline std::string entity, target, before;
+inline Kind kind = NONE;
+inline bool with_code = false, animated = false;
+inline uint32_t at = 0;
+inline lv_timer_t *timer = nullptr;
+constexpr uint32_t GREEN = 0x2EA043, RED = 0xD9473F;
+inline void set(const std::string &e, Kind k) { entity = e; kind = k; at = millis(); animated = false; }
+// Advances WAIT to OK/FAIL and clears a shown result; true when it changed.
+inline bool update() {
+  const Kind was = kind;
+  const uint32_t age = millis() - at;
+  if (kind == WAIT) {
+    const auto *d = custom_logic_entity_sub::entity_detail(entity);
+    const std::string now = d ? d->state : "";
+    const bool arming = target != "disarmed" && (now == "arming" || now == "pending");
+    if (!now.empty() && now != before && (now == target || arming)) set(entity, OK);
+    else if (age >= 6000) set(entity, FAIL);
+  } else if (kind != NONE && age >= 2500) {
+    kind = NONE;
+  }
+  return kind != was;
+}
+inline void watch() {
+  if (timer) return;
+  timer = lv_timer_create([](lv_timer_t *t) {
+    if (update()) { built_signature.clear(); onx_panel_ui::request_render(); }
+    if (kind == NONE) { lv_timer_delete(t); timer = nullptr; }
+  }, 200, nullptr);
+}
+inline std::string token(const std::string &e) { return e == entity ? std::to_string(int(kind)) : ""; }
+inline void shake(lv_obj_t *o) {
+  lv_anim_t a;
+  lv_anim_init(&a);
+  lv_anim_set_var(&a, o);
+  lv_anim_set_values(&a, 0, 600);
+  lv_anim_set_duration(&a, 420);
+  lv_anim_set_exec_cb(&a, [](void *obj, int32_t v) {
+    const int32_t amp = P(9) * (600 - v) / 600;
+    lv_obj_set_style_translate_x(static_cast<lv_obj_t *>(obj), amp * lv_trigo_sin(int16_t(v * 3 % 360)) / 32767, 0);
+  });
+  lv_anim_start(&a);
+}
+inline void flash(lv_obj_t *o) {
+  lv_anim_t a;
+  lv_anim_init(&a);
+  lv_anim_set_var(&a, o);
+  lv_anim_set_values(&a, 100, 112);
+  lv_anim_set_duration(&a, 180);
+  lv_anim_set_playback_duration(&a, 260);
+  lv_anim_set_exec_cb(&a, [](void *obj, int32_t v) {
+    auto *b = static_cast<lv_obj_t *>(obj);
+    lv_obj_set_style_transform_pivot_x(b, lv_obj_get_width(b) / 2, 0);
+    lv_obj_set_style_transform_pivot_y(b, lv_obj_get_height(b) / 2, 0);
+    lv_obj_set_style_transform_scale(b, 256 * v / 100, 0);
+  });
+  lv_anim_start(&a);
+}
+// Plays the result animation once per result, not on every rebuild.
+inline void animate(lv_obj_t *o) {
+  if (animated || o == nullptr) return;
+  animated = true;
+  if (kind == OK) flash(o);
+  else if (kind == NEED || kind == FAIL) shake(o);
+}
+}  // namespace alarm_fb
 // Home Assistant's code_arm_required arrives as "True"/"False" or, through the
 // ESPHome attribute subscription, "on"/"off". Unknown or missing counts as
 // required, matching Home Assistant's default.
@@ -1518,18 +1645,31 @@ __attribute__((noinline)) inline void build_alarm(const Layout &l, const std::st
   std::string context = st;
   if (!d.changed_by.empty() && d.changed_by != "None") context += " · " + d.changed_by;
   header(l.head, title, context);
+  // The last action's result, shown in the code display (or the state badge).
+  if (alarm_fb::entity != e) alarm_fb::kind = alarm_fb::NONE;
+  alarm_fb::update();
+  const auto fb = alarm_fb::kind;
+  const uint32_t tone = fb == alarm_fb::OK ? alarm_fb::GREEN : fb == alarm_fb::NEED || fb == alarm_fb::FAIL ? alarm_fb::RED : 0;
+  const std::string note = fb == alarm_fb::NEED ? "Enter the code first" :
+                           fb == alarm_fb::WAIT ? (alarm_fb::with_code ? "Checking code…" : "Sending…") :
+                           fb == alarm_fb::OK ? st :
+                           fb == alarm_fb::FAIL ? (alarm_fb::with_code ? "Code failed" : "No response") : "";
+  lv_obj_t *target_obj = nullptr;
   if (needs_code) {
-    draw_keypad(l.vis, e);
+    target_obj = draw_keypad(l.vis, e, note, tone);
   } else {
     const int size = std::min({P(176), l.vis.w, l.vis.h - P(8)});
     const int cx = l.vis.x + l.vis.w / 2, cy = l.vis.y + l.vis.h / 2;
-    lv_obj_t *badge = box(root, cx - size / 2, cy - size / 2, size, size, disarmed ? CARD() : soft(), LV_RADIUS_CIRCLE);
+    lv_obj_t *badge = box(root, cx - size / 2, cy - size / 2, size, size, tone ? tone : disarmed ? CARD() : soft(), LV_RADIUS_CIRCLE);
     lv_obj_set_style_border_width(badge, P(3), 0);
-    lv_obj_set_style_border_color(badge, lv_color_hex(disarmed ? CONTROL() : accent()), 0);
+    lv_obj_set_style_border_color(badge, lv_color_hex(tone ? tone : disarmed ? CONTROL() : accent()), 0);
     const int iw = size - P(28);
-    const lv_font_t *sf = fit(st, iw, {fonts.title, fonts.body, fonts.small});
-    text(root, st, sf, disarmed ? TEXT() : accent(), cx - iw / 2, cy - line(sf) / 2, iw, LV_TEXT_ALIGN_CENTER);
+    const std::string shown = note.empty() ? st : note;
+    const lv_font_t *sf = fit(shown, iw, {fonts.title, fonts.body, fonts.small});
+    text(badge, shown, sf, tone ? 0xFFFFFF : disarmed ? TEXT() : accent(), (size - iw) / 2, size / 2 - line(sf) / 2, iw, LV_TEXT_ALIGN_CENTER);
+    target_obj = badge;
   }
+  alarm_fb::animate(target_obj);
   struct Act { const char *caption; const char *service; const char *target; bool hot; bool send_code; };
   std::vector<Act> btns;
   if (!disarmed) {
@@ -1549,10 +1689,21 @@ __attribute__((noinline)) inline void build_alarm(const Layout &l, const std::st
     const int w = i == n - 1 ? l.ctl.w - i * (bw + gap) : bw;
     button(root, l.ctl.x + i * (bw + gap), l.ctl.y, w, bh, P(14), a.hot ? strong() : CONTROL(), a.caption,
            n >= 3 ? fonts.small : fonts.body, TEXT(), [e, a]() {
-             std::vector<onx_control::Value> vals{{"state", "", a.target}};
-             if (a.send_code && pin_entity == e && !pin_code.empty()) vals.push_back({"code", "code", pin_code, true});
-             custom_logic_entity_sub::select_control_entity(e);
-             custom_logic_entity_sub::request_control(e, a.service, std::move(vals));
+             const bool have_code = pin_entity == e && !pin_code.empty();
+             if (a.send_code && !have_code) {
+               alarm_fb::set(e, alarm_fb::NEED);
+             } else {
+               const auto *now = custom_logic_entity_sub::entity_detail(e);
+               std::vector<onx_control::Value> vals{{"state", "", a.target}};
+               if (a.send_code) vals.push_back({"code", "code", pin_code, true});
+               custom_logic_entity_sub::select_control_entity(e);
+               custom_logic_entity_sub::request_control(e, a.service, std::move(vals));
+               alarm_fb::target = a.target;
+               alarm_fb::before = now ? now->state : "";
+               alarm_fb::with_code = a.send_code;
+               alarm_fb::set(e, alarm_fb::WAIT);
+             }
+             alarm_fb::watch();
              pin_code.clear();
              built_signature.clear();
            });
@@ -3894,6 +4045,18 @@ __attribute__((noinline)) inline void build_media(const Layout &l, const std::st
   tick_media_progress();
 }
 
+// The vacuum screen's map (camera path) in the visual area; false until downloaded.
+inline bool draw_vacuum_map(const Rect &vis, const std::string &e) {
+  const void *map = onx_media::has_map(e) && artwork_source ? artwork_source(e) : nullptr;
+  if (!map) return false;
+  const ArtBox b = art_box(map, std::min(vis.w, vis.h), vis.w, vis.h);
+  auto *frame = box(root, vis.x + (vis.w - b.w) / 2, vis.y + (vis.h - b.h) / 2, b.w, b.h, CONTROL(), P(14));
+  lv_obj_set_style_clip_corner(frame, true, 0);
+  interactive(frame, false);
+  on(frame, LV_EVENT_CLICKED, [](lv_event_t *) { if (allowed() && refresh_camera) refresh_camera(); });
+  place_artwork(frame, map, b, true);
+  return true;
+}
 inline std::string camera_ptz_entity(const std::string &e) {
   const int i = onx_sensor_view::index(e);
   return i >= 0 && onx_sensor_view::configs[i].secondary[0] ? std::string(onx_sensor_view::configs[i].secondary) : std::string();
@@ -4795,6 +4958,7 @@ inline void refresh_grid_icons() {
 
 inline void card_vacuum(lv_obj_t *c, const Tile &t, const EntityDetailState &d) {
   const Rect r = t.r;
+  if (onx_media::has_map(t.entity) && onx_media::main_entity.empty()) onx_media::main_entity = t.entity;
   const int pad = P(14), cs = P(44), tx = pad + cs + P(12);
   const auto state = onx_controls::effective(d, "state");
   const bool cleaning = state == "cleaning";
@@ -4815,7 +4979,11 @@ inline void card_vacuum(lv_obj_t *c, const Tile &t, const EntityDetailState &d) 
   const int top = pad + cs + P(10);
   const bool show_big = avail_bottom - top >= line(fonts.title);
   Tile head = t;
-  if (!show_big) head.context = label(state.empty() ? "idle" : state) + (has_bat ? " · " + pct(bat) : "");
+  // A configured map needs MAP_MIN of height between the title and the buttons.
+  const int MAP_MIN = P(40), map_room = (show_btns ? bottom - bh - P(10) : bottom) - top;
+  const bool map_card = onx_media::has_map(t.entity) && onx_media::main_entity == t.entity && artwork_source &&
+                        map_room >= MAP_MIN && artwork_source(t.entity) != nullptr;
+  if (!show_big || map_card) head.context = label(state.empty() ? "idle" : state) + (has_bat ? " · " + pct(bat) : "");
   titled(c, head, tx, pad + P(2), r.w - tx - pad);
   if (show_btns) {
     bottom -= bh;
@@ -4827,6 +4995,15 @@ inline void card_vacuum(lv_obj_t *c, const Tile &t, const EntityDetailState &d) 
                   [e, a]() { request(e, a.service, "", a.target, "state"); });
     }
     bottom -= P(10);
+  }
+  // A configured map (camera path) takes the space above the buttons when it fits.
+  const void *map = map_card && !t.artwork ? artwork_source(e) : nullptr;
+  if (map) {
+    const ArtBox b = art_box(map, std::min(r.w - 2 * pad, bottom - top), r.w - 2 * pad, bottom - top);
+    auto *frame = box(c, pad + (r.w - 2 * pad - b.w) / 2, top + (bottom - top - b.h) / 2, b.w, b.h, INSET(), P(10));
+    lv_obj_set_style_clip_corner(frame, true, 0);
+    place_artwork(frame, map, b, false);
+    return;
   }
   const bool bar = has_bat && bottom - top >= line(fonts.title) + P(18);
   if (bar) bottom -= P(10) + P(8);
@@ -5036,7 +5213,7 @@ inline void build_main_cards(const std::vector<Tile> &tiles) {
     std::string first_camera, first_media;
     for (const auto &t : tiles) {
       if (t.chip || t.compact || t.key || t.artwork) continue;
-      const bool media = has_prefix(t.entity, "media_player."), cam = has_prefix(t.entity, "camera.");
+      const bool media = has_prefix(t.entity, "media_player."), cam = has_prefix(t.entity, "camera.") || onx_media::has_map(t.entity);
       if (!media && !cam) continue;
       const auto *d = custom_logic_entity_sub::entity_detail(t.entity);
       if (d == nullptr || !d->received || !d->available) continue;
@@ -5237,7 +5414,7 @@ inline std::string signature(const std::string &e, const EntityDetailState *d, c
     s += "|day" + std::to_string(weather_day) + d->hourly_date + std::to_string(d->hourly.size()) + std::to_string(d->hourly_pending);
   s += '|' + d->media_title + '|' + d->media_artist + '|' + d->picture + '|' + onx_media::ready_url +
        '|' + d->battery_level + '|' + d->status + '|' + d->motion_detection + '|' + camera_ptz_entity(e) +
-       '|' + d->changed_by + '|' + d->code_format + '|' + d->code_arm_required + '|' + (pin_entity == e ? std::to_string(pin_code.size()) : "");
+       '|' + d->changed_by + '|' + d->code_format + '|' + d->code_arm_required + '|' + (pin_entity == e ? std::to_string(pin_code.size()) : "") + '|' + alarm_fb::token(e) + (speed_picker == e ? "|sp" : "");
   if (has_prefix(e, "media_player.")) s += '|' + std::to_string(onx_lyrics::store().version);
   if (has_prefix(e, "camera.") && live_audio) s += "|sound" + std::to_string(live_audio(e));
   s += '|' + v.value.text + '|' + v.context.text + '|' + v.name.text + '|' + std::to_string(v.value_ring);
@@ -5328,6 +5505,7 @@ inline void clear(bool invalidate_root) {
 }
 inline void hide() {
   timers.focus.clear();
+  speed_picker.clear();
   weather_day = -1;
   if (!active) return;
   active = false;
@@ -5483,7 +5661,7 @@ inline bool prewarm_main_page(lv_obj_t *parent, const std::string &key, const st
   // Media and camera cards download their picture while shown; a pre-built
   // copy would skip choosing the page's main card, so nothing would load.
   for (const auto &t : tiles)
-    if (has_prefix(t.entity, "media_player.") || has_prefix(t.entity, "camera.")) return false;
+    if (has_prefix(t.entity, "media_player.") || has_prefix(t.entity, "camera.") || onx_media::has_map(t.entity)) return false;
   // Save active page state cleanly, build the neighbor into a hidden root, stash it, restore.
   const int saved_w = W, saved_h = H;
   const bool saved_main = main_mode, saved_grid = grid_cached_mode, saved_active = active;

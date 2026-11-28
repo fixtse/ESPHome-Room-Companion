@@ -1,0 +1,21 @@
+{
+ "entities": [
+  {
+   "entity_id": "vacuum.roborock",
+   "name": "Roborock",
+   "state": "docked",
+   "battery_level": "82",
+   "fan_speed_list": [
+    "Quiet",
+    "Balanced",
+    "Turbo",
+    "Max",
+    "Mop"
+   ],
+   "fan_speed": "Turbo",
+   "features": 14204,
+   "fan_speed_picker": true
+  }
+ ],
+ "pages": []
+}

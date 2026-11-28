@@ -334,7 +334,7 @@ interval:
           }
           // Refresh an active camera snapshot while visible (not when MJPEG streaming).
           // Not while a live view shows the camera (only the camera view has one).
-          if (!onx_media::downloading && !id(media_cover_image)->is_streaming() && onx_media::main_entity.rfind("camera.", 0) == 0 &&
+          if (!onx_media::downloading && !id(media_cover_image)->is_streaming() && onx_media::art_entity(onx_media::main_entity).rfind("camera.", 0) == 0 &&
               !(onx_media::live_camera_showing && id(normal_device_detail_active)) &&
               id(normal_ha_api_connected) && !id(screen_off_state) && !id(sleep_mode_state) &&
               !id(ui_presenter)->is_standby_active()) {

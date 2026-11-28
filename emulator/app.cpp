@@ -162,6 +162,18 @@ void set_field(custom_logic_entity_sub::EntityDetailState &d, const std::string 
       {"fan_speed_list", &d.fan_modes}, {"fan_speed", &d.fan_mode},
       {"changed_by", &d.changed_by}, {"code_format", &d.code_format}, {"code_arm_required", &d.code_arm_required}};
   if (auto it = strings.find(k); it != strings.end()) { *it->second = s; return; }
+  // "alarm_feedback": need|wait|ok|fail shows that result of an alarm action
+  // (with a code) on the alarm's detail screen.
+  // "fan_speed_picker": true opens the vacuum's fan speed list.
+  if (k == "fan_speed_picker") { if (v.as<bool>()) onx_panel_detail::speed_picker = d.entity_id; return; }
+  if (k == "alarm_feedback") {
+    namespace fb = onx_panel_detail::alarm_fb;
+    const std::string f = v.as<std::string>();
+    fb::set(d.entity_id, f == "need" ? fb::NEED : f == "wait" ? fb::WAIT : f == "ok" ? fb::OK : f == "fail" ? fb::FAIL : fb::NONE);
+    fb::with_code = true; fb::before = d.state; fb::target = "\x01";
+    fb::animated = true;  // A still render shows the settled result.
+    return;
+  }
   if (k == "features") d.features = v.as<uint32_t>();
   else if (k == "minimum") d.minimum = v.as<float>();
   else if (k == "maximum") d.maximum = v.as<float>();
@@ -565,6 +577,12 @@ void setup() {
   };
   onx_panel_detail::artwork_source = [](const std::string &entity) -> const void * {
     return demo_artwork.count(entity) ? &demo_cover(wide_artwork.count(entity) > 0) : nullptr;
+  };
+  // As panel.yaml: a vacuum's map camera is its secondary entity
+  // ("secondary": {"entity": "camera.map"} plus "artwork": "demo" in a scenario).
+  onx_media::map_camera = [](const std::string &entity) {
+    const int i = onx_sensor_view::index(entity);
+    return i >= 0 ? std::string(onx_sensor_view::configs[i].secondary) : std::string();
   };
   // As panel.yaml: the configured entities that are timers.
   onx_panel_detail::timer_entities = []() {

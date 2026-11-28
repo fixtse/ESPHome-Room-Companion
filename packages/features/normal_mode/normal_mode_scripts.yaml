@@ -2438,7 +2438,10 @@ script:
           const bool main_art = (!id(normal_device_detail_active) || onx_panel_detail::active) && !onx_media::main_entity.empty();
           const auto entity = main_art ? onx_media::main_entity : id(ui_presenter)->get_normal_device_entity_id(id(normal_device_detail_index));
           auto *detail = custom_logic_entity_sub::entity_detail(entity);
-          const bool cam = entity.rfind("camera.", 0) == 0;
+          // A vacuum with a map downloads its map camera like a camera card.
+          const auto art = onx_media::art_entity(entity);
+          const std::string pic = detail ? onx_media::art_picture(entity, art, detail->picture) : std::string();
+          const bool cam = art.rfind("camera.", 0) == 0;
           const bool media = !main_art && id(normal_device_detail_active) &&
                              id(normal_device_detail_kind) == NORMAL_DEVICE_DETAIL_KIND_AUTOMATION &&
                              (entity.rfind("media_player.", 0) == 0 || cam) && detail != nullptr;
@@ -2449,7 +2452,7 @@ script:
               (main_art || id(normal_device_detail_online)) && !id(screen_off_state) && !id(sleep_mode_state) &&
               !id(ui_presenter)->is_standby_active() && (cam || onx_media::has_playback(detail->state));
           // A live view (go2rtc, Room Companion) replaces Home Assistant's MJPEG stream.
-          const bool want_stream = playable && cam && id(normal_device_detail_active) && onx_panel_detail::active &&
+          const bool want_stream = playable && cam && art == entity && id(normal_device_detail_active) && onx_panel_detail::active &&
                                    onx_media::live_camera_entity != entity;
           std::string stream_url = want_stream ? onx_media::camera_stream_url(origin, entity, detail->picture) : "";
           if (!stream_url.empty() && onx_media::stream_failed_ms != 0 && millis() - onx_media::stream_failed_ms < 60000 &&
@@ -2458,7 +2461,7 @@ script:
           const bool use_stream = !stream_url.empty();
           const std::string desired = !playable ? ""
               : use_stream ? stream_url
-              : cam ? onx_media::camera_snapshot_url(origin, entity, detail->picture, onx_media::camera_refresh_seq)
+              : cam ? onx_media::camera_snapshot_url(origin, art, pic, onx_media::camera_refresh_seq)
               : onx_media::media_art_url(origin, entity, detail->picture, static_cast<int>(240 * ${ui_scale} + 0.5f));
           const uint32_t now = millis();
           if (desired != onx_media::candidate_url) {

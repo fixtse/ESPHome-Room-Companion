@@ -297,6 +297,19 @@ inline std::string camera_picture_url(const std::string &origin, const std::stri
   const std::string local = onx_companion::camera_url(entity, camera_box, camera_box, false, camera_live && camera_live());
   return local.empty() ? artwork_url(origin, picture) : local;
 }
+// A vacuum's map (Xiaomi Cloud Map Extractor camera, saved as its secondary
+// entity) is shown through the camera path: art_entity() names the camera
+// whose picture stands for an entity, art_picture() its picture path.
+inline std::function<std::string(const std::string &)> map_camera;
+inline std::string art_entity(const std::string &entity) {
+  if (entity.rfind("vacuum.", 0) != 0 || !map_camera) return entity;
+  const auto map = map_camera(entity);
+  return map.rfind("camera.", 0) == 0 ? map : entity;
+}
+inline bool has_map(const std::string &entity) { return art_entity(entity) != entity; }
+inline std::string art_picture(const std::string &entity, const std::string &art, const std::string &picture) {
+  return art == entity ? picture : "/api/camera_proxy/" + art;
+}
 inline std::string camera_snapshot_url(const std::string &origin, const std::string &entity, const std::string &picture,
                                        uint32_t seq) {
   std::string url = camera_picture_url(origin, entity, picture);

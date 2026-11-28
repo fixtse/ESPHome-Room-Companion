@@ -1,0 +1,52 @@
+{
+ "entities": [
+  {
+   "entity_id": "vacuum.roborock",
+   "name": "Roborock",
+   "state": "cleaning",
+   "battery_level": "82",
+   "fan_speed_list": [
+    "Quiet",
+    "Balanced",
+    "Turbo",
+    "Max"
+   ],
+   "fan_speed": "Turbo",
+   "features": 14204,
+   "secondary": {
+    "entity": "camera.xiaomi_cloud_map_extractor"
+   },
+   "artwork": "demo"
+  },
+  {
+   "entity_id": "vacuum.plain",
+   "name": "No map",
+   "state": "cleaning",
+   "battery_level": "82",
+   "fan_speed_list": [
+    "Quiet",
+    "Balanced",
+    "Turbo",
+    "Max"
+   ],
+   "fan_speed": "Turbo",
+   "features": 14204
+  },
+  {
+   "entity_id": "light.living_room",
+   "name": "Living room",
+   "state": "on",
+   "brightness": "180"
+  }
+ ],
+ "pages": [
+  {
+   "name": "map-single",
+   "kind": "two",
+   "entities": [
+    "vacuum.roborock",
+    "light.living_room"
+   ]
+  }
+ ]
+}

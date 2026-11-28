@@ -1167,7 +1167,7 @@ inline void subscribe_secondary(esphome::api::APIServer *api_server,size_t slot,
   if(slot>=onx_memory::ENTRY_COUNT)return;
   const auto who=onx_subs::owner(onx_subs::Kind::SECONDARY,slot);
   const auto &config=onx_sensor_view::configs[slot];
-  if(!api_server || primary.empty() || primary!=config.primary || !config.secondary[0] || has_prefix(primary,"camera.")) {onx_subs::registry.release(who);return;}
+  if(!api_server || primary.empty() || primary!=config.primary || !config.secondary[0] || has_prefix(primary,"camera.") || has_prefix(primary,"vacuum.")) {onx_subs::registry.release(who);return;}
   const std::string secondary=config.secondary;
   onx_subs::registry.release(who,&secondary);
   for(const std::string attribute : {std::string(""),std::string("unit_of_measurement")}) {
@@ -1379,6 +1379,7 @@ inline void recover_entity_states(esphome::api::APIServer *api, bool connected) 
   for(size_t i=0;i<onx_memory::ENTRY_COUNT;++i) {
     const auto &c=onx_sensor_view::configs[i];const auto &s=onx_sensor_view::states[i];
     if(custom_logic::cached_device_entity_id(i)!=c.primary)continue;
+    if(has_prefix(c.primary,"camera.") || has_prefix(c.primary,"vacuum."))continue;  // PTZ / map cameras: not subscribed.
     if(secondary_recovery[i].due(c.secondary,s.received&&s.available,now)) {
       queue_entity_refresh(c.secondary,false);secondary_recovery[i].attempted(now);
     }

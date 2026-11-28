@@ -1,0 +1,14 @@
+{
+ "entities": [
+  {
+   "entity_id": "alarm_control_panel.home_alarm",
+   "name": "Home alarm",
+   "state": "disarmed",
+   "code_format": "number",
+   "code_arm_required": "true",
+   "features": 3,
+   "alarm_feedback": "ok"
+  }
+ ],
+ "pages": []
+}
