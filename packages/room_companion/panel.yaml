@@ -912,6 +912,19 @@ image:
     resize: ${ (80 * (ui_scale | float)) | round | int }x${ (80 * (ui_scale | float)) | round | int }
     type: RGB565
     transparency: alpha_channel
+  # Vacuum locate and spot clean: the MDI glyphs the web preview draws.
+  - platform: file
+    file: "../../assets/panel/crosshairs-gps.svg"
+    id: panel_locate_icon
+    resize: ${ (34 * (ui_scale | float)) | round | int }x${ (34 * (ui_scale | float)) | round | int }
+    type: RGB565
+    transparency: alpha_channel
+  - platform: file
+    file: "../../assets/panel/autorenew.svg"
+    id: panel_spot_icon
+    resize: ${ (34 * (ui_scale | float)) | round | int }x${ (34 * (ui_scale | float)) | round | int }
+    type: RGB565
+    transparency: alpha_channel
   - platform: file
     file: "../../assets/panel/cog-outline.svg"
     id: panel_settings_icon
@@ -1055,6 +1068,8 @@ script:
           onx_panel_detail::light_mode_icons = {id(normal_light_mode_icon_bright_img)->get_lv_image_dsc(),
               id(normal_light_mode_icon_cct_img)->get_lv_image_dsc(), id(normal_light_mode_icon_color_img)->get_lv_image_dsc()};
           onx_panel_detail::settings_icon = id(panel_settings_icon)->get_lv_image_dsc();
+          onx_panel_detail::symbol_images = {{LV_SYMBOL_GPS, id(panel_locate_icon)->get_lv_image_dsc()},
+                                             {LV_SYMBOL_LOOP, id(panel_spot_icon)->get_lv_image_dsc()}};
           onx_panel_ui::create_idle_badge(id(standby_page)->obj, id(fonts_MiSans_Medium_14)->get_lv_font(),
               id(panel_bell_icon)->get_lv_image_dsc());
           // Idle clock layout (onx_idle_clock.h) over the shared standby widgets.

@@ -52,6 +52,7 @@ esphome:
     - ../../onx_glyphs.h
     - ../../onx_recovery_state.h
     - ../../onx_playlist.h
+    - ../../onx_vacuum_rooms.h
     - ../../onx_media_state.h
     - ../../onx_assist_hooks.h
     - ../../onx_registry_queue.h

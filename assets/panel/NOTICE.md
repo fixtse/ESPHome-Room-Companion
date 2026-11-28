@@ -1,4 +1,4 @@
-`bell-outline.svg`, `cog-outline.svg`, `microphone-off.svg` and `screen-rotation.svg` are Material
+`bell-outline.svg`, `cog-outline.svg`, `crosshairs-gps.svg`, `autorenew.svg`, `microphone-off.svg` and `screen-rotation.svg` are Material
 Design Icons from https://github.com/Templarian/MaterialDesign (Apache 2.0, see
 `LICENSE`); the SVG root fill is set to white for monochrome rendering.
 

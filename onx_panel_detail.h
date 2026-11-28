@@ -495,10 +495,23 @@ inline lv_obj_t *button(lv_obj_t *parent, int x, int y, int w, int h, int radius
   on(b, LV_EVENT_CLICKED, [fn](lv_event_t *) { if (allowed()) fn(); });
   return b;
 }
+// Symbols drawn as bundled MDI images instead of the symbol font (the shapes
+// the web preview shows): {LV_SYMBOL_*, image}. Set by panel.yaml.
+inline std::vector<std::pair<const char *, const void *>> symbol_images;
 inline lv_obj_t *icon_button(lv_obj_t *parent, int x, int y, int w, int h, int radius, uint32_t bg,
                              const char *symbol, uint32_t fg, std::function<void()> fn) {
   lv_obj_t *b = button(parent, x, y, w, h, radius, bg, "", fonts.symbol, fg, std::move(fn));
   if (bg == accent() || bg == strong()) fg = onx_display_settings::light_color(bg) ? 0x161B22 : 0xFFFFFF;
+  for (const auto &si : symbol_images) {
+    if (si.second == nullptr || std::strcmp(si.first, symbol) != 0) continue;
+    lv_obj_t *img = lv_image_create(b);
+    lv_image_set_src(img, si.second);
+    lv_obj_set_style_image_recolor(img, lv_color_hex(fg), 0);
+    lv_obj_set_style_image_recolor_opa(img, LV_OPA_COVER, 0);
+    lv_obj_remove_flag(img, static_cast<lv_obj_flag_t>(LV_OBJ_FLAG_CLICKABLE | LV_OBJ_FLAG_SCROLLABLE));
+    lv_obj_center(img);
+    return b;
+  }
   lv_obj_t *l = text(b, symbol, fonts.symbol, fg, 0, 0);
   lv_obj_center(l);
   return b;
@@ -556,9 +569,11 @@ inline void chips(lv_obj_t *parent, const Rect &r, const std::vector<std::string
 inline lv_obj_t *row(lv_obj_t *parent, const Rect &r, const std::string &name, const std::string &value,
                      std::function<void()> fn = nullptr) {
   lv_obj_t *b = box(parent, r.x, r.y, r.w, r.h, CARD(), P(10));
+  // The name takes what it needs (up to half), the value the rest.
   const int pad = P(12), lh = line(fonts.small);
-  text(b, name, fonts.small, MUTED(), pad, (r.h - lh) / 2, r.w / 2 - pad);
-  text(b, value, fonts.small, TEXT(), r.w / 2, (r.h - lh) / 2, r.w / 2 - pad, LV_TEXT_ALIGN_RIGHT);
+  const int nw = std::min(text_width(name, fonts.small) + 1, r.w / 2 - pad), vw = r.w - 2 * pad - nw - P(8);
+  text(b, name, fonts.small, MUTED(), pad, (r.h - lh) / 2, nw);
+  text(b, value, fonts.small, TEXT(), r.w - pad - vw, (r.h - lh) / 2, vw, LV_TEXT_ALIGN_RIGHT);
   if (fn) {
     interactive(b);
     on(b, LV_EVENT_CLICKED, [fn](lv_event_t *) { if (allowed()) fn(); });

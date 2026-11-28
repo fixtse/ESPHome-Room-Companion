@@ -621,6 +621,8 @@ void setup() {
                                         lvgl_emu::image(root + "/assets/light_mode_icon_cct.svg", ui(20)),
                                         lvgl_emu::image(root + "/assets/light_mode_icon_color.svg", ui(20))};
   onx_panel_detail::settings_icon = lvgl_emu::svg(root + "/assets/panel/cog-outline.svg", ui(72));
+  onx_panel_detail::symbol_images = {{LV_SYMBOL_GPS, lvgl_emu::svg(root + "/assets/panel/crosshairs-gps.svg", ui(34))},
+                                     {LV_SYMBOL_LOOP, lvgl_emu::svg(root + "/assets/panel/autorenew.svg", ui(34))}};
   onx_navigation::configure_strip(w, h, board.strip_center_y, board.strip_spacing, board.strip_marker, board.strip_icon,
                                   board.strip_label_y, board.strip_label_font.empty() ? nullptr : font(board.strip_label_font));
   onx_notification_ui::Fonts nf;
